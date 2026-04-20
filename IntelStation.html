@@ -367,6 +367,14 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       var m = document.getElementById('help-modal');
       if (m) m.style.display = 'flex';
     });
+    // Wire import file input — module functions may not be ready yet via onchange
+    var importFile = document.getElementById('import-file');
+    if (importFile) {
+      importFile.addEventListener('change', function(e) {
+        if (window.importData) window.importData(e);
+        else toast('App still loading — try again in a moment');
+      });
+    }
   });
 })();
 </script>
@@ -1011,23 +1019,48 @@ async function reprocessMeeting(){
 function exportData(){var backup={version:4,app:'IntelStation',exported:new Date().toISOString(),meetings:meetings,entities:entities,edges:edges};var blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='IntelStation_backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);toast('Backup exported');}
 
 async function importData(event){
-  var file=event.target.files[0];if(!file)return;
-  var reader=new FileReader();
-  reader.onload=async function(e){
-    try{
-      var data=JSON.parse(e.target.result);
-      if(!data.meetings&&!data.entities){toast('Invalid backup file');return;}
-      if(!confirm('Import backup from '+(data.exported?data.exported.slice(0,10):'unknown date')+'?\nThis will merge with existing data.'))return;
-      var existingMIds=new Set(meetings.map(function(m){return m.id;}));
-      var newMeetings=(data.meetings||[]).filter(function(m){return!existingMIds.has(m.id);});
-      for(var i=0;i<newMeetings.length;i++)await fbSaveMeeting(newMeetings[i]);
-      var existingEIds=new Set(entities.map(function(e){return e.id;}));
-      (data.entities||[]).forEach(function(e){if(!existingEIds.has(e.id))entities.push(e);});
-      await fbSaveEntities();
-      toast('Imported: '+newMeetings.length+' meetings');
-    }catch(err){toast('Could not read backup file');}
+  var file = event.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = async function(e) {
+    try {
+      var raw = e.target.result;
+      var data = JSON.parse(raw);
+      // Accept both old and new backup formats
+      var importedMeetings = data.meetings || [];
+      var importedEntities = data.entities || [];
+      var importedEdges = data.edges || [];
+      if (!importedMeetings.length && !importedEntities.length) {
+        toast('No data found in backup file');
+        return;
+      }
+      var dateStr = data.exported ? data.exported.slice(0,10) : 'unknown date';
+      if (!confirm('Import ' + importedMeetings.length + ' meetings and ' + importedEntities.length + ' entities from ' + dateStr + '?\nThis merges with existing data.')) return;
+      // Upload meetings one by one
+      var added = 0;
+      var existingMIds = new Set(meetings.map(function(m){return m.id;}));
+      for (var i = 0; i < importedMeetings.length; i++) {
+        var m = importedMeetings[i];
+        if (!existingMIds.has(m.id)) {
+          await fbSaveMeeting(m);
+          added++;
+        }
+      }
+      // Upload entities
+      if (importedEntities.length) {
+        var existingEIds = new Set(entities.map(function(e){return e.id;}));
+        importedEntities.forEach(function(e) { if (!existingEIds.has(e.id)) entities.push(e); });
+        await fbSaveEntities();
+      }
+      toast('Imported: ' + added + ' meetings · ' + importedEntities.length + ' entities');
+    } catch(err) {
+      console.error('Import error:', err);
+      toast('Import failed: ' + (err.message || 'Could not read file'));
+    }
   };
-  reader.readAsText(file);event.target.value='';
+  reader.onerror = function() { toast('Could not read file — try again'); };
+  reader.readAsText(file);
+  event.target.value = '';
 }
 
 // ── UTILS
