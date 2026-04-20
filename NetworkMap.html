@@ -170,8 +170,8 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
     ⬡ Sync <span class="badge" id="sync-count">0</span>
   </button>
   <button class="btn btn-icon" onclick="exportData()" title="Export backup">↓</button>
-  <button class="btn btn-icon" onclick="document.getElementById('nm-import-file').click()" title="Import backup">↑</button>
-  <input type="file" id="nm-import-file" accept=".json" style="display:none" onchange="importData(event)">
+  <button class="btn btn-icon" id="nm-import-trigger" title="Import backup">&#8593;</button>
+  <input type="file" id="nm-import-file" accept=".json" style="display:none">
   <button class="btn btn-icon" onclick="showHelp()">?</button>
 </div>
 
@@ -371,6 +371,21 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   </svg>
   <p>No nodes yet — click + Company, + Person, or + Deal to start</p>
 </div>
+
+<!-- PLAIN SCRIPT: wires import button immediately, no module delay -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var trigger = document.getElementById('nm-import-trigger');
+  var fileInput = document.getElementById('nm-import-file');
+  if (trigger) trigger.addEventListener('click', function() { if (fileInput) fileInput.click(); });
+  if (fileInput) {
+    fileInput.addEventListener('change', function(e) {
+      if (window.nmImport) { window.nmImport(e); }
+      else { alert('App still loading -- try again in a moment'); }
+    });
+  }
+});
+</script>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
@@ -703,7 +718,41 @@ function zoomOut(){svg.transition().duration(220).call(zoom.scaleBy,0.69);}
 
 // ── BACKUP
 function exportData(){const backup={version:4,app:'NetworkMap',exported:new Date().toISOString(),entities:nodes.map(({fx,fy,vx,vy,index,...r})=>r),edges:links.map(l=>({...l,source:l.source?.id||l.source,target:l.target?.id||l.target,index:undefined})),calEntries};const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`NetworkMap_backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast(`Backup exported — ${nodes.length} nodes`);}
-async function importData(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async function(e){try{const data=JSON.parse(e.target.result);const importedNodes=data.entities||data.nodes||[];if(!importedNodes.length){toast('No nodes found');return;}if(!confirm(`Restore ${importedNodes.length} nodes from backup?`))return;nodes=importedNodes.map(n=>{if(n.x!=null&&n.y!=null){n.fx=n.x;n.fy=n.y;}return n;});links=data.edges||data.links||[];colorIdx=0;nodes.filter(n=>n.type==='company').forEach(n=>{if(!n.color){n.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}else{const i=PALETTE.indexOf(n.color);if(i>=colorIdx)colorIdx=i+1;}});await fbSaveNodes();await fbSaveLinks();if(data.calEntries){calEntries=data.calEntries;await fbSaveCal();}render();updateFilterTags();updateOrgLegend();updateNodeCount();document.getElementById('empty-state').style.display=nodes.length?'none':'block';toast(`Restored: ${nodes.length} nodes`);setTimeout(()=>fitGraph(),600);}catch(err){toast('Could not read backup file');}};reader.readAsText(file);event.target.value='';}
+async function importData(event){
+  const file=event.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async function(e){
+    try{
+      const data=JSON.parse(e.target.result);
+      const importedNodes=data.entities||data.nodes||[];
+      const importedLinks=data.edges||data.links||[];
+      if(!importedNodes.length){toast('No nodes found in backup');return;}
+      if(!confirm('Restore '+importedNodes.length+' nodes and '+importedLinks.length+' connections from backup?'))return;
+      nodes=importedNodes.map(n=>{if(n.x!=null&&n.y!=null){n.fx=n.x;n.fy=n.y;}return n;});
+      links=importedLinks;
+      colorIdx=0;
+      nodes.filter(n=>n.type==='company').forEach(n=>{
+        if(!n.color){n.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}
+        else{const i=PALETTE.indexOf(n.color);if(i>=colorIdx)colorIdx=i+1;}
+      });
+      toast('Uploading to Firebase...');
+      await fbSaveNodes();
+      await fbSaveLinks();
+      if(data.calEntries){calEntries=data.calEntries;await fbSaveCal();}
+      render();updateFilterTags();updateOrgLegend();updateNodeCount();
+      document.getElementById('empty-state').style.display=nodes.length?'none':'block';
+      toast('Restored: '+nodes.length+' nodes');
+      setTimeout(()=>fitGraph(),600);
+    }catch(err){
+      console.error('Import error:',err);
+      toast('Import failed: '+(err.message||'Could not read file'));
+    }
+  };
+  reader.onerror=function(){toast('Could not read file');};
+  reader.readAsText(file);
+  event.target.value='';
+}
+window.nmImport=importData;
 
 // ── UTILS
 function setStatus(m){const e=document.getElementById('status-bar');e.textContent=m;e.classList.add('show');}
