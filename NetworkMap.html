@@ -467,7 +467,17 @@ async function fbSaveNodes(){
 async function fbSaveLinks(){
   setSyncStatus('saving');
   const obj={};
-  links.forEach(l=>{const clean={...l,source:l.source?.id||l.source,target:l.target?.id||l.target,index:undefined};obj[l.id]=clean;});
+  links.forEach(l=>{
+    const clean={
+      id: l.id,
+      source: l.source?.id||l.source,
+      target: l.target?.id||l.target,
+      label: l.label||'',
+      dir: l.dir||'both',
+      notes: l.notes||''
+    };
+    obj[l.id]=clean;
+  });
   await set(ref(db,'network/links'),obj);
   setSyncStatus('live');
 }
@@ -729,7 +739,14 @@ async function importData(event){
       if(!importedNodes.length){toast('No nodes found in backup');return;}
       if(!confirm('Restore '+importedNodes.length+' nodes and '+importedLinks.length+' connections from backup?'))return;
       nodes=importedNodes.map(n=>{if(n.x!=null&&n.y!=null){n.fx=n.x;n.fy=n.y;}return n;});
-      links=importedLinks;
+      links=importedLinks.map(l=>({
+        id: l.id,
+        source: l.source?.id||l.source,
+        target: l.target?.id||l.target,
+        label: l.label||'',
+        dir: l.dir||'both',
+        notes: l.notes||''
+      }));
       colorIdx=0;
       nodes.filter(n=>n.type==='company').forEach(n=>{
         if(!n.color){n.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}
