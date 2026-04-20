@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>Network Map</title>
+<meta name="theme-color" content="#0b0d11">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Network Map">
+<link rel="manifest" id="mlink">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root{--bg:#0b0d11;--s1:#131720;--s2:#1a2030;--b1:#252d42;--b2:#2f3a56;--gold:#c9a227;--text:#e2e8f4;--t2:#8892a8;--t3:#4a5568;--red:#ef4444;--amber:#f59e0b;--green:#22c55e;--blue:#3b82f6;--purple:#8b5cf6;--r:10px;--rsm:6px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;overflow:hidden;user-select:none}
+.toolbar{position:fixed;top:0;left:0;right:0;height:52px;background:rgba(11,13,17,.95);border-bottom:1px solid var(--b1);backdrop-filter:blur(8px);display:flex;align-items:center;padding:0 14px;gap:6px;z-index:50}
+.logo{display:flex;align-items:center;gap:7px;margin-right:6px;flex-shrink:0}
+.logo-txt{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:var(--gold);letter-spacing:0.05em}
+.tb-sep{width:1px;height:22px;background:var(--b1);margin:0 2px;flex-shrink:0}
+.btn{padding:5px 10px;border:1px solid var(--b1);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:12px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;transition:all .15s;flex-shrink:0}
+.btn:hover{background:var(--s1);border-color:var(--b2);color:var(--text)}
+.btn.active{background:var(--s2);border-color:var(--b2);color:var(--text)}
+.btn-gold{background:var(--gold)!important;color:#0b0d11!important;border-color:var(--gold)!important;font-weight:600!important}
+.btn-gold:hover{opacity:.85!important}
+.btn-icon{width:30px;height:30px;padding:0;display:flex;align-items:center;justify-content:center;font-size:15px}
+.tb-spacer{flex:1;min-width:4px}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;background:var(--gold);color:#0b0d11;border-radius:9px;font-size:10px;font-weight:600;padding:0 4px;margin-left:4px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--t3);flex-shrink:0;transition:background .3s}
+.sync-dot.live{background:var(--green)}
+.sync-dot.saving{background:var(--amber)}
+.search-bar{position:fixed;top:52px;left:220px;right:0;height:38px;background:rgba(11,13,17,.9);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 14px;gap:8px;z-index:49}
+.search-input{flex:1;background:transparent;border:none;outline:none;font-size:12px;font-family:'Outfit',sans-serif;color:var(--text);max-width:300px}
+.search-input::placeholder{color:var(--t3)}
+.search-results{position:fixed;top:90px;left:220px;background:var(--s1);border:1px solid var(--b2);border-radius:var(--rsm);z-index:80;max-width:360px;max-height:320px;overflow-y:auto;display:none;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.search-results::-webkit-scrollbar{width:3px}
+.search-results::-webkit-scrollbar-thumb{background:var(--b2)}
+.sr-item{padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:10px}
+.sr-item:hover{background:var(--s2)}
+.sr-item:last-child{border-bottom:none}
+.filterbar{position:fixed;top:90px;left:220px;right:0;height:34px;background:rgba(11,13,17,.85);border-bottom:1px solid rgba(37,45,66,.5);display:flex;align-items:center;padding:0 14px;gap:6px;z-index:48}
+.filter-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);flex-shrink:0}
+.filter-scroll{display:flex;gap:4px;overflow-x:auto;flex:1}
+.filter-scroll::-webkit-scrollbar{display:none}
+.ftag{padding:2px 8px;border:1px solid var(--b1);border-radius:20px;font-size:11px;color:var(--t3);cursor:pointer;white-space:nowrap;transition:all .15s;background:transparent;font-family:'Outfit',sans-serif;flex-shrink:0}
+.ftag:hover{border-color:var(--b2);color:var(--t2)}
+.node-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t3);flex-shrink:0;margin-left:4px}
+#canvas{position:fixed;top:124px;left:220px;right:0;bottom:0;cursor:grab}
+#canvas.edge-mode{cursor:crosshair}
+#canvas:active{cursor:grabbing}
+.cal-panel{position:fixed;top:52px;left:0;bottom:0;width:220px;background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;z-index:40;overflow:hidden}
+.cal-header{padding:12px 14px 10px;border-bottom:1px solid var(--b1);flex-shrink:0}
+.cal-title-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:8px}
+.cal-today{font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px}
+.cal-sub{font-size:11px;color:var(--t3)}
+.cal-scroll{flex:1;overflow-y:auto;padding:6px 0 16px}
+.cal-scroll::-webkit-scrollbar{width:3px}
+.cal-scroll::-webkit-scrollbar-thumb{background:var(--b2)}
+.cal-add{padding:10px 14px;border-top:1px solid var(--b1);flex-shrink:0}
+.cal-add input{font-size:11px;padding:5px 8px;margin-bottom:5px}
+.cal-add-row{display:flex;gap:5px;margin-top:5px}
+.cal-add-row input{flex:1;font-size:11px;padding:5px 8px}
+.cal-add-btn{padding:5px 8px;border:1px solid var(--gold);border-radius:var(--rsm);background:transparent;color:var(--gold);font-size:11px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;transition:all .15s}
+.cal-add-btn:hover{background:var(--gold);color:#0b0d11}
+.date-section{padding:0 12px;margin-bottom:4px}
+.date-sec-lbl{font-family:'JetBrains Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);padding:7px 0 4px;border-bottom:1px solid var(--b1);margin-bottom:5px}
+.date-item{padding:5px 0;border-bottom:1px solid rgba(37,45,66,.4);display:flex;gap:7px;align-items:flex-start}
+.date-item:last-child{border-bottom:none}
+.date-pip{width:3px;border-radius:2px;flex-shrink:0;margin-top:3px;align-self:stretch;min-height:12px}
+.date-content{flex:1;min-width:0}
+.date-label{font-size:11px;color:var(--text);line-height:1.4;word-break:break-word}
+.date-meta{font-size:10px;color:var(--t3);margin-top:1px;font-family:'JetBrains Mono',monospace}
+.date-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;display:inline-block;margin-top:2px}
+.date-del{background:none;border:none;color:var(--t3);cursor:pointer;font-size:10px;padding:0;flex-shrink:0;opacity:0;transition:opacity .15s}
+.date-item:hover .date-del{opacity:1}
+.cal-empty{font-size:11px;color:var(--t3);text-align:center;padding:16px 12px;line-height:1.7}
+.panel{position:fixed;top:52px;right:0;bottom:0;width:330px;background:var(--s1);border-left:1px solid var(--b1);transform:translateX(100%);transition:transform .25s ease;z-index:40;display:flex;flex-direction:column;overflow:hidden}
+.panel.open{transform:translateX(0)}
+.panel-header{padding:14px 16px 0;flex-shrink:0}
+.panel-tabs{display:flex;gap:0;border-bottom:1px solid var(--b1);margin-bottom:0;flex-shrink:0}
+.panel-tab{flex:1;padding:8px 4px;font-size:11px;font-weight:500;cursor:pointer;background:transparent;border:none;color:var(--t3);font-family:'Outfit',sans-serif;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s;text-align:center}
+.panel-tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.panel-scroll{flex:1;overflow-y:auto;padding:12px 16px 24px}
+.panel-scroll::-webkit-scrollbar{width:3px}
+.panel-scroll::-webkit-scrollbar-thumb{background:var(--b2)}
+.pfield{margin-bottom:12px}
+.plbl{font-size:11px;font-weight:500;color:var(--t2);margin-bottom:4px;letter-spacing:0.02em}
+input,select,textarea{width:100%;padding:7px 10px;border:1px solid var(--b2);border-radius:var(--rsm);font-size:12px;font-family:'Outfit',sans-serif;background:var(--s2);color:var(--text);outline:none;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--gold)}
+select option{background:var(--s2)}
+textarea{resize:vertical;font-size:12px;line-height:1.65}
+textarea::placeholder,input::placeholder{color:var(--t3)}
+.tier-row{display:flex;gap:5px}
+.tier-btn{flex:1;padding:6px 4px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);color:var(--t2);font-size:11px;font-weight:500;cursor:pointer;text-align:center;transition:all .15s;font-family:'Outfit',sans-serif;line-height:1.5}
+.tier-btn:hover{color:var(--text)}
+.section-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin:12px 0 6px}
+.conn-item{font-size:12px;color:var(--t2);padding:5px 0;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:6px}
+.conn-item:last-child{border-bottom:none}
+.mtg-card{background:var(--s2);border-radius:var(--rsm);padding:8px 10px;margin-bottom:6px;border-left:3px solid var(--b2)}
+.mtg-card-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px}
+.mtg-card-date{font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;margin-bottom:4px}
+.mtg-card-note{font-size:11px;color:var(--t2);line-height:1.55;font-style:italic}
+.dossier-stat{background:var(--s2);border-radius:var(--rsm);padding:8px 10px;text-align:center}
+.dossier-stat-val{font-size:18px;font-weight:700;color:var(--text)}
+.dossier-stat-lbl{font-size:10px;color:var(--t3);margin-top:1px}
+.strength-bar{height:3px;border-radius:2px;background:var(--b1);margin-top:4px;overflow:hidden}
+.strength-fill{height:100%;border-radius:2px;transition:width .4s}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--s1);border:1px solid var(--b2);border-radius:var(--r);padding:22px 24px;width:100%;max-width:420px;max-height:88vh;overflow-y:auto}
+.modal::-webkit-scrollbar{width:3px}
+.modal::-webkit-scrollbar-thumb{background:var(--b2)}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:14px}
+.edge-legend{position:fixed;bottom:16px;left:236px;background:rgba(19,23,32,.93);border:1px solid var(--b1);border-radius:var(--rsm);padding:10px 14px;z-index:40;max-width:190px}
+.el-title{font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px}
+.el-item{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px;color:var(--t2)}
+.el-solid{height:2px;width:20px;border-radius:1px;flex-shrink:0}
+.el-dash{height:2px;width:20px;flex-shrink:0}
+.org-legend{position:fixed;bottom:16px;right:16px;background:rgba(19,23,32,.93);border:1px solid var(--b1);border-radius:var(--rsm);padding:10px 14px;z-index:40;max-width:200px;transition:right .25s}
+.org-legend.panel-open{right:346px}
+.ol-title{font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px}
+.ol-item{display:flex;align-items:center;gap:7px;margin-bottom:4px;font-size:11px;color:var(--t2)}
+.ol-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.tier-legend{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:rgba(19,23,32,.93);border:1px solid var(--b1);border-radius:var(--rsm);padding:8px 16px;z-index:40;display:flex;gap:20px;align-items:center}
+.tl-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--t2)}
+.tl-dot{border-radius:50%;background:rgba(150,150,150,.2);border-style:solid;border-color:#888;flex-shrink:0}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--s2);border:1px solid var(--b2);border-radius:var(--r);padding:8px 16px;font-size:13px;z-index:9999;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+.tooltip{position:fixed;background:rgba(11,13,17,.97);border:1px solid var(--b2);border-radius:var(--r);padding:12px 16px;font-size:14px;pointer-events:none;z-index:60;opacity:0;transition:opacity .12s;max-width:260px;line-height:1.6;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.tooltip.show{opacity:1}
+.status-bar{position:fixed;top:104px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);z-index:48;background:rgba(11,13,17,.92);padding:3px 14px;border-radius:20px;border:1px solid var(--b2);opacity:0;transition:opacity .2s;pointer-events:none}
+.status-bar.show{opacity:1}
+.empty-state{position:fixed;top:50%;left:calc(220px + (100vw - 220px)/2);transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:5}
+.empty-state p{font-size:13px;color:var(--t3);margin-top:10px;line-height:1.8}
+.hsec{margin-bottom:18px}
+.htitle{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold);margin-bottom:8px;font-family:'JetBrains Mono',monospace}
+.hitem{display:flex;gap:8px;margin-bottom:5px;font-size:13px;color:var(--t2);line-height:1.55}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <circle cx="9" cy="9" r="4" fill="none" stroke="#8b5cf6" stroke-width="1.5"/>
+      <circle cx="2.5" cy="4" r="2" fill="#8b5cf6" opacity=".7"/><circle cx="15.5" cy="4" r="2" fill="#8b5cf6" opacity=".7"/>
+      <circle cx="2.5" cy="14" r="2" fill="#8b5cf6" opacity=".7"/><circle cx="15.5" cy="14" r="2" fill="#8b5cf6" opacity=".7"/>
+      <line x1="4.5" y1="5" x2="6.5" y2="7" stroke="#8b5cf6" stroke-width="1" opacity=".6"/>
+      <line x1="13.5" y1="5" x2="11.5" y2="7" stroke="#8b5cf6" stroke-width="1" opacity=".6"/>
+      <line x1="4.5" y1="13" x2="6.5" y2="11" stroke="#8b5cf6" stroke-width="1" opacity=".6"/>
+      <line x1="13.5" y1="13" x2="11.5" y2="11" stroke="#8b5cf6" stroke-width="1" opacity=".6"/>
+    </svg>
+    <span class="logo-txt">NETWORK MAP</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:5px;margin-right:6px">
+    <div class="sync-dot" id="sync-dot"></div>
+    <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace" id="sync-label">connecting...</span>
+  </div>
+  <div class="tb-sep"></div>
+  <button class="btn" onclick="openAddModal('company')">+ Company</button>
+  <button class="btn" onclick="openAddModal('person')">+ Person</button>
+  <button class="btn" onclick="openAddModal('deal')">+ Deal</button>
+  <div class="tb-sep"></div>
+  <button class="btn" id="edge-btn" onclick="toggleEdgeMode()">Connect</button>
+  <div class="tb-sep"></div>
+  <button class="btn" onclick="fitGraph()">Fit</button>
+  <button class="btn btn-icon" onclick="zoomIn()">+</button>
+  <button class="btn btn-icon" onclick="zoomOut()">−</button>
+  <div class="tb-spacer"></div>
+  <button class="btn" id="sync-badge-btn" onclick="showSyncModal()" style="display:none;color:var(--gold);border-color:var(--gold)">
+    ⬡ Sync <span class="badge" id="sync-count">0</span>
+  </button>
+  <button class="btn btn-icon" onclick="exportData()" title="Export backup">↓</button>
+  <button class="btn btn-icon" onclick="document.getElementById('nm-import-file').click()" title="Import backup">↑</button>
+  <input type="file" id="nm-import-file" accept=".json" style="display:none" onchange="importData(event)">
+  <button class="btn btn-icon" onclick="showHelp()">?</button>
+</div>
+
+<div class="search-bar">
+  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;opacity:.4"><circle cx="6" cy="6" r="5" stroke="#e2e8f4" stroke-width="1.5"/><line x1="10" y1="10" x2="13" y2="13" stroke="#e2e8f4" stroke-width="1.5" stroke-linecap="round"/></svg>
+  <input class="search-input" id="global-search" placeholder="Search people, companies, notes..." oninput="onSearch()" onblur="setTimeout(hideSearch,200)">
+  <div class="filter-lbl" style="margin-left:12px">Filter</div>
+  <div class="filter-scroll" id="filter-tags">
+    <button class="ftag" data-filter="all" onclick="setFilter('all',this)" style="border-color:var(--t2);color:var(--t2)">All</button>
+    <button class="ftag" data-filter="tier1" onclick="setFilter('tier1',this)">Tier 1</button>
+    <button class="ftag" data-filter="tier2" onclick="setFilter('tier2',this)">T1+2</button>
+    <button class="ftag" data-filter="company" onclick="setFilter('company',this)">Companies</button>
+    <button class="ftag" data-filter="person" onclick="setFilter('person',this)">People</button>
+    <button class="ftag" data-filter="deal" onclick="setFilter('deal',this)">Deals</button>
+    <div style="width:1px;height:14px;background:var(--b1);flex-shrink:0;margin:0 3px;align-self:center"></div>
+  </div>
+  <span class="node-count" id="node-count"></span>
+</div>
+<div class="search-results" id="search-results"></div>
+
+<svg id="canvas"></svg>
+
+<div class="cal-panel">
+  <div class="cal-header">
+    <div class="cal-title-lbl">Intel Calendar</div>
+    <div class="cal-today" id="cal-today-label"></div>
+    <div class="cal-sub" id="cal-sub-label"></div>
+  </div>
+  <div class="cal-scroll" id="cal-scroll"></div>
+  <div class="cal-add">
+    <div class="cal-title-lbl" style="margin-bottom:6px">Add Reminder</div>
+    <input type="text" id="cal-new-label" placeholder="What's happening...">
+    <div class="cal-add-row">
+      <input type="date" id="cal-new-date">
+      <button class="cal-add-btn" onclick="addCalEntry()">+ Add</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="side-panel">
+  <div class="panel-header">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div id="panel-type-badge" style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3)"></div>
+      <div style="display:flex;gap:5px">
+        <button class="btn" style="font-size:11px;padding:3px 8px;color:var(--red);border-color:var(--red)" onclick="deleteSelectedNode()">Delete</button>
+        <button class="btn btn-icon" onclick="closePanel()">✕</button>
+      </div>
+    </div>
+    <div style="margin-bottom:8px"><div class="plbl">Name</div><input type="text" id="panel-name" onchange="savePanel()"></div>
+    <div class="panel-tabs" id="panel-tabs">
+      <button class="panel-tab active" data-ptab="profile" onclick="switchPanelTab('profile',this)">Profile</button>
+      <button class="panel-tab" data-ptab="dossier" onclick="switchPanelTab('dossier',this)">360 View</button>
+      <button class="panel-tab" data-ptab="connections" onclick="switchPanelTab('connections',this)">Network</button>
+    </div>
+  </div>
+  <div class="panel-scroll" id="ptab-profile">
+    <div class="pfield" style="margin-top:10px"><div class="plbl">Role / Description</div><input type="text" id="panel-role" placeholder="CEO, Investor, Partner..." onchange="savePanel()"></div>
+    <div class="pfield" id="panel-org-field"><div class="plbl">Organization</div><input type="text" id="panel-org" placeholder="Company name..." onchange="savePanel()"></div>
+    <div class="pfield">
+      <div class="plbl">Priority Tier</div>
+      <div class="tier-row">
+        <button class="tier-btn" id="tier-1" onclick="setTier(1)">Tier 1<br><span style="font-size:10px;font-weight:400;color:var(--t3)">Key player</span></button>
+        <button class="tier-btn" id="tier-2" onclick="setTier(2)">Tier 2<br><span style="font-size:10px;font-weight:400;color:var(--t3)">Important</span></button>
+        <button class="tier-btn" id="tier-3" onclick="setTier(3)">Tier 3<br><span style="font-size:10px;font-weight:400;color:var(--t3)">Tracking</span></button>
+      </div>
+    </div>
+    <div class="pfield"><div class="plbl">Intelligence Notes</div><textarea id="panel-notes" rows="6" placeholder="Notes auto-populate from Intel Station sync." onchange="savePanel()"></textarea></div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--b1)"><div style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace">ID: <span id="panel-id" style="opacity:.4"></span></div></div>
+  </div>
+  <div class="panel-scroll" id="ptab-dossier" style="display:none"><div id="dossier-content" style="margin-top:10px"></div></div>
+  <div class="panel-scroll" id="ptab-connections" style="display:none"><div id="connections-content" style="margin-top:10px"></div></div>
+</div>
+
+<!-- ADD NODE -->
+<div class="overlay" id="add-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-title" id="add-modal-title">Add Node</div>
+    <input type="hidden" id="add-type">
+    <div class="pfield"><div class="plbl">Name *</div><input type="text" id="add-name" placeholder="Name..."></div>
+    <div class="pfield"><div class="plbl">Role / Description</div><input type="text" id="add-role" placeholder="CEO, Lead Investor..."></div>
+    <div class="pfield" id="add-org-field"><div class="plbl">Organization</div><select id="add-org"><option value="">— Unaffiliated —</option></select></div>
+    <div class="pfield">
+      <div class="plbl">Priority Tier</div>
+      <div class="tier-row">
+        <button class="tier-btn" id="add-tier-1" onclick="selectAddTier(1)">Tier 1<br><span style="font-size:10px;font-weight:400">Key player</span></button>
+        <button class="tier-btn" id="add-tier-2" onclick="selectAddTier(2)">Tier 2<br><span style="font-size:10px;font-weight:400">Important</span></button>
+        <button class="tier-btn" id="add-tier-3" onclick="selectAddTier(3)">Tier 3<br><span style="font-size:10px;font-weight:400">Tracking</span></button>
+      </div>
+    </div>
+    <div class="pfield"><div class="plbl">Notes</div><textarea id="add-notes" rows="3" placeholder="Key context..."></textarea></div>
+    <div style="display:flex;gap:8px;margin-top:4px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('add-modal')">Cancel</button>
+      <button class="btn btn-gold" onclick="confirmAdd()">Add to Network →</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDGE MODAL -->
+<div class="overlay" id="edge-modal" style="display:none">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-title">Label this connection</div>
+    <div style="font-size:13px;color:var(--t2);margin-bottom:14px" id="edge-preview"></div>
+    <div class="pfield">
+      <div class="plbl">Relationship type</div>
+      <select id="edge-label" onchange="onEdgeLabelChange()">
+        <optgroup label="Hierarchy"><option>Reports to</option><option>Manages</option><option>Advises</option></optgroup>
+        <optgroup label="Investment"><option>Investor in</option><option>Funded by</option><option>Co-investor</option></optgroup>
+        <optgroup label="Business"><option>Partners with</option><option>Sells to</option><option>Buys from</option><option>Owns</option><option>Works with</option></optgroup>
+        <optgroup label="Competitive"><option>Competes with</option><option>Acquired by</option></optgroup>
+        <optgroup label="Other"><option>Related to</option><option>Introduced by</option><option value="custom">Custom...</option></optgroup>
+      </select>
+    </div>
+    <div class="pfield" id="edge-custom-field" style="display:none"><input type="text" id="edge-custom" placeholder="Custom label..."></div>
+    <div class="pfield">
+      <div class="plbl">Direction</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="dir-forward" onclick="setDir('forward')" style="flex:1;font-size:11px">A → B</button>
+        <button class="btn" id="dir-back" onclick="setDir('back')" style="flex:1;font-size:11px">A ← B</button>
+        <button class="btn active" id="dir-both" onclick="setDir('both')" style="flex:1;font-size:11px">A ↔ B</button>
+      </div>
+    </div>
+    <div class="pfield">
+      <div class="plbl">Relationship Notes <span style="font-size:10px;color:var(--t3);font-weight:400">(optional)</span></div>
+      <textarea id="edge-notes" rows="3" placeholder="How this formed, strength, context, history..."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="cancelEdgeModal()">Cancel</button>
+      <button class="btn btn-gold" onclick="confirmEdge()">Connect →</button>
+    </div>
+  </div>
+</div>
+
+<!-- SYNC -->
+<div class="overlay" id="sync-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-title">Import from Intel Station</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:14px">Select entities to import. Notes from Intel Station will pre-fill their profile.</div>
+    <div id="sync-list"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="closeModal('sync-modal')">Cancel</button>
+      <button class="btn btn-gold" onclick="confirmImport()">Import Selected →</button>
+    </div>
+  </div>
+</div>
+
+<!-- HELP -->
+<div class="overlay" id="help-modal" style="display:none">
+  <div class="modal" style="max-width:500px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:17px;font-weight:600">Network Map — How to Use</div>
+      <button class="btn" style="padding:4px 10px;font-size:11px" onclick="closeModal('help-modal')">Close</button>
+    </div>
+    <div class="hsec">
+      <div class="htitle">Shared Live Network</div>
+      <div class="hitem"><span style="width:16px;flex-shrink:0">—</span>Both Mike and Bryce see the same network in real time. The green dot means you are connected.</div>
+      <div class="hitem"><span style="width:16px;flex-shrink:0">—</span>Nodes added by either person appear instantly for the other.</div>
+    </div>
+    <div class="hsec">
+      <div class="htitle">Navigation</div>
+      <div class="hitem"><span style="width:16px;flex-shrink:0">—</span>Pan: drag background. Zoom: scroll or +/−. F = fit all</div>
+      <div class="hitem"><span style="width:16px;flex-shrink:0">—</span>Nodes stay pinned where you drag them</div>
+      <div class="hitem"><span style="width:16px;flex-shrink:0">—</span>Search bar: find any person, company, or note. Press / to focus</div>
+    </div>
+    <div class="hsec">
+      <div class="htitle">360 Node View</div>
+      <div class="hitem"><span style="width:16px;flex-shrink:0">—</span>Click any node → panel → 360 View tab</div>
+      <div class="hitem"><span style="width:16px;flex-shrink:0">—</span>Full dossier: every meeting, stance, action item, risk raised</div>
+    </div>
+    <div style="background:var(--s2);border-radius:var(--rsm);padding:11px 13px;font-size:12px;color:var(--t2);line-height:1.65">
+      <strong style="color:var(--text)">For Bryce:</strong> Open NetworkMap.html in Chrome. It connects automatically to the shared FLi Network database — no setup needed.
+    </div>
+  </div>
+</div>
+
+<!-- LEGENDS -->
+<div class="edge-legend"><div class="el-title">Edge Types</div><div id="edge-legend-items"></div></div>
+<div class="org-legend" id="org-legend" style="display:none"><div class="ol-title">Organizations</div><div id="org-legend-items"></div></div>
+<div class="tier-legend">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-right:2px">Tiers</div>
+  <div class="tl-item"><div class="tl-dot" style="width:30px;height:30px;border-width:3px"></div><span>1 — Key</span></div>
+  <div class="tl-item"><div class="tl-dot" style="width:18px;height:18px;border-width:2px;opacity:.6"></div><span>2 — Active</span></div>
+  <div class="tl-item"><div class="tl-dot" style="width:10px;height:10px;border-width:1px;opacity:.3"></div><span>3 — Tracking</span></div>
+</div>
+
+<div class="status-bar" id="status-bar"></div>
+<div class="tooltip" id="tooltip"></div>
+<div class="toast" id="toast"></div>
+<div class="empty-state" id="empty-state">
+  <svg width="52" height="52" viewBox="0 0 48 48" fill="none" style="margin:0 auto;display:block;opacity:.2">
+    <circle cx="24" cy="24" r="8" fill="none" stroke="#8b5cf6" stroke-width="2"/>
+    <circle cx="8" cy="10" r="4" fill="#8b5cf6" opacity=".6"/><circle cx="40" cy="10" r="4" fill="#8b5cf6" opacity=".6"/>
+    <circle cx="8" cy="38" r="4" fill="#8b5cf6" opacity=".6"/><circle cx="40" cy="38" r="4" fill="#8b5cf6" opacity=".6"/>
+    <line x1="12" y1="12" x2="18" y2="18" stroke="#8b5cf6" stroke-width="1.5" opacity=".5"/>
+    <line x1="36" y1="12" x2="30" y2="18" stroke="#8b5cf6" stroke-width="1.5" opacity=".5"/>
+    <line x1="12" y1="36" x2="18" y2="30" stroke="#8b5cf6" stroke-width="1.5" opacity=".5"/>
+    <line x1="36" y1="36" x2="30" y2="30" stroke="#8b5cf6" stroke-width="1.5" opacity=".5"/>
+  </svg>
+  <p>No nodes yet — click + Company, + Person, or + Deal to start</p>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getDatabase, ref, set, onValue, remove } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBQW49mGZbUHkWSZ47FgdoUNaoU-Iv9nVo",
+  authDomain: "fli-network.firebaseapp.com",
+  databaseURL: "https://fli-network-default-rtdb.firebaseio.com",
+  projectId: "fli-network",
+  storageBucket: "fli-network.firebasestorage.app",
+  messagingSenderId: "51164371993",
+  appId: "1:51164371993:web:15855d3506496d67535e88"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
+// ── PALETTE & CONSTANTS
+const PALETTE=['#c9a227','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#ec4899','#84cc16','#14b8a6','#f59e0b','#6366f1','#10b981','#fb7185','#38bdf8','#d946ef','#4ade80','#fbbf24'];
+const EDGE_TYPES={'Reports to':{c:'#3b82f6',dash:false},'Manages':{c:'#3b82f6',dash:false},'Advises':{c:'#8b5cf6',dash:true},'Investor in':{c:'#c9a227',dash:false},'Funded by':{c:'#c9a227',dash:false},'Co-investor':{c:'#f59e0b',dash:true},'Partners with':{c:'#22c55e',dash:false},'Sells to':{c:'#10b981',dash:false},'Buys from':{c:'#10b981',dash:true},'Owns':{c:'#06b6d4',dash:false},'Works with':{c:'#64748b',dash:false},'Competes with':{c:'#ef4444',dash:true},'Acquired by':{c:'#f97316',dash:false},'Related to':{c:'#475569',dash:true},'Introduced by':{c:'#a78bfa',dash:true}};
+const DEF_EDGE={c:'#4a5568',dash:false};
+const SZ={company:[58,34,17],person:[38,22,11],deal:[28,16,9]};
+const RING_R={1:9,2:4,3:0},RING_W={1:4.5,2:1.5,3:0},RING_OP={1:.92,2:.42,3:0};
+const LBL_SZ={1:18,2:15,3:12},LBL_W={1:700,2:600,3:500};
+const NODE_OP={1:1,2:.88,3:.48},FILL_A={1:.32,2:.18,3:.09};
+
+// ── STATE
+let nodes=[],links=[],meetings=[],calEntries=[];
+let selectedNode=null,edgeMode=false,edgeSource=null,addTier=2,edgeDir='both';
+let colorIdx=0,activeFilter='all',visibleIds=new Set();
+let currentPanelTab='profile';
+let savePending=false;
+
+// ── D3
+const svgEl=document.getElementById('canvas');
+let W=window.innerWidth-220,H=window.innerHeight-124;
+const svg=d3.select(svgEl).attr('width',W).attr('height',H);
+const defs=svg.append('defs');
+const gf=defs.append('filter').attr('id','glow').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');
+gf.append('feGaussianBlur').attr('stdDeviation','6').attr('result','b');
+const fm1=gf.append('feMerge');fm1.append('feMergeNode').attr('in','b');fm1.append('feMergeNode').attr('in','SourceGraphic');
+const gf2=defs.append('filter').attr('id','glow2').attr('x','-30%').attr('y','-30%').attr('width','160%').attr('height','160%');
+gf2.append('feGaussianBlur').attr('stdDeviation','2.5').attr('result','b2');
+const fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');
+const g=svg.append('g'),lg=g.append('g'),ng=g.append('g');
+const zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',e=>g.attr('transform',e.transform));
+svg.call(zoom).on('dblclick.zoom',null);
+svg.on('click',function(ev){if(edgeMode&&ev.target===svgEl)cancelEdgeMode();});
+
+const sim=d3.forceSimulation()
+  .force('link',d3.forceLink().id(d=>d.id).distance(d=>{const sn=nodes.find(n=>n.id===(d.source?.id||d.source));const tn=nodes.find(n=>n.id===(d.target?.id||d.target));return(sn?nr(sn):20)+(tn?nr(tn):20)+150;}))
+  .force('charge',d3.forceManyBody().strength(d=>-1400-nr(d)*28))
+  .force('collision',d3.forceCollide(d=>nr(d)+40))
+  .alphaDecay(0.024).on('tick',ticked);
+
+function nr(d){const a=d.type==='company'?SZ.company:d.type==='person'?SZ.person:SZ.deal;return a[(d.priority||2)-1];}
+function nc(d){if(d.type==='company'){if(!d.color){d.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}return d.color;}if(d.type==='person'&&d.org){const c=nodes.find(n=>n.type==='company'&&n.name===d.org);if(c)return nc(c);}if(d.type==='deal')return'#06b6d4';return'#64748b';}
+function ha(hex,a){const r=parseInt(hex.slice(1,3),16),g2=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return`rgba(${r},${g2},${b},${a})`;}
+function es(label){return EDGE_TYPES[label]||DEF_EDGE;}
+
+// ── FIREBASE
+function setSyncStatus(status){
+  const dot=document.getElementById('sync-dot'),label=document.getElementById('sync-label');
+  if(!dot||!label)return;
+  if(status==='live'){dot.className='sync-dot live';label.textContent='live — FLi Network';label.style.color='var(--green)';}
+  else if(status==='saving'){dot.className='sync-dot saving';label.textContent='saving...';label.style.color='var(--amber)';}
+  else{dot.className='sync-dot';label.textContent='offline';label.style.color='var(--red)';}
+}
+
+async function fbSaveNodes(){
+  setSyncStatus('saving');
+  const obj={};
+  nodes.forEach(n=>{const {fx,fy,vx,vy,index,...clean}=n;obj[n.id]=clean;});
+  await set(ref(db,'network/nodes'),obj);
+  setSyncStatus('live');
+}
+
+async function fbSaveLinks(){
+  setSyncStatus('saving');
+  const obj={};
+  links.forEach(l=>{const clean={...l,source:l.source?.id||l.source,target:l.target?.id||l.target,index:undefined};obj[l.id]=clean;});
+  await set(ref(db,'network/links'),obj);
+  setSyncStatus('live');
+}
+
+async function fbSaveCal(){
+  const obj={};calEntries.forEach(e=>{obj[e.id]=e;});
+  await set(ref(db,'network/cal'),obj);
+}
+
+// ── INIT
+function init(){
+  connectFirebase();
+  window.addEventListener('resize',()=>{W=window.innerWidth-220;H=window.innerHeight-124;svg.attr('width',W).attr('height',H);});
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){if(edgeMode)cancelEdgeMode();else if(selectedNode)closePanel();else hideSearch();}
+    if((e.key==='f'||e.key==='F')&&!e.target.matches('input,textarea'))fitGraph();
+    if(e.key==='/'&&!e.target.matches('input,textarea')){e.preventDefault();document.getElementById('global-search').focus();}
+  });
+  ['add-modal','edge-modal','sync-modal','help-modal'].forEach(id=>{
+    document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeModal(id);});
+  });
+  buildEdgeLegend();injectPWA();
+  setInterval(checkSyncBadge,5000);
+  setInterval(renderCalendar,60000);
+}
+
+function connectFirebase(){
+  // Listen to nodes
+  onValue(ref(db,'network/nodes'),snapshot=>{
+    const data=snapshot.val();
+    const incoming=data?Object.values(data):[];
+    // Preserve pinned positions from current session
+    incoming.forEach(n=>{
+      const existing=nodes.find(x=>x.id===n.id);
+      if(existing&&existing.pinned&&existing.x!=null){n.x=existing.x;n.y=existing.y;n.fx=existing.x;n.fy=existing.y;}
+      else if(n.x!=null&&n.y!=null){n.fx=n.x;n.fy=n.y;}
+    });
+    // Restore company colors
+    colorIdx=0;
+    incoming.filter(n=>n.type==='company').forEach(n=>{if(!n.color){n.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}else{const i=PALETTE.indexOf(n.color);if(i>=colorIdx)colorIdx=i+1;}});
+    nodes=incoming;
+    visibleIds=new Set(nodes.map(n=>n.id));
+    render();updateFilterTags();updateOrgLegend();updateNodeCount();
+    document.getElementById('empty-state').style.display=nodes.length?'none':'block';
+    setSyncStatus('live');
+  },()=>setSyncStatus('offline'));
+
+  // Listen to links
+  onValue(ref(db,'network/links'),snapshot=>{
+    const data=snapshot.val();
+    links=data?Object.values(data):[];
+    render();
+  });
+
+  // Listen to meetings (for dossier/calendar)
+  onValue(ref(db,'intel/meetings'),snapshot=>{
+    const data=snapshot.val();
+    meetings=data?Object.values(data).sort((a,b)=>new Date(b.ts)-new Date(a.ts)):[];
+    if(selectedNode&&currentPanelTab==='dossier')renderDossier(selectedNode);
+    renderCalendar();
+  });
+
+  // Listen to calendar entries
+  onValue(ref(db,'network/cal'),snapshot=>{
+    const data=snapshot.val();
+    calEntries=data?Object.values(data):[];
+    renderCalendar();
+  });
+
+  // Listen to entities (for sync badge)
+  onValue(ref(db,'intel/entities'),snapshot=>{
+    checkSyncBadge(snapshot.val());
+  });
+
+  initCalendar();
+}
+
+// ── SEARCH
+function onSearch(){
+  const q=document.getElementById('global-search').value.toLowerCase().trim();
+  const res=document.getElementById('search-results');
+  if(!q){hideSearch();return;}
+  const hits=nodes.filter(n=>(n.name.toLowerCase().includes(q)||n.role?.toLowerCase().includes(q)||n.notes?.toLowerCase().includes(q)||n.org?.toLowerCase().includes(q))).slice(0,8);
+  if(!hits.length){res.innerHTML=`<div style="padding:12px 14px;font-size:12px;color:var(--t3)">No results for "${q}"</div>`;res.style.display='block';return;}
+  res.innerHTML=hits.map(n=>`<div class="sr-item" onclick="selectSearchResult(${n.id})"><div style="width:28px;height:28px;border-radius:50%;background:${ha(nc(n),.2)};border:1.5px solid ${nc(n)};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:${nc(n)};flex-shrink:0">${n.name.slice(0,2).toUpperCase()}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${n.name}</div><div style="font-size:11px;color:var(--t2)">${n.type}${n.role?' · '+n.role:''}${n.org?' · '+n.org:''}</div></div><span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--t3)">T${n.priority||2}</span></div>`).join('');
+  res.style.display='block';
+}
+function selectSearchResult(id){const n=nodes.find(x=>x.id===id);if(!n)return;hideSearch();document.getElementById('global-search').value='';openPanel(n);if(n.x!=null&&n.y!=null){const t=d3.zoomTransform(svgEl);svg.transition().duration(500).call(zoom.transform,d3.zoomIdentity.translate(W/2-t.k*n.x,H/2-t.k*n.y).scale(t.k));}}
+function hideSearch(){document.getElementById('search-results').style.display='none';}
+
+// ── FILTER
+function setFilter(f,el){activeFilter=f;document.querySelectorAll('.ftag').forEach(t=>t.style.cssText='');el.style.borderColor='var(--t2)';el.style.color='var(--text)';el.style.background='var(--s2)';applyFilter();}
+function applyFilter(){const f=activeFilter;visibleIds=new Set();nodes.forEach(n=>{const show=f==='all'||f==='tier1'&&n.priority===1||f==='tier2'&&n.priority<=2||f==='company'&&n.type==='company'||f==='person'&&n.type==='person'||f==='deal'&&n.type==='deal'||(n.org===f||n.name===f);if(show)visibleIds.add(n.id);});ng.selectAll('.node-g').style('opacity',d=>visibleIds.has(d.id)?NODE_OP[d.priority||2]:0).style('pointer-events',d=>visibleIds.has(d.id)?'all':'none');lg.selectAll('.link-g').style('opacity',d=>{const s=d.source?.id||d.source,t=d.target?.id||d.target;return visibleIds.has(s)&&visibleIds.has(t)?.7:0;});updateNodeCount();}
+function updateNodeCount(){document.getElementById('node-count').textContent=nodes.length?`${visibleIds.size}/${nodes.length}`:'';}
+function updateFilterTags(){const cont=document.getElementById('filter-tags');cont.querySelectorAll('[data-org]').forEach(e=>e.remove());nodes.filter(n=>n.type==='company').forEach(c=>{if(cont.querySelector(`[data-filter="${CSS.escape(c.name)}"]`))return;const b=document.createElement('button');b.className='ftag';b.dataset.filter=c.name;b.dataset.org='1';b.textContent=c.name;b.style.borderColor=ha(c.color||'#555',.5);b.style.color=c.color||'#555';b.addEventListener('click',function(){document.querySelectorAll('.ftag').forEach(t=>t.style.cssText='');this.style.background=ha(c.color||'#555',.2);this.style.borderColor=c.color||'#555';this.style.color=c.color||'#555';activeFilter=c.name;applyFilter();});cont.appendChild(b);});}
+
+// ── RENDER
+function render(){
+  const ld=links.map(l=>({...l,source:l.source?.id||l.source,target:l.target?.id||l.target}));
+  const lSel=lg.selectAll('.link-g').data(ld,d=>`${d.source?.id||d.source}-${d.target?.id||d.target}-${d.label}`);
+  lSel.exit().remove();
+  const lE=lSel.enter().append('g').attr('class','link-g');
+  lE.append('line').attr('stroke-linecap','round');
+  lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','JetBrains Mono,monospace').attr('dy','-5').attr('pointer-events','none');
+  const lM=lE.merge(lSel);
+  lM.select('line').attr('stroke',d=>es(d.label).c).attr('stroke-dasharray',d=>es(d.label).dash?'7,4':'none').attr('stroke-width',d=>{const s=d.source?.id||d.source,t=d.target?.id||d.target;const sh=getMeetingsForNode(s).filter(m=>getMeetingsForNode(t).some(cm=>cm.id===m.id)).length;return Math.min(1.5+sh*.5,4);});
+  lM.select('text').text(d=>d.label||'').attr('fill',d=>es(d.label).c);
+
+  const nSel=ng.selectAll('.node-g').data(nodes,d=>d.id);
+  nSel.exit().remove();
+  const nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);
+  nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');
+  nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');
+  nE.append('rect').attr('class','lbl-bg').attr('rx',5).attr('pointer-events','none');
+  nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');
+  const nM=nE.merge(nSel);
+  nM.select('.glow-ring').attr('r',d=>d.priority===1?nr(d)+18:0).attr('fill','none').attr('stroke',d=>nc(d)).attr('stroke-width',d=>d.priority===1?1.5:0).attr('opacity',d=>d.priority===1?.3:0).attr('filter','url(#glow)');
+  nM.select('.pri-ring').attr('r',d=>d.priority<=2?nr(d)+RING_R[d.priority||2]:0).attr('fill','none').attr('stroke',d=>nc(d)).attr('stroke-width',d=>RING_W[d.priority||2]).attr('opacity',d=>RING_OP[d.priority||2]);
+  nM.select('.main-c').attr('r',d=>nr(d)).attr('fill',d=>ha(nc(d),FILL_A[d.priority||2])).attr('stroke',d=>nc(d)).attr('stroke-width',d=>d.priority===1?3:d.priority===2?1.5:1).attr('filter',d=>d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':null);
+  nM.select('.glyph').attr('font-size',d=>Math.max(9,nr(d)*.55)).attr('fill',d=>nc(d)).attr('opacity',d=>d.priority===1?.55:d.priority===2?.35:.2).text(d=>d.type==='company'?'◈':d.type==='person'?'◉':'◆');
+  nM.select('.lbl-bg').attr('fill','rgba(11,13,17,0.75)').attr('height',d=>LBL_SZ[d.priority||2]+6).attr('y',d=>nr(d)+LBL_SZ[d.priority||2]-2).attr('width',d=>{const chars=Math.min(d.name.length,d.priority===1?28:d.priority===2?22:18);return chars*LBL_SZ[d.priority||2]*0.62+14;}).attr('x',d=>{const chars=Math.min(d.name.length,d.priority===1?28:d.priority===2?22:18);return-(chars*LBL_SZ[d.priority||2]*0.62+14)/2;});
+  nM.select('.lbl').attr('font-family','Outfit,sans-serif').attr('font-size',d=>LBL_SZ[d.priority||2]).attr('font-weight',d=>LBL_W[d.priority||2]).attr('fill',d=>nc(d)).attr('opacity',1).attr('dy',d=>nr(d)+LBL_SZ[d.priority||2]+8).text(d=>{const mx=d.priority===1?28:d.priority===2?22:18;return d.name.length>mx?d.name.slice(0,mx-1)+'…':d.name;});
+  sim.nodes(nodes);sim.force('link').links(ld);sim.alpha(0.08).restart();
+  window._lM=lM;window._nM=nM;
+  applyFilter();
+}
+
+function ticked(){if(window._lM){window._lM.select('line').attr('x1',d=>d.source?.x||0).attr('y1',d=>d.source?.y||0).attr('x2',d=>d.target?.x||0).attr('y2',d=>d.target?.y||0);window._lM.select('text').attr('x',d=>((d.source?.x||0)+(d.target?.x||0))/2).attr('y',d=>((d.source?.y||0)+(d.target?.y||0))/2);}if(window._nM)window._nM.attr('transform',d=>`translate(${d.x||0},${d.y||0})`);}
+
+function dragStart(ev,d){if(!ev.active)sim.alphaTarget(0.15).restart();d.fx=d.x;d.fy=d.y;}
+function dragged(ev,d){d.fx=ev.x;d.fy=ev.y;}
+function dragEnd(ev,d){if(!ev.active)sim.alphaTarget(0);d.fx=ev.x;d.fy=ev.y;d.x=ev.x;d.y=ev.y;const n=nodes.find(n=>n.id===d.id);if(n){n.x=ev.x;n.y=ev.y;n.pinned=true;}fbSaveNodes();}
+
+function getMeetingsForNode(id){const n=nodes.find(x=>x.id===id);if(!n)return[];return meetings.filter(m=>(m.intel.keyPeople||[]).some(p=>p.name===n.name)||(m.intel.companies||[]).some(c=>c.name===n.name)||(n.meetings||[]).includes(m.id));}
+function getStrength(nodeId){const connIds=links.filter(l=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;return s===nodeId||t===nodeId;}).map(l=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;return s===nodeId?t:s;});const myMtgs=getMeetingsForNode(nodeId);let total=0;connIds.forEach(cid=>{const sh=myMtgs.filter(m=>getMeetingsForNode(cid).some(cm=>cm.id===m.id)).length;total+=sh;});return Math.min(total,10);}
+
+function nodeClick(ev,d){ev.stopPropagation();if(edgeMode){if(!edgeSource){edgeSource=d;d3.select(this).select('.main-c').attr('stroke-width',5);setStatus(`Click target to connect to "${d.name}"`);}else if(edgeSource.id!==d.id){window._eTarget=d;document.getElementById('edge-preview').textContent=`"${edgeSource.name}"  →  "${d.name}"`;document.getElementById('edge-modal').style.display='flex';}return;}openPanel(d);}
+function nodeHover(ev,d){if(edgeMode)return;const tt=document.getElementById('tooltip');const mc=getMeetingsForNode(d.id).length;const st=getStrength(d.id);tt.innerHTML=`<div style="font-size:16px;font-weight:700;color:${nc(d)};margin-bottom:4px">${d.name}</div>`+(d.role?`<div style="font-size:13px;color:var(--text)">${d.role}</div>`:'' )+(d.org?`<div style="font-size:12px;color:var(--t2)">${d.org}</div>`:'')+`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--b1);display:flex;gap:12px"><span style="font-size:11px;color:var(--t3)">Tier <strong style="color:var(--t2)">${d.priority||2}</strong></span><span style="font-size:11px;color:var(--t3)">${d.type}</span>${mc?`<span style="font-size:11px;color:var(--t3)">${mc} mtg${mc>1?'s':''}</span>`:''}</div>`+(st>0?`<div style="margin-top:6px"><div style="font-size:10px;color:var(--t3);margin-bottom:3px">Relationship strength</div><div class="strength-bar"><div class="strength-fill" style="width:${st*10}%;background:${nc(d)}"></div></div></div>`:'');tt.style.left=(ev.clientX+16)+'px';tt.style.top=(ev.clientY-16)+'px';tt.classList.add('show');}
+function nodeLeave(){document.getElementById('tooltip').classList.remove('show');}
+
+// ── PANEL
+function switchPanelTab(tab,el){currentPanelTab=tab;document.querySelectorAll('.panel-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');['profile','dossier','connections'].forEach(t=>document.getElementById(`ptab-${t}`).style.display=t===tab?'block':'none');if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='connections'&&selectedNode)renderConnections(selectedNode);}
+
+function openPanel(d){
+  selectedNode=d;const c=nc(d);
+  document.getElementById('panel-type-badge').innerHTML=`<span style="color:${c}">${d.type.toUpperCase()} · Tier ${d.priority||2}</span>`;
+  document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';document.getElementById('panel-id').textContent=d.id;
+  document.getElementById('panel-org-field').style.display=d.type==='company'?'none':'block';
+  [1,2,3].forEach(i=>{const b=document.getElementById(`tier-${i}`);b.style.cssText='';b.style.fontWeight='';if(i===d.priority){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});
+  document.querySelectorAll('.panel-tab').forEach(t=>t.classList.remove('active'));document.querySelector('[data-ptab="profile"]').classList.add('active');
+  ['profile','dossier','connections'].forEach(t=>document.getElementById(`ptab-${t}`).style.display=t==='profile'?'block':'none');
+  currentPanelTab='profile';
+  document.getElementById('side-panel').classList.add('open');document.getElementById('org-legend').classList.add('panel-open');
+}
+
+function renderDossier(d){
+  const nm=getMeetingsForNode(d.id);
+  const aa=nm.flatMap(m=>(m.intel.actionItems||[]).filter(a=>a.owner?.toLowerCase().includes(d.name.toLowerCase())).map(a=>({...a,mtg:m.meta.title,mdate:m.meta.date})));
+  const ar=nm.flatMap(m=>(m.intel.risks||[]).filter(r=>r.raisedBy?.toLowerCase().includes(d.name.toLowerCase())).map(r=>({...r,mtg:m.meta.title})));
+  const st=getStrength(d.id);const c=nc(d);
+  let h=`<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:14px"><div class="dossier-stat"><div class="dossier-stat-val" style="color:${c}">${nm.length}</div><div class="dossier-stat-lbl">Meetings</div></div><div class="dossier-stat"><div class="dossier-stat-val" style="color:${aa.length?'var(--amber)':'var(--text)'}">${aa.length}</div><div class="dossier-stat-lbl">Actions</div></div><div class="dossier-stat"><div class="dossier-stat-val" style="color:${ar.length?'var(--red)':'var(--text)'}">${ar.length}</div><div class="dossier-stat-lbl">Risks raised</div></div></div>`;
+  h+=`<div style="margin-bottom:12px"><div style="font-size:11px;color:var(--t3);margin-bottom:4px">Relationship strength</div><div class="strength-bar" style="height:5px"><div class="strength-fill" style="width:${st*10}%;background:${c}"></div></div><div style="font-size:10px;color:var(--t3);margin-top:3px">${st}/10</div></div>`;
+  if(nm.length){h+=`<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;font-family:'JetBrains Mono',monospace">Meeting History</div>`;nm.forEach(m=>{const pi=m.intel.keyPeople?.find(p=>p.name===d.name);const ci=m.intel.companies?.find(c2=>c2.name===d.name);h+=`<div class="mtg-card" style="border-left-color:${c}"><div class="mtg-card-title">${m.meta.title}</div><div class="mtg-card-date">${m.meta.date} · ${m.meta.type}${m.loggedBy?' · by '+m.loggedBy:''}</div>${pi?.stance?`<div class="mtg-card-note">"${pi.stance}"</div>`:''}${ci?.notes?`<div class="mtg-card-note">${ci.notes}</div>`:''}${pi?.watchFor?`<div style="font-size:11px;color:var(--amber);margin-top:3px">Watch: ${pi.watchFor}</div>`:''}</div>`;});}
+  else h+=`<div style="font-size:12px;color:var(--t3)">No meetings logged yet</div>`;
+  if(aa.length){h+=`<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin:12px 0 7px;font-family:'JetBrains Mono',monospace">Their Action Items</div>`;aa.forEach(a=>{const pc=a.priority==='high'?'var(--red)':a.priority==='low'?'var(--green)':'var(--amber)';h+=`<div style="padding:5px 0;border-bottom:1px solid var(--b1);font-size:12px"><div style="display:flex;gap:6px;align-items:baseline"><div style="width:6px;height:6px;border-radius:50%;background:${pc};flex-shrink:0;margin-top:4px"></div><div>${a.task}</div></div><div style="font-size:10px;color:var(--t3);margin-top:2px">↳ ${a.mtg}${a.deadline?' · Due: '+a.deadline:''}</div></div>`;});}
+  if(ar.length){h+=`<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin:12px 0 7px;font-family:'JetBrains Mono',monospace">Risks They Raised</div>`;ar.forEach(r=>{h+=`<div style="padding:5px 0;border-bottom:1px solid var(--b1);font-size:12px"><div>${r.risk}</div><div style="font-size:10px;color:var(--t3);margin-top:2px">↳ ${r.mtg} · ${r.severity} severity</div></div>`;});}
+  document.getElementById('dossier-content').innerHTML=h;
+}
+
+function renderConnections(d){
+  const ml=links.filter(l=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;return s===d.id||t===d.id;});
+  let h='';
+  if(ml.length){ml.forEach((l,li)=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;const oid=s===d.id?t:s,other=nodes.find(n=>n.id===oid);const ec=es(l.label).c;const sh=getMeetingsForNode(d.id).filter(m=>getMeetingsForNode(oid).some(cm=>cm.id===m.id)).length;h+=`<div style="padding:8px 0;border-bottom:1px solid var(--b1)"><div style="display:flex;align-items:flex-start;gap:6px;padding-bottom:5px"><span style="color:${ec};font-size:11px">${s===d.id?'→':'←'}</span><div style="flex:1"><div style="font-size:12px;font-weight:500;color:${nc(other||{type:'deal'})}">${other?.name||'?'}</div><div style="font-size:10px;color:var(--t3)">${l.label||''}${sh?' · '+sh+' shared mtg':''}${other?.role?' · '+other.role:''}</div>${sh>0?`<div class="strength-bar" style="margin-top:3px"><div class="strength-fill" style="width:${Math.min(sh*20,100)}%;background:${ec}"></div></div>`:''}</div><button onclick="removeEdge('${s}','${t}')" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:12px;padding:0 2px">✕</button></div><textarea placeholder="Add relationship notes..." style="font-size:11px;min-height:48px;padding:5px 8px;margin-top:2px" onblur="saveEdgeNote('${s}','${t}',this.value)">${l.notes||''}</textarea></div>`;});}
+  else h='<div style="font-size:12px;color:var(--t3)">No connections yet — use Connect in the toolbar</div>';
+  document.getElementById('connections-content').innerHTML=`<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;font-family:'JetBrains Mono',monospace">Connections (${ml.length})</div>${h}`;
+}
+
+async function saveEdgeNote(sid,tid,note){const l=links.find(l=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;return s==sid&&t==tid;});if(l){l.notes=note;await fbSaveLinks();}}
+
+function closePanel(){document.getElementById('side-panel').classList.remove('open');document.getElementById('org-legend').classList.remove('panel-open');selectedNode=null;}
+async function savePanel(){if(!selectedNode)return;selectedNode.name=document.getElementById('panel-name').value;selectedNode.role=document.getElementById('panel-role').value;selectedNode.org=document.getElementById('panel-org').value;selectedNode.notes=document.getElementById('panel-notes').value;await fbSaveNodes();render();updateFilterTags();updateOrgLegend();}
+async function setTier(t){if(!selectedNode)return;selectedNode.priority=t;const c=nc(selectedNode);[1,2,3].forEach(i=>{const b=document.getElementById(`tier-${i}`);b.style.cssText='';b.style.fontWeight='';if(i===t){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});await fbSaveNodes();render();}
+async function deleteSelectedNode(){if(!selectedNode||!confirm(`Delete "${selectedNode.name}"?`))return;const id=selectedNode.id;nodes=nodes.filter(n=>n.id!==id);links=links.filter(l=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;return s!==id&&t!==id;});await fbSaveNodes();await fbSaveLinks();closePanel();render();updateFilterTags();updateOrgLegend();document.getElementById('empty-state').style.display=nodes.length?'none':'block';}
+async function removeEdge(sid,tid){links=links.filter(l=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;return!(s==sid&&t==tid);});await fbSaveLinks();if(selectedNode&&currentPanelTab==='connections')renderConnections(selectedNode);render();}
+
+// ── ADD NODE
+let addType='company';
+function openAddModal(type){addType=type;addTier=2;document.getElementById('add-modal-title').textContent=`Add ${type.charAt(0).toUpperCase()+type.slice(1)}`;document.getElementById('add-type').value=type;['add-name','add-role','add-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('add-org-field').style.display=type==='company'?'none':'block';const sel=document.getElementById('add-org');sel.innerHTML='<option value="">— Unaffiliated —</option>';nodes.filter(n=>n.type==='company').forEach(n=>{sel.innerHTML+=`<option value="${n.name}">${n.name}</option>`;});[1,2,3].forEach(i=>{const b=document.getElementById(`add-tier-${i}`);b.style.cssText='';b.style.fontWeight='';});const d2=document.getElementById('add-tier-2');d2.style.background='var(--gold)';d2.style.color='#0b0d11';d2.style.borderColor='var(--gold)';d2.style.fontWeight='600';document.getElementById('add-modal').style.display='flex';setTimeout(()=>document.getElementById('add-name').focus(),80);}
+function selectAddTier(t){addTier=t;[1,2,3].forEach(i=>{const b=document.getElementById(`add-tier-${i}`);b.style.cssText='';b.style.fontWeight='';});const b=document.getElementById(`add-tier-${t}`);b.style.background='var(--gold)';b.style.color='#0b0d11';b.style.borderColor='var(--gold)';b.style.fontWeight='600';}
+async function confirmAdd(){const name=document.getElementById('add-name').value.trim();if(!name){toast('Name is required');return;}const type=document.getElementById('add-type').value;const org=type==='company'?'':document.getElementById('add-org').value;const cx=W/2+(Math.random()-0.5)*240,cy=H/2+(Math.random()-0.5)*240;const node={id:Date.now(),type,name,role:document.getElementById('add-role').value.trim(),org,notes:document.getElementById('add-notes').value.trim(),priority:addTier,meetings:[],x:cx,y:cy,pinned:true,color:null,created:new Date().toISOString()};if(type==='company'){node.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}nodes.push(node);await fbSaveNodes();closeModal('add-modal');render();updateFilterTags();updateOrgLegend();document.getElementById('empty-state').style.display='none';setTimeout(()=>openPanel(node),220);}
+
+// ── EDGES
+function toggleEdgeMode(){edgeMode=!edgeMode;edgeSource=null;const btn=document.getElementById('edge-btn'),cv=document.getElementById('canvas');if(edgeMode){btn.classList.add('active');cv.classList.add('edge-mode');setStatus('Edge mode: click source node');}else{btn.classList.remove('active');cv.classList.remove('edge-mode');clearStatus();resetStrokes();}}
+function cancelEdgeMode(){edgeSource=null;edgeMode=false;document.getElementById('edge-btn').classList.remove('active');document.getElementById('canvas').classList.remove('edge-mode');clearStatus();resetStrokes();}
+function cancelEdgeModal(){window._eTarget=null;edgeSource=null;resetStrokes();closeModal('edge-modal');if(edgeMode)setStatus('Edge mode: click source node');}
+function resetStrokes(){ng.selectAll('.main-c').attr('stroke-width',d=>d.priority===1?3:d.priority===2?1.5:1);}
+function setDir(dir){edgeDir=dir;['forward','back','both'].forEach(d=>{document.getElementById(`dir-${d}`).classList.toggle('active',d===dir);});}
+function onEdgeLabelChange(){document.getElementById('edge-custom-field').style.display=document.getElementById('edge-label').value==='custom'?'block':'none';}
+async function confirmEdge(){const target=window._eTarget;if(!target||!edgeSource)return;let label=document.getElementById('edge-label').value;if(label==='custom')label=document.getElementById('edge-custom').value.trim()||'Connected';const notes=document.getElementById('edge-notes').value.trim();const sid=edgeSource.id,tid=target.id;const exists=links.find(l=>{const s=l.source?.id||l.source,t=l.target?.id||l.target;return(s===sid&&t===tid)||(s===tid&&t===sid);});if(!exists){links.push({id:Date.now(),source:sid,target:tid,label,dir:edgeDir,notes:notes||''});await fbSaveLinks();render();}document.getElementById('edge-notes').value='';resetStrokes();edgeSource=null;window._eTarget=null;closeModal('edge-modal');if(edgeMode)setStatus('Edge mode: click source node');}
+
+// ── SYNC BADGE
+function checkSyncBadge(entitiesData){
+  let stored=entitiesData?Object.values(entitiesData):[];
+  const ids=new Set(nodes.map(n=>n.id));
+  const nw=stored.filter(e=>!ids.has(e.id));
+  const btn=document.getElementById('sync-badge-btn');
+  if(nw.length){btn.style.display='flex';document.getElementById('sync-count').textContent=nw.length;window._syncCandidates=nw;}
+  else btn.style.display='none';
+}
+
+function showSyncModal(){
+  const cands=window._syncCandidates||[];
+  if(!cands.length){toast('No new entities from Intel Station');return;}
+  document.getElementById('sync-list').innerHTML=cands.map((e,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1)"><input type="checkbox" id="sc-${i}" checked style="width:16px;height:16px;accent-color:var(--gold);flex-shrink:0"><div style="flex:1"><div style="font-size:13px;font-weight:500">${e.name}</div><div style="font-size:11px;color:var(--t2)">${e.type}${e.role?' · '+e.role:''}${e.org?' · '+e.org:''}</div>${e.notes?`<div style="font-size:11px;color:var(--t3);margin-top:2px;font-style:italic">${e.notes.slice(0,80)}${e.notes.length>80?'…':''}</div>`:''}</div><span style="font-size:10px;padding:2px 6px;background:var(--s2);border-radius:4px;color:var(--t3)">${e.type}</span></div>`).join('');
+  document.getElementById('sync-modal').style.display='flex';
+}
+
+async function confirmImport(){
+  let added=0;
+  (window._syncCandidates||[]).forEach((e,i)=>{
+    if(!document.getElementById(`sc-${i}`)?.checked)return;
+    const cx=W/2+(Math.random()-0.5)*300,cy=H/2+(Math.random()-0.5)*300;
+    const node={...e,x:e.x||cx,y:e.y||cy,fx:e.x||cx,fy:e.y||cy};
+    if(node.type==='company'&&!node.color){node.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}
+    nodes.push(node);added++;
+  });
+  await fbSaveNodes();closeModal('sync-modal');render();updateFilterTags();updateOrgLegend();
+  document.getElementById('empty-state').style.display=nodes.length?'none':'block';
+  toast(`${added} entities imported`);
+}
+
+// ── CALENDAR
+function initCalendar(){const now=new Date();const days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];const months=['January','February','March','April','May','June','July','August','September','October','November','December'];document.getElementById('cal-today-label').textContent=`${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;document.getElementById('cal-sub-label').textContent=`${now.getFullYear()}`;document.getElementById('cal-new-date').value=now.toISOString().slice(0,10);}
+async function addCalEntry(){const label=document.getElementById('cal-new-label').value.trim();const date=document.getElementById('cal-new-date').value;if(!label){toast('Add a description first');return;}if(!date){toast('Pick a date');return;}calEntries.push({id:Date.now(),label,date,type:'manual',created:new Date().toISOString()});await fbSaveCal();document.getElementById('cal-new-label').value='';toast('Reminder added');}
+async function deleteCalEntry(id){calEntries=calEntries.filter(e=>e.id!==id);await fbSaveCal();}
+function pullIntelDates(){let pulled=[];meetings.forEach(m=>{(m.intel.milestones||[]).forEach(mi=>{if(mi.date?.match(/\d{4}-\d{2}-\d{2}/)&&mi.status!=='completed')pulled.push({id:`mil-${m.id}-${(mi.milestone||'').slice(0,20)}`,label:mi.milestone,date:mi.date,type:'milestone',status:mi.status,source:m.meta.title});});(m.intel.actionItems||[]).forEach(a=>{if(a.deadline?.match(/\d{4}-\d{2}-\d{2}/))pulled.push({id:`act-${m.id}-${(a.task||'').slice(0,20)}`,label:a.task+(a.owner?` (${a.owner})`:''),date:a.deadline,type:'action',priority:a.priority,source:m.meta.title});});});return pulled;}
+function renderCalendar(){const now=new Date();now.setHours(0,0,0,0);const in7=new Date(now);in7.setDate(in7.getDate()+7);const in30=new Date(now);in30.setDate(in30.getDate()+30);const all=[...calEntries,...pullIntelDates()].sort((a,b)=>a.date.localeCompare(b.date));const overdue=[],today=[],next7=[],next30=[],beyond=[];all.forEach(e=>{const d=new Date(e.date+'T00:00:00');if(d<now)overdue.push(e);else if(d.toDateString()===now.toDateString())today.push(e);else if(d<=in7)next7.push(e);else if(d<=in30)next30.push(e);else beyond.push(e);});const container=document.getElementById('cal-scroll');if(!all.length){container.innerHTML=`<div class="cal-empty">No dates yet.<br>Add a reminder below<br>or process meetings in<br>Intel Station to auto-pull<br>milestones and deadlines.</div>`;return;}function rSec(title,items,color){if(!items.length)return'';let s=`<div class="date-section"><div class="date-sec-lbl" style="color:${color}">${title}</div>`;items.forEach(e=>{const tc=e.type==='milestone'?'#8b5cf6':e.type==='action'?(e.priority==='high'?'#ef4444':e.priority==='low'?'#22c55e':'#f59e0b'):color;const d=new Date(e.date+'T00:00:00');const diff=Math.round((d-now)/(1000*60*60*24));const dl=diff===0?'today':diff===1?'tomorrow':diff<0?`${Math.abs(diff)}d ago`:`in ${diff}d`;s+=`<div class="date-item"><div class="date-pip" style="background:${tc}"></div><div class="date-content"><div class="date-label">${e.label}</div><div class="date-meta">${e.date} · ${dl}</div>${e.source?`<div style="font-size:9px;color:var(--t3)">↳ ${e.source}</div>`:''}<span class="date-badge" style="background:${tc}22;color:${tc}">${e.type}</span></div>${e.type==='manual'?`<button class="date-del" onclick="deleteCalEntry(${e.id})">✕</button>`:''}</div>`;});return s+'</div>';}let h=rSec('Overdue',overdue,'#ef4444')+rSec('Today',today,'#c9a227')+rSec('Next 7 Days',next7,'#22c55e')+rSec('Next 30 Days',next30,'#3b82f6');if(beyond.length){h+=`<div class="date-section"><div class="date-sec-lbl" style="cursor:pointer" onclick="toggleBeyond()">Beyond 30 Days ▾ (${beyond.length})</div><div id="cal-beyond" style="display:none">`;beyond.forEach(e=>{const tc=e.type==='milestone'?'#8b5cf6':e.type==='action'?(e.priority==='high'?'#ef4444':'#f59e0b'):'#4a5568';const d=new Date(e.date+'T00:00:00');const diff=Math.round((d-now)/(1000*60*60*24));h+=`<div class="date-item"><div class="date-pip" style="background:${tc}"></div><div class="date-content"><div class="date-label">${e.label}</div><div class="date-meta">${e.date} · in ${diff}d</div>${e.source?`<div style="font-size:9px;color:var(--t3)">↳ ${e.source}</div>`:''}</div>${e.type==='manual'?`<button class="date-del" onclick="deleteCalEntry(${e.id})">✕</button>`:''}</div>`;});h+=`</div></div>`;}container.innerHTML=h;}
+function toggleBeyond(){const el=document.getElementById('cal-beyond');if(el)el.style.display=el.style.display==='none'?'block':'none';}
+
+// ── LEGENDS
+function buildEdgeLegend(){const rows=[['Hierarchy','#3b82f6',false],['Investment','#c9a227',false],['Partnership','#22c55e',false],['Advisory','#8b5cf6',true],['Competitive','#ef4444',true],['General','#64748b',false]];document.getElementById('edge-legend-items').innerHTML=rows.map(([lbl,c,dash])=>{const line=dash?`<div class="el-dash" style="background:repeating-linear-gradient(90deg,${c} 0,${c} 4px,transparent 4px,transparent 7px)"></div>`:`<div class="el-solid" style="background:${c}"></div>`;return`<div class="el-item">${line}<span style="color:${c}">${lbl}</span></div>`;}).join('');}
+function updateOrgLegend(){const cos=nodes.filter(n=>n.type==='company');const legend=document.getElementById('org-legend');if(!cos.length){legend.style.display='none';return;}legend.style.display='block';document.getElementById('org-legend-items').innerHTML=cos.map(c=>`<div class="ol-item"><div class="ol-dot" style="background:${c.color||'#555'}"></div><span>${c.name}</span></div>`).join('');}
+
+// ── ZOOM
+function fitGraph(){const vis=nodes.filter(n=>visibleIds.has(n.id)&&n.x!=null);if(!vis.length)return;const pad=90,xs=vis.map(n=>n.x),ys=vis.map(n=>n.y);const sc=Math.min(W/(Math.max(...xs)-Math.min(...xs)+pad*2),H/(Math.max(...ys)-Math.min(...ys)+pad*2),.95);const tx=W/2-sc*(Math.min(...xs)+Math.max(...xs))/2,ty=H/2-sc*(Math.min(...ys)+Math.max(...ys))/2;svg.transition().duration(650).call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(sc));}
+function zoomIn(){svg.transition().duration(220).call(zoom.scaleBy,1.45);}
+function zoomOut(){svg.transition().duration(220).call(zoom.scaleBy,0.69);}
+
+// ── BACKUP
+function exportData(){const backup={version:4,app:'NetworkMap',exported:new Date().toISOString(),entities:nodes.map(({fx,fy,vx,vy,index,...r})=>r),edges:links.map(l=>({...l,source:l.source?.id||l.source,target:l.target?.id||l.target,index:undefined})),calEntries};const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`NetworkMap_backup_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast(`Backup exported — ${nodes.length} nodes`);}
+async function importData(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async function(e){try{const data=JSON.parse(e.target.result);const importedNodes=data.entities||data.nodes||[];if(!importedNodes.length){toast('No nodes found');return;}if(!confirm(`Restore ${importedNodes.length} nodes from backup?`))return;nodes=importedNodes.map(n=>{if(n.x!=null&&n.y!=null){n.fx=n.x;n.fy=n.y;}return n;});links=data.edges||data.links||[];colorIdx=0;nodes.filter(n=>n.type==='company').forEach(n=>{if(!n.color){n.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}else{const i=PALETTE.indexOf(n.color);if(i>=colorIdx)colorIdx=i+1;}});await fbSaveNodes();await fbSaveLinks();if(data.calEntries){calEntries=data.calEntries;await fbSaveCal();}render();updateFilterTags();updateOrgLegend();updateNodeCount();document.getElementById('empty-state').style.display=nodes.length?'none':'block';toast(`Restored: ${nodes.length} nodes`);setTimeout(()=>fitGraph(),600);}catch(err){toast('Could not read backup file');}};reader.readAsText(file);event.target.value='';}
+
+// ── UTILS
+function setStatus(m){const e=document.getElementById('status-bar');e.textContent=m;e.classList.add('show');}
+function clearStatus(){document.getElementById('status-bar').classList.remove('show');}
+function closeModal(id){document.getElementById(id).style.display='none';}
+function showHelp(){document.getElementById('help-modal').style.display='flex';}
+let _tt;
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(()=>t.classList.remove('show'),3200);}
+
+function injectPWA(){const ico="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%230b0d11'/><circle cx='96' cy='96' r='28' fill='none' stroke='%238b5cf6' stroke-width='8'/><circle cx='32' cy='48' r='16' fill='%238b5cf6' opacity='.7'/><circle cx='160' cy='48' r='16' fill='%238b5cf6' opacity='.7'/><circle cx='32' cy='144' r='16' fill='%238b5cf6' opacity='.7'/><circle cx='160' cy='144' r='16' fill='%238b5cf6' opacity='.7'/><line x1='48' y1='56' x2='72' y2='76' stroke='%238b5cf6' stroke-width='5' opacity='.5'/><line x1='144' y1='56' x2='120' y2='76' stroke='%238b5cf6' stroke-width='5' opacity='.5'/><line x1='48' y1='136' x2='72' y2='116' stroke='%238b5cf6' stroke-width='5' opacity='.5'/><line x1='144' y1='136' x2='120' y2='116' stroke='%238b5cf6' stroke-width='5' opacity='.5'/></svg>";const m={name:'Network Map',short_name:'Network Map',start_url:'./',display:'standalone',background_color:'#0b0d11',theme_color:'#0b0d11',icons:[{src:ico,sizes:'192x192',type:'image/svg+xml'}]};document.getElementById('mlink').href=URL.createObjectURL(new Blob([JSON.stringify(m)],{type:'application/json'}));const lnk=document.createElement('link');lnk.rel='icon';lnk.href=ico;document.head.appendChild(lnk);}
+
+// Expose for onclick handlers
+window.openAddModal=openAddModal;window.selectAddTier=selectAddTier;window.confirmAdd=confirmAdd;window.toggleEdgeMode=toggleEdgeMode;window.cancelEdgeModal=cancelEdgeModal;window.setDir=setDir;window.onEdgeLabelChange=onEdgeLabelChange;window.confirmEdge=confirmEdge;window.showSyncModal=showSyncModal;window.confirmImport=confirmImport;window.setFilter=setFilter;window.fitGraph=fitGraph;window.zoomIn=zoomIn;window.zoomOut=zoomOut;window.closePanel=closePanel;window.savePanel=savePanel;window.setTier=setTier;window.deleteSelectedNode=deleteSelectedNode;window.removeEdge=removeEdge;window.saveEdgeNote=saveEdgeNote;window.switchPanelTab=switchPanelTab;window.onSearch=onSearch;window.hideSearch=hideSearch;window.selectSearchResult=selectSearchResult;window.addCalEntry=addCalEntry;window.deleteCalEntry=deleteCalEntry;window.toggleBeyond=toggleBeyond;window.exportData=exportData;window.importData=importData;window.showHelp=showHelp;window.closeModal=closeModal;
+
+buildEdgeLegend();
+init();
+</script>
+</body>
+</html>
