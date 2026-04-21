@@ -542,6 +542,10 @@ async function callClaude(notes, meta) {
   // Build system prompt with no problematic characters
   var sp = 'You are a meeting intelligence analyst for FLi LLC defense technology. '
     + 'Extract maximum actionable value. Use speaker labels like "Tom:" for attribution. '
+    + 'CRITICAL: Every person listed in the Attendees field MUST appear in keyPeople, even if barely mentioned. '
+    + 'Every company or organization mentioned anywhere MUST appear in companies. '
+    + 'Never leave keyPeople or companies empty if attendees are listed or any names appear in the transcript. '
+    + 'For each person in keyPeople, capture their stance as their position or perspective from this meeting -- if unclear write what is known about them. '
     + 'Return ONLY valid JSON, no markdown, no backticks. '
     + 'Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building",'
     + '"keyDecisions":[{"decision":"","owner":"","rationale":""}],'
@@ -558,7 +562,7 @@ async function callClaude(notes, meta) {
     system: sp,
     messages: [{
       role: 'user',
-      content: 'Date:' + meta.date + ' Type:' + meta.type + ' Attendees:' + (meta.att||'?') + ' Duration:' + (meta.dur||'?') + '\n\nTRANSCRIPT:\n' + notes
+      content: 'Date:' + meta.date + ' Type:' + meta.type + ' Attendees:' + (meta.att||'?') + ' Duration:' + (meta.dur||'?') + '\n\nIMPORTANT: All attendees listed above must appear in keyPeople. All orgs mentioned must appear in companies.\n\nTRANSCRIPT:\n' + notes
     }]
   });
   var res = await fetch('https://api.anthropic.com/v1/messages', {
