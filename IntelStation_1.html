@@ -838,16 +838,44 @@ function sc(title, items, fn) {
 // ENTITY SYNC
 function extractEnts(m) {
   var list = [], date = m.meta.date, title = m.meta.title;
+  var seen = {};
+
+  // Extract from keyPeople
   (m.intel.keyPeople||[]).forEach(function(p) {
     if (!p.name||p.name.trim().length<2) return;
+    var key = p.name.trim().toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
     var notes = (p.stance?'Stance: '+p.stance+'\n':'') + (p.watchFor?'Watch: '+p.watchFor+'\n':'') + 'From: '+title+' ('+date+')';
     list.push({type:'person',name:p.name.trim(),role:p.role||'',org:p.org||'',notes:notes,mid:m.id,mtitle:title,mdate:date});
   });
+
+  // Also pull from attendees field as fallback
+  if (m.meta.att) {
+    var attNames = m.meta.att.split(/[,;]+/).map(function(n){return n.trim();}).filter(Boolean);
+    attNames.forEach(function(att) {
+      // Parse "Name (Role)" format
+      var nameMatch = att.match(/^([^(]+?)(?:\s*\(([^)]+)\))?$/);
+      var name = nameMatch ? nameMatch[1].trim() : att.trim();
+      var role = nameMatch && nameMatch[2] ? nameMatch[2].trim() : '';
+      if (!name || name.length < 2) return;
+      var key = name.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      list.push({type:'person',name:name,role:role,org:'',notes:'Attendee at: '+title+' ('+date+')',mid:m.id,mtitle:title,mdate:date});
+    });
+  }
+
+  // Extract companies
   (m.intel.companies||[]).forEach(function(c) {
     if (!c.name||c.name.trim().length<2) return;
+    var key = c.name.trim().toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
     var notes = (c.role?'Role: '+c.role+'\n':'') + (c.notes?c.notes+'\n':'') + 'First mentioned: '+title+' ('+date+')';
     list.push({type:'company',name:c.name.trim(),role:c.role||'',org:'',notes:notes,mid:m.id,mtitle:title,mdate:date});
   });
+
   return list;
 }
 
@@ -857,9 +885,22 @@ function updateSyncBadge() {
 }
 
 function showSyncModal() {
-  if (!currentMeeting && pendingEnts.length===0) { toast('Process a meeting first'); return; }
-  if (pendingEnts.length===0) pendingEnts = extractEnts(currentMeeting);
-  if (pendingEnts.length===0) { toast('No entities found'); return; }
+  // Always re-extract from current meeting if we have one
+  if (currentMeeting) {
+    pendingEnts = extractEnts(currentMeeting);
+  }
+  if (!currentMeeting && pendingEnts.length === 0) { toast('Open a meeting in the Intel tab first'); return; }
+  if (pendingEnts.length === 0) {
+    // Last resort -- extract from most recent meeting
+    if (meetings.length) {
+      currentMeeting = meetings[0];
+      pendingEnts = extractEnts(currentMeeting);
+    }
+  }
+  if (pendingEnts.length === 0) {
+    toast('No people or companies found -- check that Attendees field is filled in and reprocess');
+    return;
+  }
   var h = '';
   pendingEnts.forEach(function(e,i) {
     var ex = entities.find(function(x){return x.name.toLowerCase()===e.name.toLowerCase();});
