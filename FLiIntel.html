@@ -736,13 +736,25 @@ function showWsPicker(user) {
 
 function renderWsList() {
   var list = document.getElementById('ws-list');
-  if (!userWorkspaces.length) { list.innerHTML = '<div class="empty" style="padding:1rem 0">No workspaces yet. Create your first one.</div>'; return; }
-window._selectWs = selectWorkspace;
-
-  list.innerHTML = userWorkspaces.map(function(ws) {
+  if (!userWorkspaces.length) {
+    list.innerHTML = '<div class="empty" style="padding:1rem 0">No workspaces yet. Create your first one.</div>';
+    return;
+  }
+  var html = '';
+  userWorkspaces.forEach(function(ws) {
     var color = ws.color || '#c9a227';
-    return '<div class="ws-item" onclick="selectWorkspace(\''+ws.id+'\')"><div class="ws-avatar" style="background:'+color+'22;color:'+color+'">'+ws.name.charAt(0).toUpperCase()+'</div><div><div class="ws-name">'+ws.name+'</div><div class="ws-role">'+( ws.role||'Member')+'</div></div></div>';
-  }).join('');
+    html += '<div class="ws-item" data-wsid="' + ws.id + '">';
+    html += '<div class="ws-avatar" style="background:' + color + '22;color:' + color + '">' + ws.name.charAt(0).toUpperCase() + '</div>';
+    html += '<div><div class="ws-name">' + ws.name + '</div><div class="ws-role">' + (ws.role||'Member') + '</div></div>';
+    html += '</div>';
+  });
+  list.innerHTML = html;
+  list.querySelectorAll('.ws-item').forEach(function(el) {
+    el.addEventListener('click', function() {
+      var wsId = this.getAttribute('data-wsid');
+      if (wsId) selectWorkspace(wsId);
+    });
+  });
 }
 
 document.getElementById('ws-new-btn').addEventListener('click', function() {
