@@ -956,65 +956,28 @@ async function generateDigest(){
     +'Be direct, opinionated, and actionable. Surface what matters most to someone in this exact role at this exact org. '
     +'The pulse section should be named "'+wsName.toUpperCase()+' PULSE", not "COMPANY PULSE".';
 
-  var prompt='=== WORKSPACE: '+wsName+' ===
-'
-    +'Recipient role: '+wsRole+'
-'
-    +'Meeting focus mix: '+dominantTypes.join(', ')+'
-'
-    +'Organizations in orbit: '+(topCos.join(', ')||'none logged yet')+'
-'
-    +'Key people: '+topPeople.map(function(p){return p.name+(p.role?' ('+p.role+')':'')+', '+p.count+' meetings'+(p.lastStance?', last stance: "'+p.lastStance.slice(0,60)+'"':'');}).join('
-  ')+'
-'
-    +'Pulse trend: '+pulseHistory+'
-'
-    +'Action owners: '+(topOwners.join(', ')||'none')+'
-'
-    +'
-=== THIS WEEK ('+wMtgs.length+' meetings) ===
-'
-    +(wMtgs.map(function(m){return '- '+m.meta.date+': '+m.meta.title+'
-  Pulse: '+(m.intel.companyPulse||'?')+'
-  '+( m.intel.summary||'');}).join('
-')||'No meetings logged this week')
-    +'
-
-=== HIGH PRIORITY ACTIONS ('+hiA.length+') ===
-'
-    +(hiA.slice(0,6).map(function(a){return '- '+a.task+' → '+(a.owner||'?')+(a.deadline?' by '+a.deadline:'');}).join('
-')||'None')
-    +'
-
-=== HIGH RISKS ('+hiR.length+') ===
-'
-    +(hiR.slice(0,4).map(function(r){return '- '+r.risk+(r.raisedBy?' ['+r.raisedBy+']':'');}).join('
-')||'None')
-    +(openQs.length?'
-
-=== OPEN QUESTIONS CARRYING FORWARD ===
-'+openQs.join('
-'):'')
-    +(redFlags.length?'
-
-=== ACTIVE RED FLAGS ===
-'+redFlags.join('
-'):'')
-    +'
-
-=== BRIEF SECTIONS REQUIRED ===
-'
-    +'1. WEEK IN REVIEW — what actually happened this week, name names and specific deals/situations
-'
-    +'2. '+wsName.toUpperCase()+' PULSE — honest read of this org's momentum and what it means right now
-'
-    +'3. TOP PRIORITIES — 3-5 specific, named, actionable items for the week ahead
-'
-    +'4. OPEN LOOPS — things said or committed to that need closure, who owes what to whom
-'
-    +'5. PATTERN RECOGNITION — what's the real signal under the noise across the last few weeks
-'
-    +'6. MONDAY FOCUS — the single most important thing '+wsName+' should do this week, and why';
+  var prompt='=== WORKSPACE: '+wsName+' ===\n'
+    +'Recipient role: '+wsRole+'\n'
+    +'Meeting focus mix: '+dominantTypes.join(', ')+'\n'
+    +'Organizations in orbit: '+(topCos.join(', ')||'none logged yet')+'\n'
+    +'Key people: '+topPeople.map(function(p){return p.name+(p.role?' ('+p.role+')':'')+', '+p.count+' meetings'+(p.lastStance?', last stance: "'+p.lastStance.slice(0,60)+'"':'');}).join('\n  ')+'\n'
+    +'Pulse trend: '+pulseHistory+'\n'
+    +'Action owners: '+(topOwners.join(', ')||'none')+'\n'
+    +'\n=== THIS WEEK ('+wMtgs.length+' meetings) ===\n'
+    +(wMtgs.map(function(m){return '- '+m.meta.date+': '+m.meta.title+'\n  Pulse: '+(m.intel.companyPulse||'?')+'\n  '+(m.intel.summary||'');}).join('\n')||'No meetings logged this week')
+    +'\n\n=== HIGH PRIORITY ACTIONS ('+hiA.length+') ===\n'
+    +(hiA.slice(0,6).map(function(a){return '- '+a.task+' -> '+(a.owner||'?')+(a.deadline?' by '+a.deadline:'');}).join('\n')||'None')
+    +'\n\n=== HIGH RISKS ('+hiR.length+') ===\n'
+    +(hiR.slice(0,4).map(function(r){return '- '+r.risk+(r.raisedBy?' ['+r.raisedBy+']':'');}).join('\n')||'None')
+    +(openQs.length?'\n\n=== OPEN QUESTIONS CARRYING FORWARD ===\n'+openQs.join('\n'):'')
+    +(redFlags.length?'\n\n=== ACTIVE RED FLAGS ===\n'+redFlags.join('\n'):'')
+    +'\n\n=== BRIEF SECTIONS REQUIRED ===\n'
+    +'1. WEEK IN REVIEW -- what actually happened this week, name names and specific deals/situations\n'
+    +'2. '+wsName.toUpperCase()+' PULSE -- honest read of this org\'s momentum and what it means right now\n'
+    +'3. TOP PRIORITIES -- 3-5 specific, named, actionable items for the week ahead\n'
+    +'4. OPEN LOOPS -- things said or committed to that need closure, who owes what to whom\n'
+    +'5. PATTERN RECOGNITION -- what\'s the real signal under the noise across the last few weeks\n'
+    +'6. MONDAY FOCUS -- the single most important thing '+wsName+' should do this week, and why';
 
   try{
     var res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2400,system:sysPrompt,messages:[{role:'user',content:prompt}]})});
