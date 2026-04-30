@@ -383,6 +383,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
       Sign in with Google
     </button>
+    <div id="auth-error" style="display:none;margin-top:12px;padding:10px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:12px;color:#ef4444;line-height:1.5;text-align:left"></div>
     <div class="auth-note">Your data is encrypted and stored in your organization's private workspace. FLi Intel never shares data between organizations.</div>
   </div>
 </div>
@@ -864,7 +865,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getDatabase, ref, set, get, onValue, remove, query, orderByChild, limitToLast, endBefore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
 var FB_CFG = {
@@ -1091,9 +1092,39 @@ async function saveLink(l){await fbSet(wsPath('links/'+l.id),{id:l.id,source:l.s
 async function deleteLinkFromDB(id){setSS('saving');await remove(ref(db,wsPath('links/'+id)));setSS('live');}
 async function saveEntity(e){await fbSet(wsPath('entities/'+e.id),e);}
 
+function showAuthError(msg){var el=document.getElementById('auth-error');if(el){el.textContent=msg;el.style.display='block';}}
+
 onAuthStateChanged(auth,function(user){if(user){currentUser=user;refreshApiKey();loadUserWorkspaces(user);}else{document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';}});
 
-document.getElementById('google-signin-btn').addEventListener('click',function(){var provider=new GoogleAuthProvider();signInWithPopup(auth,provider).catch(function(e){toast('Sign in failed: '+e.message);});});
+// Handle redirect result on page load (for browsers that block popups)
+getRedirectResult(auth).then(function(result){
+  if(result&&result.user){/* handled by onAuthStateChanged */}
+}).catch(function(e){
+  if(e.code!=='auth/no-current-user')showAuthError('Sign in failed: '+e.message);
+});
+
+document.getElementById('google-signin-btn').addEventListener('click',function(){
+  var btn=this;
+  btn.disabled=true;btn.textContent='Signing in...';
+  var errEl=document.getElementById('auth-error');
+  if(errEl)errEl.style.display='none';
+  var provider=new GoogleAuthProvider();
+  signInWithPopup(auth,provider).then(function(){
+    btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>Sign in with Google';
+  }).catch(function(e){
+    btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>Sign in with Google';
+    if(e.code==='auth/popup-blocked'||e.code==='auth/popup-closed-by-user'){
+      // Popup blocked — fall back to redirect
+      showAuthError('Popup was blocked. Redirecting to Google sign-in...');
+      setTimeout(function(){signInWithRedirect(auth,new GoogleAuthProvider());},1200);
+    }else if(e.code==='auth/cancelled-by-user'){
+      showAuthError('Sign in cancelled.');
+    }else{
+      showAuthError('Sign in error ('+e.code+'): '+e.message);
+      console.error('Firebase auth error:',e);
+    }
+  });
+});
 
 async function loadUserWorkspaces(user){document.getElementById('auth-screen').style.display='none';var snap=await get(ref(db,'users/'+user.uid+'/workspaces'));userWorkspaces=snap.val()?Object.values(snap.val()):[];if(userWorkspaces.length===0){showWsPicker(user);}else if(userWorkspaces.length===1){selectWorkspace(userWorkspaces[0].id);}else{showWsPicker(user);}}
 
@@ -1234,6 +1265,7 @@ function switchView(v){activeView=v;['intel','network','timeline'].forEach(funct
 window.switchView=switchView;
 
 function switchIntelTab(t){activeIntelTab=t;document.querySelectorAll('.intel-tab').forEach(function(x){x.classList.toggle('active',x.dataset.itab===t);});['log','intel','prep','archive','board'].forEach(function(x){document.getElementById('itab-'+x).style.display=x===t?'block':'none';});document.getElementById('sidebar-archive').style.display=(t==='log'||t==='intel')?'flex':'none';if(t==='board')renderBoard();if(t==='archive')renderArchive();}
+window.switchIntelTab=switchIntelTab;
 
 function renderSidebarMtgList(){var list=document.getElementById('sidebar-mtg-list');if(!list)return;if(!meetings.length){list.innerHTML='<div style="font-size:11px;color:var(--t3);padding:4px">No meetings yet</div>';return;}list.innerHTML=meetings.slice(0,12).map(function(m){var active=currentMeeting&&currentMeeting.id===m.id;return '<div onclick="goIntelById('+m.id+')" style="padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:3px;background:'+(active?'var(--s2)':'transparent')+';border:1px solid '+(active?'var(--b2)':'transparent')+'"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.meta.title+'</div><div style="font-size:10px;color:var(--t2);margin-top:1px">'+m.meta.date+'</div></div>';}).join('');}
 window.goIntelById=function(id){var m=meetingMap.get(id);if(m){currentMeeting=m;renderIntel(m);switchIntelTab('intel');renderSidebarMtgList();}};
@@ -1250,7 +1282,8 @@ function stopVoice(){voiceOn=false;clearTimeout(vrTimer);try{if(recog)recog.abor
 function updateVUI(on){var btn=document.getElementById('voice-btn'),st=document.getElementById('voice-st');if(on){btn.style.cssText='background:var(--red);color:#fff;border-color:var(--red);min-width:85px;display:flex;align-items:center;gap:5px;font-size:12px';btn.innerHTML='<span class="rec-dot pulsing"></span>Stop';st.textContent='Recording';st.style.color='var(--red)';}else{btn.style.cssText='min-width:85px;display:flex;align-items:center;gap:5px;font-size:12px';btn.innerHTML='<span class="rec-dot" style="opacity:.4"></span>Voice';st.textContent='';}}
 
 async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){showProcErr('Add API key in user settings');return;}var meta={title:document.getElementById('m-title').value,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,att:document.getElementById('m-att').value,dur:document.getElementById('m-dur').value};var btn=document.getElementById('proc-btn');btn.disabled=true;btn.innerHTML='<span class="proc-dots"><span></span><span></span><span></span></span>Analyzing';clearProcErr();try{var intel=await callClaude(notes,meta);var m={id:Date.now(),meta:Object.assign({},meta,{title:meta.title||(meta.type+' -- '+meta.date)}),notes:notes,intel:intel,ts:new Date().toISOString(),loggedBy:currentUser.displayName,loggedByUid:currentUser.uid};await saveMeeting(m);['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);pendingEnts=[];var msg='Meeting processed';if(r.added||r.updated)msg+=' -- '+[r.added?r.added+' new':(null),r.updated?r.updated+' updated':(null)].filter(Boolean).join(', ')+' in Network Map';toast(msg);}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
-(notes,meta){
+
+async function callClaude(notes,meta){
   // Build canonical names list so Claude normalises to existing spellings
   var knownPeople=entities.filter(function(e){return e.type==='person';}).map(function(e){return e.name;}).slice(0,60);
   var knownCos=entities.filter(function(e){return e.type==='company';}).map(function(e){return e.name;}).slice(0,40);
