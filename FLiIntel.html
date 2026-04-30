@@ -675,16 +675,34 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 
 <!-- USER MENU -->
 <div class="overlay" id="user-modal" style="display:none">
-  <div class="modal" style="max-width:320px">
+  <div class="modal" style="max-width:340px">
     <div id="user-modal-info" style="margin-bottom:14px"></div>
-    <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px">Anthropic API Key</div>
-    <div class="fld"><input type="password" id="api-key-setting" placeholder="sk-ant-api03-..."></div>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button class="btn btn-gold btn-sm" id="save-api-key-btn">Save Key</button>
-      <button class="btn btn-sm" onclick="closeModal('user-modal')">Close</button>
+
+    <!-- WORKSPACE KEY: shared, feeds all members -->
+    <div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3)">Workspace Key</div>
+        <div id="ws-key-badge" style="font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600;display:none"></div>
+      </div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:8px">Set once — every member gets AI access automatically. No individual keys needed.</div>
+      <div id="ws-key-active-row" style="display:none;font-size:12px;color:var(--green);margin-bottom:8px">✓ Active — set by <span id="ws-key-setby"></span></div>
+      <div class="fld" style="margin-bottom:7px"><input type="password" id="ws-api-key-inp" placeholder="sk-ant-api03-..." autocomplete="off"></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-gold btn-sm" id="save-ws-key-btn">Set Workspace Key</button>
+        <button class="btn btn-sm" id="remove-ws-key-btn" style="color:var(--t3);display:none">Remove</button>
+      </div>
     </div>
-    <div style="border-top:1px solid var(--b1);padding-top:12px">
+
+    <!-- PERSONAL KEY: fallback if no workspace key -->
+    <div style="margin-bottom:12px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:6px">Personal Key <span style="color:var(--t3);font-weight:400">(fallback)</span></div>
+      <div class="fld" style="margin-bottom:7px"><input type="password" id="api-key-setting" placeholder="sk-ant-api03-..."></div>
+      <button class="btn btn-sm" id="save-api-key-btn">Save Personal Key</button>
+    </div>
+
+    <div style="border-top:1px solid var(--b1);padding-top:12px;display:flex;gap:7px;justify-content:space-between">
       <button class="btn btn-sm" id="signout-btn" style="color:var(--red);border-color:var(--red)">Sign Out</button>
+      <button class="btn btn-sm" onclick="closeModal('user-modal')">Close</button>
     </div>
   </div>
 </div>
@@ -805,7 +823,7 @@ var fbApp = initializeApp(FB_CFG);
 var auth = getAuth(fbApp);
 var db = getDatabase(fbApp);
 
-var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],entities=[],calEntries=[],tlCommitments=[],apiKey='',currentMeeting=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
+var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],entities=[],calEntries=[],tlCommitments=[],apiKey='',wsApiKey='',wsApiKeySetBy='',currentMeeting=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
 var tlFilter='all',tlSrcFilter='all',currentTLEditId=null;
 
 // ── INDEXED DATA STRUCTURES ──────────────────────────────────
@@ -837,6 +855,42 @@ function setSS(s){var dot=document.getElementById('sync-dot'),lbl=document.getEl
 
 async function fbSet(path,data){setSS('saving');try{await set(ref(db,path),data);setSS('live');}catch(e){setSS('error');throw e;}}
 function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
+
+// ── API KEY RESOLUTION ───────────────────────────────────────
+// Workspace key (shared) takes priority over personal key
+function refreshApiKey(){
+  var personal=currentUser?localStorage.getItem('fli-apikey-'+currentUser.uid)||'':'';
+  apiKey=wsApiKey||personal;
+}
+async function saveWsApiKey(key){
+  if(!currentWsId)return;
+  await fbSet(wsPath('config/apiKey'),key);
+  await fbSet(wsPath('config/apiKeySetBy'),key?currentUser.displayName:'');
+  wsApiKey=key;wsApiKeySetBy=key?currentUser.displayName:'';
+  refreshApiKey();
+  toast(key?'Workspace API key saved — all members can now use AI':'Workspace key removed');
+}
+
+function updateApiKeyUI(){
+  var badge=document.getElementById('ws-key-badge');
+  var activeRow=document.getElementById('ws-key-active-row');
+  var setByEl=document.getElementById('ws-key-setby');
+  var removeBtn=document.getElementById('remove-ws-key-btn');
+  var inpRow=document.getElementById('ws-api-key-inp');
+  if(!badge)return;
+  if(wsApiKey){
+    badge.textContent='ACTIVE';badge.style.cssText='font-size:9px;padding:1px 6px;border-radius:10px;font-weight:600;background:rgba(34,197,94,.15);color:var(--green)';badge.style.display='inline';
+    if(activeRow)activeRow.style.display='block';
+    if(setByEl)setByEl.textContent=wsApiKeySetBy||'a team member';
+    if(removeBtn)removeBtn.style.display='inline-flex';
+    if(inpRow)inpRow.placeholder='Update workspace key...';
+  }else{
+    badge.style.display='none';
+    if(activeRow)activeRow.style.display='none';
+    if(removeBtn)removeBtn.style.display='none';
+    if(inpRow)inpRow.placeholder='sk-ant-api03-...';
+  }
+}
 
 // ── ARRAY REBUILDERS (keep sorted arrays in sync with Maps) ──
 function rebuildMeetingsArray(){
@@ -980,7 +1034,7 @@ async function saveLink(l){await fbSet(wsPath('links/'+l.id),{id:l.id,source:l.s
 async function deleteLinkFromDB(id){setSS('saving');await remove(ref(db,wsPath('links/'+id)));setSS('live');}
 async function saveEntity(e){await fbSet(wsPath('entities/'+e.id),e);}
 
-onAuthStateChanged(auth,function(user){if(user){currentUser=user;apiKey=localStorage.getItem('fli-apikey-'+user.uid)||'';loadUserWorkspaces(user);}else{document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';}});
+onAuthStateChanged(auth,function(user){if(user){currentUser=user;refreshApiKey();loadUserWorkspaces(user);}else{document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';}});
 
 document.getElementById('google-signin-btn').addEventListener('click',function(){var provider=new GoogleAuthProvider();signInWithPopup(auth,provider).catch(function(e){toast('Sign in failed: '+e.message);});});
 
@@ -1056,7 +1110,10 @@ function connectWorkspace(){
 
   var u5=onValue(ref(db,wsPath('cal')),function(snap){calEntries=snap.val()?Object.values(snap.val()):[];renderCalendar();});
   var u6=onValue(ref(db,wsPath('tl_commitments')),function(snap){tlCommitments=snap.val()?Object.values(snap.val()):[];if(activeView==='timeline')renderTimeline();});
-  netListeners=[u1,u2,u3,u4,u5,u6];
+  // ── WORKSPACE API KEY: shared across all members ──
+  var u7=onValue(ref(db,wsPath('config/apiKey')),function(snap){wsApiKey=snap.val()||'';refreshApiKey();updateApiKeyUI();});
+  var u8=onValue(ref(db,wsPath('config/apiKeySetBy')),function(snap){wsApiKeySetBy=snap.val()||'';updateApiKeyUI();});
+  netListeners=[u1,u2,u3,u4,u5,u6,u7,u8];
 }
 
 function wireListeners(){
@@ -1069,8 +1126,31 @@ function wireListeners(){
   document.getElementById('nav-import-trigger').addEventListener('click',function(){document.getElementById('nav-import-file').click();});
   document.getElementById('nav-import-file').addEventListener('change',importData);
   document.getElementById('nav-members-btn').addEventListener('click',showMembers);
-  document.getElementById('user-chip-btn').addEventListener('click',function(){document.getElementById('api-key-setting').value=apiKey;document.getElementById('user-modal-info').innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><img src="'+(currentUser.photoURL||'')+'" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--b2)"><div><div style="font-size:14px;font-weight:600">'+currentUser.displayName+'</div><div style="font-size:11px;color:var(--t3)">'+currentUser.email+'</div></div></div>';document.getElementById('user-modal').style.display='flex';});
-  document.getElementById('save-api-key-btn').addEventListener('click',function(){var k=document.getElementById('api-key-setting').value.trim();if(k){apiKey=k;localStorage.setItem('fli-apikey-'+currentUser.uid,k);toast('API key saved');closeModal('user-modal');}});
+  document.getElementById('user-chip-btn').addEventListener('click',function(){
+    var personal=currentUser?localStorage.getItem('fli-apikey-'+currentUser.uid)||'':'';
+    document.getElementById('api-key-setting').value=personal;
+    document.getElementById('user-modal-info').innerHTML='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><img src="'+(currentUser.photoURL||'')+'" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--b2)"><div><div style="font-size:14px;font-weight:600">'+currentUser.displayName+'</div><div style="font-size:11px;color:var(--t3)">'+currentUser.email+'</div></div></div>';
+    updateApiKeyUI();
+    document.getElementById('user-modal').style.display='flex';
+  });
+  document.getElementById('save-api-key-btn').addEventListener('click',function(){
+    var k=document.getElementById('api-key-setting').value.trim();
+    if(k){localStorage.setItem('fli-apikey-'+currentUser.uid,k);}
+    else{localStorage.removeItem('fli-apikey-'+currentUser.uid);}
+    refreshApiKey();toast(k?'Personal key saved':'Personal key cleared');closeModal('user-modal');
+  });
+  document.getElementById('save-ws-key-btn').addEventListener('click',async function(){
+    var k=document.getElementById('ws-api-key-inp').value.trim();
+    if(!k){toast('Paste an API key first');return;}
+    this.disabled=true;this.textContent='Saving...';
+    await saveWsApiKey(k);
+    document.getElementById('ws-api-key-inp').value='';
+    updateApiKeyUI();this.disabled=false;this.textContent='Set Workspace Key';
+  });
+  document.getElementById('remove-ws-key-btn').addEventListener('click',async function(){
+    if(!confirm('Remove the workspace API key? All members will need personal keys to use AI.'))return;
+    await saveWsApiKey('');updateApiKeyUI();
+  });
   document.getElementById('signout-btn').addEventListener('click',function(){if(!confirm('Sign out?'))return;signOut(auth);closeModal('user-modal');});
   document.getElementById('edit-cancel').addEventListener('click',function(){closeModal('edit-modal');});
   document.getElementById('edit-proc').addEventListener('click',reprocessMeeting);
@@ -1528,7 +1608,166 @@ async function deleteSelectedNode(){
   closeNetPanel();renderNetwork();updateFilterTags();updateOrgLegend();
 }
 
-function renderDossier(d){var nm=getMtgsForNode(d.id);var aa=nm.flatMap(function(m){return(m.intel.actionItems||[]).filter(function(a){return a.owner&&a.owner.toLowerCase().indexOf(d.name.toLowerCase())!==-1;}).map(function(a){return Object.assign({},a,{mtg:m.meta.title});});});var ar=nm.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.raisedBy&&r.raisedBy.toLowerCase().indexOf(d.name.toLowerCase())!==-1;}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var st=getStrength(d.id),c=nc(d);var h='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px"><div class="metric" style="padding:.6rem .8rem;text-align:center"><div style="font-size:16px;font-weight:700;color:'+c+'">'+nm.length+'</div><div style="font-size:10px;color:var(--t3)">Meetings</div></div><div class="metric" style="padding:.6rem .8rem;text-align:center"><div style="font-size:16px;font-weight:700;color:'+(aa.length?'var(--amber)':'var(--text)')+'">'+aa.length+'</div><div style="font-size:10px;color:var(--t3)">Actions</div></div><div class="metric" style="padding:.6rem .8rem;text-align:center"><div style="font-size:16px;font-weight:700;color:'+(ar.length?'var(--red)':'var(--text)')+'">'+ar.length+'</div><div style="font-size:10px;color:var(--t3)">Risks</div></div></div>';h+='<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--t3);margin-bottom:3px">Relationship strength</div><div class="strength-bar" style="height:4px"><div class="strength-fill" style="width:'+(st*10)+'%;background:'+c+'"></div></div><div style="font-size:10px;color:var(--t3);margin-top:2px">'+st+'/10</div></div>';if(nm.length){h+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:7px;font-family:\'JetBrains Mono\',monospace">Meeting History</div>';nm.forEach(function(m){var pi=m.intel.keyPeople&&m.intel.keyPeople.find(function(p){return p.name===d.name;});var ci=m.intel.companies&&m.intel.companies.find(function(c2){return c2.name===d.name;});h+='<div class="mtg-card" style="border-left-color:'+c+'"><div style="font-size:12px;font-weight:600">'+m.meta.title+'</div><div style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;margin-bottom:3px">'+m.meta.date+' -- '+(m.loggedBy||'?')+'</div>'+(pi&&pi.stance?'<div style="font-size:11px;color:var(--t2);font-style:italic">'+pi.stance+'</div>':'')+(ci&&ci.notes?'<div style="font-size:11px;color:var(--t2)">'+ci.notes+'</div>':'')+(pi&&pi.watchFor?'<div style="font-size:11px;color:var(--amber)">Watch: '+pi.watchFor+'</div>':'')+'</div>';});}document.getElementById('dossier-content').innerHTML=h;}
+function renderDossier(d){
+  var nm=getMtgsForNode(d.id);
+  var c=nc(d);
+  var sorted=nm.slice().sort(function(a,b){return a.meta.date.localeCompare(b.meta.date);});
+  var latest=sorted.length?sorted[sorted.length-1]:null;
+  var daysAgo=latest?Math.floor((Date.now()-new Date(latest.meta.date).getTime())/86400000):null;
+  var healthC=daysAgo===null?'var(--t3)':daysAgo<30?'var(--green)':daysAgo<60?'var(--amber)':'var(--red)';
+  var healthLbl=daysAgo===null?'no meetings':daysAgo===0?'today':daysAgo===1?'yesterday':daysAgo+'d ago';
+
+  // Extract all structured data for this person across meetings
+  var stances=[],myActions=[],myRisks=[],myQs=[],watchItems=[];
+  sorted.forEach(function(m){
+    var pi=(m.intel.keyPeople||[]).find(function(p){return p.name===d.name;});
+    var ci=(m.intel.companies||[]).find(function(co){return co.name===d.name;});
+    if(pi&&pi.stance)stances.push({date:m.meta.date,stance:pi.stance,mtg:m.meta.title,pulse:m.intel.companyPulse,mid:m.id});
+    if(pi&&pi.watchFor)watchItems.push({text:pi.watchFor,date:m.meta.date,mtg:m.meta.title});
+    (m.intel.actionItems||[]).forEach(function(a){
+      if(a.owner&&a.owner.toLowerCase().indexOf(d.name.toLowerCase())!==-1)
+        myActions.push(Object.assign({},a,{mtg:m.meta.title,mdate:m.meta.date,mid:m.id}));
+    });
+    (m.intel.risks||[]).forEach(function(r){
+      if(r.raisedBy&&r.raisedBy.toLowerCase().indexOf(d.name.toLowerCase())!==-1)
+        myRisks.push(Object.assign({},r,{mtg:m.meta.title,mdate:m.meta.date}));
+    });
+    (m.intel.openQuestions||[]).forEach(function(q){
+      var qo=typeof q==='string'?{question:q,askedBy:'',stakes:''}:q;
+      if(qo.askedBy&&qo.askedBy.toLowerCase().indexOf(d.name.toLowerCase())!==-1)
+        myQs.push(Object.assign({},qo,{mtg:m.meta.title,mdate:m.meta.date}));
+    });
+  });
+
+  var st=getStrength(d.id);
+  var latestWatch=watchItems.length?watchItems[watchItems.length-1]:null;
+  var now2=new Date();now2.setHours(0,0,0,0);
+
+  var h='';
+
+  // ── HEADER ──────────────────────────────────────────────────
+  h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
+  h+='<div><div style="font-size:13px;font-weight:700;color:'+c+'">'+d.name+'</div>';
+  h+='<div style="font-size:11px;color:var(--t2)">'+(d.role||'')+(d.org?' @ '+d.org:'')+'</div></div>';
+  h+='<div style="text-align:right"><div style="font-size:12px;font-weight:600;color:'+healthC+'">'+healthLbl+'</div>';
+  h+='<div style="font-size:9px;color:var(--t3)">last contact</div></div></div>';
+
+  // ── STATS ────────────────────────────────────────────────────
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px">';
+  [{lbl:'Meetings',val:nm.length,c2:c},{lbl:'Actions',val:myActions.length,c2:myActions.length?'var(--amber)':'var(--text)'},{lbl:'Risks',val:myRisks.length,c2:myRisks.length?'var(--red)':'var(--text)'},{lbl:'Open Q',val:myQs.length,c2:myQs.length?'var(--blue)':'var(--text)'}].forEach(function(s){
+    h+='<div class="metric" style="padding:.5rem .3rem;text-align:center"><div style="font-size:15px;font-weight:700;color:'+s.c2+'">'+s.val+'</div><div style="font-size:9px;color:var(--t3)">'+s.lbl+'</div></div>';
+  });
+  h+='</div>';
+
+  // Relationship strength
+  h+='<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:10px;color:var(--t3)">Relationship strength</span><span style="font-size:10px;color:var(--t3)">'+st+'/10</span></div><div class="strength-bar" style="height:4px"><div class="strength-fill" style="width:'+st*10+'%;background:'+c+'"></div></div></div>';
+
+  // ── STANCE TRAJECTORY ────────────────────────────────────────
+  if(stances.length){
+    h+='<div style="margin-bottom:13px">';
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Stance Trajectory ↗</div>';
+    stances.forEach(function(s,i){
+      var isLatest=i===stances.length-1;
+      var changed=i>0&&s.stance!==stances[i-1].stance;
+      var dotC=isLatest?c:(changed?'var(--amber)':'var(--b2)');
+      h+='<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid rgba(37,45,66,.35);align-items:flex-start">';
+      h+='<div style="flex-shrink:0;width:38px;text-align:right"><div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;line-height:1.2">'+s.date.slice(5)+'</div>'+(isLatest?'<div style="font-size:8px;color:'+c+';font-weight:700">NOW</div>':'')+'</div>';
+      h+='<div style="width:1px;background:var(--b1);align-self:stretch;flex-shrink:0;margin:0 4px;position:relative"><div style="position:absolute;top:4px;left:-3px;width:7px;height:7px;border-radius:50%;background:'+dotC+';border:1px solid var(--bg)"></div></div>';
+      h+='<div style="flex:1;min-width:0"><div style="font-size:11px;color:'+(isLatest?'var(--text)':'var(--t2)')+';font-style:italic;line-height:1.4">'+s.stance+'</div>';
+      h+='<div style="font-size:9px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.mtg+'</div></div></div>';
+    });
+    h+='</div>';
+  }else if(nm.length){
+    h+='<div style="margin-bottom:12px;padding:8px;background:var(--s2);border-radius:var(--rsm);font-size:11px;color:var(--t3);text-align:center">No stance recorded yet across '+nm.length+' meeting'+(nm.length>1?'s':'')+'</div>';
+  }
+
+  // ── WATCH FLAG ────────────────────────────────────────────────
+  if(latestWatch){
+    h+='<div style="margin-bottom:12px;padding:8px 10px;background:rgba(245,158,11,.07);border-left:2px solid var(--amber);border-radius:0 4px 4px 0">';
+    h+='<div style="font-size:9px;font-weight:600;color:var(--amber);margin-bottom:3px;font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em">Watch</div>';
+    h+='<div style="font-size:11px;color:var(--text);line-height:1.45">'+latestWatch.text+'</div>';
+    h+='<div style="font-size:9px;color:var(--t3);margin-top:3px">'+latestWatch.date+' — '+latestWatch.mtg+'</div></div>';
+  }
+
+  // ── COMMITMENTS THEY OWN ──────────────────────────────────────
+  if(myActions.length){
+    h+='<div style="margin-bottom:13px">';
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Commitments Owned ('+myActions.length+')</div>';
+    myActions.slice(0,6).forEach(function(a){
+      var dl=a.deadline?new Date(a.deadline+'T00:00:00'):null;
+      var overdue=dl&&dl<now2;
+      var dueLbl=a.deadline?(overdue?'OVERDUE: '+a.deadline:'due '+a.deadline):'no deadline';
+      var dueC=overdue?'var(--red)':a.deadline?'var(--t2)':'var(--t3)';
+      h+='<div style="display:flex;gap:7px;padding:5px 0;border-bottom:1px solid rgba(37,45,66,.35);align-items:flex-start">';
+      h+='<div style="width:6px;height:6px;border-radius:50%;background:'+(DS[a.priority]||'var(--t3)')+';flex-shrink:0;margin-top:4px"></div>';
+      h+='<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text);line-height:1.35">'+a.task+'</div>';
+      h+='<div style="font-size:9px;color:'+dueC+';font-family:\'JetBrains Mono\',monospace;margin-top:1px">'+dueLbl+' · '+a.mtg+'</div></div></div>';
+    });
+    if(myActions.length>6)h+='<div style="font-size:10px;color:var(--t3);padding-top:4px">+'+(myActions.length-6)+' more</div>';
+    h+='</div>';
+  }
+
+  // ── QUESTIONS THEY'RE STILL ASKING ───────────────────────────
+  if(myQs.length){
+    h+='<div style="margin-bottom:13px">';
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Still Asking ('+myQs.length+')</div>';
+    myQs.slice(0,4).forEach(function(q){
+      h+='<div style="padding:5px 0;border-bottom:1px solid rgba(37,45,66,.35)">';
+      h+='<div style="font-size:11px;color:var(--text);line-height:1.35">'+q.question+'</div>';
+      h+='<div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;margin-top:1px">'+q.mdate+' · '+q.mtg+'</div></div>';
+    });
+    h+='</div>';
+  }
+
+  // ── RISKS THEY RAISED ────────────────────────────────────────
+  if(myRisks.length){
+    h+='<div style="margin-bottom:13px">';
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Risks Raised</div>';
+    myRisks.slice(0,4).forEach(function(r){
+      h+='<div style="display:flex;gap:7px;padding:5px 0;border-bottom:1px solid rgba(37,45,66,.35);align-items:flex-start">';
+      h+='<div style="width:6px;height:6px;border-radius:50%;background:'+(DS[r.severity]||'var(--t3)')+';flex-shrink:0;margin-top:4px"></div>';
+      h+='<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text);line-height:1.35">'+r.risk+'</div>';
+      h+='<div style="font-size:9px;color:var(--t3);margin-top:1px">'+r.mdate+' · '+r.mtg+'</div></div></div>';
+    });
+    h+='</div>';
+  }
+
+  // ── MEETING LOG ───────────────────────────────────────────────
+  if(nm.length){
+    var recent8=sorted.slice().reverse().slice(0,8);
+    h+='<div style="margin-bottom:10px">';
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Meeting Log ('+nm.length+')</div>';
+    recent8.forEach(function(m){
+      var pi=(m.intel.keyPeople||[]).find(function(p){return p.name===d.name;});
+      var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};
+      h+='<div style="padding:6px 0;border-bottom:1px solid rgba(37,45,66,.3);cursor:pointer;transition:background .1s;border-radius:3px" onclick="closeNetPanel();goIntelById('+m.id+')">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">';
+      h+='<div style="font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">'+m.meta.title+'</div>';
+      h+='<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">'+bdg(m.intel.companyPulse||'?',pc2)+'<span style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">'+m.meta.date.slice(5)+'</span></div></div>';
+      if(pi&&pi.stance)h+='<div style="font-size:10px;color:var(--t2);font-style:italic;line-height:1.3">'+pi.stance.slice(0,90)+(pi.stance.length>90?'...':'')+'</div>';
+      h+='</div>';
+    });
+    if(nm.length>8)h+='<div style="font-size:10px;color:var(--t3);text-align:center;padding-top:5px">+'+(nm.length-8)+' older meetings — <span style="cursor:pointer;color:var(--blue);text-decoration:underline" onclick="loadMoreMeetings()">load more</span></div>';
+    h+='</div>';
+  }else{
+    h+='<div style="text-align:center;padding:20px;color:var(--t3);font-size:12px">No meetings logged for this person yet.</div>';
+  }
+
+  // ── PREP BRIEF SHORTCUT ──────────────────────────────────────
+  h+='<button onclick="prepForPerson(\''+d.name.replace(/'/g,"\\'")+'\')" style="width:100%;padding:9px;border:1px solid var(--purple);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:12px;font-weight:500;cursor:pointer;font-family:\'Outfit\',sans-serif;transition:all .15s;margin-top:2px" onmouseover="this.style.background=\'rgba(139,92,246,.1)\'" onmouseout="this.style.background=\'transparent\'">⚡ Generate Prep Brief for '+d.name+'</button>';
+
+  document.getElementById('dossier-content').innerHTML=h;
+}
+
+// Jump to Prep tab with this person pre-filled
+window.prepForPerson=function(name){
+  closeNetPanel();
+  if(activeView!=='intel')switchView('intel');
+  switchIntelTab('prep');
+  document.getElementById('prep-att').value=name;
+  setTimeout(function(){document.getElementById('prep-title').focus();},100);
+  toast('Ready — add meeting title and generate brief for '+name);
+};
 
 function renderNetConn(d){var ml=links.filter(function(l){var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;return s===d.id||t===d.id;});var h='<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;font-family:\'JetBrains Mono\',monospace">Connections ('+ml.length+')</div>';if(ml.length){ml.forEach(function(l){var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;var oid=s===d.id?t:s;var other=nodeMap.get(oid);var ec=es(l.label).c;var sh=getMtgsForNode(d.id).filter(function(m){return getMtgsForNode(oid).some(function(cm){return cm.id===m.id;});}).length;h+='<div style="padding:7px 0;border-bottom:1px solid var(--b1)"><div style="display:flex;align-items:flex-start;gap:5px;padding-bottom:4px"><span style="color:'+ec+';font-size:11px">'+(s===d.id?'->':'<-')+'</span><div style="flex:1"><div style="font-size:12px;font-weight:500;color:'+nc(other||{type:'deal'})+'">'+( other&&other.name||'?')+'</div><div style="font-size:10px;color:var(--t3)">'+(l.label||'')+(sh?' -- '+sh+' shared mtg':'')+'</div>'+(sh>0?'<div class="strength-bar" style="margin-top:2px"><div class="strength-fill" style="width:'+Math.min(sh*20,100)+'%;background:'+ec+'"></div></div>':'')+'</div><button onclick="removeEdge(\''+s+'\',\''+t+'\')" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0 2px">x</button></div><textarea placeholder="Relationship notes..." style="font-size:11px;min-height:44px;padding:4px 7px;margin-top:2px" onblur="saveEdgeNote(\''+s+'\',\''+t+'\',this.value)">'+(l.notes||'')+'</textarea></div>';});}else h+='<div style="font-size:12px;color:var(--t3)">No connections -- use Connect toolbar</div>';document.getElementById('net-conn-content').innerHTML=h;}
 
