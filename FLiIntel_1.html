@@ -223,6 +223,96 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 .tl-check:hover{border-color:var(--green)}
 .tl-check.done{background:var(--green);border-color:var(--green)}
 .tl-prio-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:4px}
+/* ── MOBILE ── */
+.mob-nav{display:none}
+.mob-drawer{display:none}
+.mob-drawer-overlay{display:none}
+
+@media (max-width:768px){
+  /* Base */
+  html,body{overflow:auto;height:auto}
+  .app{height:auto;min-height:100dvh;padding-bottom:68px}
+
+  /* Topnav — simplified */
+  .topnav{padding:0 12px;gap:6px}
+  .view-tabs{display:none}
+  .nav-spacer{flex:1}
+  .sync-pill{display:none}
+  .nav-btn{display:none}
+  .ws-badge{font-size:11px;padding:3px 8px}
+
+  /* Mobile hamburger */
+  .mob-ham{display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:transparent;border:1px solid var(--b1);border-radius:var(--rsm);cursor:pointer;flex-shrink:0;color:var(--t2);font-size:16px}
+
+  /* Intel view — no sidebar */
+  .intel-view{flex-direction:column}
+  .intel-sidebar{display:none}
+  .intel-main{padding:14px 14px 20px;overflow-y:visible}
+
+  /* Timeline sidebar hidden on mobile */
+  .tl-sidebar{display:none}
+  .timeline-view{flex-direction:column}
+  .tl-main{padding:14px 14px 20px;overflow-y:visible}
+
+  /* Network view hidden on mobile */
+  #vtab-network{display:none}
+  #network-view{display:none!important}
+
+  /* Grids collapse */
+  .g2{grid-template-columns:1fr!important}
+  .g4{grid-template-columns:repeat(2,1fr)!important}
+
+  /* Inputs — 16px prevents iOS auto-zoom */
+  input,select,textarea{font-size:16px!important;padding:10px 12px}
+
+  /* Larger tap targets */
+  .btn{padding:10px 16px;font-size:14px}
+  .btn-sm{padding:8px 14px;font-size:13px}
+  .intel-tab{padding:12px 4px}
+  .tl-filter-btn{padding:8px 7px}
+
+  /* Log form textarea full-height feel */
+  #m-notes{min-height:200px}
+
+  /* Modals — bottom sheet on mobile */
+  .overlay{padding:0;align-items:flex-end;background:rgba(0,0,0,.7)}
+  .modal{border-radius:18px 18px 0 0;max-height:88dvh;padding:20px 18px 32px}
+  .ws-create{border-radius:18px 18px 0 0;max-height:88dvh;padding:20px 18px 32px}
+
+  /* Pulse bar — 2 cols on mobile */
+  .tl-pulse{grid-template-columns:repeat(2,1fr)}
+
+  /* Cards */
+  .tl-card{padding:10px 10px}
+  .card{padding:10px 12px}
+
+  /* Bottom mobile nav */
+  .mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;height:60px;background:rgba(13,15,21,.98);border-top:1px solid var(--b1);z-index:200;backdrop-filter:blur(12px);padding-bottom:env(safe-area-inset-bottom)}
+  .mob-tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer;border:none;background:transparent;color:var(--t3);font-family:'Outfit',sans-serif;font-size:10px;font-weight:500;padding:6px 0;transition:color .15s;-webkit-tap-highlight-color:transparent}
+  .mob-tab.active{color:var(--gold)}
+  .mob-tab svg,.mob-tab .mob-icon{font-size:18px;line-height:1}
+
+  /* Mobile drawer */
+  .mob-drawer{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--s1);border-radius:18px 18px 0 0;border-top:1px solid var(--b2);z-index:300;padding:20px 18px 32px;padding-bottom:calc(32px + env(safe-area-inset-bottom))}
+  .mob-drawer.open{display:block}
+  .mob-drawer-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:299}
+  .mob-drawer-overlay.open{display:block}
+  .mob-drawer-item{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--b1);cursor:pointer;font-size:15px;color:var(--text)}
+  .mob-drawer-item:last-child{border-bottom:none}
+  .mob-drawer-item .di-icon{font-size:20px;width:28px;text-align:center}
+
+  /* Recent meetings list above log form on mobile */
+  .mob-recent{margin-bottom:14px}
+  .mob-recent-row{display:flex;gap:7px;overflow-x:auto;padding-bottom:4px}
+  .mob-recent-row::-webkit-scrollbar{display:none}
+  .mob-recent-chip{flex-shrink:0;padding:5px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:20px;font-size:11px;white-space:nowrap;cursor:pointer}
+
+  /* Pulse bar pulse cells bigger touch */
+  .tl-pulse-cell{padding:10px 8px}
+
+  /* Prep output full width */
+  #prep-out .g2{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -293,6 +383,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
     <input type="file" id="nav-import-file" accept=".json" style="display:none">
     <button class="nav-btn" id="nav-members-btn">&#128100; Members</button>
     <div class="user-chip" id="user-chip-btn"><img id="user-chip-img" src="" alt=""></div>
+    <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()">&#9776;</button>
   </div>
 
   <!-- INTEL VIEW -->
@@ -632,6 +723,55 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   </div>
 </div>
 
+<!-- MOBILE BOTTOM NAV -->
+<nav class="mob-nav">
+  <button class="mob-tab active" id="mbt-log" onclick="mobNav('log')">
+    <span class="mob-icon">✏️</span><span>Log</span>
+  </button>
+  <button class="mob-tab" id="mbt-intel" onclick="mobNav('intel')">
+    <span class="mob-icon">⚡</span><span>Intel</span>
+  </button>
+  <button class="mob-tab" id="mbt-board" onclick="mobNav('board')">
+    <span class="mob-icon">📊</span><span>Board</span>
+  </button>
+  <button class="mob-tab" id="mbt-timeline" onclick="mobNav('timeline')">
+    <span class="mob-icon">📅</span><span>Timeline</span>
+  </button>
+  <button class="mob-tab" id="mbt-more" onclick="openMobDrawer()">
+    <span class="mob-icon">⋯</span><span>More</span>
+  </button>
+</nav>
+
+<!-- MOBILE DRAWER OVERLAY -->
+<div class="mob-drawer-overlay" id="mob-drawer-overlay" onclick="closeMobDrawer()"></div>
+
+<!-- MOBILE DRAWER -->
+<div class="mob-drawer" id="mob-drawer">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:14px" id="mob-drawer-ws"></div>
+  <div class="mob-drawer-item" onclick="mobNav('archive');closeMobDrawer()">
+    <span class="di-icon">🗂</span><span>Meeting Archive</span>
+  </div>
+  <div class="mob-drawer-item" onclick="mobNav('prep');closeMobDrawer()">
+    <span class="di-icon">🎯</span><span>Pre-Meeting Brief</span>
+  </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();setTimeout(function(){switchView('network');},100)" style="opacity:.6">
+    <span class="di-icon">🕸</span><span>Network Map <span style="font-size:11px;color:var(--t3)">(desktop only)</span></span>
+  </div>
+  <div style="height:1px;background:var(--b1);margin:8px 0"></div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();exportData()">
+    <span class="di-icon">💾</span><span>Backup Data</span>
+  </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();document.getElementById('nav-import-file').click()">
+    <span class="di-icon">📥</span><span>Restore from Backup</span>
+  </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();showMembers()">
+    <span class="di-icon">👥</span><span>Members</span>
+  </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();document.getElementById('user-chip-btn').click()">
+    <span class="di-icon">⚙️</span><span>Settings &amp; API Key</span>
+  </div>
+</div>
+
 <div class="tooltip" id="tooltip"></div>
 <div class="toast" id="toast"></div>
 
@@ -695,7 +835,7 @@ document.getElementById('ws-new-btn').addEventListener('click',function(){docume
 document.getElementById('ws-cancel-btn').addEventListener('click',function(){closeModal('create-ws-modal');document.getElementById('ws-screen').style.display='flex';});
 document.getElementById('ws-create-btn').addEventListener('click',async function(){var name=document.getElementById('ws-name-inp').value.trim();var role=document.getElementById('ws-role-inp').value.trim()||'Member';if(!name){alert('Enter a workspace name');return;}if(!currentUser){alert('Not signed in');return;}var btn=document.getElementById('ws-create-btn');btn.disabled=true;btn.textContent='Creating...';try{var wsId=Date.now().toString();var color=WS_COLORS[Math.floor(Math.random()*WS_COLORS.length)];var ws={id:wsId,name:name,color:color,createdBy:currentUser.uid,created:new Date().toISOString()};var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,photo:currentUser.photoURL||'',role:role,joined:new Date().toISOString()};await set(ref(db,'workspaces/'+wsId+'/info'),ws);await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{id:wsId,name:name,color:color,role:role});userWorkspaces.push({id:wsId,name:name,color:color,role:role});closeModal('create-ws-modal');selectWorkspace(wsId);}catch(e){alert('Failed: '+e.message);btn.disabled=false;btn.textContent='Create Workspace';}});
 
-async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];}catch(e){alert('Failed to open workspace: '+e.message);}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();}catch(e){alert('Failed to open workspace: '+e.message);}}
 
 function connectWorkspace(){netListeners.forEach(function(u){try{u();}catch(e){}});netListeners=[];setSS('connecting...');meetings=[];nodes=[];links=[];entities=[];calEntries=[];tlCommitments=[];
 var u1=onValue(ref(db,wsPath('meetings')),function(snap){var data=snap.val();meetings=data?Object.values(data).sort(function(a,b){return new Date(b.ts)-new Date(a.ts);}):[];updateCount();renderArchive();renderBoard();renderSidebarMtgList();if(currentMeeting){var upd=meetings.find(function(m){return m.id===currentMeeting.id;});if(upd)currentMeeting=upd;}if(activeView==='timeline')renderTimeline();setSS('live');},function(){setSS('offline');});
@@ -753,13 +893,143 @@ function launchRec(){if(!voiceOn)return;try{if(recog){try{recog.abort();}catch(e
 function stopVoice(){voiceOn=false;clearTimeout(vrTimer);try{if(recog)recog.abort();}catch(e){}recog=null;updateVUI(false);}
 function updateVUI(on){var btn=document.getElementById('voice-btn'),st=document.getElementById('voice-st');if(on){btn.style.cssText='background:var(--red);color:#fff;border-color:var(--red);min-width:85px;display:flex;align-items:center;gap:5px;font-size:12px';btn.innerHTML='<span class="rec-dot pulsing"></span>Stop';st.textContent='Recording';st.style.color='var(--red)';}else{btn.style.cssText='min-width:85px;display:flex;align-items:center;gap:5px;font-size:12px';btn.innerHTML='<span class="rec-dot" style="opacity:.4"></span>Voice';st.textContent='';}}
 
-async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){showProcErr('Add API key in user settings');return;}var meta={title:document.getElementById('m-title').value,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,att:document.getElementById('m-att').value,dur:document.getElementById('m-dur').value};var btn=document.getElementById('proc-btn');btn.disabled=true;btn.textContent='Analyzing...';clearProcErr();try{var intel=await callClaude(notes,meta);var m={id:Date.now(),meta:Object.assign({},meta,{title:meta.title||(meta.type+' -- '+meta.date)}),notes:notes,intel:intel,ts:new Date().toISOString(),loggedBy:currentUser.displayName,loggedByUid:currentUser.uid};await saveMeeting(m);['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');var r=await autoSyncEnts(m);pendingEnts=[];var msg='Meeting processed';if(r.added||r.updated)msg+=' -- '+[r.added?r.added+' new':(null),r.updated?r.updated+' updated':(null)].filter(Boolean).join(', ')+' in Network Map';toast(msg);}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
+async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){showProcErr('Add API key in user settings');return;}var meta={title:document.getElementById('m-title').value,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,att:document.getElementById('m-att').value,dur:document.getElementById('m-dur').value};var btn=document.getElementById('proc-btn');btn.disabled=true;btn.textContent='Analyzing...';clearProcErr();try{var intel=await callClaude(notes,meta);var m={id:Date.now(),meta:Object.assign({},meta,{title:meta.title||(meta.type+' -- '+meta.date)}),notes:notes,intel:intel,ts:new Date().toISOString(),loggedBy:currentUser.displayName,loggedByUid:currentUser.uid};await saveMeeting(m);['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);pendingEnts=[];var msg='Meeting processed';if(r.added||r.updated)msg+=' -- '+[r.added?r.added+' new':(null),r.updated?r.updated+' updated':(null)].filter(Boolean).join(', ')+' in Network Map';toast(msg);}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
 
 async function callClaude(notes,meta){var sp='You are a meeting intelligence analyst for a defense technology company. Extract maximum actionable value. Use speaker labels for attribution. CRITICAL: Every person listed in the Attendees field MUST appear in keyPeople. Every company or organization mentioned anywhere MUST appear in companies. Return ONLY valid JSON, no markdown. Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';var res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,system:sp,messages:[{role:'user',content:'Date:'+meta.date+' Type:'+meta.type+' Attendees:'+(meta.att||'?')+'\n\nIMPORTANT: All attendees must appear in keyPeople.\n\nTRANSCRIPT:\n'+notes}]})});if(!res.ok){var e=await res.json().catch(function(){return{};});throw new Error(e.error?e.error.message:'API error '+res.status);}var d=await res.json();var txt=(d.content||[]).map(function(b){return b.text||'';}).join('');var clean=txt.replace(/```json|```/g,'').trim();var fi=clean.indexOf('{'),la=clean.lastIndexOf('}');if(fi===-1||la===-1)throw new Error('No JSON in response');var js=clean.slice(fi,la+1);try{return JSON.parse(js);}catch(e){var fixed=js;var eo=(fixed.match(/\[/g)||[]).length-(fixed.match(/\]/g)||[]).length;var ec=(fixed.match(/\{/g)||[]).length-(fixed.match(/\}/g)||[]).length;for(var i=0;i<eo;i++)fixed+=']';for(var j=0;j<ec;j++)fixed+='}';return JSON.parse(fixed);}}
 
 async function generatePrep(){var title=document.getElementById('prep-title').value.trim()||'Upcoming meeting';var type=document.getElementById('prep-type').value;var atts=document.getElementById('prep-att').value.trim();var obj=document.getElementById('prep-obj').value.trim();var errEl=document.getElementById('prep-err');if(!atts){errEl.textContent='Add attendees';errEl.style.display='inline';return;}if(!apiKey){errEl.textContent='Add API key in user settings';errEl.style.display='inline';return;}errEl.style.display='none';var btn=document.getElementById('prep-btn');btn.disabled=true;btn.textContent='Generating...';var names=atts.split(/[,;]+/).map(function(n){return n.trim();}).filter(Boolean);var dossier='';names.forEach(function(name){var lname=name.toLowerCase();var pm=meetings.filter(function(m){return(m.intel.keyPeople||[]).some(function(p){return p.name.toLowerCase().indexOf(lname)!==-1;});});if(pm.length){dossier+='\n\n=== '+name+' ===';pm.slice(0,5).forEach(function(m){var p=(m.intel.keyPeople||[]).find(function(x){return x.name.toLowerCase().indexOf(lname)!==-1;});if(p){dossier+='\n['+m.meta.date+' -- '+m.meta.title+']';if(p.stance)dossier+='\nStance: '+p.stance;if(p.watchFor)dossier+='\nWatch: '+p.watchFor;}});}});var recent=meetings.slice(0,5);var openQ=recent.flatMap(function(m){return(m.intel.openQuestions||[]).map(function(q){return typeof q==='string'?q:q.question;});});var risks=recent.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return r.risk;});});var prompt='MEETING: '+title+' ('+type+')\nATTENDEES: '+atts;if(obj)prompt+='\nOBJECTIVES: '+obj;if(dossier)prompt+='\n\nATTENDEE INTELLIGENCE:'+dossier;if(openQ.length)prompt+='\n\nOPEN QUESTIONS: '+openQ.slice(0,4).join('; ');if(risks.length)prompt+='\n\nACTIVE RISKS: '+risks.slice(0,3).join('; ');prompt+='\n\nGenerate a pre-meeting brief:\n1. SITUATION READ\n2. PERSON BY PERSON\n3. WHAT TO PUSH ON\n4. WATCH LIST\n5. YOUR EDGE\n6. WALK IN KNOWING';try{var res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,system:'Strategic advisor. Direct, specific pre-meeting brief.',messages:[{role:'user',content:prompt}]})});if(!res.ok){var e2=await res.json().catch(function(){return{};});throw new Error(e2.error?e2.error.message:'API error '+res.status);}var d2=await res.json();var text=(d2.content||[]).map(function(b){return b.text||'';}).join('');window._prepTxt=text;var h='<div style="border:1px solid var(--b1);border-radius:var(--r);overflow:hidden"><div style="background:var(--purple);padding:10px 14px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:13px;font-weight:600;color:#fff">'+title+'</div><div style="font-size:11px;color:rgba(255,255,255,.7)">'+atts+'</div></div><button onclick="navigator.clipboard.writeText(window._prepTxt).then(function(){window.showToast(\'Copied\');})" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);border-radius:4px;color:#fff;font-size:11px;padding:3px 8px;cursor:pointer">Copy</button></div><div style="padding:14px">';text.split('\n').forEach(function(line){line=line.trim();if(!line)return;if(line.match(/^\d\.\s+[A-Z]/)||line.match(/^[A-Z][A-Z ]+[:-]/)){h+='<div style="margin-bottom:11px"><div class="prep-sec-title">'+line+'</div><div style="font-size:13px;color:var(--t2);line-height:1.75">';}else{h+='<p style="margin-bottom:4px">'+line+'</p>';}});h+='</div></div>';document.getElementById('prep-out').innerHTML=h;document.getElementById('prep-out').style.display='block';}catch(e){errEl.textContent=e.message||'Failed';errEl.style.display='inline';}btn.disabled=false;btn.textContent='Generate Brief';}
 
-async function generateDigest(){if(!meetings.length){toast('No meetings to digest');return;}if(!apiKey){toast('Add API key in user settings');return;}var btn=document.getElementById('digest-btn');if(btn){btn.disabled=true;btn.textContent='Generating...';}var now=new Date(),wkAgo=new Date(now);wkAgo.setDate(wkAgo.getDate()-7);var wMtgs=meetings.filter(function(m){return new Date(m.meta.date)>=wkAgo;});var allA=meetings.slice(0,10).flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title});});});var hiA=allA.filter(function(a){return a.priority==='high';});var hiR=meetings.slice(0,10).flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var prompt='Weekly digest for '+currentWs.name+' ending '+now.toISOString().slice(0,10)+'.\n\nMEETINGS THIS WEEK ('+wMtgs.length+'):\n'+(wMtgs.map(function(m){return '- '+m.meta.date+': '+m.meta.title+' Pulse: '+(m.intel.companyPulse||'?')+'\n  '+(m.intel.summary||'');}).join('\n')||'None')+'\n\nHIGH PRIORITY ACTIONS ('+hiA.length+'):\n'+(hiA.slice(0,6).map(function(a){return '- '+a.task+' ('+(a.owner||'?')+')';}).join('\n')||'None')+'\n\nHIGH RISKS ('+hiR.length+'):\n'+(hiR.slice(0,4).map(function(r){return '- '+r.risk;}).join('\n')||'None')+'\n\nGenerate:\n1. WEEK IN REVIEW\n2. COMPANY PULSE\n3. WHAT TO PRIORITIZE\n4. OPEN LOOPS\n5. PATTERN RECOGNITION\n6. MONDAY FOCUS';try{var res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1800,system:'Strategic advisor. Direct weekly briefing.',messages:[{role:'user',content:prompt}]})});if(!res.ok){var e3=await res.json().catch(function(){return{};});throw new Error(e3.error?e3.error.message:'API error '+res.status);}var d3=await res.json();var text=(d3.content||[]).map(function(b){return b.text||'';}).join('');window._dt=text;var h='';text.split('\n').forEach(function(line){line=line.trim();if(!line)return;if(line.match(/^\d\.\s+[A-Z]/)||line.match(/^[A-Z][A-Z ]+[:-]/)){h+='<div class="digest-section"><div class="digest-title">'+line+'</div><div style="font-size:13px;color:var(--t2);line-height:1.75">';}else{h+='<p style="margin-bottom:4px">'+line+'</p>';}});document.getElementById('digest-out').innerHTML=h||text;document.getElementById('digest-modal').style.display='flex';}catch(e){toast(e.message||'Digest failed');}if(btn){btn.disabled=false;btn.textContent='Weekly Digest';}}
+async function generateDigest(){
+  if(!meetings.length){toast('No meetings to digest');return;}
+  if(!apiKey){toast('Add API key in user settings');return;}
+  var btn=document.getElementById('digest-btn');
+  if(btn){btn.disabled=true;btn.textContent='Generating...';}
+
+  var now=new Date(),wkAgo=new Date(now);wkAgo.setDate(wkAgo.getDate()-7);
+  var wMtgs=meetings.filter(function(m){return new Date(m.meta.date)>=wkAgo;});
+
+  // Meeting type distribution -- tells Claude what kind of org this is
+  var typeCount={};
+  meetings.forEach(function(m){typeCount[m.meta.type]=(typeCount[m.meta.type]||0)+1;});
+  var dominantTypes=Object.entries(typeCount).sort(function(a,b){return b[1]-a[1];}).slice(0,3).map(function(x){return x[0]+' ('+x[1]+')';});
+
+  // Top companies by total mentions across all meetings
+  var coCount={};
+  meetings.forEach(function(m){(m.intel.companies||[]).forEach(function(c){if(c.name)coCount[c.name]=(coCount[c.name]||0)+1;});});
+  var topCos=Object.entries(coCount).sort(function(a,b){return b[1]-a[1];}).slice(0,6).map(function(x){return x[0];});
+
+  // Top people with stances
+  var personMap={};
+  meetings.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!p.name)return;if(!personMap[p.name])personMap[p.name]={name:p.name,role:p.role||'',count:0,lastStance:''};personMap[p.name].count++;if(p.stance)personMap[p.name].lastStance=p.stance;});});
+  var topPeople=Object.values(personMap).sort(function(a,b){return b.count-a.count;}).slice(0,5);
+
+  // Pulse trend (chronological)
+  var pulseHistory=meetings.slice().reverse().slice(-10).map(function(m){return m.meta.date.slice(5)+':'+m.intel.companyPulse;}).join(' → ');
+
+  // Who owns the most action items
+  var ownerMap={};
+  meetings.slice(0,10).forEach(function(m){(m.intel.actionItems||[]).forEach(function(a){if(a.owner)ownerMap[a.owner]=(ownerMap[a.owner]||0)+1;});});
+  var topOwners=Object.entries(ownerMap).sort(function(a,b){return b[1]-a[1];}).slice(0,4).map(function(x){return x[0]+' ('+x[1]+')';});
+
+  // Open questions across recent meetings
+  var openQs=meetings.slice(0,5).flatMap(function(m){return(m.intel.openQuestions||[]).map(function(q){return typeof q==='string'?q:q.question;});}).slice(0,5);
+
+  // Red flags carrying forward
+  var redFlags=meetings.slice(0,5).flatMap(function(m){return m.intel.redFlags||[];}).slice(0,4);
+
+  // Action items and risks
+  var allA=meetings.slice(0,10).flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title});});});
+  var hiA=allA.filter(function(a){return a.priority==='high';});
+  var hiR=meetings.slice(0,10).flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});
+
+  var wsName=currentWs.name;
+  var wsRole=currentWs.role||'Member';
+
+  // System prompt tailored to this specific workspace
+  var sysPrompt='You are delivering a personalized weekly intelligence brief to the '+wsRole+' of '+wsName+'. '
+    +'Based on their meeting patterns, this org is primarily focused on: '+dominantTypes.join(', ')+'. '
+    +'Write with authority and specificity. Reference actual people, companies, and situations by name — never speak generically. '
+    +'Every section must feel like it was written specifically for '+wsName+', not from a template. '
+    +'Be direct, opinionated, and actionable. Surface what matters most to someone in this exact role at this exact org. '
+    +'The pulse section should be named "'+wsName.toUpperCase()+' PULSE", not "COMPANY PULSE".';
+
+  var prompt='=== WORKSPACE: '+wsName+' ===
+'
+    +'Recipient role: '+wsRole+'
+'
+    +'Meeting focus mix: '+dominantTypes.join(', ')+'
+'
+    +'Organizations in orbit: '+(topCos.join(', ')||'none logged yet')+'
+'
+    +'Key people: '+topPeople.map(function(p){return p.name+(p.role?' ('+p.role+')':'')+', '+p.count+' meetings'+(p.lastStance?', last stance: "'+p.lastStance.slice(0,60)+'"':'');}).join('
+  ')+'
+'
+    +'Pulse trend: '+pulseHistory+'
+'
+    +'Action owners: '+(topOwners.join(', ')||'none')+'
+'
+    +'
+=== THIS WEEK ('+wMtgs.length+' meetings) ===
+'
+    +(wMtgs.map(function(m){return '- '+m.meta.date+': '+m.meta.title+'
+  Pulse: '+(m.intel.companyPulse||'?')+'
+  '+( m.intel.summary||'');}).join('
+')||'No meetings logged this week')
+    +'
+
+=== HIGH PRIORITY ACTIONS ('+hiA.length+') ===
+'
+    +(hiA.slice(0,6).map(function(a){return '- '+a.task+' → '+(a.owner||'?')+(a.deadline?' by '+a.deadline:'');}).join('
+')||'None')
+    +'
+
+=== HIGH RISKS ('+hiR.length+') ===
+'
+    +(hiR.slice(0,4).map(function(r){return '- '+r.risk+(r.raisedBy?' ['+r.raisedBy+']':'');}).join('
+')||'None')
+    +(openQs.length?'
+
+=== OPEN QUESTIONS CARRYING FORWARD ===
+'+openQs.join('
+'):'')
+    +(redFlags.length?'
+
+=== ACTIVE RED FLAGS ===
+'+redFlags.join('
+'):'')
+    +'
+
+=== BRIEF SECTIONS REQUIRED ===
+'
+    +'1. WEEK IN REVIEW — what actually happened this week, name names and specific deals/situations
+'
+    +'2. '+wsName.toUpperCase()+' PULSE — honest read of this org's momentum and what it means right now
+'
+    +'3. TOP PRIORITIES — 3-5 specific, named, actionable items for the week ahead
+'
+    +'4. OPEN LOOPS — things said or committed to that need closure, who owes what to whom
+'
+    +'5. PATTERN RECOGNITION — what's the real signal under the noise across the last few weeks
+'
+    +'6. MONDAY FOCUS — the single most important thing '+wsName+' should do this week, and why';
+
+  try{
+    var res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2400,system:sysPrompt,messages:[{role:'user',content:prompt}]})});
+    if(!res.ok){var e3=await res.json().catch(function(){return{};});throw new Error(e3.error?e3.error.message:'API error '+res.status);}
+    var d3=await res.json();
+    var text=(d3.content||[]).map(function(b){return b.text||'';}).join('');
+    window._dt=text;
+    // Workspace-branded header
+    var h='<div style="background:linear-gradient(135deg,rgba(201,162,39,.08),rgba(139,92,246,.06));border-radius:var(--rsm);padding:10px 14px;margin-bottom:14px;border:1px solid rgba(201,162,39,.25)">'
+      +'<div style="font-size:12px;font-weight:600;color:var(--gold)">'+wsName+' — Weekly Intelligence Brief</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-top:2px">'+wsRole+' &nbsp;·&nbsp; w/e '+now.toISOString().slice(0,10)+' &nbsp;·&nbsp; '+meetings.length+' meetings on record</div>'
+      +'</div>';
+    text.split('\n').forEach(function(line){line=line.trim();if(!line)return;if(line.match(/^\d\.\s+[A-Z]/)||line.match(/^[A-Z][A-Z &/-]+[:-]/)){h+='<div class="digest-section"><div class="digest-title">'+line+'</div><div style="font-size:13px;color:var(--t2);line-height:1.75">';}else{h+='<p style="margin-bottom:4px">'+line+'</p>';}});
+    document.getElementById('digest-out').innerHTML=h||text;
+    document.getElementById('digest-modal').style.display='flex';
+  }catch(e){toast(e.message||'Digest failed');}
+  if(btn){btn.disabled=false;btn.textContent='Weekly Digest';}
+}
 window.generateDigest=generateDigest;
 
 function renderIntel(m){var intel=m.intel,meta=m.meta;var tc=TC[meta.type]||TC['Other'],pc=PC[intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};var mc='#c9a227';var h='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:7px"><div><div style="font-size:16px;font-weight:700;margin-bottom:2px">'+meta.title+'</div><div style="font-size:12px;color:var(--t2);display:flex;align-items:center;gap:5px">'+meta.date+(meta.att?' -- '+meta.att:'')+(meta.dur?' -- '+meta.dur:'')+(m.loggedBy?' ':''+(m.loggedBy?who(m.loggedBy,mc):''))+'</div></div><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'+bdg(meta.type,tc)+bdg(intel.companyPulse||'?',pc)+'<button onclick="showSyncModal()" style="padding:3px 8px;border:1px solid var(--gold);border-radius:4px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer" title="Review or manually edit Network Map entities">Edit Sync</button><button onclick="editMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--blue);border-radius:4px;background:transparent;color:var(--blue);font-size:11px;cursor:pointer">Edit</button><button onclick="delMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--b1);border-radius:4px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer">Remove</button></div></div>';h+='<div class="card"><div class="ctitle">Summary</div><p style="font-size:13px;line-height:1.75">'+(intel.summary||'--')+'</p>'+(intel.energyRead?'<p style="font-size:12px;color:var(--t2);font-style:italic;margin-top:7px;padding-top:7px;border-top:1px solid var(--b1)">'+intel.energyRead+'</p>':'')+'</div>';h+='<div class="g2">'+sc('Key Decisions',intel.keyDecisions||[],function(d){return '<div class="irow"><div class="dot" style="background:#3b82f6"></div><div><div style="font-size:13px;font-weight:500">'+d.decision+'</div>'+(d.owner?'<div style="font-size:11px;color:var(--t2)">Owner: '+d.owner+'</div>':'')+'</div></div>';})+sc('Open Questions',intel.openQuestions||[],function(q){var x=typeof q==='string'?{question:q}:q;return '<div class="irow"><div class="dot" style="background:#f59e0b"></div><div><div style="font-size:13px">'+x.question+'</div>'+(x.askedBy?'<div style="font-size:11px;color:var(--gold)">Asked by: '+x.askedBy+'</div>':'')+'</div></div>';})+'</div>';h+='<div class="card"><div class="ctitle">Action Items</div>';if((intel.actionItems||[]).length){intel.actionItems.forEach(function(a){var ac=a.priority==='high'?{b:'#1f0c0c',t:'#f87171'}:a.priority==='low'?{b:'#061510',t:'#4ade80'}:{b:'#1c1504',t:'#fbbf24'};h+='<div class="irow"><div class="dot" style="background:'+(DS[a.priority]||'#f59e0b')+'"></div><div style="flex:1"><div style="display:flex;justify-content:space-between;gap:7px"><span style="font-size:13px;font-weight:500">'+a.task+'</span>'+bdg(a.priority||'medium',ac)+'</div>';var sub=[a.owner?'Owner: '+a.owner:'',a.deadline?'Due: '+a.deadline:''].filter(Boolean).join(' -- ');if(sub)h+='<div style="font-size:11px;color:var(--t2)">'+sub+'</div>';if(a.context)h+='<div style="font-size:11px;color:var(--t2)">'+a.context+'</div>';h+='</div></div>';});}else h+='<div style="font-size:13px;color:var(--t2)">None recorded</div>';h+='</div>';var allR=(intel.risks||[]).map(function(r){return Object.assign({},r,{_t:'risk'});}).concat((intel.redFlags||[]).map(function(f){return{_t:'flag',text:f};}));h+='<div class="g2">'+sc('Risks and Red Flags',allR,function(item){if(item._t==='flag')return '<div class="irow"><div class="dot" style="background:#ef4444"></div><div style="font-size:13px;font-style:italic">'+item.text+'</div></div>';return '<div class="irow"><div class="dot" style="background:'+(DS[item.severity]||'#f59e0b')+'"></div><div><div style="font-size:13px">'+item.risk+'</div>'+(item.raisedBy?'<div style="font-size:11px;color:var(--gold)">Raised by: '+item.raisedBy+'</div>':'')+'</div></div>';})+sc('Milestones',intel.milestones||[],function(mi){return '<div class="irow"><div class="dot" style="background:'+(DS[mi.status]||'#888')+'"></div><div><div style="font-size:13px">'+mi.milestone+'</div><div style="font-size:11px;color:var(--t2)">'+mi.date+' -- '+mi.status+'</div></div></div>';})+'</div>';h+='<div class="card"><div class="ctitle">Key People</div>';if((intel.keyPeople||[]).length){intel.keyPeople.forEach(function(p){var ini=p.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div class="irow" style="align-items:flex-start"><div style="width:30px;height:30px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold);flex-shrink:0">'+ini+'</div><div style="flex:1"><div style="font-size:13px;font-weight:600">'+p.name+(p.role?' <span style="font-weight:400;color:var(--t2);font-size:12px">-- '+p.role+'</span>':'')+(p.org?' <span style="color:var(--t3);font-size:11px">@ '+p.org+'</span>':'')+'</div>'+(p.stance?'<div style="font-size:12px;color:var(--text);margin-top:2px;line-height:1.55;font-style:italic">'+p.stance+'</div>':'')+(p.watchFor?'<div style="font-size:11px;color:var(--amber);margin-top:3px">Watch: '+p.watchFor+'</div>':'')+'</div></div>';});}else h+='<div style="font-size:13px;color:var(--t2)">None recorded</div>';h+='</div>';h+='<div class="card"><div class="ctitle">Learning Insights</div>';if((intel.learningInsights||[]).length)intel.learningInsights.forEach(function(ins,i){h+='<div class="irow"><span style="font-size:10px;font-family:\'JetBrains Mono\',monospace;color:var(--t3);width:16px;flex-shrink:0;margin-top:2px">'+String(i+1).padStart(2,'0')+'</span><div style="font-size:13px;line-height:1.6">'+ins+'</div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None extracted</div>';h+='</div>';if((intel.followUpTopics||[]).length){h+='<div class="card"><div class="ctitle">Watch Next Meeting</div><div style="display:flex;flex-wrap:wrap;gap:4px">';intel.followUpTopics.forEach(function(f){h+='<span style="font-size:12px;padding:2px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:4px">'+f+'</span>';});h+='</div></div>';}var deltas=[];(intel.keyPeople||[]).forEach(function(p){if(!p.name||!p.stance)return;var prev=meetings.find(function(pm){return pm.id!==m.id&&(pm.intel.keyPeople||[]).some(function(pp){return pp.name===p.name&&pp.stance;});});if(!prev)return;var pp=(prev.intel.keyPeople||[]).find(function(x){return x.name===p.name;});if(pp&&pp.stance!==p.stance)deltas.push({name:p.name,role:p.role,prev:pp.stance,prevDate:prev.meta.date,curr:p.stance});});if(deltas.length){h+='<div class="card" style="border-color:rgba(139,92,246,.3)"><div class="ctitle" style="color:var(--purple)">Position Delta -- What Changed</div>';deltas.forEach(function(d){var ini=d.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--b1)"><div style="display:flex;gap:7px;align-items:center;margin-bottom:7px"><div style="width:24px;height:24px;border-radius:50%;background:var(--s2);border:1px solid var(--purple);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:var(--purple);flex-shrink:0">'+ini+'</div><div style="font-size:13px;font-weight:600">'+d.name+(d.role?' <span style="font-weight:400;color:var(--t2);font-size:12px">-- '+d.role+'</span>':'')+'</div></div><div style="display:grid;grid-template-columns:1fr 20px 1fr;gap:5px"><div style="background:var(--s2);border-radius:4px;padding:7px 9px;border-left:2px solid var(--t3)"><div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;margin-bottom:3px">'+d.prevDate+'</div><div style="font-size:12px;color:var(--t2);font-style:italic">'+d.prev+'</div></div><div style="text-align:center;font-size:14px;color:var(--purple);padding-top:10px">-&gt;</div><div style="background:var(--s2);border-radius:4px;padding:7px 9px;border-left:2px solid var(--purple)"><div style="font-size:9px;color:var(--purple);font-family:\'JetBrains Mono\',monospace;margin-bottom:3px">Now</div><div style="font-size:12px;color:var(--text);font-style:italic">'+d.curr+'</div></div></div></div>';});h+='</div>';}document.getElementById('intel-body').innerHTML=h;document.getElementById('intel-body').style.display='block';document.getElementById('intel-empty').style.display='none';}
@@ -965,6 +1235,55 @@ function toast(m){var t=document.getElementById('toast');t.textContent=m;t.class
 window.showToast=toast;
 
 function injectPWA(){var ico="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%230b0d11'/><rect x='48' y='48' width='96' height='96' rx='6' fill='none' stroke='%23c9a227' stroke-width='8'/><circle cx='96' cy='96' r='18' fill='%23c9a227'/></svg>";var manifest={name:'FLi Intel',short_name:'FLi Intel',start_url:'./',display:'standalone',background_color:'#0b0d11',theme_color:'#0b0d11',icons:[{src:ico,sizes:'192x192',type:'image/svg+xml'}]};var ml=document.getElementById('mlink');if(ml)ml.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/json'}));var lnk=document.createElement('link');lnk.rel='icon';lnk.href=ico;document.head.appendChild(lnk);}
+
+// ── MOBILE NAV ──────────────────────────────────────────────
+
+var MOB_INTEL_TABS = ['log','intel','prep','archive','board'];
+var MOB_BTN_MAP = {log:'mbt-log',intel:'mbt-intel',board:'mbt-board',timeline:'mbt-timeline',archive:'mbt-intel',prep:'mbt-intel'};
+
+function mobNav(dest){
+  // Update active state on bottom nav
+  document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});
+  var activeBtn = MOB_BTN_MAP[dest] || 'mbt-log';
+  var btn = document.getElementById(activeBtn);
+  if(btn) btn.classList.add('active');
+
+  if(dest === 'timeline'){
+    switchView('timeline');
+  } else {
+    if(activeView !== 'intel') switchView('intel');
+    if(MOB_INTEL_TABS.indexOf(dest) !== -1) switchIntelTab(dest);
+  }
+  // Scroll to top of content
+  var main = document.querySelector('.intel-main');
+  if(main) main.scrollTop = 0;
+  window.scrollTo(0,0);
+}
+window.mobNav = mobNav;
+
+function openMobDrawer(){
+  var ws = document.getElementById('mob-drawer-ws');
+  if(ws && currentWs) ws.textContent = currentWs.name + (currentWs.role ? ' — ' + currentWs.role : '');
+  document.getElementById('mob-drawer').classList.add('open');
+  document.getElementById('mob-drawer-overlay').classList.add('open');
+}
+window.openMobDrawer = openMobDrawer;
+
+function closeMobDrawer(){
+  document.getElementById('mob-drawer').classList.remove('open');
+  document.getElementById('mob-drawer-overlay').classList.remove('open');
+}
+window.closeMobDrawer = closeMobDrawer;
+
+// On mobile, default to Log tab on load
+function initMobile(){
+  if(window.innerWidth <= 768){
+    switchIntelTab('log');
+    document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});
+    var logBtn = document.getElementById('mbt-log');
+    if(logBtn) logBtn.classList.add('active');
+  }
+}
 
 onAuthStateChanged(auth,function(user){if(user)checkInvites(user);});
 </script>
