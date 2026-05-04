@@ -390,6 +390,11 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   /* Prep output full width */
   #prep-out .g2{grid-template-columns:1fr}
 }
+.export-btn{padding:3px 8px;border:1px solid rgba(201,162,39,.4);border-radius:4px;background:transparent;color:var(--gold);font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.export-btn:hover{background:rgba(201,162,39,.1)}
+.transcript-banner{background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.04));border:1px solid rgba(34,197,94,.3);border-radius:var(--rsm);padding:8px 11px;margin-bottom:8px;display:none}
+.transcript-speaker-pill{display:inline-block;font-size:10px;padding:1px 7px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);border-radius:10px;color:#22c55e;margin:1px}
+.notes-drop-zone{border:2px dashed rgba(34,197,94,.4);background:rgba(34,197,94,.04)}
 </style>
 </head>
 <body>
@@ -458,6 +463,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <span id="sync-lbl" style="font-size:10px;color:var(--t3)">connecting...</span>
     </div>
     <button class="nav-btn" id="nav-export-btn">&#8595; Backup</button>
+    <button class="nav-btn" id="nav-share-btn" onclick="exportWorkspaceReport()" style="border-color:rgba(201,162,39,.4);color:var(--gold)">&#8599; Export</button>
     <button class="nav-btn" id="nav-import-trigger">&#8593; Restore</button>
     <input type="file" id="nav-import-file" accept=".json" style="display:none">
     <button class="nav-btn" id="nav-members-btn">&#128100; Members</button>
@@ -491,7 +497,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <!-- Metadata strip — compact 3-col -->
         <div class="log-meta-strip">
           <input type="date" id="m-date">
-          <select id="m-type"><option>Fundraising</option><option>Board</option><option>Go-to-Market</option><option>Product</option><option>Team / HR</option><option>Investor Update</option><option selected>Strategy</option><option>Operations</option><option>Sales</option><option>Partnership</option><option>Other</option></select>
+          <select id="m-type"><option>Fundraising</option><option>Board</option><option>Go-to-Market</option><option>Product</option><option>Team / HR</option><option>Investor Update</option><option selected>Strategy</option><option>Operations</option><option>Sales</option><option>Partnership</option><option>Call Transcript</option><option>Other</option></select>
           <input type="text" id="m-dur" placeholder="90 min">
         </div>
         <!-- Opportunity tag -->
@@ -508,10 +514,29 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <!-- Notes — dominant element -->
         <div style="margin-bottom:10px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <div class="lbl" style="margin-bottom:0">Notes / Transcript</div>
-            <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace" id="char-count"></span>
+            <div class="lbl" style="margin-bottom:0" id="notes-lbl">Notes / Transcript</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <label for="transcript-file-inp" style="font-size:10px;color:var(--t3);cursor:pointer;border:1px solid var(--b2);border-radius:3px;padding:1px 6px;font-family:'JetBrains Mono',monospace" title="Drop a .txt transcript file">📎 File</label>
+              <input type="file" id="transcript-file-inp" accept=".txt,.srt,.vtt" style="display:none" onchange="handleTranscriptFile(this)">
+              <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace" id="char-count"></span>
+            </div>
           </div>
-          <textarea id="m-notes" style="min-height:320px;font-size:13px" placeholder="Paste Otter.ai transcript, meeting notes, or speak directly..." oninput="updateCC()"></textarea>
+          <!-- Transcript detected banner -->
+          <div class="transcript-banner" id="transcript-banner">
+            <div style="display:flex;align-items:flex-start;gap:8px">
+              <span style="font-size:16px;flex-shrink:0">✓</span>
+              <div style="flex:1">
+                <div style="font-size:11px;font-weight:600;color:#22c55e;margin-bottom:3px" id="transcript-banner-title">Transcript detected</div>
+                <div style="font-size:10px;color:var(--t2);margin-bottom:5px" id="transcript-banner-meta"></div>
+                <div id="transcript-speaker-pills" style="margin-bottom:6px"></div>
+                <div style="display:flex;gap:6px">
+                  <button onclick="applyTranscriptMeta()" style="font-size:10px;padding:2px 8px;background:#22c55e;border:none;border-radius:3px;color:#fff;cursor:pointer;font-family:'Outfit',sans-serif">✓ Apply auto-fill</button>
+                  <button onclick="dismissTranscriptBanner()" style="font-size:10px;padding:2px 8px;background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t3);cursor:pointer">Dismiss</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <textarea id="m-notes" style="min-height:300px;font-size:13px" placeholder="Paste Otter.ai transcript, meeting notes, or drop a .txt file..." oninput="onNotesInput()" ondragover="onNotesDragOver(event)" ondragleave="onNotesDragLeave(event)" ondrop="onNotesDrop(event)"></textarea>
         </div>
         <!-- Action row -->
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
@@ -521,7 +546,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
           <span id="proc-err" style="font-size:12px;color:var(--red);display:none"></span>
           <button class="btn btn-gold log-process-btn" id="proc-btn">Process</button>
         </div>
-        <div class="tip"><strong style="color:var(--text)">Otter.ai:</strong> Export with speaker labels (Tom: ...) for best attribution. Everyone in Attendees auto-syncs to Network Map.</div>
+        <div class="tip"><strong style="color:var(--text)">Otter.ai:</strong> Copy all (Ctrl+A, Ctrl+C) from any Otter transcript and paste here — speakers, dates, and attendees auto-fill. Or drag-drop the exported .txt file.</div>
       </div>
       <div id="itab-intel" style="display:none">
         <div id="intel-empty" class="empty-state">
@@ -561,7 +586,11 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <div id="arch-list"></div>
       </div>
       <div id="itab-board" style="display:none">
-        <div id="board-empty" class="empty">Log meetings to populate the Board</div>
+        <div id="board-empty" style="display:none;padding:24px 20px;max-width:540px;margin:0 auto">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text)">Welcome to FLi Intel</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:18px;line-height:1.6">Your defense BD intelligence platform. The Board populates as you log meetings — every entry builds the intelligence layer automatically.</div>
+          <div id="onboarding-checklist"></div>
+        </div>
         <div id="board-body" style="display:none"></div>
       </div>
 
@@ -598,6 +627,11 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       </div>
       <div style="padding:8px;overflow-y:auto;flex:1">
         <div id="opp-stage-list"></div>
+      </div>
+      <!-- Calibration status -->
+      <div id="opp-calibration-strip" style="padding:7px 10px;border-top:1px solid var(--b1);font-size:10px;color:var(--t3);cursor:pointer" onclick="toggleCalibrationPanel()"></div>
+      <div id="opp-calibration-panel" style="display:none;padding:10px;border-top:1px solid var(--b1);background:var(--s2)">
+        <div id="opp-calibration-detail"></div>
       </div>
     </div>
     <!-- Right: opportunity detail -->
@@ -647,6 +681,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <button class="nb" onclick="zoomOut()">&minus;</button>
       <div class="ntb-sep"></div>
       <button class="nb" id="path-btn" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.4)">⇢ Path</button>
+      <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
     </div>
     <!-- PATH FINDER PANEL -->
@@ -663,12 +698,30 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div id="path-result" style="margin-top:4px"></div>
     </div>
     <div class="search-results" id="net-search-results"></div>
+
+    <!-- DEDUP PANEL -->
+    <div id="dedup-panel" style="display:none;position:absolute;top:52px;right:14px;width:380px;max-height:calc(100vh - 140px);overflow-y:auto;background:var(--s1);border:1px solid rgba(245,158,11,.4);border-radius:var(--r);z-index:20;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--amber)">⊕ Network Deduplication</div>
+        <button onclick="toggleDedupPanel()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:14px;line-height:1">×</button>
+      </div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:12px">Finds nodes that likely represent the same person. Review each pair and confirm merges. The node with more data is kept.</div>
+      <div id="dedup-scan-area">
+        <button onclick="runDedupScan()" class="btn btn-gold" style="width:100%;margin-bottom:8px">Scan for Duplicates</button>
+      </div>
+      <div id="dedup-results"></div>
+      <div id="dedup-progress" style="display:none;padding:10px 0;text-align:center">
+        <span class="proc-dots"><span></span><span></span><span></span></span>
+        <span id="dedup-progress-txt" style="font-size:11px;color:var(--t2);margin-left:8px">Merging...</span>
+      </div>
+    </div>
     <svg id="net-canvas" style="position:absolute;top:42px;left:220px;right:0;bottom:0"></svg>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
           <div id="panel-type-lbl" style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3)"></div>
           <div style="display:flex;gap:4px">
+            <button class="export-btn" onclick="exportDossier()" id="panel-export-btn" style="display:none">&#8599; Export</button>
             <button class="btn btn-sm" id="panel-del-btn" style="color:var(--red);border-color:var(--red);font-size:10px">Delete</button>
             <button class="nb" onclick="closeNetPanel()">x</button>
           </div>
@@ -688,7 +741,10 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <div class="fld"><div class="plbl">Intelligence Notes</div><textarea id="panel-notes" rows="5" onchange="saveNetPanel()"></textarea></div>
       </div>
       <div class="panel-scroll" id="nptab-dossier" style="display:none"><div id="dossier-content" style="margin-top:8px"></div></div>
-      <div class="panel-scroll" id="nptab-timeline360" style="display:none"><div id="timeline360-content" style="margin-top:8px"></div></div>
+      <div class="panel-scroll" id="nptab-timeline360" style="display:none">
+        <div id="timeline360-narrative" style="display:none"></div>
+        <div id="timeline360-content" style="margin-top:8px"></div>
+      </div>
       <div class="panel-scroll" id="nptab-network" style="display:none"><div id="net-conn-content" style="margin-top:8px"></div></div>
     </div>
     <div class="edge-legend"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:7px">Edge Types</div><div id="edge-legend-items"></div></div>
@@ -869,7 +925,41 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 
     <div style="border-top:1px solid var(--b1);padding-top:12px;display:flex;gap:7px;justify-content:space-between">
       <button class="btn btn-sm" id="signout-btn" style="color:var(--red);border-color:var(--red)">Sign Out</button>
-      <button class="btn btn-sm" onclick="closeModal('user-modal')">Close</button>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-sm" onclick="showSecurityRules()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Firebase Security Rules setup">🔒 Security</button>
+        <button class="btn btn-sm" onclick="closeModal('user-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECURITY RULES MODAL -->
+<div class="overlay" id="security-modal" style="display:none">
+  <div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+      <div>
+        <div style="font-size:16px;font-weight:700">🔒 Firebase Security Rules</div>
+        <div style="font-size:11px;color:var(--t2);margin-top:3px">Lock the database to authenticated workspace members before onboarding the team.</div>
+      </div>
+      <button onclick="closeModal('security-modal')" style="background:none;border:none;color:var(--t3);font-size:20px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div id="security-status-banner" style="margin-bottom:12px;padding:8px 11px;border-radius:var(--rsm);font-size:11px"></div>
+    <div style="margin-bottom:10px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:6px">Step 1 — Go to Firebase Console</div>
+      <div style="font-size:11px;color:var(--t2);line-height:1.6">Open <a href="https://console.firebase.google.com" target="_blank" style="color:var(--gold)">console.firebase.google.com</a> → select project <strong style="color:var(--text)">fli-network</strong> → Realtime Database → Rules tab.</div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:6px">Step 2 — Replace the rules with this</div>
+      <div style="position:relative">
+        <pre id="security-rules-pre" style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);padding:10px 12px;font-size:10px;font-family:'JetBrains Mono',monospace;overflow-x:auto;color:var(--t2);line-height:1.6;max-height:320px;overflow-y:auto"></pre>
+        <button onclick="copySecurityRules()" style="position:absolute;top:6px;right:6px;font-size:9px;padding:2px 8px;border:1px solid var(--b2);border-radius:3px;background:var(--s1);color:var(--t2);cursor:pointer;font-family:'Outfit',sans-serif">Copy</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--t2);line-height:1.6;padding:8px 11px;background:rgba(201,162,39,.06);border:1px solid rgba(201,162,39,.2);border-radius:var(--rsm)">
+      ⚡ <strong style="color:var(--gold)">What these rules do:</strong> Only authenticated users who are members of a workspace can read or write that workspace's data. New workspace creation still works. Invitations still work. Everything else is locked.
+    </div>
+    <div style="margin-top:12px;text-align:right">
+      <button onclick="closeModal('security-modal')" class="btn btn-gold btn-sm">Done</button>
     </div>
   </div>
 </div>
@@ -1038,6 +1128,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button id="brief-copy-btn" onclick="copyBrief()" style="display:none;padding:5px 12px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">Copy</button>
+        <button id="brief-export-btn" onclick="exportBrief()" style="display:none;padding:5px 12px;border:1px solid rgba(201,162,39,.4);border-radius:var(--rsm);background:transparent;color:var(--gold);font-size:12px;cursor:pointer">&#8599; Export PDF</button>
         <button onclick="closeModal('brief-modal')" style="background:none;border:none;color:var(--t3);font-size:20px;cursor:pointer;line-height:1">×</button>
       </div>
     </div>
@@ -1071,7 +1162,13 @@ var fbApp = initializeApp(FB_CFG);
 var auth = getAuth(fbApp);
 var db = getDatabase(fbApp);
 
-var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],opportunities=[],commitments=[],calEntries=[],tlCommitments=[],apiKey='',wsApiKey='',wsApiKeySetBy='',currentMeeting=null,currentOpp=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
+var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],opportunities=[],commitments=[],calibrationRecords=[],calEntries=[],tlCommitments=[],entities=[],apiKey='',wsApiKey='',wsApiKeySetBy='',currentMeeting=null,currentOpp=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
+// ── Performance: health score cache + render debounce ─────────
+var _healthCache=new Map(); // nodeId+':'+meetingCount → score
+var _boardTimer=null;       // debounce timer for Firebase-triggered renders
+// ── Auto-link undo state ──────────────────────────────────────
+var _lastAutoLinks=[];      // link IDs created by last autoSyncLinks call
+var _undoLinkTimer=null;    // clears undo state after 12s
 var tlFilter='all',tlSrcFilter='all',currentTLEditId=null;
 
 // ── INDEXED DATA STRUCTURES ──────────────────────────────────
@@ -1143,6 +1240,7 @@ function updateApiKeyUI(){
 // ── ARRAY REBUILDERS (keep sorted arrays in sync with Maps) ──
 function rebuildMeetingsArray(){
   meetings=Array.from(meetingMap.values()).sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});
+  _healthCache.clear(); // invalidate health scores — meeting data changed
 }
 function rebuildNodesArray(){
   nodes=Array.from(nodeMap.values());
@@ -1346,7 +1444,7 @@ function connectWorkspace(){
   netListeners=[];
   setSS('connecting...');
   meetings=[];meetingMap.clear();nodes=[];nodeMap.clear();links=[];linkMap.clear();
-  entities=[];calEntries=[];tlCommitments=[];entityGraph.clear();companyByName.clear();
+  entities=[];calEntries=[];tlCommitments=[];calibrationRecords=[];entityGraph.clear();companyByName.clear();
   mtgAllLoaded=false;
 
   // ── MEETINGS: load latest MTG_PAGE_SIZE only, maintain meetingMap ──
@@ -1357,7 +1455,7 @@ function connectWorkspace(){
     if(data)Object.values(data).forEach(function(m){meetingMap.set(m.id,m);});
     rebuildMeetingsArray();
     buildEntityGraph();
-    updateCount();renderArchive();renderBoard();renderSidebarMtgList();
+    updateCount();renderArchive();scheduleRenderBoard();renderSidebarMtgList();
     if(currentMeeting){var upd=meetingMap.get(currentMeeting.id);if(upd)currentMeeting=upd;}
     if(activeView==='timeline')renderTimeline();
     setSS('live');
@@ -1445,9 +1543,14 @@ function connectWorkspace(){
   // ── COMMITMENTS ──
   var u10=onValue(ref(db,wsPath('commitments')),function(snap){
     commitments=snap.val()?Object.values(snap.val()):[];
-    if(activeIntelTab==='board')renderBoard();
+    if(activeIntelTab==='board')scheduleRenderBoard();
   });
-  netListeners=[u1,u3,u4,u5,u6,u7,u8,u9,u10];
+  // ── CALIBRATION OUTCOMES ──
+  var u11=onValue(ref(db,wsPath('calibration')),function(snap){
+    calibrationRecords=snap.val()?Object.values(snap.val()):[];
+    _wpWeights=null; // invalidate cached weights
+  });
+  netListeners=[u1,u3,u4,u5,u6,u7,u8,u9,u10,u11];
 }
 
 function wireListeners(){
@@ -1455,6 +1558,10 @@ function wireListeners(){
   document.getElementById('ws-switcher').addEventListener('click',function(){document.getElementById('ws-screen').style.display='flex';document.getElementById('main-app').style.display='none';renderWsList();});
   document.getElementById('proc-btn').addEventListener('click',processNotes);
   document.getElementById('voice-btn').addEventListener('click',toggleVoice);
+  // Transcript paste detection — fires after clipboard text lands in textarea
+  document.getElementById('m-notes').addEventListener('paste',function(){
+    setTimeout(function(){onNotesInput();},80);
+  });
   document.getElementById('prep-btn').addEventListener('click',generatePrep);
   document.getElementById('nav-export-btn').addEventListener('click',exportData);
   document.getElementById('nav-import-trigger').addEventListener('click',function(){document.getElementById('nav-import-file').click();});
@@ -1503,7 +1610,7 @@ function wireListeners(){
   window.addEventListener('offline',function(){setSS('offline');toast('No connection — writes will retry when back online');});
   window.addEventListener('online',function(){setSS('live');toast('Back online');});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(edgeMode)cancelEdgeMode();else if(selectedNode)closeNetPanel();}if((e.key==='f'||e.key==='F')&&!e.target.matches('input,textarea')&&activeView==='network')fitGraph();if(e.key==='/'&&!e.target.matches('input,textarea')&&activeView==='network'){e.preventDefault();document.getElementById('net-search').focus();}});
-  ['edit-modal','sync-modal','digest-modal','add-node-modal','edge-modal','members-modal','user-modal','add-commitment-modal','tl-card-modal','commit-modal','new-opp-modal','brief-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',function(e){if(e.target.id===id)closeModal(id);});});
+  ['edit-modal','sync-modal','digest-modal','add-node-modal','edge-modal','members-modal','user-modal','add-commitment-modal','tl-card-modal','commit-modal','new-opp-modal','brief-modal','security-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',function(e){if(e.target.id===id)closeModal(id);});});
   buildEdgeLegend();injectPWA();
 }
 
@@ -1582,6 +1689,7 @@ function renderOppSidebar(){
     h+='</div>';
   });
   list.innerHTML=h;
+  renderCalibrationStrip();
 }
 
 window.selectOpp=function(id){
@@ -1592,6 +1700,139 @@ window.selectOpp=function(id){
   renderOppDetail(opp);
 };
 
+// ══════════════════════════════════════════════════════════════
+// WIN PROBABILITY CALIBRATION ENGINE
+// Records outcomes when deals close (won/lost). After 3+ outcomes,
+// adjusts factor weights based on what actually predicted results
+// for this team. The model improves with every deal that closes.
+// ══════════════════════════════════════════════════════════════
+
+// Cached adjusted weights — invalidated when calibrationRecords changes
+var _wpWeights=null;
+
+// Record a deal outcome with a full factor snapshot
+async function recordOutcome(opp,outcome){
+  // Snapshot current factors at moment of close
+  var taggedMtgs=meetings.filter(function(m){return m.oppId===opp.id||(opp.meetings||[]).includes(m.id);});
+  var allPeople={},allRisks=[];
+  taggedMtgs.forEach(function(m){
+    (m.intel.keyPeople||[]).forEach(function(p){if(!allPeople[p.name])allPeople[p.name]=p;});
+    (m.intel.risks||[]).forEach(function(r){allRisks.push(r);});
+  });
+  var wp=computeWinProb(opp,taggedMtgs,allPeople,allRisks);
+
+  var record={
+    id:'cal-'+Date.now(),
+    oppId:opp.id,
+    oppName:opp.name,
+    outcome:outcome, // 'won' | 'lost'
+    predictedScore:wp.score,
+    factors:{},
+    closedAt:new Date().toISOString(),
+    agency:opp.agency||'',
+    value:opp.value||''
+  };
+  // Snapshot factor states numerically for weight learning
+  var now=new Date();
+  var d90=new Date(now-90*86400000);
+  record.factors.recentMtgs=taggedMtgs.filter(function(m){return new Date(m.meta.date)>d90;}).length;
+  var people=Object.values(allPeople);
+  var pos=0,neg=0;
+  people.forEach(function(p){
+    if(p.stances&&p.stances.length){
+      var s=(p.stances[p.stances.length-1].stance||'').toLowerCase();
+      if(/positive|engaged|enthusiastic|champion|committed/.test(s))pos++;
+      if(/cautious|hesitant|concerned|cold|negative|blocking/.test(s))neg++;
+    }
+  });
+  record.factors.stanceNet=pos-neg;
+  record.factors.hiRisks=allRisks.filter(function(r){return r.severity==='high';}).length;
+  record.factors.redFlags=taggedMtgs.reduce(function(acc,m){return acc+(m.intel.redFlags||[]).length;},0);
+  record.factors.stage=opp.stage;
+
+  try{
+    await fbSet(wsPath('calibration/'+record.id),record);
+    _wpWeights=null; // invalidate weight cache
+    toast(outcome==='won'?'🏆 Win recorded — model will update':'Outcome recorded — model will learn from this');
+  }catch(e){
+    console.error('Failed to save calibration record:',e);
+  }
+}
+
+// Compute adjusted weights from calibration history
+// Returns weight multipliers per factor (1.0 = no change)
+function getCalibrationWeights(){
+  if(_wpWeights)return _wpWeights; // use cached
+  if(calibrationRecords.length<3){
+    _wpWeights={cadence:1,stance:1,risks:1,redFlags:1,default:true};
+    return _wpWeights;
+  }
+
+  var wins=calibrationRecords.filter(function(r){return r.outcome==='won';});
+  var losses=calibrationRecords.filter(function(r){return r.outcome==='lost';});
+  if(!wins.length||!losses.length){
+    _wpWeights={cadence:1,stance:1,risks:1,redFlags:1,default:true};
+    return _wpWeights;
+  }
+
+  function avg(records, field){
+    var vals=records.map(function(r){return r.factors?Number(r.factors[field]||0):0;});
+    return vals.reduce(function(a,b){return a+b;},0)/vals.length;
+  }
+
+  // How much does each factor differ between wins and losses?
+  // Larger difference = more predictive = higher weight
+  var cadenceDiff=avg(wins,'recentMtgs')-avg(losses,'recentMtgs');
+  var stanceDiff=avg(wins,'stanceNet')-avg(losses,'stanceNet');
+  var riskDiff=avg(losses,'hiRisks')-avg(wins,'hiRisks'); // losses have more risks
+  var flagDiff=avg(losses,'redFlags')-avg(wins,'redFlags');
+
+  // Normalize: weight = 1 + (diff / 4) clamped to [0.5, 2.5]
+  function toWeight(diff){ return Math.max(0.5,Math.min(2.5,1+(diff/4))); }
+
+  _wpWeights={
+    cadence:toWeight(cadenceDiff),
+    stance:toWeight(stanceDiff),
+    risks:toWeight(riskDiff),
+    redFlags:toWeight(flagDiff),
+    n:calibrationRecords.length,
+    wins:wins.length,
+    losses:losses.length,
+    default:false
+  };
+  return _wpWeights;
+}
+
+// Returns calibration accuracy stats for display
+function getCalibrationStats(){
+  if(calibrationRecords.length<3)return null;
+  var brackets=[{label:'0-33%',min:0,max:33,wins:0,total:0},
+                {label:'34-66%',min:34,max:66,wins:0,total:0},
+                {label:'67-100%',min:67,max:100,wins:0,total:0}];
+  calibrationRecords.forEach(function(r){
+    var s=r.predictedScore||50;
+    var b=brackets.find(function(br){return s>=br.min&&s<=br.max;});
+    if(b){b.total++;if(r.outcome==='won')b.wins++;}
+  });
+  var totalWins=calibrationRecords.filter(function(r){return r.outcome==='won';}).length;
+  var accuracy=0;
+  var totalWithPrediction=0;
+  calibrationRecords.forEach(function(r){
+    var s=r.predictedScore||50;
+    var predicted=s>=50?'won':'lost';
+    if(predicted===r.outcome)accuracy++;
+    totalWithPrediction++;
+  });
+  return{
+    n:calibrationRecords.length,
+    wins:totalWins,
+    losses:calibrationRecords.length-totalWins,
+    accuracy:totalWithPrediction?Math.round(accuracy/totalWithPrediction*100):0,
+    brackets:brackets
+  };
+}
+
+// ── WIN PROBABILITY MODEL ────────────────────────────────────
 // ── WIN PROBABILITY MODEL ────────────────────────────────────
 // Composite score 0-100 based on observable signals in the data.
 // Not a prediction — a calibration instrument that improves with use.
@@ -1599,50 +1840,50 @@ function computeWinProb(opp,taggedMtgs,allPeople,allRisks){
   var score=50; // start neutral
   var factors=[];
   var now=new Date();
+  var w=getCalibrationWeights(); // adjusted weights from outcome history
 
-  // Factor 1: Meeting cadence (0-20 pts)
-  // More meetings = more engagement, more intelligence
+  // Factor 1: Meeting cadence (weighted)
   var mtgCount=taggedMtgs.length;
   var d90=new Date(now-90*86400000);
   var recentMtgs=taggedMtgs.filter(function(m){return new Date(m.meta.date)>d90;}).length;
-  var mtgScore=recentMtgs>=4?18:recentMtgs>=2?12:recentMtgs>=1?6:0;
-  score+=(mtgScore-9); // centered around neutral
+  var mtgBase=recentMtgs>=4?18:recentMtgs>=2?12:recentMtgs>=1?6:0;
+  var mtgScore=(mtgBase-9)*w.cadence;
+  score+=mtgScore;
   if(mtgCount>0){
     var mtgColor=recentMtgs>=3?'var(--green)':recentMtgs>=1?'var(--amber)':'var(--red)';
     factors.push({label:'Cadence',value:recentMtgs+' mtgs/90d',color:mtgColor});
   }
 
-  // Factor 2: Stakeholder stance trajectory (±15)
+  // Factor 2: Stakeholder stance trajectory (weighted)
   var people=Object.values(allPeople);
   var positiveStances=0,negativeStances=0;
   people.forEach(function(p){
-    if(!p.stances.length)return;
+    if(!p.stances||!p.stances.length)return;
     var latest=p.stances[p.stances.length-1].stance.toLowerCase();
     if(/positive|engaged|interested|enthusiastic|champion|committed|supportive/.test(latest))positiveStances++;
     if(/cautious|hesitant|concerned|cold|negative|blocking|opposed/.test(latest))negativeStances++;
   });
   var stanceNet=positiveStances-negativeStances;
   if(people.length>0){
-    var stanceScore=Math.max(-15,Math.min(15,stanceNet*5));
+    var stanceScore=Math.max(-15,Math.min(15,stanceNet*5))*w.stance;
     score+=stanceScore;
     var stanceColor=stanceNet>0?'var(--green)':stanceNet<0?'var(--red)':'var(--t2)';
     factors.push({label:'Stakeholders',value:(stanceNet>0?'+':'')+stanceNet+' net',color:stanceColor});
   }
 
-  // Factor 3: Risk load (±10)
+  // Factor 3: Risk load (weighted)
   var hiRisks=allRisks.filter(function(r){return r.severity==='high';}).length;
-  var riskScore=hiRisks===0?5:hiRisks===1?0:hiRisks<=3?-8:-14;
-  score+=riskScore;
+  var riskBase=hiRisks===0?5:hiRisks===1?0:hiRisks<=3?-8:-14;
+  score+=riskBase*w.risks;
   if(allRisks.length>0){
     factors.push({label:'Risks',value:hiRisks+' high',color:hiRisks>2?'var(--red)':hiRisks>0?'var(--amber)':'var(--green)'});
   }
 
-  // Factor 4: Stage bonus (0-10)
+  // Factor 4: Stage bonus (not weighted — stage is objective)
   var stageBonus={'awareness':-10,'engaged':0,'proposal':8,'submitted':10,'award':12,'won':30,'lost':-50};
   score+=(stageBonus[opp.stage]||0);
 
-  // Factor 5: Time urgency (±8)
-  // Close to award date without recent activity = risk
+  // Factor 5: Time urgency
   if(opp.awardDate){
     var aw=new Date(opp.awardDate+'T00:00:00');
     var daysToAward=Math.floor((aw-now)/86400000);
@@ -1650,19 +1891,19 @@ function computeWinProb(opp,taggedMtgs,allPeople,allRisks){
       score-=10;
       factors.push({label:'Timing',value:daysToAward+'d to award',color:'var(--red)'});
     }else if(daysToAward>0&&daysToAward<30){
-      score+=5; // urgency adds focus
+      score+=5;
       factors.push({label:'Timing',value:daysToAward+'d to award',color:'var(--amber)'});
     }
   }
 
-  // Factor 6: Red flags (±10)
+  // Factor 6: Red flags (weighted)
   var redFlagCount=taggedMtgs.reduce(function(acc,m){return acc+(m.intel.redFlags||[]).length;},0);
   if(redFlagCount>0){
-    score-=Math.min(15,redFlagCount*5);
+    score-=Math.min(15,redFlagCount*5)*w.redFlags;
     factors.push({label:'Red flags',value:redFlagCount,color:'var(--red)'});
   }
 
-  // Factor 7: Commitment fulfillment on this opp
+  // Factor 7: Commitment fulfillment
   var oppCommits=commitments.filter(function(c){
     return taggedMtgs.some(function(m){return m.id===c.sourceMtgId;});
   });
@@ -1673,8 +1914,13 @@ function computeWinProb(opp,taggedMtgs,allPeople,allRisks){
     else if(fulfilled>0){score+=5;factors.push({label:'Commitments',value:fulfilled+' kept',color:'var(--green)'});}
   }
 
+  // Calibration badge — show when model is trained
+  if(!w.default&&w.n>=3){
+    factors.push({label:'Model',value:w.n+' outcomes',color:'var(--purple)'});
+  }
+
   var finalScore=Math.max(3,Math.min(96,Math.round(score)));
-  return {score:finalScore,_factors:factors};
+  return{score:finalScore,_factors:factors};
 }
 
 // ── NETWORK GAP ANALYSIS ─────────────────────────────────────
@@ -1971,6 +2217,7 @@ function renderOppDetail(opp){
   h+='<select id="opp-stage-edit" onchange="updateOppStage(\''+opp.id+'\')" style="font-size:11px;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);color:var(--text)">';
   OPP_STAGES.forEach(function(s){h+='<option value="'+s.key+'"'+(s.key===opp.stage?' selected':'')+'>'+s.label+'</option>';});
   h+='</select>';
+  h+='<button onclick="exportOpportunity()" class="export-btn">&#8599; Export</button>';
   h+='<button onclick="deleteCurrentOpp()" style="padding:4px 8px;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:11px;cursor:pointer">Delete</button>';
   h+='</div></div>';
 
@@ -2123,9 +2370,15 @@ window.updateOppStage=async function(id){
   if(!opp)return;
   var sel=document.getElementById('opp-stage-edit');
   if(!sel)return;
-  opp.stage=sel.value;
+  var prevStage=opp.stage;
+  var newStage=sel.value;
+  opp.stage=newStage;
   opp.updatedAt=new Date().toISOString();
   await saveOpp(opp);
+  // Record calibration outcome when deal closes
+  if((newStage==='won'||newStage==='lost')&&prevStage!==newStage){
+    await recordOutcome(opp,newStage);
+  }
   renderOppSidebar();
   toast('Stage updated');
 };
@@ -2543,9 +2796,41 @@ window.clearMemorySearch=function(){
 function renderSidebarMtgList(){var list=document.getElementById('sidebar-mtg-list');if(!list)return;if(!meetings.length){list.innerHTML='<div style="font-size:11px;color:var(--t3);padding:4px">No meetings yet</div>';return;}list.innerHTML=meetings.slice(0,12).map(function(m){var active=currentMeeting&&currentMeeting.id===m.id;return '<div onclick="goIntelById('+m.id+')" style="padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:3px;background:'+(active?'var(--s2)':'transparent')+';border:1px solid '+(active?'var(--b2)':'transparent')+'"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.meta.title+'</div><div style="font-size:10px;color:var(--t2);margin-top:1px">'+m.meta.date+'</div></div>';}).join('');}
 window.goIntelById=function(id){var m=meetingMap.get(id);if(m){currentMeeting=m;renderIntel(m);switchIntelTab('intel');renderSidebarMtgList();}};
 
-function updateCC(){var n=document.getElementById('m-notes').value.length;document.getElementById('char-count').textContent=n?n.toLocaleString()+' chars':'';}
-function updateCount(){var el=document.getElementById('arch-empty');if(meetings.length&&el)el.style.display='none';}
+function updateCC(){
+  var val=document.getElementById('m-notes').value;
+  var n=val.length;
+  var cc=document.getElementById('char-count');
+  if(!cc)return;
+  if(n===0){cc.textContent='';return;}
+  var words=val.trim().split(/\s+/).length;
+  var info=detectTranscript(val);
+  if(info.isTranscript){
+    cc.textContent=words.toLocaleString()+' words · transcript';
+    cc.style.color='#22c55e';
+  } else {
+    cc.textContent=n.toLocaleString()+' chars';
+    cc.style.color='';
+  }
+}
 window.updateCC=updateCC;
+
+// Unified handler for notes input and paste
+var _txDetectTimer=null;
+window.onNotesInput=function(){
+  updateCC();
+  clearTimeout(_txDetectTimer);
+  _txDetectTimer=setTimeout(function(){
+    var val=document.getElementById('m-notes').value;
+    if(val.length<100)return;
+    var info=detectTranscript(val);
+    if(info.isTranscript){
+      showTranscriptBanner(info);
+    } else {
+      document.getElementById('transcript-banner').style.display='none';
+    }
+  },400);
+};
+function updateCount(){var el=document.getElementById('arch-empty');if(meetings.length&&el)el.style.display='none';}
 
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition,recog=null,voiceOn=false,voiceBase='',vrTimer=null;
 function toggleVoice(){if(!SR){toast('Voice requires Chrome');return;}voiceOn?stopVoice():startVoice();}
@@ -2554,13 +2839,299 @@ function launchRec(){if(!voiceOn)return;try{if(recog){try{recog.abort();}catch(e
 function stopVoice(){voiceOn=false;clearTimeout(vrTimer);try{if(recog)recog.abort();}catch(e){}recog=null;updateVUI(false);}
 function updateVUI(on){var btn=document.getElementById('voice-btn'),st=document.getElementById('voice-st');if(on){btn.style.cssText='background:var(--red);color:#fff;border-color:var(--red);min-width:85px;display:flex;align-items:center;gap:5px;font-size:12px';btn.innerHTML='<span class="rec-dot pulsing"></span>Stop';st.textContent='Recording';st.style.color='var(--red)';}else{btn.style.cssText='min-width:85px;display:flex;align-items:center;gap:5px;font-size:12px';btn.innerHTML='<span class="rec-dot" style="opacity:.4"></span>Voice';st.textContent='';}}
 
-async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){showProcErr('Add API key in user settings');return;}var meta={title:document.getElementById('m-title').value,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,att:document.getElementById('m-att').value,dur:document.getElementById('m-dur').value};var btn=document.getElementById('proc-btn');btn.disabled=true;btn.innerHTML='<span class="proc-dots"><span></span><span></span><span></span></span>Analyzing';clearProcErr();try{var intel=await callClaude(notes,meta);var m={id:Date.now(),meta:Object.assign({},meta,{title:meta.title||(meta.type+' -- '+meta.date)}),notes:notes,intel:intel,ts:new Date().toISOString(),loggedBy:currentUser.displayName,loggedByUid:currentUser.uid};
+// ══════════════════════════════════════════════════════════════
+// TRANSCRIPT INTELLIGENCE ENGINE
+// Detects Otter.ai and other transcript formats, auto-fills form
+// fields, and routes to a transcript-aware Claude prompt that
+// extracts far richer intelligence from verbatim dialogue.
+// ══════════════════════════════════════════════════════════════
+
+// Detect whether pasted/dropped text is a transcript and what format
+function detectTranscript(text){
+  if(!text||text.length<200)return{isTranscript:false};
+
+  var lines=text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+
+  // ── Otter.ai format detection ─────────────────────────────
+  // Pattern: "Speaker Name  HH:MM:SS" or "Speaker Name\nHH:MM:SS"
+  var otterSpeakerLine=/^(.+?)\s{2,}(\d{1,2}:\d{2}(:\d{2})?)\s*$/;
+  var otterMatches=lines.filter(function(l){return otterSpeakerLine.test(l);});
+  if(otterMatches.length>=2){
+    return _buildTranscriptInfo(text,lines,'otter',otterSpeakerLine);
+  }
+
+  // ── Zoom / Teams format: "Speaker Name  HH:MM:SS" or "[HH:MM:SS] Speaker:" ─
+  var zoomPattern=/^\[?(\d{1,2}:\d{2}(:\d{2})?)\]?\s+(.+?):\s*(.+)$/;
+  var zoomMatches=lines.filter(function(l){return zoomPattern.test(l);});
+  if(zoomMatches.length>=3){
+    return _buildTranscriptInfo(text,lines,'zoom',zoomPattern);
+  }
+
+  // ── Generic speaker: format ──────────────────────────────
+  // "Speaker Name: dialogue text" repeated multiple times
+  var speakerColon=/^([A-Z][a-zA-Z\s\-\.]{1,30}):\s+\S/;
+  var speakerMatches=lines.filter(function(l){return speakerColon.test(l);});
+  if(speakerMatches.length>=4){
+    // Must have at least 2 distinct speakers to count as transcript
+    var speakerNames=new Set(speakerMatches.map(function(l){return l.split(':')[0].trim();}));
+    if(speakerNames.size>=2){
+      return _buildTranscriptInfo(text,lines,'generic',speakerColon);
+    }
+  }
+
+  // ── SRT/VTT subtitle format ──────────────────────────────
+  var srtTimestamp=/^\d{2}:\d{2}:\d{2}[,\.]\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}/;
+  var srtMatches=lines.filter(function(l){return srtTimestamp.test(l);});
+  if(srtMatches.length>=2){
+    return _buildTranscriptInfo(text,lines,'srt',srtTimestamp);
+  }
+
+  return{isTranscript:false};
+}
+
+function _buildTranscriptInfo(text,lines,format,pattern){
+  // Extract speakers
+  var speakers=new Set();
+  var timestamps=[];
+
+  if(format==='otter'){
+    var m;
+    lines.forEach(function(l){
+      m=l.match(/^(.+?)\s{2,}(\d{1,2}:\d{2}(:\d{2})?)\s*$/);
+      if(m){speakers.add(m[1].trim());timestamps.push(m[2]);}
+    });
+  } else if(format==='zoom'){
+    lines.forEach(function(l){
+      var m2=l.match(/^\[?(\d{1,2}:\d{2}(:\d{2})?)\]?\s+(.+?):\s/);
+      if(m2){speakers.add(m2[3].trim());timestamps.push(m2[1]);}
+    });
+  } else if(format==='generic'){
+    lines.forEach(function(l){
+      var m3=l.match(/^([A-Z][a-zA-Z\s\-\.]{1,30}):\s+\S/);
+      if(m3){speakers.add(m3[1].trim());}
+    });
+  }
+
+  // Try to extract title from first few lines (Otter puts it at top)
+  var title='';
+  var date='';
+  var duration='';
+  for(var i=0;i<Math.min(8,lines.length);i++){
+    var l=lines[i];
+    // Otter title is usually the first non-timestamp, non-speaker line > 3 words
+    if(!title&&l.length>10&&!/^\d|^https?:|Otter\.ai|transcript/i.test(l)&&!pattern.test(l)){
+      title=l;
+    }
+    // Date patterns
+    if(!date){
+      var dm=l.match(/(\w+ \d{1,2},?\s+\d{4})|(\d{1,2}\/\d{1,2}\/\d{2,4})|(\d{4}-\d{2}-\d{2})/);
+      if(dm){
+        // Convert to ISO
+        try{var d=new Date(dm[0]);if(!isNaN(d.getTime()))date=d.toISOString().slice(0,10);}catch(e){}
+      }
+    }
+  }
+
+  // Duration from last timestamp
+  if(timestamps.length){
+    duration=timestamps[timestamps.length-1];
+  }
+
+  // Word count
+  var words=text.trim().split(/\s+/).length;
+
+  return{
+    isTranscript:true,
+    format:format,
+    speakers:Array.from(speakers).slice(0,20),
+    title:title,
+    date:date,
+    duration:duration,
+    words:words,
+    speakerCount:speakers.size
+  };
+}
+
+// Store last detected transcript info for applyTranscriptMeta
+var _lastTranscriptInfo=null;
+
+function showTranscriptBanner(info){
+  _lastTranscriptInfo=info;
+  var banner=document.getElementById('transcript-banner');
+  var titleEl=document.getElementById('transcript-banner-title');
+  var metaEl=document.getElementById('transcript-banner-meta');
+  var pillsEl=document.getElementById('transcript-speaker-pills');
+  if(!banner)return;
+
+  var formatLabels={otter:'Otter.ai',zoom:'Zoom/Teams',generic:'Speaker-labeled',srt:'Subtitle file'};
+  titleEl.textContent=(formatLabels[info.format]||'Transcript')+' detected — '+info.words.toLocaleString()+' words';
+
+  var metaParts=[];
+  if(info.speakerCount)metaParts.push(info.speakerCount+' speaker'+(info.speakerCount>1?'s':''));
+  if(info.date)metaParts.push('Date: '+info.date);
+  if(info.duration)metaParts.push('Duration: '+info.duration);
+  metaEl.textContent=metaParts.join(' · ');
+
+  // Speaker pills
+  pillsEl.innerHTML=info.speakers.map(function(s){
+    return '<span class="transcript-speaker-pill">'+s+'</span>';
+  }).join('');
+
+  // Auto-fill label
+  var fillParts=[];
+  if(info.title)fillParts.push('title');
+  if(info.date)fillParts.push('date');
+  if(info.speakers.length)fillParts.push('attendees');
+  if(fillParts.length){
+    metaEl.textContent+='\n→ Will auto-fill: '+fillParts.join(', ');
+  }
+
+  banner.style.display='block';
+
+  // Also update meeting type to Call Transcript
+  var typeEl=document.getElementById('m-type');
+  if(typeEl)typeEl.value='Call Transcript';
+}
+
+window.applyTranscriptMeta=function(){
+  var info=_lastTranscriptInfo;
+  if(!info)return;
+
+  if(info.title&&!document.getElementById('m-title').value){
+    document.getElementById('m-title').value=info.title;
+  }
+  if(info.date&&!document.getElementById('m-date').value){
+    document.getElementById('m-date').value=info.date;
+  }
+  if(info.duration&&!document.getElementById('m-dur').value){
+    document.getElementById('m-dur').value=info.duration;
+  }
+  if(info.speakers.length&&!document.getElementById('m-att').value){
+    document.getElementById('m-att').value=info.speakers.join(', ');
+  }
+
+  // Visual feedback
+  var banner=document.getElementById('transcript-banner');
+  if(banner){
+    banner.style.background='linear-gradient(135deg,rgba(34,197,94,.15),rgba(34,197,94,.08))';
+    var titleEl=document.getElementById('transcript-banner-title');
+    if(titleEl)titleEl.textContent='✓ Form auto-filled from transcript';
+    setTimeout(function(){if(banner)banner.style.display='none';},1500);
+  }
+  toast('Form filled from transcript');
+};
+
+window.dismissTranscriptBanner=function(){
+  var banner=document.getElementById('transcript-banner');
+  if(banner)banner.style.display='none';
+};
+
+// ── Drag and drop file handling ───────────────────────────────
+window.onNotesDragOver=function(e){
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('m-notes').classList.add('notes-drop-zone');
+};
+window.onNotesDragLeave=function(e){
+  document.getElementById('m-notes').classList.remove('notes-drop-zone');
+};
+window.onNotesDrop=function(e){
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('m-notes').classList.remove('notes-drop-zone');
+  var file=e.dataTransfer.files[0];
+  if(file)_readTranscriptFile(file);
+};
+window.handleTranscriptFile=function(input){
+  var file=input.files[0];
+  if(file)_readTranscriptFile(file);
+  input.value=''; // reset so same file can be re-selected
+};
+
+function _readTranscriptFile(file){
+  if(!file.name.match(/\.(txt|srt|vtt|md)$/i)&&file.type!=='text/plain'){
+    toast('Drop a .txt, .srt, or .vtt transcript file');return;
+  }
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var text=e.target.result;
+    document.getElementById('m-notes').value=text;
+    onNotesInput();
+    // Auto-fill filename as title if empty
+    var titleEl=document.getElementById('m-title');
+    if(!titleEl.value){
+      titleEl.value=file.name.replace(/\.(txt|srt|vtt|md)$/i,'').replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
+    }
+    toast('Transcript loaded — '+text.trim().split(/\s+/).length.toLocaleString()+' words');
+  };
+  reader.readAsText(file);
+}
+
+// ── Transcript-aware Claude call ──────────────────────────────
+// Same JSON schema output. Stronger prompt for verbatim dialogue.
+async function callClaudeTranscript(notes,meta){
+  var knownPeople=nodes.filter(function(n){return n.type==='person';}).map(function(n){return n.name;}).slice(0,60);
+  var knownCos=nodes.filter(function(n){return n.type==='company';}).map(function(n){return n.name;}).slice(0,40);
+  var canonicalNote='';
+  if(knownPeople.length||knownCos.length){
+    canonicalNote=' CANONICAL NAMES — use EXACTLY these spellings when you recognise them: ';
+    if(knownPeople.length)canonicalNote+='People: '+knownPeople.join(', ')+'. ';
+    if(knownCos.length)canonicalNote+='Companies: '+knownCos.join(', ')+'.';
+  }
+
+  var sp='You are a senior defense BD intelligence analyst. You are receiving a VERBATIM MEETING TRANSCRIPT — every word is exactly what was spoken, with speaker labels.\n\n'
+    +'Your job: extract maximum actionable intelligence with precise attribution.\n\n'
+    +'TRANSCRIPT ANALYSIS RULES:\n'
+    +'- Attribute EVERY action item, commitment, risk, and concern to the EXACT speaker who said it\n'
+    +'- For stance: quote the speaker\'s actual words that reveal their position (e.g., "we\'re not ready to commit" = cautious)\n'
+    +'- Commitments said verbally are high-priority action items — capture the exact phrasing and deadline if stated\n'
+    +'- Watch for hedging language ("I\'ll try", "probably", "maybe next quarter") vs firm commitments\n'
+    +'- Red flags: capture exact phrases that signal concern, risk, competitor threat, or timeline slippage\n'
+    +'- Energy read: based on the overall tone and momentum of the dialogue\n'
+    +'- Every person who SPEAKS in the transcript MUST appear in keyPeople\n'
+    +'- Every organization mentioned MUST appear in companies\n'
+    +'- Return ONLY valid JSON, no markdown.\n'
+    +canonicalNote
+    +' Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';
+
+  var res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-6',
+      max_tokens:4000, // higher — transcripts yield more data
+      system:sp,
+      messages:[{role:'user',content:'Date: '+meta.date+'\nType: '+meta.type+'\nAttendees: '+(meta.att||'see transcript')+'\n\nIMPORTANT: Every speaker in the transcript must appear in keyPeople. Attribute all findings to named speakers.\n\nVERBATIM TRANSCRIPT:\n'+notes}]
+    })
+  });
+  if(!res.ok){var err=await res.json().catch(function(){return{};});throw new Error(err.error?err.error.message:'API error '+res.status);}
+  var d=await res.json();
+  var txt=(d.content||[]).map(function(b){return b.text||'';}).join('');
+  var clean=txt.replace(/```json|```/g,'').trim();
+  var fi=clean.indexOf('{'),la=clean.lastIndexOf('}');
+  if(fi===-1||la===-1)throw new Error('No JSON in response');
+  var js=clean.slice(fi,la+1);
+  try{return JSON.parse(js);}catch(e){
+    var fixed=js;
+    var eo=(fixed.match(/\[/g)||[]).length-(fixed.match(/\]/g)||[]).length;
+    var ec=(fixed.match(/\{/g)||[]).length-(fixed.match(/\}/g)||[]).length;
+    for(var bi=0;bi<eo;bi++)fixed+=']';
+    for(var bj=0;bj<ec;bj++)fixed+='}';
+    return JSON.parse(fixed);
+  }
+}
+
+async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){showProcErr('Add API key in user settings');return;}var meta={title:document.getElementById('m-title').value,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,att:document.getElementById('m-att').value,dur:document.getElementById('m-dur').value};var btn=document.getElementById('proc-btn');btn.disabled=true;btn.innerHTML='<span class="proc-dots"><span></span><span></span><span></span></span>Analyzing';clearProcErr();
+  // Route to transcript-aware Claude if input is a transcript
+  var txInfo=detectTranscript(notes);
+  var isTranscript=txInfo.isTranscript||meta.type==='Call Transcript';
+  try{var intel=await (isTranscript?callClaudeTranscript(notes,meta):callClaude(notes,meta));var m={id:Date.now(),meta:Object.assign({},meta,{title:meta.title||(meta.type+' -- '+meta.date)}),notes:notes,intel:intel,ts:new Date().toISOString(),loggedBy:currentUser.displayName,loggedByUid:currentUser.uid};
     var oppSel=document.getElementById('m-opp');
     if(oppSel&&oppSel.value){m.oppId=oppSel.value;}
     await saveMeeting(m);
     // Link to opportunity if tagged
     if(m.oppId){var opp=opportunities.find(function(o){return o.id===m.oppId;});if(opp){if(!opp.meetings)opp.meetings=[];if(opp.meetings.indexOf(m.id)===-1){opp.meetings.push(m.id);opp.updatedAt=new Date().toISOString();await saveOpp(opp);}}}
-    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);pendingEnts=[];var msg='Meeting processed';if(r.added||r.updated)msg+=' -- '+[r.added?r.added+' new':(null),r.updated?r.updated+' updated':(null)].filter(Boolean).join(', ')+' in Network Map';toast(msg);}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
+    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);pendingEnts=[];var parts=[];if(r.added)parts.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts.push(r.updated+' updated');if(rl.added)parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');if(rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');var msg='Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':'');if(rl.added>0){var toastEl=document.getElementById('toast');toastEl.innerHTML=msg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl.classList.remove('show');},6000);}else{toast(msg);}}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
 
 async function callClaude(notes,meta){
   // Build canonical names list so Claude normalises to existing spellings
@@ -3125,6 +3696,7 @@ window.openOnboardingBrief=async function(){
   document.getElementById('brief-loading').style.display='block';
   document.getElementById('brief-body').style.display='none';
   document.getElementById('brief-copy-btn').style.display='none';
+  document.getElementById('brief-export-btn').style.display='none';
   document.getElementById('brief-subtitle').textContent='Building your intelligence package...';
   document.getElementById('brief-count').textContent=meetings.length;
 
@@ -3390,6 +3962,7 @@ function _renderBrief(text){
   document.getElementById('brief-body').innerHTML=html;
   document.getElementById('brief-body').style.display='block';
   document.getElementById('brief-copy-btn').style.display='block';
+  document.getElementById('brief-export-btn').style.display='block';
   document.getElementById('brief-subtitle').textContent=currentWs.name+' · '+new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
 }
 
@@ -3527,6 +4100,158 @@ function extractEnts(m){var list=[],date=m.meta.date,title=m.meta.title,seen={};
 
 // AUTO SYNC -- runs silently after every process/reprocess
 async function autoSyncEnts(m){
+
+// ══════════════════════════════════════════════════════════════
+// AUTO-SYNC LINKS
+// Runs after autoSyncEnts. Derives three link types from meeting intel:
+//   1. Works-at  — person → their org company/gov node
+//   2. Co-presence — every pair of keyPeople who appeared together
+// Auto-applies silently. Stores IDs for 12s undo window.
+// Duplicate-safe: skips any pair that already has a link.
+// ══════════════════════════════════════════════════════════════
+
+async function autoSyncLinks(m){
+  var newLinks=[];
+  var enriched=0;
+  var base=Date.now()*1000; // microsecond-spaced IDs to avoid collisions in batch
+
+  // ── Helper: does a link already exist between two node IDs? ──
+  function linkExists(idA,idB){
+    return links.some(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      return(String(s)===String(idA)&&String(t)===String(idB))||
+             (String(s)===String(idB)&&String(t)===String(idA));
+    });
+  }
+
+  // ── Helper: find existing link to enrich notes ───────────────
+  function findLink(idA,idB){
+    return links.find(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      return(String(s)===String(idA)&&String(t)===String(idB))||
+             (String(s)===String(idB)&&String(t)===String(idA));
+    });
+  }
+
+  // ── Helper: ensure org company/gov node exists, return it ────
+  function ensureOrgNode(orgName){
+    if(!orgName||orgName.trim().length<2)return null;
+    var key=orgName.trim().toLowerCase();
+    // Check companyByName (includes gov nodes too from confirmAddNode)
+    var existing=companyByName.get(key);
+    if(existing)return existing;
+    // Check nodes by name match
+    var byName=nodes.find(function(n){
+      return(n.type==='company'||n.type==='government')&&
+             n.name.toLowerCase()===key;
+    });
+    if(byName)return byName;
+    // Create new company node for this org
+    var nn={
+      id:base+newLinks.length+500, // offset from link IDs
+      type:'company',
+      name:orgName.trim(),
+      role:'',org:'',
+      notes:'Auto-created from meeting intel: '+m.meta.title,
+      priority:2,meetings:[],
+      x:null,y:null,pinned:false,color:null,
+      created:new Date().toISOString()
+    };
+    nodes.push(nn);nodeMap.set(nn.id,nn);
+    companyByName.set(key,nn);
+    // Save async — don't await here to keep batch fast
+    saveEntity(nn).catch(function(){});
+    return nn;
+  }
+
+  // ── 1. WORKS-AT links: person → their org ────────────────────
+  var keyPpl=m.intel.keyPeople||[];
+  keyPpl.forEach(function(p){
+    if(!p.name||!p.org||p.org.trim().length<2)return;
+    // Find person node
+    var pm=findEntityMatch(p.name,'person');
+    var personNode=pm&&(pm.exact||pm.score>=0.75)?pm.entity:null;
+    if(!personNode)return;
+    // Find or create org node
+    var orgNode=ensureOrgNode(p.org);
+    if(!orgNode)return;
+    if(personNode.id===orgNode.id)return; // sanity check
+    if(linkExists(personNode.id,orgNode.id)){
+      // Enrich existing link notes if this meeting not already mentioned
+      var el=findLink(personNode.id,orgNode.id);
+      if(el&&!(el.notes||'').includes(m.meta.title)){
+        el.notes=(el.notes?el.notes+' | ':'')+m.meta.title;
+        saveLink(el).catch(function(){});
+        enriched++;
+      }
+      return;
+    }
+    var nl={id:base+newLinks.length,source:personNode.id,target:orgNode.id,label:'Works at',dir:'to',notes:m.meta.title+' ('+m.meta.date+')'};
+    links.push(nl);linkMap.set(nl.id,nl);
+    newLinks.push(nl);
+  });
+
+  // ── 2. CO-PRESENCE links: every keyPeople pair ───────────────
+  // Cap at 6 key people — above that it's a group event, not bilateral
+  var eligible=keyPpl
+    .filter(function(p){return p.name&&p.name.trim().length>1;})
+    .slice(0,6);
+
+  for(var i=0;i<eligible.length;i++){
+    for(var j=i+1;j<eligible.length;j++){
+      var pa=eligible[i],pb=eligible[j];
+      var ma=findEntityMatch(pa.name,'person');
+      var mb=findEntityMatch(pb.name,'person');
+      var na2=ma&&(ma.exact||ma.score>=0.75)?ma.entity:null;
+      var nb2=mb&&(mb.exact||mb.score>=0.75)?mb.entity:null;
+      if(!na2||!nb2||na2.id===nb2.id)continue;
+      if(linkExists(na2.id,nb2.id)){
+        // Enrich existing link
+        var el2=findLink(na2.id,nb2.id);
+        if(el2&&!(el2.notes||'').includes(m.meta.title)){
+          el2.notes=(el2.notes?el2.notes+' | ':'')+m.meta.title;
+          saveLink(el2).catch(function(){});
+          enriched++;
+        }
+        continue;
+      }
+      var nl2={id:base+newLinks.length,source:na2.id,target:nb2.id,label:m.meta.title,dir:'both',notes:m.meta.date};
+      links.push(nl2);linkMap.set(nl2.id,nl2);
+      newLinks.push(nl2);
+    }
+  }
+
+  // ── Save all new links to Firebase ───────────────────────────
+  for(var li=0;li<newLinks.length;li++){
+    try{await saveLink(newLinks[li]);}catch(e){}
+  }
+
+  // ── Store for undo ────────────────────────────────────────────
+  if(newLinks.length){
+    _lastAutoLinks=newLinks.map(function(l){return l.id;});
+    clearTimeout(_undoLinkTimer);
+    _undoLinkTimer=setTimeout(function(){_lastAutoLinks=[];},12000);
+  }
+
+  return{added:newLinks.length,enriched:enriched};
+}
+
+// Undo the last auto-link batch — removes from memory, Firebase, re-renders
+window.undoAutoLinks=async function(){
+  if(!_lastAutoLinks.length)return;
+  clearTimeout(_undoLinkTimer);
+  var ids=_lastAutoLinks.slice();
+  _lastAutoLinks=[];
+  ids.forEach(function(id){
+    links=links.filter(function(l){return l.id!==id;});
+    linkMap.delete(id);
+    try{remove(ref(db,wsPath('links/'+id)));}catch(e){}
+  });
+  renderNetwork();
+  toast('Auto-links undone ('+ids.length+' removed)');
+};
   var ents=extractEnts(m);
   if(!ents.length)return{added:0,updated:0};
   var added=0,updated=0;
@@ -3875,7 +4600,16 @@ function detectSignals(){
   return signals.slice(0,8);
 }
 
-function renderBoard(){var empty=document.getElementById('board-empty'),body=document.getElementById('board-body');if(!meetings.length){empty.style.display='block';body.style.display='none';return;}empty.style.display='none';body.style.display='block';var allA=meetings.flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title,mdate:m.meta.date});});});var hiA=allA.filter(function(a){return a.priority==='high';});var hiR=meetings.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var allIns=meetings.flatMap(function(m){return m.intel.learningInsights||[];});var personMap={};meetings.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!personMap[p.name])personMap[p.name]={name:p.name,role:p.role,count:0};personMap[p.name].count++;});});var topPeople=Object.values(personMap).sort(function(a,b){return b.count-a.count;}).slice(0,6);var now=new Date();now.setHours(0,0,0,0);var in48=new Date(now);in48.setDate(in48.getDate()+2);var todayItems=[];allA.forEach(function(a){if(!a.deadline)return;var d=new Date(a.deadline+'T00:00:00');if(d<=in48){var diff=Math.round((d-now)/(1000*60*60*24));todayItems.push({label:a.task,owner:a.owner,urgency:diff<=0?'OVERDUE':diff===0?'TODAY':'TOMORROW',color:diff<=0?'#ef4444':'#f59e0b',source:a.mtg});}});if(meetings[0]&&(meetings[0].intel.redFlags||[]).length)todayItems.push({label:(meetings[0].intel.redFlags||[])[0],urgency:'RED FLAG',color:'#ef4444',source:meetings[0].meta.title});var cur=getCurrentFYInfo();var q4Opps=opportunities.filter(function(o){if(o.stage==='won'||o.stage==='lost')return false;if(!o.awardDate)return false;var fi=getFYInfo(o.awardDate);return fi&&fi.fq===4&&fi.daysToEOFY>0&&fi.daysToEOFY<=90;});var h='';if(cur){h+='<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r)">';h+='<div style="flex:1">';h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:'+cur.color+'">'+cur.fullLabel+'</span><span style="font-size:9px;color:var(--t3)">'+cur.short+'</span></div>';h+='<div style="font-size:10px;color:var(--t2);margin-top:2px;line-height:1.3">'+cur.context+'</div>';h+='</div>';h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:16px;font-weight:700;color:'+cur.color+'">'+Math.max(0,cur.daysToEOFY)+'</div><div style="font-size:8px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">d to EOFY</div></div>';h+='</div>';if(q4Opps.length){h+='<div style="padding:6px 10px;margin-bottom:10px;border-left:2px solid var(--amber);background:rgba(245,158,11,.06);border-radius:0 var(--rsm) var(--rsm) 0;font-size:11px;color:var(--text)">'+q4Opps.length+' active opportunit'+(q4Opps.length>1?'ies':'y')+' in Q4 EOFY window: '+q4Opps.map(function(o){return o.name;}).join(', ')+'</div>';}}h+='<div style="background:linear-gradient(135deg,rgba(201,162,39,.07),rgba(139,92,246,.05));border:1px solid rgba(201,162,39,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold)">Today\'s Intel -- '+currentWs.name+'</div><button id="digest-btn" onclick="generateDigest()" style="padding:7px 16px;border:1px solid var(--purple);border-radius:var(--rsm);background:var(--purple);color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 0L6.18 3.82L10 5L6.18 6.18L5 10L3.82 6.18L0 5L3.82 3.82L5 0Z" fill="currentColor"/></svg>Weekly Digest</button></div>';if(todayItems.length){todayItems.slice(0,5).forEach(function(item){h+='<div style="display:flex;gap:7px;align-items:flex-start;padding:4px 0;border-bottom:1px solid rgba(37,45,66,.5)"><span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:'+item.color+'22;color:'+item.color+';flex-shrink:0;margin-top:1px">'+item.urgency+'</span><div><div style="font-size:12px;color:var(--text);line-height:1.4">'+item.label+'</div><div style="font-size:10px;color:var(--t3)">'+item.source+(item.owner?' -- '+item.owner:'')+'</div></div></div>';});}else h+='<div style="font-size:12px;color:var(--t3);text-align:center;padding:5px 0">No urgent items in the next 48 hours</div>';h+='</div>';h+='<div class="g4" style="margin-bottom:16px"><div class="board-kpi"><div class="board-kpi-val" style="color:var(--gold)">'+meetings.length+'</div><div class="board-kpi-lbl">Meetings Logged</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(allA.length?'var(--amber)':'var(--text)')+'">'+allA.length+'</div><div class="board-kpi-lbl">Open Actions</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(hiR.length?'var(--red)':'var(--text)')+'">'+hiR.length+'</div><div class="board-kpi-lbl">High Risks</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:var(--blue)">'+Object.keys(personMap).length+'</div><div class="board-kpi-lbl">People Tracked</div></div></div>';var ph=meetings.slice().reverse().slice(-8);if(ph.length>1){h+='<div class="card"><div class="ctitle">Company Pulse -- History</div><div style="display:flex;gap:8px;flex-wrap:wrap">';ph.forEach(function(m){var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};h+='<div style="text-align:center"><div style="font-size:9px;color:var(--t3);margin-bottom:2px;font-family:\'JetBrains Mono\',monospace">'+m.meta.date.slice(5)+'</div>'+bdg(m.intel.companyPulse||'?',pc2)+'</div>';});h+='</div></div>';}h+='<div class="g2"><div class="card"><div class="ctitle">High Priority Actions ('+hiA.length+')</div>';if(hiA.length)hiA.slice(0,7).forEach(function(a){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;font-weight:500;line-height:1.3">'+a.task+'</div><div style="font-size:10px;color:var(--t2)">'+(a.owner||'')+(a.deadline?' -- Due: '+a.deadline:'')+'</div><div style="font-size:10px;color:var(--t3)">from '+a.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None outstanding</div>';h+='</div><div class="card"><div class="ctitle">Active High Risks ('+hiR.length+')</div>';if(hiR.length)hiR.slice(0,7).forEach(function(r){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;line-height:1.3">'+r.risk+'</div>'+(r.raisedBy?'<div style="font-size:11px;color:var(--gold)">Raised by: '+r.raisedBy+'</div>':'')+'<div style="font-size:10px;color:var(--t3)">from '+r.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None flagged</div>';h+='</div></div>';if(topPeople.length){h+='<div class="card"><div class="ctitle">Most Active People</div><div class="g2">';topPeople.forEach(function(p){var ini=p.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div style="display:flex;gap:7px;align-items:center;padding:4px 0"><div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold);flex-shrink:0">'+ini+'</div><div><div style="font-size:12px;font-weight:500">'+p.name+'</div><div style="font-size:10px;color:var(--t3)">'+p.count+' meeting'+(p.count>1?'s':'')+'</div></div></div>';});h+='</div></div>';}// ── COMMITMENTS on Board ──
+// Debounced renderBoard for Firebase listener calls — prevents triple-render
+// when multiple listeners fire simultaneously (meetings + nodes + commitments)
+function scheduleRenderBoard(){
+  clearTimeout(_boardTimer);
+  _boardTimer=setTimeout(function(){
+    if(activeIntelTab==='board')renderBoard();
+  },150);
+}
+
+function renderBoard(){var empty=document.getElementById('board-empty'),body=document.getElementById('board-body');if(!meetings.length){empty.style.display='block';body.style.display='none';renderOnboardingChecklist();return;}empty.style.display='none';body.style.display='block';var allA=meetings.flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title,mdate:m.meta.date});});});var hiA=allA.filter(function(a){return a.priority==='high';});var hiR=meetings.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var allIns=meetings.flatMap(function(m){return m.intel.learningInsights||[];});var personMap={};meetings.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!personMap[p.name])personMap[p.name]={name:p.name,role:p.role,count:0};personMap[p.name].count++;});});var topPeople=Object.values(personMap).sort(function(a,b){return b.count-a.count;}).slice(0,6);var now=new Date();now.setHours(0,0,0,0);var in48=new Date(now);in48.setDate(in48.getDate()+2);var todayItems=[];allA.forEach(function(a){if(!a.deadline)return;var d=new Date(a.deadline+'T00:00:00');if(d<=in48){var diff=Math.round((d-now)/(1000*60*60*24));todayItems.push({label:a.task,owner:a.owner,urgency:diff<=0?'OVERDUE':diff===0?'TODAY':'TOMORROW',color:diff<=0?'#ef4444':'#f59e0b',source:a.mtg});}});if(meetings[0]&&(meetings[0].intel.redFlags||[]).length)todayItems.push({label:(meetings[0].intel.redFlags||[])[0],urgency:'RED FLAG',color:'#ef4444',source:meetings[0].meta.title});var cur=getCurrentFYInfo();var q4Opps=opportunities.filter(function(o){if(o.stage==='won'||o.stage==='lost')return false;if(!o.awardDate)return false;var fi=getFYInfo(o.awardDate);return fi&&fi.fq===4&&fi.daysToEOFY>0&&fi.daysToEOFY<=90;});var h='';if(cur){h+='<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r)">';h+='<div style="flex:1">';h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:'+cur.color+'">'+cur.fullLabel+'</span><span style="font-size:9px;color:var(--t3)">'+cur.short+'</span></div>';h+='<div style="font-size:10px;color:var(--t2);margin-top:2px;line-height:1.3">'+cur.context+'</div>';h+='</div>';h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:16px;font-weight:700;color:'+cur.color+'">'+Math.max(0,cur.daysToEOFY)+'</div><div style="font-size:8px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">d to EOFY</div></div>';h+='</div>';if(q4Opps.length){h+='<div style="padding:6px 10px;margin-bottom:10px;border-left:2px solid var(--amber);background:rgba(245,158,11,.06);border-radius:0 var(--rsm) var(--rsm) 0;font-size:11px;color:var(--text)">'+q4Opps.length+' active opportunit'+(q4Opps.length>1?'ies':'y')+' in Q4 EOFY window: '+q4Opps.map(function(o){return o.name;}).join(', ')+'</div>';}}h+='<div style="background:linear-gradient(135deg,rgba(201,162,39,.07),rgba(139,92,246,.05));border:1px solid rgba(201,162,39,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold)">Today\'s Intel -- '+currentWs.name+'</div><button id="digest-btn" onclick="generateDigest()" style="padding:7px 16px;border:1px solid var(--purple);border-radius:var(--rsm);background:var(--purple);color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 0L6.18 3.82L10 5L6.18 6.18L5 10L3.82 6.18L0 5L3.82 3.82L5 0Z" fill="currentColor"/></svg>Weekly Digest</button></div>';if(todayItems.length){todayItems.slice(0,5).forEach(function(item){h+='<div style="display:flex;gap:7px;align-items:flex-start;padding:4px 0;border-bottom:1px solid rgba(37,45,66,.5)"><span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:'+item.color+'22;color:'+item.color+';flex-shrink:0;margin-top:1px">'+item.urgency+'</span><div><div style="font-size:12px;color:var(--text);line-height:1.4">'+item.label+'</div><div style="font-size:10px;color:var(--t3)">'+item.source+(item.owner?' -- '+item.owner:'')+'</div></div></div>';});}else h+='<div style="font-size:12px;color:var(--t3);text-align:center;padding:5px 0">No urgent items in the next 48 hours</div>';h+='</div>';h+='<div class="g4" style="margin-bottom:16px"><div class="board-kpi"><div class="board-kpi-val" style="color:var(--gold)">'+meetings.length+'</div><div class="board-kpi-lbl">Meetings Logged</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(allA.length?'var(--amber)':'var(--text)')+'">'+allA.length+'</div><div class="board-kpi-lbl">Open Actions</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(hiR.length?'var(--red)':'var(--text)')+'">'+hiR.length+'</div><div class="board-kpi-lbl">High Risks</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:var(--blue)">'+Object.keys(personMap).length+'</div><div class="board-kpi-lbl">People Tracked</div></div></div>';var ph=meetings.slice().reverse().slice(-8);if(ph.length>1){h+='<div class="card"><div class="ctitle">Company Pulse -- History</div><div style="display:flex;gap:8px;flex-wrap:wrap">';ph.forEach(function(m){var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};h+='<div style="text-align:center"><div style="font-size:9px;color:var(--t3);margin-bottom:2px;font-family:\'JetBrains Mono\',monospace">'+m.meta.date.slice(5)+'</div>'+bdg(m.intel.companyPulse||'?',pc2)+'</div>';});h+='</div></div>';}h+='<div class="g2"><div class="card"><div class="ctitle">High Priority Actions ('+hiA.length+')</div>';if(hiA.length)hiA.slice(0,7).forEach(function(a){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;font-weight:500;line-height:1.3">'+a.task+'</div><div style="font-size:10px;color:var(--t2)">'+(a.owner||'')+(a.deadline?' -- Due: '+a.deadline:'')+'</div><div style="font-size:10px;color:var(--t3)">from '+a.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None outstanding</div>';h+='</div><div class="card"><div class="ctitle">Active High Risks ('+hiR.length+')</div>';if(hiR.length)hiR.slice(0,7).forEach(function(r){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;line-height:1.3">'+r.risk+'</div>'+(r.raisedBy?'<div style="font-size:11px;color:var(--gold)">Raised by: '+r.raisedBy+'</div>':'')+'<div style="font-size:10px;color:var(--t3)">from '+r.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None flagged</div>';h+='</div></div>';if(topPeople.length){h+='<div class="card"><div class="ctitle">Most Active People</div><div class="g2">';topPeople.forEach(function(p){var ini=p.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div style="display:flex;gap:7px;align-items:center;padding:4px 0"><div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold);flex-shrink:0">'+ini+'</div><div><div style="font-size:12px;font-weight:500">'+p.name+'</div><div style="font-size:10px;color:var(--t3)">'+p.count+' meeting'+(p.count>1?'s':'')+'</div></div></div>';});h+='</div></div>';}// ── COMMITMENTS on Board ──
 var openCommits=commitments.filter(function(c){return c.status==='open';});
 if(openCommits.length){
   var bNow=new Date();bNow.setHours(0,0,0,0);
@@ -3952,13 +4686,808 @@ async function reprocessMeeting(){
     m.ts=new Date().toISOString();
     await saveMeeting(m);
     closeModal('edit-modal');pendingEnts=[];
-    var r=await autoSyncEnts(m);
+    var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);
     renderIntel(m);
-    toast('Reprocessed'+((r.added||r.updated)?' -- '+[r.added?r.added+' new':null,r.updated?r.updated+' updated':null].filter(Boolean).join(', ')+' in Network Map':'')+(m.intelHistory.length?' (v'+(m.intelHistory.length+1)+' — history preserved)':''));
+    var parts2=[];if(r.added)parts2.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts2.push(r.updated+' updated');if(rl.added)parts2.push(rl.added+' link'+(rl.added>1?'s':'')+' created');var rmsg='Reprocessed'+(parts2.length?' — '+parts2.join(', ')+' in Network Map':'')+(m.intelHistory.length?' (v'+(m.intelHistory.length+1)+')':'');if(rl.added>0){var toastEl2=document.getElementById('toast');toastEl2.innerHTML=rmsg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl2.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl2.classList.remove('show');},6000);}else{toast(rmsg);}
   }catch(e){document.getElementById('edit-err').textContent=e.message||'Failed';document.getElementById('edit-err').style.display='inline';}
   btn.disabled=false;btn.textContent='Reprocess';
 }
 window.delMeeting=async function(id){if(!confirm('Remove this meeting?'))return;await deleteMeeting(id);document.getElementById('intel-body').style.display='none';document.getElementById('intel-empty').style.display='block';};
+
+// ══════════════════════════════════════════════════════════════
+// WORKSPACE INTELLIGENCE EXPORT
+// Opens a print-optimized HTML document in a new window.
+// User hits Cmd+P → Save as PDF. No server, no dependencies.
+// Three export types: Person Dossier, Opportunity Brief,
+// and full Workspace Intelligence Report.
+// ══════════════════════════════════════════════════════════════
+
+// ── Shared: open new window with print-ready HTML ─────────────
+function _openExportWindow(docHTML){
+  var win=window.open('','_blank','width=900,height=700');
+  if(!win){toast('Pop-up blocked — allow pop-ups for this site to export');return;}
+  win.document.open();
+  win.document.write(docHTML);
+  win.document.close();
+  // Auto-print after a short delay to let fonts load
+  setTimeout(function(){try{win.print();}catch(e){}},600);
+}
+
+// ── Shared: wrap body HTML in a print document ─────────────────
+function _buildExportDoc(title,subtitle,bodyHTML,accent){
+  var accentColor=accent||'#c9a227';
+  var today=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+title+' — FLi Intel</title>'
+    +'<link rel="preconnect" href="https://fonts.googleapis.com">'
+    +'<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">'
+    +'<style>'
+    +'*{box-sizing:border-box;margin:0;padding:0}'
+    +'body{font-family:Inter,system-ui,sans-serif;color:#1a1a2e;background:#fff;padding:32px 40px;max-width:900px;margin:0 auto;font-size:13px;line-height:1.6}'
+    +'.doc-header{border-bottom:3px solid '+accentColor+';padding-bottom:16px;margin-bottom:24px}'
+    +'.doc-title{font-size:22px;font-weight:700;color:#0f172a;margin-bottom:4px}'
+    +'.doc-subtitle{font-size:12px;color:#64748b;font-family:"JetBrains Mono",monospace}'
+    +'.doc-meta{font-size:10px;color:#94a3b8;font-family:"JetBrains Mono",monospace;margin-top:6px;display:flex;gap:16px}'
+    +'.section{margin-bottom:20px;break-inside:avoid}'
+    +'.section-title{font-family:"JetBrains Mono",monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:'+accentColor+';padding-bottom:5px;border-bottom:1px solid #e2e8f0;margin-bottom:10px}'
+    +'.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:10px}'
+    +'.person-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;align-items:flex-start}'
+    +'.avatar{width:28px;height:28px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:'+accentColor+';flex-shrink:0}'
+    +'.tag{display:inline-block;font-size:10px;padding:1px 7px;border-radius:10px;font-family:"JetBrains Mono",monospace;margin-right:4px}'
+    +'.tag-amber{background:#fff7ed;color:#c2410c;border:1px solid #fed7aa}'
+    +'.tag-blue{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}'
+    +'.tag-green{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0}'
+    +'.tag-red{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}'
+    +'.tag-purple{background:#faf5ff;color:#7c3aed;border:1px solid #ddd6fe}'
+    +'.tag-gray{background:#f8fafc;color:#475569;border:1px solid #e2e8f0}'
+    +'.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}'
+    +'.kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;text-align:center}'
+    +'.kpi-val{font-size:20px;font-weight:700;color:'+accentColor+'}'
+    +'.kpi-lbl{font-size:9px;color:#94a3b8;font-family:"JetBrains Mono",monospace;text-transform:uppercase;letter-spacing:0.08em;margin-top:2px}'
+    +'.risk-row{display:flex;gap:6px;padding:4px 0;border-bottom:1px solid #f1f5f9;font-size:12px}'
+    +'.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:5px}'
+    +'.health-bar{height:5px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-top:4px}'
+    +'.health-fill{height:100%;border-radius:3px}'
+    +'.fy-badge{font-family:"JetBrains Mono",monospace;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px}'
+    +'.print-btn{position:fixed;bottom:20px;right:20px;padding:10px 20px;background:'+accentColor+';color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif}'
+    +'@media print{.print-btn{display:none!important}body{padding:16px}}'
+    +'</style></head><body>'
+    +'<button class="print-btn" onclick="window.print()">&#128438; Print / Save PDF</button>'
+    +'<div class="doc-header">'
+    +'<div class="doc-title">'+title+'</div>'
+    +'<div class="doc-subtitle">'+subtitle+'</div>'
+    +'<div class="doc-meta"><span>'+today+'</span><span>'+( currentWs?currentWs.name:'FLi Intel')+'</span></div>'
+    +'</div>'
+    +bodyHTML
+    +'</body></html>';
+}
+
+// ── Helper: health bar HTML for export ────────────────────────
+function _exportHealthBar(health){
+  if(health===null||health===undefined)return '<span style="color:#94a3b8;font-size:11px">No data</span>';
+  var hc=health>=7?'#16a34a':health>=4?'#d97706':'#dc2626';
+  return '<div style="display:flex;align-items:center;gap:6px">'
+    +'<div class="health-bar" style="flex:1"><div class="health-fill" style="width:'+(health*10)+'%;background:'+hc+'"></div></div>'
+    +'<span style="font-size:11px;font-weight:700;color:'+hc+'">'+health+'/10</span></div>';
+}
+
+// ── Helper: stance color tag ──────────────────────────────────
+function _stanceTag(stance){
+  if(!stance)return '';
+  var s=stance.toLowerCase();
+  var cls='/positive|engaged|enthusiastic|champion/.test(s)?\'tag-green\':/cautious|hesitant|concerned/.test(s)?\'tag-amber\':/negative|cold|blocking|opposed/.test(s)?\'tag-red\':\'tag-gray\'';
+  var cls2=/positive|engaged|enthusiastic|champion/.test(s)?'tag-green':/cautious|hesitant|concerned/.test(s)?'tag-amber':/negative|cold|blocking|opposed/.test(s)?'tag-red':'tag-gray';
+  return '<span class="tag '+cls2+'">'+stance.slice(0,60)+'</span>';
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT 1: PERSON DOSSIER
+// ══════════════════════════════════════════════════════════════
+window.exportDossier=function(){
+  var d=selectedNode;
+  if(!d){toast('Open a person\'s 360 View first');return;}
+  var accentColor=d.type==='government'?'#3b82f6':d.type==='company'?'#c9a227':'#8b5cf6';
+  var body=_dossierExportHTML(d);
+  var subtitle=(d.role||d.type.toUpperCase())+(d.org?' · '+d.org:'');
+  var doc=_buildExportDoc(d.name+' — Intelligence Dossier',subtitle,body,accentColor);
+  _openExportWindow(doc);
+};
+
+function _dossierExportHTML(d){
+  var nm=getMtgsForNode(d.id);
+  var health=nm.length?computeRelHealth(d.id):null;
+  var sorted=nm.slice().sort(function(a,b){return a.meta.date.localeCompare(b.meta.date);});
+  var latest=sorted.length?sorted[sorted.length-1]:null;
+  var daysAgo=latest?Math.floor((Date.now()-new Date(latest.meta.date+'T00:00:00'))/86400000):null;
+  var now=new Date();
+
+  // Build stance trajectory
+  var stances=[];
+  nm.slice().reverse().slice(0,8).forEach(function(m){
+    var p=(m.intel.keyPeople||[]).find(function(x){return nameSimilarity(x.name,d.name)>=0.72;});
+    if(p&&p.stance)stances.push({date:m.meta.date,stance:p.stance,watchFor:p.watchFor,mtg:m.meta.title});
+  });
+
+  // Linked opportunities
+  var linkedOpps=[];
+  nm.forEach(function(m){
+    if(m.oppId){var o=opportunities.find(function(x){return x.id===m.oppId;});if(o&&!linkedOpps.find(function(x){return x.id===o.id;}))linkedOpps.push(o);}
+  });
+
+  // Commitments
+  var nodeCommits=commitments.filter(function(c){return c.owner&&nameSimilarity(c.owner,d.name)>=0.72;});
+
+  // Actions
+  var nodeActions=nm.flatMap(function(m){
+    return(m.intel.actionItems||[]).filter(function(a){return a.owner&&nameSimilarity(a.owner,d.name)>=0.72;}).map(function(a){return Object.assign({},a,{date:m.meta.date,mtg:m.meta.title});});
+  });
+
+  var ini=d.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+  var hc=health!==null&&health!==undefined?(health>=7?'#16a34a':health>=4?'#d97706':'#dc2626'):'#94a3b8';
+
+  var body='';
+
+  // Header card
+  body+='<div class="card" style="display:flex;gap:16px;align-items:flex-start;margin-bottom:20px">';
+  body+='<div class="avatar" style="width:48px;height:48px;font-size:14px">'+ini+'</div>';
+  body+='<div style="flex:1">';
+  body+='<div style="font-size:17px;font-weight:700;margin-bottom:2px">'+d.name+'</div>';
+  if(d.role)body+='<div style="font-size:13px;color:#475569">'+d.role+(d.org?' · '+d.org:'')+'</div>';
+  body+='<div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#64748b">';
+  body+='<span>'+nm.length+' meetings</span>';
+  if(daysAgo!==null)body+='<span>Last contact: '+(daysAgo===0?'Today':daysAgo+'d ago')+'</span>';
+  body+='<span>T'+(d.priority||2)+' · '+d.type+'</span>';
+  body+='</div>';
+  if(health!==null&&health!==undefined){body+='<div style="margin-top:8px;max-width:200px">'+_exportHealthBar(health)+'</div>';}
+  body+='</div></div>';
+
+  // KPIs
+  body+='<div class="kpi-grid">';
+  [{v:nm.length,l:'Total Meetings',c:'#c9a227'},{v:stances.length,l:'Stance Records',c:'#8b5cf6'},
+   {v:nodeCommits.filter(function(c){return c.status==='open';}).length,l:'Open Commits',c:'#ef4444'},
+   {v:linkedOpps.length,l:'Linked Deals',c:'#3b82f6'}].forEach(function(k){
+    body+='<div class="kpi"><div class="kpi-val" style="color:'+k.c+'">'+k.v+'</div><div class="kpi-lbl">'+k.l+'</div></div>';
+  });
+  body+='</div>';
+
+  // Stance trajectory
+  if(stances.length){
+    body+='<div class="section"><div class="section-title">Stance Trajectory</div>';
+    stances.forEach(function(s){
+      body+='<div class="person-row">';
+      body+='<span style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace;flex-shrink:0;min-width:70px">'+s.date+'</span>';
+      body+='<div><div style="font-size:12px;color:#374151;line-height:1.4">'+s.stance+'</div>';
+      body+='<div style="font-size:10px;color:#94a3b8">'+s.mtg+'</div>';
+      if(s.watchFor)body+='<div style="font-size:10px;color:#c2410c;margin-top:2px">⚠ '+s.watchFor+'</div>';
+      body+='</div></div>';
+    });
+    body+='</div>';
+  }
+
+  // Meeting log
+  if(sorted.length){
+    body+='<div class="section"><div class="section-title">Meeting History ('+sorted.length+')</div>';
+    sorted.slice().reverse().slice(0,10).forEach(function(m){
+      var p=(m.intel.keyPeople||[]).find(function(x){return nameSimilarity(x.name,d.name)>=0.72;});
+      body+='<div style="padding:6px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:8px">';
+      body+='<span style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace;flex-shrink:0;min-width:70px">'+m.meta.date+'</span>';
+      body+='<div><div style="font-size:12px;font-weight:500">'+m.meta.title+'</div>';
+      if(m.intel.summary)body+='<div style="font-size:11px;color:#64748b;margin-top:2px">'+m.intel.summary.slice(0,150)+'</div>';
+      body+='</div></div>';
+    });
+    body+='</div>';
+  }
+
+  // Open commitments
+  if(nodeCommits.length){
+    body+='<div class="section"><div class="section-title">Commitments</div>';
+    nodeCommits.forEach(function(c){
+      var sc={open:'#3b82f6',fulfilled:'#16a34a',broken:'#dc2626',waived:'#94a3b8'}[c.status]||'#3b82f6';
+      body+='<div class="risk-row"><div class="dot" style="background:'+sc+'"></div>';
+      body+='<div><div style="font-size:12px">'+c.task+'</div>';
+      body+='<div style="font-size:10px;color:#94a3b8">'+c.status.toUpperCase()+(c.deadline?' · Due: '+c.deadline:'')+'</div>';
+      body+='</div></div>';
+    });
+    body+='</div>';
+  }
+
+  // Linked opportunities
+  if(linkedOpps.length){
+    body+='<div class="section"><div class="section-title">Linked Opportunities</div>';
+    linkedOpps.forEach(function(o){
+      var fy=o.awardDate?getFYInfo(o.awardDate):null;
+      body+='<div class="card">';
+      body+='<div style="font-size:13px;font-weight:600">'+o.name+'</div>';
+      body+='<div style="font-size:11px;color:#64748b;margin-top:3px">Stage: '+o.stage+(o.agency?' · '+o.agency:'')+(fy?' · <span class="fy-badge" style="background:#fff7ed;color:#c2410c">'+fy.fullLabel+'</span>':'')+'</div>';
+      body+='</div>';
+    });
+    body+='</div>';
+  }
+
+  return body;
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT 2: OPPORTUNITY BRIEF
+// ══════════════════════════════════════════════════════════════
+window.exportOpportunity=function(){
+  var opp=currentOpp;
+  if(!opp){toast('Open an opportunity first');return;}
+  var body=_oppExportHTML(opp);
+  var subtitle=(opp.agency||'')+(opp.vehicle?' · '+opp.vehicle:'')+(opp.value?' · '+opp.value:'');
+  var doc=_buildExportDoc(opp.name+' — Pursuit Brief',subtitle,body,'#8b5cf6');
+  _openExportWindow(doc);
+};
+
+function _oppExportHTML(opp){
+  var now=new Date();now.setHours(0,0,0,0);
+  var taggedMtgs=meetings.filter(function(m){return(m.oppId===opp.id)||(opp.meetings||[]).includes(m.id);});
+  taggedMtgs.sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);});
+  var allPeople={},allRisks=[],allActions=[];
+  taggedMtgs.forEach(function(m){
+    (m.intel.keyPeople||[]).forEach(function(p){
+      if(!allPeople[p.name])allPeople[p.name]={name:p.name,role:p.role,org:p.org,stances:[],watchFor:[]};
+      if(p.stance)allPeople[p.name].stances.push({stance:p.stance,date:m.meta.date});
+      if(p.watchFor)allPeople[p.name].watchFor.push(p.watchFor);
+    });
+    (m.intel.risks||[]).forEach(function(r){allRisks.push(Object.assign({},r,{mtg:m.meta.title}));});
+    (m.intel.actionItems||[]).forEach(function(a){allActions.push(Object.assign({},a,{mtg:m.meta.title}));});
+  });
+  var pList=Object.values(allPeople);
+  var winProb=computeWinProb(opp,taggedMtgs,allPeople,allRisks);
+  var gaps=computeNetworkGaps(opp,allPeople);
+  var awFY=opp.awardDate?getFYInfo(opp.awardDate):null;
+  var procAlerts=getProcurementAlerts(opp,taggedMtgs.length);
+  var sc=opp.stage;
+
+  var body='';
+
+  // Header KPIs
+  body+='<div class="kpi-grid">';
+  [{v:taggedMtgs.length,l:'Meetings',c:'#c9a227'},{v:pList.length,l:'Stakeholders',c:'#3b82f6'},
+   {v:allRisks.filter(function(r){return r.severity==='high';}).length,l:'High Risks',c:'#ef4444'},
+   {v:winProb.score+'%',l:'Win Probability',c:winProb.score>=65?'#16a34a':winProb.score>=35?'#d97706':'#dc2626'}].forEach(function(k){
+    body+='<div class="kpi"><div class="kpi-val" style="color:'+k.c+'">'+k.v+'</div><div class="kpi-lbl">'+k.l+'</div></div>';
+  });
+  body+='</div>';
+
+  // Stage + Dates
+  body+='<div class="card" style="margin-bottom:16px">';
+  body+='<div style="display:flex;gap:16px;flex-wrap:wrap">';
+  body+='<div><div style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;margin-bottom:3px">Stage</div><div style="font-size:14px;font-weight:700;color:#8b5cf6">'+sc.toUpperCase()+'</div></div>';
+  if(opp.rfpDate){var rfp=new Date(opp.rfpDate+'T00:00:00');var rfpD=Math.round((rfp-now)/86400000);body+='<div><div style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;margin-bottom:3px">RFP Date</div><div style="font-size:13px;font-weight:600">'+opp.rfpDate+'</div><div style="font-size:10px;color:'+(rfpD<0?'#dc2626':'#64748b')+'">'+(rfpD<0?Math.abs(rfpD)+'d past':rfpD+'d away')+'</div></div>';}
+  if(opp.awardDate){var aw=new Date(opp.awardDate+'T00:00:00');var awD=Math.round((aw-now)/86400000);body+='<div><div style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;margin-bottom:3px">Award Date</div><div style="font-size:13px;font-weight:600">'+opp.awardDate+'</div>'+(awFY?'<div class="fy-badge" style="background:#fff7ed;color:#c2410c;margin-top:2px">'+awFY.fullLabel+(awFY.fq===4?' ⚡':'')+'</div>':'')+'<div style="font-size:10px;color:'+(awD<0?'#dc2626':'#64748b')+'">'+(awD<0?Math.abs(awD)+'d past':awD+'d away')+'</div></div>';}
+  body+='</div>';
+  if(winProb._factors&&winProb._factors.length){
+    body+='<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:5px">';
+    winProb._factors.forEach(function(f){body+='<span class="tag tag-gray">'+f.label+': '+f.value+'</span>';});
+    body+='</div>';
+  }
+  body+='</div>';
+
+  // Procurement alerts
+  if(procAlerts.length){
+    body+='<div class="section"><div class="section-title">Procurement Intelligence</div>';
+    procAlerts.forEach(function(a){
+      var cls=a.severity==='high'?'tag-red':a.severity==='info'?'tag-green':'tag-amber';
+      body+='<div style="display:flex;gap:7px;padding:6px 0;border-bottom:1px solid #f1f5f9">';
+      body+='<span style="font-size:11px">'+a.icon+'</span>';
+      body+='<div style="font-size:12px;color:#374151">'+a.text+'</div></div>';
+    });
+    body+='</div>';
+  }
+
+  // Network gaps
+  if(gaps.length){
+    body+='<div class="section"><div class="section-title">Network Gaps</div>';
+    gaps.forEach(function(g){body+='<div class="risk-row"><div class="dot" style="background:#dc2626"></div><div style="font-size:12px">'+g+'</div></div>';});
+    body+='</div>';
+  }
+
+  // Stakeholders
+  if(pList.length){
+    body+='<div class="section"><div class="section-title">Key Stakeholders ('+pList.length+')</div>';
+    pList.forEach(function(p){
+      var latest=p.stances[p.stances.length-1];
+      var ini=p.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+      body+='<div class="person-row"><div class="avatar">'+ini+'</div>';
+      body+='<div style="flex:1"><div style="font-size:12px;font-weight:600">'+p.name+'</div>';
+      if(p.role||p.org)body+='<div style="font-size:10px;color:#64748b">'+(p.role||'')+(p.org?' · '+p.org:'')+'</div>';
+      if(latest)body+='<div style="font-size:11px;color:#374151;font-style:italic;margin-top:3px">'+latest.stance.slice(0,100)+'</div>';
+      if(p.watchFor.length)body+='<div style="font-size:10px;color:#c2410c;margin-top:2px">⚠ '+p.watchFor[p.watchFor.length-1]+'</div>';
+      body+='</div></div>';
+    });
+    body+='</div>';
+  }
+
+  // Risks
+  if(allRisks.length){
+    var hiR=allRisks.filter(function(r){return r.severity==='high';});
+    var rest=allRisks.filter(function(r){return r.severity!=='high';});
+    body+='<div class="section"><div class="section-title">Risks ('+allRisks.length+')</div>';
+    hiR.concat(rest).slice(0,8).forEach(function(r){
+      var c=r.severity==='high'?'#dc2626':r.severity==='medium'?'#d97706':'#64748b';
+      body+='<div class="risk-row"><div class="dot" style="background:'+c+'"></div>';
+      body+='<div><div style="font-size:12px">'+r.risk+'</div>';
+      if(r.raisedBy)body+='<div style="font-size:10px;color:#94a3b8">Raised by: '+r.raisedBy+' · '+r.mtg+'</div>';
+      body+='</div></div>';
+    });
+    body+='</div>';
+  }
+
+  // Context notes
+  if(opp.notes){
+    body+='<div class="section"><div class="section-title">Context Notes</div>';
+    body+='<div style="font-size:12px;color:#374151;line-height:1.7;white-space:pre-wrap">'+opp.notes+'</div>';
+    body+='</div>';
+  }
+
+  return body;
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT 3: FULL WORKSPACE INTELLIGENCE REPORT
+// ══════════════════════════════════════════════════════════════
+window.exportWorkspaceReport=function(){
+  if(!currentWs){toast('Open a workspace first');return;}
+  var body=_workspaceReportHTML();
+  var doc=_buildExportDoc(currentWs.name+' — Intelligence Report','Full workspace briefing','<div style="font-size:11px;color:#64748b;margin-bottom:20px">'+meetings.length+' meetings · '+nodes.length+' network nodes · '+opportunities.length+' opportunities</div>'+body,'#c9a227');
+  _openExportWindow(doc);
+};
+
+function _workspaceReportHTML(){
+  var now=new Date();now.setHours(0,0,0,0);
+  var body='';
+  var cur=getCurrentFYInfo();
+
+  // ── FY Status ──────────────────────────────────────────────
+  if(cur){
+    body+='<div class="section"><div class="section-title">Procurement Position</div>';
+    body+='<div class="card">';
+    body+='<div style="display:flex;align-items:center;justify-content:space-between">';
+    body+='<div><div style="font-size:14px;font-weight:700;color:#c2410c">'+cur.fullLabel+'</div>';
+    body+='<div style="font-size:12px;color:#64748b;margin-top:3px">'+cur.context+'</div>';
+    body+='<div style="font-size:11px;color:#94a3b8;margin-top:2px">'+cur.advice+'</div></div>';
+    body+='<div style="text-align:right"><div style="font-size:24px;font-weight:700;color:#c2410c">'+Math.max(0,cur.daysToEOFY)+'</div>';
+    body+='<div style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace">DAYS TO EOFY</div></div>';
+    body+='</div></div></div>';
+  }
+
+  // ── KPIs ───────────────────────────────────────────────────
+  var allA=meetings.flatMap(function(m){return m.intel.actionItems||[];});
+  var hiR=meetings.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';});});
+  var activeOpps=opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';});
+  var openCommits=commitments.filter(function(c){return c.status==='open';});
+  body+='<div class="kpi-grid">';
+  [{v:meetings.length,l:'Meetings Logged',c:'#c9a227'},{v:nodes.length,l:'Network Nodes',c:'#3b82f6'},
+   {v:activeOpps.length,l:'Active Opps',c:'#8b5cf6'},{v:openCommits.length,l:'Open Commits',c:'#ef4444'}].forEach(function(k){
+    body+='<div class="kpi"><div class="kpi-val" style="color:'+k.c+'">'+k.v+'</div><div class="kpi-lbl">'+k.l+'</div></div>';
+  });
+  body+='</div>';
+
+  // ── Active Opportunities ───────────────────────────────────
+  if(activeOpps.length){
+    body+='<div class="section"><div class="section-title">Active Opportunities</div>';
+    activeOpps.forEach(function(o){
+      var taggedMtgs=meetings.filter(function(m){return m.oppId===o.id;});
+      var allPeople={},allRisks=[];
+      taggedMtgs.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!allPeople[p.name])allPeople[p.name]=p;});(m.intel.risks||[]).forEach(function(r){allRisks.push(r);});});
+      var wp=computeWinProb(o,taggedMtgs,allPeople,allRisks);
+      var fy=o.awardDate?getFYInfo(o.awardDate):null;
+      var wpColor=wp.score>=65?'#16a34a':wp.score>=35?'#d97706':'#dc2626';
+      body+='<div class="card">';
+      body+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+      body+='<div style="flex:1"><div style="font-size:13px;font-weight:700">'+o.name+'</div>';
+      body+='<div style="font-size:11px;color:#64748b;margin-top:2px">'+o.stage.toUpperCase()+(o.agency?' · '+o.agency:'')+(fy?' · <span style="background:#fff7ed;color:#c2410c;padding:0 4px;border-radius:3px;font-family:\'JetBrains Mono\',monospace;font-size:9px">'+fy.fullLabel+(fy.fq===4?' ⚡':'')+'</span>':'')+'</div>';
+      if(o.rfpDate||o.awardDate)body+='<div style="font-size:10px;color:#94a3b8;margin-top:3px">'+(o.rfpDate?'RFP: '+o.rfpDate+' · ':'')+( o.awardDate?'Award: '+o.awardDate:'')+'</div>';
+      body+='</div>';
+      body+='<div style="text-align:right;flex-shrink:0;margin-left:12px"><div style="font-size:18px;font-weight:700;color:'+wpColor+'">'+wp.score+'%</div><div style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace">WIN PROB</div></div>';
+      body+='</div>';
+      body+='</div>';
+    });
+    body+='</div>';
+  }
+
+  // ── Top Relationships ──────────────────────────────────────
+  var personNodes=nodes.filter(function(n){return n.type==='person';}).slice(0,12);
+  if(personNodes.length){
+    body+='<div class="section"><div class="section-title">Network — Top Relationships</div>';
+    var relRows=personNodes.map(function(n){
+      var h=getMtgsForNode(n.id).length?computeRelHealth(n.id):null;
+      return{n:n,h:h,mtgs:getMtgsForNode(n.id).length};
+    }).sort(function(a,b){return(b.h||0)-(a.h||0)});
+    relRows.forEach(function(row){
+      var n=row.n,h=row.h;
+      var hc=h!==null?(h>=7?'#16a34a':h>=4?'#d97706':'#dc2626'):'#94a3b8';
+      var ini=n.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+      body+='<div class="person-row"><div class="avatar">'+ini+'</div>';
+      body+='<div style="flex:1"><div style="font-size:12px;font-weight:600">'+n.name+'</div>';
+      if(n.role||n.org)body+='<div style="font-size:10px;color:#64748b">'+(n.role||'')+(n.org?' · '+n.org:'')+'</div>';
+      body+='<div style="font-size:10px;color:#94a3b8">T'+(n.priority||2)+' · '+row.mtgs+' meetings</div>';
+      body+='</div>';
+      if(h!==null)body+='<div style="text-align:right"><div style="font-size:14px;font-weight:700;color:'+hc+'">'+h+'</div><div style="font-size:8px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace">HEALTH</div></div>';
+      body+='</div>';
+    });
+    body+='</div>';
+  }
+
+  // ── Open Commitments ──────────────────────────────────────
+  var overdueC=openCommits.filter(function(c){return c.deadline&&new Date(c.deadline+'T00:00:00')<now;});
+  var otherC=openCommits.filter(function(c){return !c.deadline||new Date(c.deadline+'T00:00:00')>=now;});
+  if(openCommits.length){
+    body+='<div class="section"><div class="section-title">Open Commitments ('+openCommits.length+')</div>';
+    if(overdueC.length){body+='<div style="font-size:10px;font-weight:600;color:#dc2626;margin-bottom:6px;font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em">Overdue ('+overdueC.length+')</div>';}
+    overdueC.concat(otherC).slice(0,10).forEach(function(c){
+      var isOverdue=c.deadline&&new Date(c.deadline+'T00:00:00')<now;
+      body+='<div class="risk-row"><div class="dot" style="background:'+(isOverdue?'#dc2626':'#3b82f6')+'"></div>';
+      body+='<div><div style="font-size:12px">'+c.task+'</div>';
+      body+='<div style="font-size:10px;color:#94a3b8">'+(c.owner||'Team')+(c.deadline?' · Due: '+c.deadline:'')+'</div>';
+      body+='</div></div>';
+    });
+    body+='</div>';
+  }
+
+  // ── High Risks ─────────────────────────────────────────────
+  if(hiR.length){
+    body+='<div class="section"><div class="section-title">Active High Risks ('+hiR.length+')</div>';
+    hiR.slice(0,8).forEach(function(r){
+      body+='<div class="risk-row"><div class="dot" style="background:#dc2626"></div>';
+      body+='<div style="font-size:12px">'+r.risk+'</div></div>';
+    });
+    body+='</div>';
+  }
+
+  return body;
+}
+
+// ── Brief export (uses already-rendered HTML from Brief modal) ──
+window.exportBrief=function(){
+  if(!window._briefText){toast('Generate a brief first');return;}
+  var briefBody=document.getElementById('brief-body');
+  if(!briefBody||!briefBody.innerHTML)return;
+  // Convert dark-mode brief HTML to light-mode for print
+  var converted=briefBody.innerHTML
+    .replace(/var\(--s1\)/g,'#f8fafc').replace(/var\(--s2\)/g,'#f1f5f9').replace(/var\(--b1\)/g,'#e2e8f0').replace(/var\(--b2\)/g,'#cbd5e1')
+    .replace(/var\(--text\)/g,'#1a1a2e').replace(/var\(--t2\)/g,'#475569').replace(/var\(--t3\)/g,'#94a3b8')
+    .replace(/var\(--gold\)/g,'#c9a227').replace(/var\(--purple\)/g,'#8b5cf6').replace(/var\(--red\)/g,'#dc2626')
+    .replace(/var\(--amber\)/g,'#d97706').replace(/var\(--green\)/g,'#16a34a').replace(/var\(--blue\)/g,'#3b82f6')
+    .replace(/var\(--r\)/g,'8px').replace(/var\(--rsm\)/g,'4px');
+  var subtitle=document.getElementById('brief-subtitle').textContent||'';
+  var doc=_buildExportDoc('Intelligence Brief',subtitle,converted,'#c9a227');
+  _openExportWindow(doc);
+};
+
+// ══════════════════════════════════════════════════════════════
+// FIREBASE SECURITY RULES — display and copy
+// ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+// ONBOARDING CHECKLIST
+// Shown on the Board tab when < 3 meetings logged. Tracks 5 key
+// first-run actions. Auto-collapses when all complete.
+// Dismissed state persisted in localStorage per workspace.
+// ══════════════════════════════════════════════════════════════
+
+function getOnboardingDismissed(){
+  try{return localStorage.getItem('fli-onboarding-done-'+(currentWsId||''))===  '1';}catch(e){return false;}
+}
+function setOnboardingDismissed(){
+  try{localStorage.setItem('fli-onboarding-done-'+(currentWsId||''),'1');}catch(e){}
+}
+
+function renderOnboardingChecklist(){
+  var el=document.getElementById('onboarding-checklist');
+  if(!el)return;
+  if(getOnboardingDismissed()){el.innerHTML='';return;}
+
+  // Define 5 steps with live condition checks
+  var steps=[
+    {
+      id:'log',
+      label:'Log your first meeting',
+      detail:'Go to the Log tab — paste Otter.ai transcript or write notes — click Process.',
+      done:meetings.length>0,
+      action:function(){switchIntelTab('log');}
+    },
+    {
+      id:'process',
+      label:'Process a meeting to extract intelligence',
+      detail:'After logging, click Process. Claude extracts people, risks, action items, and stance.',
+      done:meetings.length>0&&meetings.some(function(m){return m.intel&&m.intel.summary;}),
+      action:function(){switchIntelTab('log');}
+    },
+    {
+      id:'network',
+      label:'Add a contact to your Network Map',
+      detail:'Go to Network Map → click + Person → add a T1 or T2 contact you\'re working with.',
+      done:nodes.some(function(n){return n.type==='person';}),
+      action:function(){switchView('network');}
+    },
+    {
+      id:'opp',
+      label:'Create your first opportunity',
+      detail:'Go to Opportunities → + New → name a contract, program, or deal you\'re pursuing.',
+      done:opportunities.length>0,
+      action:function(){switchView('opps');setTimeout(openNewOppModal,100);}
+    },
+    {
+      id:'team',
+      label:'Invite a team member',
+      detail:'Click Members in the nav → enter their email to invite them to the workspace.',
+      done:false, // can't easily check from client without extra FB read
+      action:function(){document.getElementById('nav-members-btn').click();}
+    }
+  ];
+
+  var allDone=steps.filter(function(s){return s.done;}).length;
+  var totalSteps=steps.length;
+
+  // If 4/5 done, auto-dismiss (team invite is hard to track)
+  if(allDone>=4){setOnboardingDismissed();el.innerHTML='';return;}
+
+  var h='<div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden">';
+  h+='<div style="padding:10px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between">';
+  h+='<div><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold)">Getting Started</span>';
+  h+='<span style="font-size:10px;color:var(--t3);margin-left:8px">'+allDone+' / '+totalSteps+' complete</span></div>';
+  // Progress bar
+  h+='<div style="display:flex;align-items:center;gap:8px">';
+  h+='<div style="width:80px;height:4px;background:var(--b1);border-radius:2px"><div style="width:'+(allDone/totalSteps*100)+'%;height:100%;border-radius:2px;background:var(--gold);transition:width .3s"></div></div>';
+  h+='<button onclick="dismissOnboarding()" style="background:none;border:none;color:var(--t3);font-size:12px;cursor:pointer;padding:0" title="Dismiss">×</button>';
+  h+='</div></div>';
+
+  steps.forEach(function(step,i){
+    h+='<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--b1);'+(step.done?'opacity:.5':'')+'cursor:'+(step.done?'default':'pointer')+'"'
+      +(step.done?'':' onclick="onboardingAction('+i+')"')+'>';
+    h+='<div style="width:18px;height:18px;border-radius:50%;border:2px solid '+(step.done?'var(--green)':'var(--b2)')+';background:'+(step.done?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">';
+    if(step.done)h+='<svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4L3.5 6L6.5 2" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    h+='</div>';
+    h+='<div style="flex:1"><div style="font-size:12px;font-weight:'+(step.done?'400':'600')+';color:'+(step.done?'var(--t2)':'var(--text)')+'">'+step.label+'</div>';
+    if(!step.done)h+='<div style="font-size:10px;color:var(--t3);margin-top:2px;line-height:1.4">'+step.detail+'</div>';
+    h+='</div>';
+    if(!step.done)h+='<div style="color:var(--t3);font-size:14px;margin-top:1px;flex-shrink:0">→</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+// Store step actions for onclick handler
+var _onboardingSteps=[];
+window.onboardingAction=function(i){
+  var steps=[
+    function(){switchIntelTab('log');},
+    function(){switchIntelTab('log');},
+    function(){switchView('network');},
+    function(){switchView('opps');setTimeout(function(){if(typeof openNewOppModal==='function')openNewOppModal();},100);},
+    function(){var btn=document.getElementById('nav-members-btn');if(btn)btn.click();}
+  ];
+  if(steps[i])steps[i]();
+};
+window.dismissOnboarding=function(){
+  setOnboardingDismissed();
+  var el=document.getElementById('onboarding-checklist');
+  if(el)el.innerHTML='';
+  // If all meetings logged, show the real board
+  if(meetings.length)renderBoard();
+};
+
+// ══════════════════════════════════════════════════════════════
+// RELATIONSHIP NARRATIVE SUMMARY
+// One Claude call per person — generates a 3-paragraph narrative
+// of how the relationship started, evolved, and where it stands.
+// Injected at top of Timeline tab, cached in _narrativeCache.
+// ══════════════════════════════════════════════════════════════
+
+var _narrativeCache=new Map(); // nodeId → {html, text, generated}
+
+window.generateRelNarrative=async function(){
+  var d=selectedNode;
+  if(!d){toast('Select a contact first');return;}
+  if(!apiKey){toast('Add API key in Settings');return;}
+
+  var nm=getMtgsForNode(d.id);
+  if(!nm.length){toast('No meetings linked to '+d.name);return;}
+
+  var btn=document.getElementById('rel-narrative-btn');
+  var narrativeEl=document.getElementById('timeline360-narrative');
+  if(btn)btn.disabled=true;
+  if(narrativeEl)narrativeEl.innerHTML='<div style="padding:12px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);margin-bottom:10px">'
+    +'<div style="display:inline-flex;gap:6px;align-items:center;font-size:11px;color:var(--t2)">'
+    +'<span class="proc-dots"><span></span><span></span><span></span></span>Synthesizing relationship arc...</div></div>';
+  if(narrativeEl)narrativeEl.style.display='block';
+
+  try{
+    var text=await _callNarrativeClaude(d,nm);
+    var renderedHTML=_renderNarrative(d,text,nm.length);
+    _narrativeCache.set(d.id,{html:renderedHTML,text:text,generated:new Date().toISOString()});
+    if(narrativeEl)narrativeEl.innerHTML=renderedHTML;
+  }catch(e){
+    if(narrativeEl)narrativeEl.innerHTML='<div style="padding:10px;color:var(--red);font-size:11px">Narrative failed: '+(e.message||'Try again')+'</div>';
+  }
+  if(btn){btn.disabled=false;btn.textContent='↺ Refresh';}
+};
+
+async function _callNarrativeClaude(d,meetings){
+  var sorted=meetings.slice().sort(function(a,b){return a.meta.date.localeCompare(b.meta.date);});
+  var stances=[];
+  sorted.forEach(function(m){
+    var p=(m.intel.keyPeople||[]).find(function(x){return nameSimilarity(x.name,d.name)>=0.72;});
+    if(p&&p.stance)stances.push({date:m.meta.date,mtg:m.meta.title,stance:p.stance,watchFor:p.watchFor||''});
+  });
+  var actions=meetings.flatMap(function(m){
+    return(m.intel.actionItems||[]).filter(function(a){return a.owner&&nameSimilarity(a.owner,d.name)>=0.72;})
+      .map(function(a){return a.task+(a.deadline?' (due: '+a.deadline+')':'');});
+  });
+  var redFlags=meetings.flatMap(function(m){return m.intel.redFlags||[];}).slice(0,5);
+
+  var ctx='CONTACT: '+d.name+(d.role?' | '+d.role:'')+(d.org?' @ '+d.org:'')+'\n';
+  ctx+='TOTAL MEETINGS: '+meetings.length+' over '+(Math.floor((new Date(sorted[sorted.length-1].meta.date)-new Date(sorted[0].meta.date))/86400000))+' days\n';
+  ctx+='WORKSPACE: '+currentWs.name+'\n\n';
+  ctx+='MEETING HISTORY:\n';
+  sorted.forEach(function(m){ctx+='['+m.meta.date+'] '+m.meta.title+(m.intel.summary?'\nSummary: '+m.intel.summary.slice(0,200):'')+'\n';});
+  ctx+='\nSTANCE HISTORY:\n';
+  stances.forEach(function(s){ctx+=s.date+': '+s.stance.slice(0,150)+(s.watchFor?' [Watch: '+s.watchFor+']':'')+'\n';});
+  if(actions.length)ctx+='\nTHEIR COMMITMENTS: '+actions.slice(0,5).join('; ')+'\n';
+  if(redFlags.length)ctx+='\nRED FLAGS: '+redFlags.join('; ')+'\n';
+
+  var sp='You are a defense BD analyst writing a relationship intelligence briefing.\n\n'
+    +'Write EXACTLY three paragraphs — no headers, no bullets. Pure prose. Each paragraph should be 3-5 sentences.\n\n'
+    +'Paragraph 1: How this relationship started. When was the first contact, what was the context, what was the initial impression and stance.\n\n'
+    +'Paragraph 2: How it has evolved. What changed over time — stance shifts, key moments, commitments made, concerns raised, what built or damaged trust.\n\n'
+    +'Paragraph 3: Where it stands now. Current disposition, what they need from us, what we need from them, the single most important thing to know about this relationship going forward.\n\n'
+    +'Be specific. Reference actual dates and meeting names. Never fabricate. Under 300 words total.';
+
+  var res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:600,system:sp,messages:[{role:'user',content:ctx}]})
+  });
+  if(!res.ok){var err=await res.json().catch(function(){return{};});throw new Error(err.error?err.error.message:'API error '+res.status);}
+  var d2=await res.json();
+  return(d2.content||[]).map(function(b){return b.text||'';}).join('');
+}
+
+function _renderNarrative(d,text,mtgCount){
+  var paragraphs=text.trim().split(/\n\n+/).filter(function(p){return p.trim().length>20;});
+  var h='<div style="background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(139,92,246,.03));border:1px solid rgba(139,92,246,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--purple)">Relationship Narrative · '+mtgCount+' meetings</div>';
+  h+='<button onclick="navigator.clipboard.writeText(window._lastNarrativeText||\'\')" style="font-size:9px;padding:1px 6px;border:1px solid rgba(139,92,246,.3);border-radius:3px;background:transparent;color:var(--purple);cursor:pointer">Copy</button>';
+  h+='</div>';
+  paragraphs.forEach(function(p,i){
+    var colors=['var(--t2)','var(--text)','var(--gold)'];
+    var labels=['ORIGIN','EVOLUTION','NOW'];
+    h+='<div style="margin-bottom:'+(i<paragraphs.length-1?'10px':'0')+'">';
+    h+='<div style="font-size:8px;font-family:\'JetBrains Mono\',monospace;color:'+colors[i%3]+';letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">'+(labels[i%3]||'')+'</div>';
+    h+='<div style="font-size:12px;color:var(--text);line-height:1.75">'+p.trim()+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  window._lastNarrativeText=text;
+  return h;
+}
+
+var FIREBASE_RULES=JSON.stringify({
+  "rules":{
+    "users":{"$uid":{".read":"auth != null && auth.uid === $uid",".write":"auth != null && auth.uid === $uid"}},
+    "workspaces":{"$wsId":{
+      "info":{".read":"auth != null && (root.child('workspaces').child($wsId).child('members').child(auth.uid).exists() || !root.child('workspaces').child($wsId).child('info').exists())",".write":"auth != null && (root.child('workspaces').child($wsId).child('members').child(auth.uid).exists() || !root.child('workspaces').child($wsId).child('info').exists())"},
+      "members":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()","$uid":{".write":"auth != null && (auth.uid === $uid || root.child('workspaces').child($wsId).child('members').child(auth.uid).exists())"}},
+      "meetings":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "nodes":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "links":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "opportunities":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "commitments":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "calibration":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "cal":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "tl_commitments":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "config":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"},
+      "entities":{".read":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()",".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"}
+    }},
+    "invites":{"$wsId":{".read":"auth != null","$email":{".write":"auth != null && root.child('workspaces').child($wsId).child('members').child(auth.uid).exists()"}}}
+  }
+},null,2);
+
+window.showSecurityRules=function(){
+  var rulesEl=document.getElementById('security-rules-pre');
+  if(rulesEl)rulesEl.textContent=FIREBASE_RULES;
+  var banner=document.getElementById('security-status-banner');
+  if(banner){
+    // Warn if workspace is older than 7 days (likely been in use without rules)
+    var wsCreated=currentWs&&currentWs.created?new Date(currentWs.created):null;
+    var daysOld=wsCreated?Math.floor((new Date()-wsCreated)/86400000):0;
+    if(daysOld>7){
+      banner.style.background='rgba(239,68,68,.08)';
+      banner.style.border='1px solid rgba(239,68,68,.3)';
+      banner.innerHTML='⚠ <strong style="color:var(--red)">Rules not confirmed set</strong> — workspace is '+daysOld+' days old. Paste the rules below into Firebase Console before onboarding team members.';
+    } else {
+      banner.style.background='rgba(34,197,94,.06)';
+      banner.style.border='1px solid rgba(34,197,94,.25)';
+      banner.innerHTML='✓ New workspace — set security rules now before adding team members.';
+    }
+  }
+  closeModal('user-modal');
+  document.getElementById('security-modal').style.display='flex';
+};
+
+window.copySecurityRules=function(){
+  navigator.clipboard.writeText(FIREBASE_RULES)
+    .then(function(){toast('Rules copied — paste into Firebase Console → Realtime Database → Rules');})
+    .catch(function(){toast('Copy failed — select and copy manually');});
+};
+
+// ══════════════════════════════════════════════════════════════
+// CALIBRATION PANEL UI
+// ══════════════════════════════════════════════════════════════
+
+function renderCalibrationStrip(){
+  var el=document.getElementById('opp-calibration-strip');
+  if(!el)return;
+  var stats=getCalibrationStats();
+  if(!stats){
+    el.textContent='Model: uncalibrated (close '+Math.max(0,3-calibrationRecords.length)+' more deals)';
+    el.style.color='var(--t3)';
+  } else {
+    el.innerHTML='⬤ Model: '+stats.n+' outcomes · '+stats.accuracy+'% accurate <span style="color:var(--t3)">▾</span>';
+    el.style.color=stats.accuracy>=60?'var(--green)':stats.accuracy>=40?'var(--amber)':'var(--red)';
+  }
+}
+
+window.toggleCalibrationPanel=function(){
+  var panel=document.getElementById('opp-calibration-panel');
+  if(!panel)return;
+  var isOpen=panel.style.display!=='none';
+  if(isOpen){panel.style.display='none';return;}
+  panel.style.display='block';
+  var detail=document.getElementById('opp-calibration-detail');
+  if(!detail)return;
+  var stats=getCalibrationStats();
+  var w=getCalibrationWeights();
+  if(!stats){
+    detail.innerHTML='<div style="font-size:11px;color:var(--t2)">Close '+(3-calibrationRecords.length)+' more deals to enable model calibration. Each outcome trains the win probability model for your specific pursuit patterns.</div>';
+    return;
+  }
+  var h='';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:7px">Win Probability Model · '+stats.n+' Outcomes</div>';
+  // Accuracy bar
+  h+='<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">';
+  h+='<div style="font-size:10px;color:var(--t2);flex-shrink:0">Accuracy</div>';
+  h+='<div style="flex:1;height:5px;background:var(--b1);border-radius:3px"><div style="width:'+stats.accuracy+'%;height:100%;border-radius:3px;background:'+(stats.accuracy>=60?'var(--green)':stats.accuracy>=40?'var(--amber)':'var(--red)')+'"></div></div>';
+  h+='<div style="font-size:11px;font-weight:700;color:'+(stats.accuracy>=60?'var(--green)':stats.accuracy>=40?'var(--amber)':'var(--red)')+'">'+stats.accuracy+'%</div>';
+  h+='</div>';
+  // Outcome split
+  h+='<div style="display:flex;gap:10px;margin-bottom:9px">';
+  h+='<div style="font-size:10px;color:var(--green)">'+stats.wins+' Won</div>';
+  h+='<div style="font-size:10px;color:var(--red)">'+stats.losses+' Lost</div>';
+  h+='</div>';
+  // Bracket accuracy
+  if(stats.brackets.some(function(b){return b.total>0;})){
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--t3);margin-bottom:4px">Bracket Accuracy</div>';
+    stats.brackets.forEach(function(b){
+      if(!b.total)return;
+      var pct=Math.round(b.wins/b.total*100);
+      h+='<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">';
+      h+='<div style="font-size:9px;color:var(--t3);width:48px;font-family:\'JetBrains Mono\',monospace">'+b.label+'</div>';
+      h+='<div style="flex:1;height:4px;background:var(--b1);border-radius:2px"><div style="width:'+pct+'%;height:100%;border-radius:2px;background:var(--green)"></div></div>';
+      h+='<div style="font-size:9px;color:var(--t2);width:32px;text-align:right">'+pct+'% ('+b.total+')</div>';
+      h+='</div>';
+    });
+  }
+  // Adjusted weights
+  if(!w.default){
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--t3);margin:8px 0 4px">Learned Factor Weights</div>';
+    [['Cadence','cadence'],['Stance','stance'],['Risks','risks'],['Red Flags','redFlags']].forEach(function(pair){
+      var wv=w[pair[1]]||1;
+      var pct=Math.round((wv-0.5)/2*100);
+      var wColor=wv>1.2?'var(--green)':wv<0.8?'var(--red)':'var(--t2)';
+      h+='<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">';
+      h+='<div style="font-size:9px;color:var(--t2);width:56px">'+pair[0]+'</div>';
+      h+='<div style="flex:1;height:4px;background:var(--b1);border-radius:2px"><div style="width:'+pct+'%;height:100%;border-radius:2px;background:'+wColor+'"></div></div>';
+      h+='<div style="font-size:9px;color:'+wColor+';width:32px;text-align:right">×'+wv.toFixed(1)+'</div>';
+      h+='</div>';
+    });
+  }
+  detail.innerHTML=h;
+};
 
 function exportData(){var backup={version:6,app:'FLiIntel',workspace:currentWs.name,exported:new Date().toISOString(),meetings:meetings,entities:entities,nodes:nodes.map(function(n){var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;return c;}),links:links.map(function(l){return{id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};}),calEntries:calEntries,tlCommitments:tlCommitments};var blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FLiIntel_'+currentWs.name+'_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);toast('Backup exported');}
 async function importData(event){var file=event.target.files[0];if(!file)return;var reader=new FileReader();reader.onload=async function(e){try{var data=JSON.parse(e.target.result);var ms=data.meetings||[];var ns=data.entities||data.nodes||[];var ls=data.links||data.edges||[];if(!ms.length&&!ns.length){toast('No data found');return;}if(!confirm('Import '+ms.length+' meetings and '+ns.length+' nodes from '+(data.workspace||'backup')+'?'))return;toast('Uploading...');var existingMIds=new Set(meetings.map(function(m){return m.id;}));for(var i=0;i<ms.length;i++){if(!existingMIds.has(ms[i].id))await saveMeeting(ms[i]);}if(ns.length){var existingNIds=new Set(nodes.map(function(n){return n.id;}));var toAddN=ns.filter(function(n){return!existingNIds.has(n.id);});for(var j=0;j<toAddN.length;j++){var imp=toAddN[j];nodes.push(imp);nodeMap.set(imp.id,imp);await saveNode(imp);}}if(ls.length){for(var k=0;k<ls.length;k++){var l=ls[k];var cl={id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};var ex2=links.find(function(x){return x.id===cl.id;});if(!ex2){links.push(cl);linkMap.set(cl.id,cl);await saveLink(cl);}}}if(data.calEntries&&data.calEntries.length){calEntries=data.calEntries;await saveCal();}if(data.tlCommitments&&data.tlCommitments.length){tlCommitments=data.tlCommitments;await saveTLCommitments();}toast('Import complete');}catch(err){console.error(err);toast('Import failed: '+(err.message||'Could not read file'));}};reader.onerror=function(){toast('Could not read file');};reader.readAsText(file);event.target.value='';}
@@ -4069,6 +5598,9 @@ function getStrength(id){var connIds=links.filter(function(l){var s=l.source&&l.
 function computeRelHealth(nodeId){
   var n=nodeMap.get(nodeId);if(!n)return 0;
   var mtgs=getMtgsForNode(nodeId);if(!mtgs.length)return 0;
+  // Cache keyed on nodeId + meeting count — invalidated when meetings rebuild
+  var cacheKey=nodeId+':'+mtgs.length;
+  if(_healthCache.has(cacheKey))return _healthCache.get(cacheKey);
   var sorted=mtgs.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);});
   var now=new Date();
 
@@ -4118,7 +5650,9 @@ function computeRelHealth(nodeId){
   }
 
   var raw=recency+freqTrend+stanceScore+fulfillScore;// max = 3+2.5+2.5+2 = 10
-  return Math.min(10,Math.max(0,Math.round(raw)));
+  var result=Math.min(10,Math.max(0,Math.round(raw)));
+  _healthCache.set(cacheKey,result); // cache for this render cycle
+  return result;
 }
 
 // Health color based on score
@@ -4138,7 +5672,7 @@ function nodeClick(ev,d){ev.stopPropagation();if(edgeMode){if(!edgeSource){edgeS
 function nodeHover(ev,d){if(edgeMode)return;var tt=document.getElementById('tooltip');var mc=getMtgsForNode(d.id).length,health=mc>0?computeRelHealth(d.id):null;tt.innerHTML='<div style="font-size:15px;font-weight:700;color:'+nc(d)+';margin-bottom:3px">'+d.name+'</div>'+(d.role?'<div style="font-size:12px;color:var(--text)">'+d.role+'</div>':'')+(d.org?'<div style="font-size:11px;color:var(--t2)">'+d.org+'</div>':'')+'<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;gap:10px"><span style="font-size:11px;color:var(--t3)">T'+(d.priority||2)+'</span><span style="font-size:11px;color:var(--t3)">'+d.type+'</span>'+(mc?'<span style="font-size:11px;color:var(--t3)">'+mc+' mtg</span>':'')+'</div>'+(health!==null?'<div style="margin-top:5px;display:flex;align-items:center;gap:6px"><div style="font-size:10px;color:var(--t3)">Health</div><div style="flex:1"><div class="strength-bar" style="height:4px"><div class="strength-fill" style="width:'+(health*10)+'%;background:'+healthColor(health)+'"></div></div></div><span style="font-size:10px;font-weight:600;color:'+healthColor(health)+'">'+health+'</span></div>':'');tt.style.left=(ev.clientX+14)+'px';tt.style.top=(ev.clientY-14)+'px';tt.classList.add('show');}
 function nodeLeave(){document.getElementById('tooltip').classList.remove('show');}
 
-function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var el=document.getElementById('nptab-'+t);if(el)el.style.display=t===tab?'block':'none';});if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
+function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===tab?'block':'none';});var exportBtn=document.getElementById('panel-export-btn');if(exportBtn)exportBtn.style.display=(tab==='dossier'||tab==='timeline360')?'block':'none';if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
 window.switchNetTab=switchNetTab;
 
 function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';document.getElementById('panel-org-fld').style.display=d.type==='company'?'none':'block';[1,2,3].forEach(function(i){var b=document.getElementById('ntier-'+i);b.style.cssText='';if(i===d.priority){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});
@@ -4152,6 +5686,8 @@ function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('pan
   ['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===defaultTab?'block':'none';});
   currentNetTab=defaultTab;
   if(defaultTab==='dossier')renderDossier(d);
+  var exportBtn=document.getElementById('panel-export-btn');
+  if(exportBtn)exportBtn.style.display=(defaultTab==='dossier'||defaultTab==='timeline360')?'block':'none';
   document.getElementById('net-panel').classList.add('open');document.getElementById('org-legend').classList.add('panel-open');}
 function closeNetPanel(){document.getElementById('net-panel').classList.remove('open');document.getElementById('org-legend').classList.remove('panel-open');selectedNode=null;}
 window.closeNetPanel=closeNetPanel;
@@ -4362,8 +5898,19 @@ function renderTimeline360(d){
   }
 
   var h='';
-  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:12px">';
-  h+=sorted.length+' meetings · relationship arc</div>';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">';
+  h+=sorted.length+' meetings · relationship arc';
+  h+='<button id="rel-narrative-btn" onclick="generateRelNarrative()" style="font-size:10px;padding:3px 9px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);cursor:pointer;font-family:\'Outfit\',sans-serif">'
+    +(_narrativeCache.has(d.id)?'↺ Refresh':'✦ Summarize')+'</button>';
+  h+='</div>';
+
+  // Show cached narrative if exists
+  var narrativeEl=document.getElementById('timeline360-narrative');
+  if(narrativeEl){
+    var cached=_narrativeCache.get(d.id);
+    if(cached){narrativeEl.innerHTML=cached.html;narrativeEl.style.display='block';}
+    else{narrativeEl.innerHTML='';narrativeEl.style.display='none';}
+  }
 
   // Calculate relationship arc: started, turning points, current state
   var firstMtg=sorted[0];
@@ -4539,6 +6086,318 @@ window.fitGraph=fitGraph;window.zoomIn=zoomIn;window.zoomOut=zoomOut;
 
 // ── PATH FINDER ──────────────────────────────────────────────
 var pathFinderOpen=false;
+
+// ══════════════════════════════════════════════════════════════
+// NETWORK DEDUPLICATION ENGINE
+// Finds nodes that likely represent the same person and offers
+// a side-by-side merge UI. Never auto-merges — user confirms each.
+// ══════════════════════════════════════════════════════════════
+
+// Titles/ranks/honorifics to strip before name comparison
+var TITLE_PREFIXES=/^(admiral|general|colonel|col\.|lt\.?|major|maj\.?|captain|cpt\.|sergeant|sgt\.|commander|cmdr\.|doctor|dr\.?|professor|prof\.?|mr\.?|ms\.?|mrs\.?|rev\.?|hon\.|the\s+honorable)\s+/i;
+
+function cleanNameForCompare(name){
+  return name.trim().replace(TITLE_PREFIXES,'').trim();
+}
+
+// Enhanced similarity: strip titles first, then use base algorithm
+function nameSimilarityEnhanced(a,b){
+  var ca=cleanNameForCompare(a);
+  var cb=cleanNameForCompare(b);
+  // Also try first-name-only matching: if one name is a single token
+  // and it matches the first token of the other, that's a strong signal
+  var ta=ca.toLowerCase().split(/\s+/).filter(Boolean);
+  var tb=cb.toLowerCase().split(/\s+/).filter(Boolean);
+  if(ta.length===1&&tb.length>1&&ta[0]===tb[0])return 0.82; // "Tom" vs "Tom Smith"
+  if(tb.length===1&&ta.length>1&&tb[0]===ta[0])return 0.82;
+  return nameSimilarity(ca,cb);
+}
+
+// Determine which of two nodes to keep (the "better" one)
+// Criteria: more meetings, longer/fuller name, more data
+function pickKeepNode(a,b){
+  var aMtgs=getMtgsForNode(a.id).length;
+  var bMtgs=getMtgsForNode(b.id).length;
+  // More meetings wins
+  if(aMtgs!==bMtgs)return aMtgs>bMtgs?{keep:a,discard:b}:{keep:b,discard:a};
+  // More name tokens (fuller name) wins
+  var aTokens=a.name.split(/\s+/).length;
+  var bTokens=b.name.split(/\s+/).length;
+  if(aTokens!==bTokens)return aTokens>bTokens?{keep:a,discard:b}:{keep:b,discard:a};
+  // More node data wins
+  var aScore=(a.role?1:0)+(a.org?1:0)+(a.notes?1:0);
+  var bScore=(b.role?1:0)+(b.org?1:0)+(b.notes?1:0);
+  return aScore>=bScore?{keep:a,discard:b}:{keep:b,discard:a};
+}
+
+// Find all candidate duplicate pairs above threshold
+function findDuplicateCandidates(){
+  var candidates=[];
+  var checked=new Set();
+  // Only scan person and government nodes — companies are too variable
+  var eligible=nodes.filter(function(n){return n.type==='person'||n.type==='government';});
+
+  for(var i=0;i<eligible.length;i++){
+    for(var j=i+1;j<eligible.length;j++){
+      var a=eligible[i],b=eligible[j];
+      var key=Math.min(a.id,b.id)+'_'+Math.max(a.id,b.id);
+      if(checked.has(key))continue;
+      checked.add(key);
+      var score=nameSimilarityEnhanced(a.name,b.name);
+      if(score>=0.75){
+        var pair=pickKeepNode(a,b);
+        // Build reason string
+        var reasons=[];
+        if(score>=0.99)reasons.push('identical names');
+        else if(score>=0.82)reasons.push('first name match');
+        else reasons.push(Math.round(score*100)+'% name similarity');
+        // Check if they share meetings (strong signal)
+        var aMtgs=new Set(getMtgsForNode(a.id).map(function(m){return m.id;}));
+        var bMtgs=new Set(getMtgsForNode(b.id).map(function(m){return m.id;}));
+        var shared=0;
+        aMtgs.forEach(function(id){if(bMtgs.has(id))shared++;});
+        if(shared>0)reasons.push(shared+' shared meeting'+(shared>1?'s':''));
+        candidates.push(Object.assign({},pair,{
+          score:score,
+          reason:reasons.join(' · '),
+          keepMtgs:getMtgsForNode(pair.keep.id).length,
+          discardMtgs:getMtgsForNode(pair.discard.id).length
+        }));
+      }
+    }
+  }
+  // Sort by score desc, then by keep node meeting count desc
+  candidates.sort(function(a,b){return b.score-a.score||b.keepMtgs-a.keepMtgs;});
+  return candidates;
+}
+
+window.toggleDedupPanel=function(){
+  var panel=document.getElementById('dedup-panel');
+  if(!panel)return;
+  var isOpen=panel.style.display!=='none';
+  panel.style.display=isOpen?'none':'block';
+  // Close path finder if open
+  if(!isOpen){
+    var pp=document.getElementById('path-panel');
+    if(pp)pp.style.display='none';
+  }
+};
+
+window.runDedupScan=function(){
+  var resultsEl=document.getElementById('dedup-results');
+  var scanEl=document.getElementById('dedup-scan-area');
+  resultsEl.innerHTML='<div style="font-size:11px;color:var(--t2);padding:8px 0">Scanning '+nodes.length+' nodes...</div>';
+  // Small timeout so UI updates before the scan
+  setTimeout(function(){
+    var candidates=findDuplicateCandidates();
+    _renderDedupResults(candidates,resultsEl,scanEl);
+  },50);
+};
+
+function _renderDedupResults(candidates,resultsEl,scanEl){
+  if(!candidates.length){
+    resultsEl.innerHTML='<div style="text-align:center;padding:20px 0">'
+      +'<div style="font-size:24px;margin-bottom:6px">✓</div>'
+      +'<div style="font-size:13px;color:var(--green);font-weight:600">No duplicates found</div>'
+      +'<div style="font-size:11px;color:var(--t2);margin-top:4px">Your network looks clean</div></div>';
+    return;
+  }
+
+  // Store candidates on window for confirm/skip
+  window._dedupCandidates=candidates.map(function(c){return Object.assign({},c,{pending:true});});
+
+  var h='<div style="font-size:10px;color:var(--amber);font-family:\'JetBrains Mono\',monospace;margin-bottom:10px">'
+    +candidates.length+' potential duplicate'+(candidates.length>1?'s':'')+ ' found</div>';
+
+  h+='<div id="dedup-pair-list">';
+  candidates.forEach(function(c,i){
+    h+=_renderDedupPair(c,i);
+  });
+  h+='</div>';
+
+  h+='<div style="margin-top:12px;display:flex;gap:8px">';
+  h+='<button onclick="confirmAllMerges()" class="btn btn-gold" style="flex:1">Merge All Confirmed</button>';
+  h+='<button onclick="runDedupScan()" style="padding:7px 12px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">Re-scan</button>';
+  h+='</div>';
+
+  resultsEl.innerHTML=h;
+}
+
+function _renderDedupPair(c,i){
+  var keepIni=c.keep.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+  var discardIni=c.discard.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+  return '<div id="dedup-pair-'+i+'" style="margin-bottom:10px;padding:10px;border:1px solid var(--b1);border-radius:var(--r)">'
+    +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:8px">'
+    +'<span style="font-size:9px;color:var(--amber);font-family:\'JetBrains Mono\',monospace">'+c.reason+'</span>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 20px 1fr;gap:6px;align-items:start;margin-bottom:8px">'
+    // Keep node
+    +'<div style="background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.2);border-radius:var(--rsm);padding:8px">'
+    +'<div style="font-size:8px;color:var(--green);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px">KEEP</div>'
+    +'<div style="font-size:12px;font-weight:600">'+c.keep.name+'</div>'
+    +(c.keep.role?'<div style="font-size:10px;color:var(--t2)">'+c.keep.role+'</div>':'' )
+    +(c.keep.org?'<div style="font-size:10px;color:var(--t3)">'+c.keep.org+'</div>':'')
+    +'<div style="font-size:10px;color:var(--t3);margin-top:3px">'+c.keepMtgs+' meeting'+(c.keepMtgs!==1?'s':'')+'</div>'
+    +'</div>'
+    // Arrow
+    +'<div style="text-align:center;padding-top:16px;font-size:14px;color:var(--amber)">←</div>'
+    // Discard node
+    +'<div style="background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.2);border-radius:var(--rsm);padding:8px">'
+    +'<div style="font-size:8px;color:var(--red);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px">MERGE INTO KEEP</div>'
+    +'<div style="font-size:12px;font-weight:600">'+c.discard.name+'</div>'
+    +(c.discard.role?'<div style="font-size:10px;color:var(--t2)">'+c.discard.role+'</div>':'')
+    +(c.discard.org?'<div style="font-size:10px;color:var(--t3)">'+c.discard.org+'</div>':'')
+    +'<div style="font-size:10px;color:var(--t3);margin-top:3px">'+c.discardMtgs+' meeting'+(c.discardMtgs!==1?'s':'')+'</div>'
+    +'</div>'
+    +'</div>'
+    // Action buttons
+    +'<div style="display:flex;gap:6px">'
+    +'<button onclick="toggleDedupPair('+i+')" id="dedup-toggle-'+i+'" style="flex:1;padding:5px;border:1px solid rgba(201,162,39,.4);border-radius:var(--rsm);background:rgba(201,162,39,.1);color:var(--gold);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif">✓ Will Merge</button>'
+    +'<button onclick="skipDedupPair('+i+')" style="padding:5px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer">Skip</button>'
+    +'</div>'
+    +'</div>';
+}
+
+window.toggleDedupPair=function(i){
+  if(!window._dedupCandidates||!window._dedupCandidates[i])return;
+  window._dedupCandidates[i].pending=!window._dedupCandidates[i].pending;
+  var btn=document.getElementById('dedup-toggle-'+i);
+  var pair=document.getElementById('dedup-pair-'+i);
+  if(window._dedupCandidates[i].pending){
+    if(btn){btn.textContent='✓ Will Merge';btn.style.background='rgba(201,162,39,.1)';btn.style.color='var(--gold)';btn.style.borderColor='rgba(201,162,39,.4)';}
+    if(pair)pair.style.opacity='1';
+  } else {
+    if(btn){btn.textContent='Skipped';btn.style.background='transparent';btn.style.color='var(--t3)';btn.style.borderColor='var(--b1)';}
+    if(pair)pair.style.opacity='0.45';
+  }
+};
+
+window.skipDedupPair=function(i){
+  if(!window._dedupCandidates||!window._dedupCandidates[i])return;
+  window._dedupCandidates[i].pending=false;
+  window.toggleDedupPair(i); // update visuals via toggle (will toggle to false, but state already false)
+  // Just directly update UI since toggleDedupPair toggles pending
+  window._dedupCandidates[i].pending=false;
+  var btn=document.getElementById('dedup-toggle-'+i);
+  var pair=document.getElementById('dedup-pair-'+i);
+  if(btn){btn.textContent='Skipped';btn.style.background='transparent';btn.style.color='var(--t3)';btn.style.borderColor='var(--b1)';}
+  if(pair)pair.style.opacity='0.45';
+};
+
+window.confirmAllMerges=async function(){
+  var toMerge=(window._dedupCandidates||[]).filter(function(c){return c.pending;});
+  if(!toMerge.length){toast('No merges selected');return;}
+
+  var progressEl=document.getElementById('dedup-progress');
+  var progressTxt=document.getElementById('dedup-progress-txt');
+  var resultsEl=document.getElementById('dedup-results');
+  if(progressEl)progressEl.style.display='block';
+
+  var merged=0,errors=0;
+  for(var i=0;i<toMerge.length;i++){
+    var pair=toMerge[i];
+    if(progressTxt)progressTxt.textContent='Merging '+pair.discard.name+' → '+pair.keep.name+' ('+(i+1)+'/'+toMerge.length+')...';
+    try{
+      await _executeMerge(pair.keep.id,pair.discard.id);
+      merged++;
+    }catch(e){
+      console.error('Merge failed:',e);
+      errors++;
+    }
+  }
+
+  if(progressEl)progressEl.style.display='none';
+  window._dedupCandidates=[];
+
+  // Rebuild everything
+  buildEntityGraph();
+  renderNetwork();
+  renderSidebarMtgList();
+  updateNodeCount();
+
+  toast(merged+' node'+(merged!==1?'s':'')+' merged'+(errors?' ('+errors+' failed)':''));
+
+  // Re-scan to show remaining
+  setTimeout(function(){window.runDedupScan();},300);
+};
+
+// The atomic merge operation
+async function _executeMerge(keepId,discardId){
+  var keep=nodeMap.get(keepId);
+  var discard=nodeMap.get(discardId);
+  if(!keep||!discard)throw new Error('Node not found: '+keepId+' or '+discardId);
+
+  // 1. Merge meetings: add discard's meetings to keep, deduplicate
+  var keepMeetings=new Set(keep.meetings||[]);
+  (discard.meetings||[]).forEach(function(mid){keepMeetings.add(mid);});
+  keep.meetings=Array.from(keepMeetings);
+
+  // 2. Merge metadata: fill gaps in keep from discard
+  if(!keep.role&&discard.role)keep.role=discard.role;
+  if(!keep.org&&discard.org)keep.org=discard.org;
+  if(!keep.notes&&discard.notes)keep.notes=discard.notes;
+  else if(discard.notes&&keep.notes&&!keep.notes.includes(discard.notes)){
+    keep.notes=keep.notes+'\n\n---\n'+discard.notes;
+  }
+  // Keep higher priority
+  if((discard.priority||2)<(keep.priority||2))keep.priority=discard.priority;
+
+  // 3. Update all links: replace discardId with keepId
+  //    Also remove self-loops (links between keep and discard)
+  var selfLoopIds=[];
+  var linksToUpdate=[];
+  links.forEach(function(l){
+    var src=l.source&&l.source.id?l.source.id:l.source;
+    var tgt=l.target&&l.target.id?l.target.id:l.target;
+    var srcIsDiscard=String(src)===String(discardId);
+    var tgtIsDiscard=String(tgt)===String(discardId);
+    var srcIsKeep=String(src)===String(keepId);
+    var tgtIsKeep=String(tgt)===String(keepId);
+    if((srcIsDiscard&&tgtIsKeep)||(srcIsKeep&&tgtIsDiscard)){
+      // Self-loop after merge — delete
+      selfLoopIds.push(l.id);
+    } else if(srcIsDiscard||tgtIsDiscard){
+      linksToUpdate.push({link:l,newSrc:srcIsDiscard?keepId:src,newTgt:tgtIsDiscard?keepId:tgt});
+    }
+  });
+
+  // Delete self-loops
+  for(var i=0;i<selfLoopIds.length;i++){
+    var lid=selfLoopIds[i];
+    links=links.filter(function(l){return l.id!==lid;});
+    linkMap.delete(lid);
+    try{await remove(ref(db,wsPath('links/'+lid)));}catch(e){}
+  }
+
+  // Update links with new IDs
+  for(var j=0;j<linksToUpdate.length;j++){
+    var lu=linksToUpdate[j];
+    lu.link.source=lu.newSrc;
+    lu.link.target=lu.newTgt;
+    try{await fbSet(wsPath('links/'+lu.link.id),{
+      id:lu.link.id,source:lu.newSrc,target:lu.newTgt,
+      label:lu.link.label||'',dir:lu.link.dir||'both',notes:lu.link.notes||''
+    });}catch(e){}
+  }
+
+  // 4. Update commitments: remap discard name to keep name
+  var commitsToPatch=commitments.filter(function(c){
+    return c.owner&&nameSimilarity(c.owner,discard.name)>=0.72&&nameSimilarity(c.owner,keep.name)<0.72;
+  });
+  for(var k=0;k<commitsToPatch.length;k++){
+    commitsToPatch[k].owner=keep.name;
+    try{await fbSet(wsPath('commitments/'+commitsToPatch[k].id),commitsToPatch[k]);}catch(e){}
+  }
+
+  // 5. Save updated keep node
+  nodeMap.set(keepId,keep);
+  await saveNode(keep);
+
+  // 6. Delete discard node from memory and Firebase
+  nodes=nodes.filter(function(n){return n.id!==discardId;});
+  nodeMap.delete(discardId);
+  try{await remove(ref(db,wsPath('nodes/'+discardId)));}catch(e){}
+}
 
 window.togglePathFinder=function(){
   pathFinderOpen=!pathFinderOpen;
