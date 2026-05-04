@@ -458,6 +458,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
     <button class="nav-btn" id="nav-import-trigger">&#8593; Restore</button>
     <input type="file" id="nav-import-file" accept=".json" style="display:none">
     <button class="nav-btn" id="nav-members-btn">&#128100; Members</button>
+    <button class="nav-btn" id="nav-brief-btn" style="background:linear-gradient(135deg,rgba(201,162,39,.15),rgba(139,92,246,.1));border-color:rgba(201,162,39,.4);color:var(--gold)" onclick="openOnboardingBrief()">&#9889; Brief Me</button>
     <div class="user-chip" id="user-chip-btn"><img id="user-chip-img" src="" alt=""></div>
     <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()"><svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="currentColor"/><rect y="5" width="16" height="2" rx="1" fill="currentColor"/><rect y="10" width="16" height="2" rx="1" fill="currentColor"/></svg></button>
   </div>
@@ -471,6 +472,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <button class="intel-tab" data-itab="prep">Prep</button>
         <button class="intel-tab" data-itab="archive">Archive</button>
         <button class="intel-tab" data-itab="board">Board</button>
+        <button class="intel-tab" data-itab="memory" style="color:var(--purple)">Memory</button>
       </div>
       <div id="sidebar-archive" style="flex:1;overflow-y:auto;padding:8px">
         <div style="padding:4px 2px 8px;font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3)">Recent Meetings</div>
@@ -558,6 +560,27 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div id="itab-board" style="display:none">
         <div id="board-empty" class="empty">Log meetings to populate the Board</div>
         <div id="board-body" style="display:none"></div>
+      </div>
+
+      <!-- MEMORY SEARCH TAB -->
+      <div id="itab-memory" style="display:none;padding:14px;height:100%;box-sizing:border-box;display:none;flex-direction:column;gap:10px">
+        <!-- Search bar -->
+        <div style="position:relative">
+          <input type="text" id="memory-query" placeholder="Ask anything about your meetings..." autocomplete="off"
+            style="width:100%;padding:10px 44px 10px 12px;border:1px solid var(--purple);border-radius:var(--rsm);background:rgba(139,92,246,.05);color:var(--text);font-size:13px;font-family:'Outfit',sans-serif;box-sizing:border-box;outline:none"
+            oninput="onMemoryInput()" onkeydown="if(event.key==='Enter')runMemorySearch()">
+          <button onclick="runMemorySearch()" id="memory-search-btn"
+            style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:var(--purple);border:none;border-radius:4px;padding:4px 8px;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">Ask</button>
+        </div>
+        <!-- Status bar -->
+        <div id="memory-status" style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;display:none"></div>
+        <!-- Example prompts (shown when empty) -->
+        <div id="memory-examples">
+          <div style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">Example queries</div>
+          <div style="display:flex;flex-direction:column;gap:5px" id="memory-example-btns"></div>
+        </div>
+        <!-- Results -->
+        <div id="memory-results" style="display:none;flex:1;overflow-y:auto"></div>
       </div>
     </div>
   </div>
@@ -651,6 +674,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <div class="panel-tabs">
           <button class="panel-tab active" onclick="switchNetTab('profile',this)">Profile</button>
           <button class="panel-tab" onclick="switchNetTab('dossier',this)">360 View</button>
+          <button class="panel-tab" onclick="switchNetTab('timeline360',this)">Timeline</button>
           <button class="panel-tab" onclick="switchNetTab('network',this)">Network</button>
         </div>
       </div>
@@ -661,6 +685,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <div class="fld"><div class="plbl">Intelligence Notes</div><textarea id="panel-notes" rows="5" onchange="saveNetPanel()"></textarea></div>
       </div>
       <div class="panel-scroll" id="nptab-dossier" style="display:none"><div id="dossier-content" style="margin-top:8px"></div></div>
+      <div class="panel-scroll" id="nptab-timeline360" style="display:none"><div id="timeline360-content" style="margin-top:8px"></div></div>
       <div class="panel-scroll" id="nptab-network" style="display:none"><div id="net-conn-content" style="margin-top:8px"></div></div>
     </div>
     <div class="edge-legend"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:7px">Edge Types</div><div id="edge-legend-items"></div></div>
@@ -701,6 +726,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <button class="btn btn-gold btn-sm" onclick="openAddCommitmentModal()">+ Add Commitment</button>
       </div>
       <div class="tl-pulse" id="tl-pulse"></div>
+      <div id="tl-fy-bar"></div>
       <div id="tl-sections"></div>
     </div>
   </div>
@@ -999,6 +1025,29 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
     </div>
   </div>
 </div>
+<!-- ONBOARDING BRIEF MODAL -->
+<div class="overlay" id="brief-modal" style="display:none">
+  <div class="modal" style="max-width:820px;max-height:92vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:18px;font-weight:700">Intelligence Brief</div>
+        <div style="font-size:12px;color:var(--t2);margin-top:2px" id="brief-subtitle">Generating your brief...</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="brief-copy-btn" onclick="copyBrief()" style="display:none;padding:5px 12px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:12px;cursor:pointer">Copy</button>
+        <button onclick="closeModal('brief-modal')" style="background:none;border:none;color:var(--t3);font-size:20px;cursor:pointer;line-height:1">×</button>
+      </div>
+    </div>
+    <div id="brief-loading" style="text-align:center;padding:60px 20px">
+      <div style="display:inline-flex;gap:8px;align-items:center;color:var(--t2);font-size:13px">
+        <span class="proc-dots"><span></span><span></span><span></span></span>
+        Assembling intelligence from <span id="brief-count" style="color:var(--gold);font-weight:600"></span> meetings...
+      </div>
+    </div>
+    <div id="brief-body" style="display:none"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -1395,7 +1444,7 @@ function connectWorkspace(){
     commitments=snap.val()?Object.values(snap.val()):[];
     if(activeIntelTab==='board')renderBoard();
   });
-  netListeners=[u1,u2,u3,u4,u5,u6,u7,u8,u9,u10];
+  netListeners=[u1,u3,u4,u5,u6,u7,u8,u9,u10];
 }
 
 function wireListeners(){
@@ -1451,7 +1500,7 @@ function wireListeners(){
   window.addEventListener('offline',function(){setSS('offline');toast('No connection — writes will retry when back online');});
   window.addEventListener('online',function(){setSS('live');toast('Back online');});
   document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(edgeMode)cancelEdgeMode();else if(selectedNode)closeNetPanel();}if((e.key==='f'||e.key==='F')&&!e.target.matches('input,textarea')&&activeView==='network')fitGraph();if(e.key==='/'&&!e.target.matches('input,textarea')&&activeView==='network'){e.preventDefault();document.getElementById('net-search').focus();}});
-  ['edit-modal','sync-modal','digest-modal','add-node-modal','edge-modal','members-modal','user-modal','add-commitment-modal','tl-card-modal','commit-modal','new-opp-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',function(e){if(e.target.id===id)closeModal(id);});});
+  ['edit-modal','sync-modal','digest-modal','add-node-modal','edge-modal','members-modal','user-modal','add-commitment-modal','tl-card-modal','commit-modal','new-opp-modal','brief-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',function(e){if(e.target.id===id)closeModal(id);});});
   buildEdgeLegend();injectPWA();
 }
 
@@ -1540,6 +1589,333 @@ window.selectOpp=function(id){
   renderOppDetail(opp);
 };
 
+// ── WIN PROBABILITY MODEL ────────────────────────────────────
+// Composite score 0-100 based on observable signals in the data.
+// Not a prediction — a calibration instrument that improves with use.
+function computeWinProb(opp,taggedMtgs,allPeople,allRisks){
+  var score=50; // start neutral
+  var factors=[];
+  var now=new Date();
+
+  // Factor 1: Meeting cadence (0-20 pts)
+  // More meetings = more engagement, more intelligence
+  var mtgCount=taggedMtgs.length;
+  var d90=new Date(now-90*86400000);
+  var recentMtgs=taggedMtgs.filter(function(m){return new Date(m.meta.date)>d90;}).length;
+  var mtgScore=recentMtgs>=4?18:recentMtgs>=2?12:recentMtgs>=1?6:0;
+  score+=(mtgScore-9); // centered around neutral
+  if(mtgCount>0){
+    var mtgColor=recentMtgs>=3?'var(--green)':recentMtgs>=1?'var(--amber)':'var(--red)';
+    factors.push({label:'Cadence',value:recentMtgs+' mtgs/90d',color:mtgColor});
+  }
+
+  // Factor 2: Stakeholder stance trajectory (±15)
+  var people=Object.values(allPeople);
+  var positiveStances=0,negativeStances=0;
+  people.forEach(function(p){
+    if(!p.stances.length)return;
+    var latest=p.stances[p.stances.length-1].stance.toLowerCase();
+    if(/positive|engaged|interested|enthusiastic|champion|committed|supportive/.test(latest))positiveStances++;
+    if(/cautious|hesitant|concerned|cold|negative|blocking|opposed/.test(latest))negativeStances++;
+  });
+  var stanceNet=positiveStances-negativeStances;
+  if(people.length>0){
+    var stanceScore=Math.max(-15,Math.min(15,stanceNet*5));
+    score+=stanceScore;
+    var stanceColor=stanceNet>0?'var(--green)':stanceNet<0?'var(--red)':'var(--t2)';
+    factors.push({label:'Stakeholders',value:(stanceNet>0?'+':'')+stanceNet+' net',color:stanceColor});
+  }
+
+  // Factor 3: Risk load (±10)
+  var hiRisks=allRisks.filter(function(r){return r.severity==='high';}).length;
+  var riskScore=hiRisks===0?5:hiRisks===1?0:hiRisks<=3?-8:-14;
+  score+=riskScore;
+  if(allRisks.length>0){
+    factors.push({label:'Risks',value:hiRisks+' high',color:hiRisks>2?'var(--red)':hiRisks>0?'var(--amber)':'var(--green)'});
+  }
+
+  // Factor 4: Stage bonus (0-10)
+  var stageBonus={'awareness':-10,'engaged':0,'proposal':8,'submitted':10,'award':12,'won':30,'lost':-50};
+  score+=(stageBonus[opp.stage]||0);
+
+  // Factor 5: Time urgency (±8)
+  // Close to award date without recent activity = risk
+  if(opp.awardDate){
+    var aw=new Date(opp.awardDate+'T00:00:00');
+    var daysToAward=Math.floor((aw-now)/86400000);
+    if(daysToAward>0&&daysToAward<60&&recentMtgs===0){
+      score-=10;
+      factors.push({label:'Timing',value:daysToAward+'d to award',color:'var(--red)'});
+    }else if(daysToAward>0&&daysToAward<30){
+      score+=5; // urgency adds focus
+      factors.push({label:'Timing',value:daysToAward+'d to award',color:'var(--amber)'});
+    }
+  }
+
+  // Factor 6: Red flags (±10)
+  var redFlagCount=taggedMtgs.reduce(function(acc,m){return acc+(m.intel.redFlags||[]).length;},0);
+  if(redFlagCount>0){
+    score-=Math.min(15,redFlagCount*5);
+    factors.push({label:'Red flags',value:redFlagCount,color:'var(--red)'});
+  }
+
+  // Factor 7: Commitment fulfillment on this opp
+  var oppCommits=commitments.filter(function(c){
+    return taggedMtgs.some(function(m){return m.id===c.sourceMtgId;});
+  });
+  if(oppCommits.length>=2){
+    var fulfilled=oppCommits.filter(function(c){return c.status==='fulfilled';}).length;
+    var broken=oppCommits.filter(function(c){return c.status==='broken';}).length;
+    if(broken>fulfilled){score-=8;factors.push({label:'Commitments',value:broken+' broken',color:'var(--red)'});}
+    else if(fulfilled>0){score+=5;factors.push({label:'Commitments',value:fulfilled+' kept',color:'var(--green)'});}
+  }
+
+  var finalScore=Math.max(3,Math.min(96,Math.round(score)));
+  return {score:finalScore,_factors:factors};
+}
+
+// ── NETWORK GAP ANALYSIS ─────────────────────────────────────
+// For an opportunity, identify what acquisition chain roles we lack
+// and flag relationships we have with the wrong people for this deal.
+function computeNetworkGaps(opp,allPeople){
+  var gaps=[];
+  var agency=(opp.agency||'').toLowerCase();
+  var vehicle=(opp.vehicle||'').toUpperCase();
+
+  // Check for key decision-maker roles that should be present
+  var criticalRoles=[
+    {pattern:/program.?manager|PM\b|project.?lead/i,label:'Program Manager'},
+    {pattern:/contract.?officer|CO\b|KO\b|contracting/i,label:'Contracting Officer'},
+    {pattern:/director|chief|head of|deputy/i,label:'Director-level contact'},
+    {pattern:/budget|resource.?advisor|funds/i,label:'Budget authority'},
+    {pattern:/technical.?director|CTO|chief.?tech/i,label:'Technical authority'},
+  ];
+
+  // Which critical roles do we already have?
+  var coveredRoles=new Set();
+  Object.values(allPeople).forEach(function(p){
+    var roleStr=(p.role||'').toLowerCase()+' '+(p.name||'').toLowerCase();
+    criticalRoles.forEach(function(r,i){
+      if(r.pattern.test(p.role||''))coveredRoles.add(i);
+    });
+  });
+
+  // Flag missing critical roles
+  criticalRoles.forEach(function(r,i){
+    if(!coveredRoles.has(i)){
+      gaps.push('No '+r.label+' contact identified');
+    }
+  });
+
+  // Check: if SBIR/STTR and no AFWERX/DARPA/NIH contact
+  if(/SBIR|STTR/.test(vehicle)&&!Object.values(allPeople).some(function(p){
+    return /afwerx|darpa|sbir|program/i.test(p.org||p.role||'');
+  })){
+    gaps.push('SBIR vehicle — no program office contact');
+  }
+
+  // Check: if no contact from the agency itself
+  if(agency&&Object.keys(allPeople).length>0){
+    var hasAgencyContact=Object.values(allPeople).some(function(p){
+      return (p.org||'').toLowerCase().includes(agency.split('/')[0].trim());
+    });
+    if(!hasAgencyContact&&agency!==''){
+      gaps.push('No direct '+opp.agency+' contact');
+    }
+  }
+
+  return gaps.slice(0,4);
+}
+
+// ══════════════════════════════════════════════════════════════
+// PROCUREMENT CALENDAR INTELLIGENCE
+// Federal FY: Oct 1 – Sept 30. FY25 = Oct 2024 – Sep 2025.
+// Q1: Oct-Dec | Q2: Jan-Mar | Q3: Apr-Jun | Q4: Jul-Sep (EOFY rush)
+// ══════════════════════════════════════════════════════════════
+
+var FY_QUARTERS={
+  1:{months:[10,11,12],label:'Q1',short:'Q1 Oct-Dec',
+     context:'New budget year — program planning, slow to start. CR risk if appropriations delayed.',
+     advice:'Build relationships now for Q3/Q4 awards. Influence FY requirements.',
+     color:'var(--t2)',urgency:0},
+  2:{months:[1,2,3],label:'Q2',short:'Q2 Jan-Mar',
+     context:'Mid-year execution — acquisition picking up, RFPs emerging for Q3/Q4 awards.',
+     advice:'Submit white papers and capabilities statements. CO relationships critical.',
+     color:'var(--blue)',urgency:1},
+  3:{months:[4,5,6],label:'Q3',short:'Q3 Apr-Jun',
+     context:'Active pursuit season — proposals evaluated, contracts awarded, pipeline building.',
+     advice:'Track solicitations daily. Prep for Q4 sole-source windows under $250K SAT.',
+     color:'var(--gold)',urgency:2},
+  4:{months:[7,8,9],label:'Q4',short:'Q4 Jul-Sep',
+     context:'End-of-year rush — use-it-or-lose-it budget, sole-source windows, maximum urgency.',
+     advice:'Be available and responsive. CO is overwhelmed. Simplify your ask.',
+     color:'var(--amber)',urgency:3}
+};
+
+function getFYInfo(dateStr){
+  if(!dateStr)return null;
+  var d=new Date(dateStr+'T00:00:00');
+  if(isNaN(d.getTime()))return null;
+  var month=d.getMonth()+1;
+  var year=d.getFullYear();
+  // Federal FY: Oct of year X starts FY(X+1)
+  var fy=month>=10?year+1:year;
+  var fq=month>=10&&month<=12?1:month>=1&&month<=3?2:month>=4&&month<=6?3:4;
+  var qConf=FY_QUARTERS[fq];
+  // EOFY = Sept 30 of the calendar year that equals fy
+  var eofyDate=new Date(fy,8,30);
+  // End of current quarter
+  var eoqMonth={1:12,2:3,3:6,4:9}[fq];
+  var eoqYear=fq===1?fy-1:fy; // Q1 ends in Dec of prior calendar year
+  var eoqDate=new Date(eoqYear,eoqMonth-1+1,0); // last day of that month
+  var now=new Date();now.setHours(0,0,0,0);
+  var daysToEOFY=Math.round((eofyDate-now)/86400000);
+  var daysToEOQ=Math.round((eoqDate-now)/86400000);
+  // Q4 color escalates as EOFY approaches
+  var color=qConf.color;
+  if(fq===4&&daysToEOFY<=30)color='var(--red)';
+  return{
+    fy:fy,fq:fq,
+    fyLabel:'FY'+String(fy).slice(2),
+    fqLabel:'Q'+fq,
+    fullLabel:'FY'+String(fy).slice(2)+' Q'+fq,
+    short:qConf.short,
+    context:qConf.context,
+    advice:qConf.advice,
+    color:color,
+    urgency:qConf.urgency,
+    daysToEOFY:daysToEOFY,
+    daysToEOQ:daysToEOQ,
+    eofyDate:eofyDate,
+    eoqDate:eoqDate
+  };
+}
+
+function getCurrentFYInfo(){
+  var today=new Date();
+  var mm=String(today.getMonth()+1).padStart(2,'0');
+  var dd=String(today.getDate()).padStart(2,'0');
+  return getFYInfo(today.getFullYear()+'-'+mm+'-'+dd);
+}
+
+// Returns procurement-specific alerts for an opportunity
+function getProcurementAlerts(opp,taggedMtgCount){
+  var alerts=[];
+  var now=new Date();now.setHours(0,0,0,0);
+  var cur=getCurrentFYInfo();
+
+  if(opp.awardDate){
+    var fyInfo=getFYInfo(opp.awardDate);
+    if(!fyInfo)return alerts;
+    var aw=new Date(opp.awardDate+'T00:00:00');
+    var daysToAward=Math.round((aw-now)/86400000);
+
+    // Q4 pressure window
+    if(fyInfo.fq===4&&daysToAward>0&&daysToAward<=90){
+      alerts.push({
+        icon:'⚡',
+        text:'Q4 EOFY pressure window — '+fyInfo.daysToEOFY+'d to Sept 30. Acquisition timeline compresses. Be maximally responsive.',
+        severity:'high',color:'var(--amber)'
+      });
+    }
+
+    // CR risk: award date is Oct or Nov (start of new FY) — CR likely
+    var awMonth=new Date(opp.awardDate+'T00:00:00').getMonth()+1;
+    if(awMonth===10||awMonth===11){
+      alerts.push({
+        icon:'⚠',
+        text:'CR risk — award falls in Oct/Nov. If Congress hasn\'t passed appropriations, new programs may pause under a Continuing Resolution.',
+        severity:'medium',color:'var(--amber)'
+      });
+    }
+
+    // RFP timing check: if award date is set but no RFP date, and award is within 8 weeks
+    if(!opp.rfpDate&&daysToAward>0&&daysToAward<=56){
+      alerts.push({
+        icon:'📋',
+        text:'RFP not tracked — solicitation should have dropped or be imminent (6-8wk lead time before award). Verify with CO.',
+        severity:'medium',color:'var(--blue)'
+      });
+    }
+
+    // No recent meetings in Q4 pressure window
+    if(fyInfo.fq===4&&daysToAward>0&&daysToAward<=60&&taggedMtgCount===0){
+      alerts.push({
+        icon:'🔴',
+        text:'No tagged meetings in Q4 pressure window. Lack of recent engagement this close to EOFY is a significant risk.',
+        severity:'high',color:'var(--red)'
+      });
+    }
+
+    // SAT sole-source window flag
+    if(fyInfo.fq===4&&daysToAward>0){
+      alerts.push({
+        icon:'◆',
+        text:'Q4 sole-source window: awards under $250K SAT can bypass full competition. If value qualifies, expedited path possible.',
+        severity:'info',color:'var(--green)'
+      });
+    }
+  }
+
+  // Current date is Q4 and opp has no award date at all
+  if(cur.fq===4&&!opp.awardDate&&opp.stage!=='won'&&opp.stage!=='lost'){
+    alerts.push({
+      icon:'⏰',
+      text:'You\'re in Q4 EOFY now. No award date set — clarify acquisition timeline with your CO contact immediately.',
+      severity:'medium',color:'var(--amber)'
+    });
+  }
+
+  return alerts;
+}
+
+// FY calendar SVG bar — shows 12-month FY with current position marker
+// Used in Timeline view header and optionally elsewhere
+function renderFYCalendarBar(targetFY){
+  var cur=getCurrentFYInfo();
+  var fy=targetFY||cur.fy;
+  var now=new Date();
+  var fyStart=new Date(fy-1,9,1); // Oct 1 of prior year
+  var fyEnd=new Date(fy,8,30);    // Sept 30
+  var totalDays=(fyEnd-fyStart)/86400000;
+  var elapsed=(now-fyStart)/86400000;
+  var pct=Math.max(0,Math.min(100,elapsed/totalDays*100));
+
+  var quarters=[
+    {label:'Q1',color:'rgba(107,114,128,.25)',months:'Oct-Dec'},
+    {label:'Q2',color:'rgba(59,130,246,.2)',months:'Jan-Mar'},
+    {label:'Q3',color:'rgba(201,162,39,.2)',months:'Apr-Jun'},
+    {label:'Q4',color:'rgba(245,158,11,.3)',months:'Jul-Sep'}
+  ];
+
+  var h='<div style="margin-bottom:14px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3)">FY'+String(fy).slice(2)+' Procurement Calendar</div>';
+  h+='<div style="font-size:10px;color:'+cur.color+';font-weight:600">'+cur.fullLabel+' · '+Math.max(0,cur.daysToEOFY)+'d to EOFY</div>';
+  h+='</div>';
+  // Quarter bars
+  h+='<div style="position:relative;height:28px;display:flex;border-radius:4px;overflow:hidden;border:1px solid var(--b1)">';
+  quarters.forEach(function(q,i){
+    h+='<div style="flex:1;background:'+q.color+';border-right:'+(i<3?'1px solid var(--b1)':'none')+';display:flex;align-items:center;justify-content:center;position:relative">';
+    h+='<span style="font-size:8px;font-weight:700;color:var(--t2);font-family:\'JetBrains Mono\',monospace">'+q.label+'</span>';
+    h+='</div>';
+  });
+  // Current position needle
+  if(elapsed>=0&&elapsed<=totalDays){
+    h+='<div style="position:absolute;left:'+pct+'%;top:0;bottom:0;width:2px;background:var(--text);opacity:0.8;pointer-events:none"></div>';
+    h+='<div style="position:absolute;left:'+pct+'%;top:-1px;transform:translateX(-50%);width:6px;height:6px;background:var(--text);border-radius:50%;border:1px solid var(--bg)"></div>';
+  }
+  h+='</div>';
+  // Quarter labels below
+  h+='<div style="display:flex;margin-top:3px">';
+  quarters.forEach(function(q){
+    h+='<div style="flex:1;text-align:center;font-size:8px;color:var(--t3)">'+q.months+'</div>';
+  });
+  h+='</div>';
+  h+='</div>';
+  return h;
+}
+
 function renderOppDetail(opp){
   var emptyEl=document.getElementById('opp-empty');
   var detailEl=document.getElementById('opp-detail');
@@ -1597,13 +1973,82 @@ function renderOppDetail(opp){
 
   h+=pipelineH;
 
-  // Key dates
+  // ── WIN PROBABILITY ─────────────────────────────────────────
+  var winProb=computeWinProb(opp,taggedMtgs,allPeople,allRisks);
+  var probScore=winProb.score;
+  var probColor=probScore>=65?'var(--green)':probScore>=35?'var(--amber)':'var(--red)';
+  var probLabel=probScore>=65?'Strong position':probScore>=35?'Competitive':probScore<20?'At risk':'Developing';
+  h+='<div style="margin-bottom:14px;padding:12px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);display:flex;align-items:center;gap:16px">';
+  // Probability gauge
+  h+='<div style="flex-shrink:0;text-align:center">';
+  var gaugeCircumference=2*Math.PI*18;
+  var gaugeDash=(probScore/100)*gaugeCircumference;
+  h+='<svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="18" fill="none" stroke="var(--b1)" stroke-width="4"/>';
+  h+='<circle cx="26" cy="26" r="18" fill="none" stroke="'+probColor+'" stroke-width="4" stroke-dasharray="'+gaugeDash+' '+gaugeCircumference+'" stroke-linecap="round" transform="rotate(-90 26 26)"/>';
+  h+='<text x="26" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="'+probColor+'" font-family="JetBrains Mono,monospace">'+probScore+'%</text></svg>';
+  h+='<div style="font-size:8px;color:var(--t3);margin-top:-2px;letter-spacing:0.05em;font-family:\'JetBrains Mono\',monospace">WIN PROB</div>';
+  h+='</div>';
+  // Score breakdown
+  h+='<div style="flex:1">';
+  h+='<div style="font-size:13px;font-weight:600;color:'+probColor+';margin-bottom:6px">'+probLabel+'</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  winProb._factors&&winProb._factors.forEach(function(f){
+    h+='<div style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+ha(f.color,.12)+';color:'+f.color+';border:1px solid '+ha(f.color,.25)+'">'+f.label+': '+f.value+'</div>';
+  });
+  h+='</div></div>';
+  // Gap analysis inline
+  var gaps=computeNetworkGaps(opp,allPeople);
+  if(gaps.length){
+    h+='<div style="flex-shrink:0;border-left:1px solid var(--b1);padding-left:16px">';
+    h+='<div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px">Network Gaps</div>';
+    gaps.slice(0,3).forEach(function(g){
+      h+='<div style="font-size:10px;color:var(--red);margin-bottom:3px;display:flex;gap:5px;align-items:flex-start">';
+      h+='<span style="flex-shrink:0">⚬</span><span>'+g+'</span></div>';
+    });
+    h+='</div>';
+  }
+  h+='</div>';
   if(opp.rfpDate||opp.awardDate){
     var now=new Date();now.setHours(0,0,0,0);
-    h+='<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
-    if(opp.rfpDate){var rfp=new Date(opp.rfpDate+'T00:00:00');var rfpDiff=Math.round((rfp-now)/86400000);h+='<div style="padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm)"><div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">RFP / Solicitation</div><div style="font-size:13px;font-weight:600">'+opp.rfpDate+'</div><div style="font-size:10px;color:'+(rfpDiff<0?'var(--red)':rfpDiff<30?'var(--amber)':'var(--t2)')+'">'+( rfpDiff<0?Math.abs(rfpDiff)+'d past':rfpDiff===0?'TODAY':rfpDiff+'d away')+'</div></div>';}
-    if(opp.awardDate){var aw=new Date(opp.awardDate+'T00:00:00');var awDiff=Math.round((aw-now)/86400000);h+='<div style="padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm)"><div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">Award Date</div><div style="font-size:13px;font-weight:600">'+opp.awardDate+'</div><div style="font-size:10px;color:'+(awDiff<0?'var(--red)':awDiff<60?'var(--amber)':'var(--t2)')+'">'+( awDiff<0?Math.abs(awDiff)+'d past':awDiff===0?'TODAY':awDiff+'d away')+'</div></div>';}
+    h+='<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
+    if(opp.rfpDate){
+      var rfp=new Date(opp.rfpDate+'T00:00:00');
+      var rfpDiff=Math.round((rfp-now)/86400000);
+      var rfpFY=getFYInfo(opp.rfpDate);
+      h+='<div style="padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm)">';
+      h+='<div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">RFP / Solicitation</div>';
+      h+='<div style="font-size:13px;font-weight:600">'+opp.rfpDate+'</div>';
+      h+='<div style="font-size:10px;color:'+(rfpDiff<0?'var(--red)':rfpDiff<30?'var(--amber)':'var(--t2)')+'">'+( rfpDiff<0?Math.abs(rfpDiff)+'d past':rfpDiff===0?'TODAY':rfpDiff+'d away')+'</div>';
+      if(rfpFY)h+='<div style="font-size:9px;margin-top:3px;padding:1px 5px;background:'+rfpFY.color.replace(')',', .12)').replace('var(','rgba(').replace('--red','239,68,68').replace('--amber','245,158,11').replace('--gold','201,162,39').replace('--blue','59,130,246').replace('--t2','107,114,128')+';color:'+rfpFY.color+';border-radius:3px;display:inline-block;font-family:\'JetBrains Mono\',monospace">'+rfpFY.fullLabel+'</div>';
+      h+='</div>';
+    }
+    if(opp.awardDate){
+      var aw=new Date(opp.awardDate+'T00:00:00');
+      var awDiff=Math.round((aw-now)/86400000);
+      var awFY=getFYInfo(opp.awardDate);
+      h+='<div style="padding:8px 12px;background:var(--s2);border:1px solid '+(awFY&&awFY.fq===4?awFY.color:'var(--b1)')+';border-radius:var(--rsm)">';
+      h+='<div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">Award Date</div>';
+      h+='<div style="font-size:13px;font-weight:600">'+opp.awardDate+'</div>';
+      h+='<div style="font-size:10px;color:'+(awDiff<0?'var(--red)':awDiff<60?'var(--amber)':'var(--t2)')+'">'+( awDiff<0?Math.abs(awDiff)+'d past':awDiff===0?'TODAY':awDiff+'d away')+'</div>';
+      if(awFY){
+        h+='<div style="font-size:9px;margin-top:3px;font-family:\'JetBrains Mono\',monospace;font-weight:600;color:'+awFY.color+'">'+awFY.fullLabel+(awFY.fq===4?' ⚡':'')+'</div>';
+        h+='<div style="font-size:9px;color:var(--t3);margin-top:1px;line-height:1.3">'+awFY.context.split('—')[0].trim()+'</div>';
+      }
+      h+='</div>';
+    }
     h+='</div>';
+
+    // Procurement alerts
+    var procAlerts=getProcurementAlerts(opp,taggedMtgs.length);
+    if(procAlerts.length){
+      h+='<div style="margin-bottom:14px;display:flex;flex-direction:column;gap:5px">';
+      procAlerts.forEach(function(a){
+        h+='<div style="display:flex;gap:7px;padding:6px 10px;border-left:2px solid '+a.color+';background:'+a.color.replace('var(--','').replace(')','')+'11 || rgba(0,0,0,.03);border-radius:0 var(--rsm) var(--rsm) 0;background:rgba(0,0,0,.03)">';
+        h+='<span style="flex-shrink:0;font-size:11px">'+a.icon+'</span>';
+        h+='<div style="font-size:11px;color:var(--text);line-height:1.45">'+a.text+'</div></div>';
+      });
+      h+='</div>';
+    }
   }
 
   // KPIs
@@ -1702,8 +2147,7 @@ window.editOppNotes=function(id){
 };
 
 function updateOppSelectors(){
-  var selectors=['m-opp','edit-opp'];
-  selectors.forEach(function(sid){
+  ['m-opp'].forEach(function(sid){
     var sel=document.getElementById(sid);
     if(!sel)return;
     var cur=sel.value;
@@ -1715,8 +2159,383 @@ function updateOppSelectors(){
 }
 window.switchView=switchView;
 
-function switchIntelTab(t){activeIntelTab=t;document.querySelectorAll('.intel-tab').forEach(function(x){x.classList.toggle('active',x.dataset.itab===t);});['log','intel','prep','archive','board'].forEach(function(x){document.getElementById('itab-'+x).style.display=x===t?'block':'none';});document.getElementById('sidebar-archive').style.display=(t==='log'||t==='intel')?'flex':'none';if(t==='board')renderBoard();if(t==='archive')renderArchive();}
+function switchIntelTab(t){
+  activeIntelTab=t;
+  document.querySelectorAll('.intel-tab').forEach(function(x){x.classList.toggle('active',x.dataset.itab===t);});
+  ['log','intel','prep','archive','board','memory'].forEach(function(x){
+    var el=document.getElementById('itab-'+x);
+    if(!el)return;
+    // memory tab uses flex layout, others use block
+    el.style.display=x===t?(x==='memory'?'flex':'block'):'none';
+  });
+  document.getElementById('sidebar-archive').style.display=(t==='log'||t==='intel')?'flex':'none';
+  if(t==='board')renderBoard();
+  if(t==='archive')renderArchive();
+  if(t==='memory')initMemoryTab();
+}
 window.switchIntelTab=switchIntelTab;
+
+// ══════════════════════════════════════════════════════════════
+// INSTITUTIONAL MEMORY SEARCH
+// Natural language search across all meetings. Two-stage:
+//   1. Client-side keyword scoring (instant) → top 15 relevant meetings
+//   2. Claude synthesis of those meetings → direct answer with citations
+// ══════════════════════════════════════════════════════════════
+
+var memoryAllLoaded=false;
+var memoryLoading=false;
+var memorySearchActive=false;
+
+var MEMORY_EXAMPLES=[
+  'What have we learned about SOCOM budget cycles?',
+  'Who controls acquisition decisions at DARPA?',
+  'What are the biggest risks across all our deals?',
+  'What has changed in our relationship with [company]?',
+  'When did timeline concerns first appear?',
+  'Who are the most skeptical contacts we\'ve encountered?',
+  'What have competitors been mentioned?',
+  'What commitments have been made and not kept?',
+];
+
+function initMemoryTab(){
+  // Render example prompts
+  var exBtns=document.getElementById('memory-example-btns');
+  if(exBtns&&!exBtns.dataset.init){
+    exBtns.dataset.init='1';
+    // Pick 5 random examples
+    var examples=MEMORY_EXAMPLES.slice().sort(function(){return Math.random()-.5;}).slice(0,5);
+    examples.forEach(function(ex){
+      var b=document.createElement('button');
+      b.textContent=ex;
+      b.style.cssText='text-align:left;padding:6px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif;transition:border-color .15s,color .15s;line-height:1.4';
+      b.onmouseover=function(){this.style.borderColor='var(--purple)';this.style.color='var(--text)';};
+      b.onmouseout=function(){this.style.borderColor='var(--b2)';this.style.color='var(--t2)';};
+      b.onclick=function(){
+        document.getElementById('memory-query').value=ex;
+        runMemorySearch();
+      };
+      exBtns.appendChild(b);
+    });
+  }
+  // Update status
+  _updateMemoryStatus();
+}
+
+function _updateMemoryStatus(){
+  var el=document.getElementById('memory-status');
+  if(!el)return;
+  var total=meetings.length;
+  if(total===0){el.textContent='No meetings loaded yet.';el.style.display='block';return;}
+  el.textContent='Searching across '+total+' meeting'+(total!==1?'s':'')+(memoryAllLoaded?'':' — older history loads on first search');
+  el.style.display='block';
+}
+
+window.onMemoryInput=function(){
+  var q=document.getElementById('memory-query').value.trim();
+  document.getElementById('memory-examples').style.display=q?'none':'block';
+  if(!q){
+    document.getElementById('memory-results').style.display='none';
+    document.getElementById('memory-results').innerHTML='';
+  }
+};
+
+window.runMemorySearch=async function(){
+  var q=(document.getElementById('memory-query').value||'').trim();
+  if(!q)return;
+  if(!apiKey){toast('Add an API key in Settings to use Memory Search');return;}
+  if(memorySearchActive)return;
+  memorySearchActive=true;
+
+  var resultsEl=document.getElementById('memory-results');
+  var examplesEl=document.getElementById('memory-examples');
+  examplesEl.style.display='none';
+  resultsEl.style.display='block';
+  resultsEl.innerHTML='<div style="padding:30px 0;text-align:center">'
+    +'<div style="display:inline-flex;gap:8px;align-items:center;color:var(--t2);font-size:12px">'
+    +'<span class="proc-dots"><span></span><span></span><span></span></span>'
+    +'<span id="memory-loading-txt">Loading full meeting history...</span></div></div>';
+
+  // ── Stage 0: Load all meetings if needed ──────────────────
+  if(!memoryAllLoaded&&!mtgAllLoaded){
+    try{
+      await _loadAllMeetingsForSearch();
+    }catch(e){
+      // Continue with what we have
+    }
+  }
+  memoryAllLoaded=true;
+  _updateMemoryStatus();
+
+  // ── Stage 1: Keyword score all meetings ───────────────────
+  var loadingTxt=document.getElementById('memory-loading-txt');
+  if(loadingTxt)loadingTxt.textContent='Scanning '+meetings.length+' meetings...';
+
+  var scored=_scoreMeetings(q);
+  var top=scored.slice(0,15);
+
+  if(top.length===0){
+    resultsEl.innerHTML='<div class="empty-state" style="padding:40px 10px">'
+      +'<div style="font-size:13px;color:var(--t2)">No meetings match "'+q+'"</div>'
+      +'<div style="font-size:11px;color:var(--t3);margin-top:6px">Try different terms or a broader question</div></div>';
+    memorySearchActive=false;
+    return;
+  }
+
+  if(loadingTxt)loadingTxt.textContent='Synthesizing from '+top.length+' relevant meetings...';
+
+  // ── Stage 2: Claude synthesis ─────────────────────────────
+  try{
+    var context=_buildMemoryContext(q,top);
+    var answer=await _callMemoryClaude(q,context);
+    _renderMemoryResults(q,answer,top,scored.length);
+  }catch(e){
+    resultsEl.innerHTML='<div style="padding:20px;color:var(--red);font-size:12px">'
+      +'Memory search failed: '+(e.message||'Unknown error')
+      +'<br><br><span style="color:var(--t3)">Your meetings are still searchable — try again.</span></div>';
+  }
+  memorySearchActive=false;
+};
+
+async function _loadAllMeetingsForSearch(){
+  // Load meetings in batches until exhausted
+  var loadingTxt=document.getElementById('memory-loading-txt');
+  var maxBatches=20; // safety cap — 20 × 50 = 1000 meetings max
+  for(var i=0;i<maxBatches;i++){
+    if(mtgAllLoaded)break;
+    if(loadingTxt)loadingTxt.textContent='Loading history... ('+(meetings.length)+' so far)';
+    try{
+      await loadMoreMeetings();
+    }catch(e){break;}
+    if(mtgAllLoaded)break;
+    // Small delay to avoid hammering Firebase
+    await new Promise(function(r){setTimeout(r,100);});
+  }
+}
+
+// ── Keyword scoring ────────────────────────────────────────
+// Extracts terms from query, scores each meeting, returns sorted list
+function _scoreMeetings(query){
+  // Extract meaningful terms (3+ chars, skip stop words)
+  var stop=new Set(['the','and','for','are','was','were','has','have','had','this',
+    'that','with','what','when','who','how','did','does','been','about','from',
+    'into','its','our','their','they','which','will','can','all','any','but',
+    'not','his','her']);
+  var terms=query.toLowerCase()
+    .replace(/[^a-z0-9\s]/g,' ')
+    .split(/\s+/)
+    .filter(function(t){return t.length>=3&&!stop.has(t);});
+
+  if(!terms.length)return [];
+
+  return meetings.map(function(m){
+    var score=0;
+    var matchedTerms=new Set();
+
+    function scanField(text,weight){
+      if(!text)return;
+      var t=text.toLowerCase();
+      terms.forEach(function(term){
+        if(t.includes(term)){
+          score+=weight;
+          matchedTerms.add(term);
+        }
+      });
+    }
+
+    // Field weights: higher = more important
+    scanField(m.meta.title,4);
+    scanField(m.meta.att,3);
+    scanField(m.intel.summary,3);
+    scanField(m.notes,2);
+    (m.intel.keyPeople||[]).forEach(function(p){
+      scanField(p.name,4);
+      scanField(p.role,2);
+      scanField(p.org,3);
+      scanField(p.stance,2);
+      scanField(p.watchFor,2);
+    });
+    (m.intel.risks||[]).forEach(function(r){scanField(r.risk,2);scanField(r.raisedBy,2);});
+    (m.intel.actionItems||[]).forEach(function(a){scanField(a.task,2);scanField(a.context,1);});
+    (m.intel.companies||[]).forEach(function(c){scanField(c.name,3);scanField(c.role,1);scanField(c.notes,1);});
+    (m.intel.learningInsights||[]).forEach(function(ins){scanField(ins,2);});
+    (m.intel.openQuestions||[]).forEach(function(q2){
+      var qText=typeof q2==='string'?q2:(q2.question||'');
+      scanField(qText,2);
+    });
+    (m.intel.redFlags||[]).forEach(function(f){scanField(f,2);});
+    (m.intel.followUpTopics||[]).forEach(function(f){scanField(f,1);});
+
+    // Bonus: more term variety = more relevant
+    score+=matchedTerms.size*2;
+
+    return{m:m,score:score,matchedTerms:Array.from(matchedTerms)};
+  })
+  .filter(function(x){return x.score>0;})
+  .sort(function(a,b){return b.score-a.score;});
+}
+
+// ── Context builder ────────────────────────────────────────
+// Builds a compact structured context string for Claude.
+// Budget: ~300 tokens per meeting × 15 = ~4500 tokens for context.
+function _buildMemoryContext(query,scoredMeetings){
+  var ctx='WORKSPACE: '+currentWs.name+'\n';
+  ctx+='TOTAL MEETINGS ON RECORD: '+meetings.length+'\n';
+  ctx+='QUERY: '+query+'\n\n';
+  ctx+='=== RELEVANT MEETINGS ('+scoredMeetings.length+', ranked by relevance) ===\n\n';
+
+  scoredMeetings.forEach(function(item,i){
+    var m=item.m;
+    ctx+='['+m.meta.date+'] '+(m.meta.title||'Untitled')+'\n';
+    if(m.meta.att)ctx+='Attendees: '+m.meta.att+'\n';
+    if(m.intel.summary)ctx+='Summary: '+m.intel.summary.slice(0,250)+'\n';
+
+    var people=(m.intel.keyPeople||[]).filter(function(p){return p.name;});
+    if(people.length){
+      ctx+='Key People:\n';
+      people.slice(0,5).forEach(function(p){
+        ctx+='  - '+p.name+(p.role?' ('+p.role+')':'')+(p.org?' @ '+p.org:'');
+        if(p.stance)ctx+=': "'+p.stance.slice(0,100)+'"';
+        ctx+='\n';
+      });
+    }
+
+    var risks=(m.intel.risks||[]).filter(function(r){return r.severity==='high';});
+    if(risks.length){
+      ctx+='High Risks: '+(risks.map(function(r){return r.risk;}).join('; '))+'\n';
+    }
+
+    var actions=(m.intel.actionItems||[]).filter(function(a){return a.priority==='high';});
+    if(actions.length){
+      ctx+='Key Actions: '+(actions.map(function(a){return a.task+(a.owner?' ('+a.owner+')':'');}).join('; '))+'\n';
+    }
+
+    var insights=m.intel.learningInsights||[];
+    if(insights.length){
+      ctx+='Insights: '+(insights.slice(0,3).join(' | '))+'\n';
+    }
+
+    var redFlags=m.intel.redFlags||[];
+    if(redFlags.length){
+      ctx+='Red Flags: '+(redFlags.slice(0,2).join('; '))+'\n';
+    }
+
+    var cos=(m.intel.companies||[]);
+    if(cos.length){
+      ctx+='Companies: '+(cos.map(function(c){return c.name+(c.role?' ('+c.role+')':'');}).join(', '))+'\n';
+    }
+
+    ctx+='\n';
+  });
+
+  return ctx;
+}
+
+// ── Claude synthesis call ──────────────────────────────────
+async function _callMemoryClaude(query,context){
+  var systemPrompt='You are an institutional memory analyst for '+currentWs.name+'. '
+    +'Your job is to answer questions about the team\'s relationship and meeting history with precision and directness.\n\n'
+    +'Rules:\n'
+    +'- Answer the specific question asked, directly and concisely\n'
+    +'- Cite specific meetings using [DATE - Title] format inline\n'
+    +'- Surface patterns across meetings that are relevant to the question\n'
+    +'- If the data shows a contradiction or evolution over time, say so explicitly\n'
+    +'- If the question cannot be answered from the available meetings, say so directly\n'
+    +'- Highlight any names, dates, or commitments that deserve immediate attention\n'
+    +'- Keep the answer under 350 words\n'
+    +'- Never fabricate details not present in the meeting data\n'
+    +'- End with a brief "Key takeaway:" one-liner if there is a clear one';
+
+  var res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':apiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({
+      model:'claude-sonnet-4-6',
+      max_tokens:600,
+      system:systemPrompt,
+      messages:[{role:'user',content:context}]
+    })
+  });
+  if(!res.ok){
+    var err=await res.json().catch(function(){return{};});
+    throw new Error(err.error?err.error.message:'API error '+res.status);
+  }
+  var d=await res.json();
+  return(d.content||[]).map(function(b){return b.text||'';}).join('');
+}
+
+// ── Results renderer ───────────────────────────────────────
+function _renderMemoryResults(query,answer,topMeetings,totalMatches){
+  var h='';
+
+  // Query echo + match count
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--b1)">';
+  h+='<div style="flex:1"><span style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">QUERY</span>';
+  h+='<div style="font-size:12px;color:var(--text);margin-top:2px;font-style:italic">'+query+'</div></div>';
+  h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:18px;font-weight:700;color:var(--purple)">'+topMeetings.length+'</div>';
+  h+='<div style="font-size:8px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">of '+totalMatches+' matches</div></div>';
+  h+='</div>';
+
+  // Answer block
+  h+='<div style="padding:12px 14px;background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(139,92,246,.03));border:1px solid rgba(139,92,246,.25);border-radius:var(--r);margin-bottom:12px">';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.1em;color:var(--purple);margin-bottom:8px">Intelligence Synthesis</div>';
+
+  // Render answer: bold [citations], highlight "Key takeaway:"
+  var formatted=answer
+    .replace(/\[([^\]]+)\]/g,'<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(139,92,246,.12);color:var(--purple);font-family:\'JetBrains Mono\',monospace;white-space:nowrap">[$1]</span>')
+    .replace(/Key takeaway:/gi,'<div style="margin-top:10px;padding:7px 10px;background:rgba(201,162,39,.08);border-left:2px solid var(--gold);border-radius:0 var(--rsm) var(--rsm) 0"><span style="font-size:9px;font-weight:700;color:var(--gold);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em">Key takeaway</span><div style="font-size:12px;color:var(--text);margin-top:3px">')
+    .replace(/\n\n/g,'</p><p style="margin:6px 0 0;font-size:12px;line-height:1.7;color:var(--text)">')
+    .replace(/\n/g,'<br>');
+
+  h+='<p style="margin:0;font-size:12px;line-height:1.7;color:var(--text)">'+formatted+'</p>';
+  h+='</div>';
+
+  // Source meetings — collapsible list
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.08em;color:var(--t3);margin-bottom:6px">Source Meetings</div>';
+  topMeetings.forEach(function(item){
+    var m=item.m;
+    var sc=PC[m.intel.companyPulse]||{b:'rgba(37,45,66,.5)',t:'#6b7280'};
+    h+='<div style="padding:7px 10px;border:1px solid var(--b1);border-radius:var(--rsm);margin-bottom:5px;cursor:pointer;transition:border-color .15s" '
+      +'onclick="closeMemoryAndGoTo('+m.id+')" '
+      +'onmouseover="this.style.borderColor=\'var(--purple)\'" '
+      +'onmouseout="this.style.borderColor=\'var(--b1)\'">';
+    h+='<div style="display:flex;align-items:center;gap:7px">';
+    h+='<span style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;flex-shrink:0">'+m.meta.date+'</span>';
+    h+='<span style="font-size:11px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.meta.title+'</span>';
+    if(m.intel.companyPulse){h+='<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+sc.b+';color:'+sc.t+'">'+m.intel.companyPulse+'</span>';}
+    h+='</div>';
+    if(item.matchedTerms&&item.matchedTerms.length){
+      h+='<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px">';
+      item.matchedTerms.slice(0,6).forEach(function(t){
+        h+='<span style="font-size:9px;padding:0 4px;border-radius:2px;background:rgba(139,92,246,.1);color:var(--purple)">'+t+'</span>';
+      });
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+
+  // New search button
+  h+='<button onclick="clearMemorySearch()" style="width:100%;margin-top:10px;padding:7px;border:1px dashed var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif">+ Ask another question</button>';
+
+  document.getElementById('memory-results').innerHTML=h;
+}
+
+window.closeMemoryAndGoTo=function(id){
+  switchIntelTab('intel');
+  goIntelById(id);
+};
+
+window.clearMemorySearch=function(){
+  document.getElementById('memory-query').value='';
+  document.getElementById('memory-results').style.display='none';
+  document.getElementById('memory-results').innerHTML='';
+  document.getElementById('memory-examples').style.display='block';
+  document.getElementById('memory-query').focus();
+};
 
 function renderSidebarMtgList(){var list=document.getElementById('sidebar-mtg-list');if(!list)return;if(!meetings.length){list.innerHTML='<div style="font-size:11px;color:var(--t3);padding:4px">No meetings yet</div>';return;}list.innerHTML=meetings.slice(0,12).map(function(m){var active=currentMeeting&&currentMeeting.id===m.id;return '<div onclick="goIntelById('+m.id+')" style="padding:7px 8px;border-radius:6px;cursor:pointer;margin-bottom:3px;background:'+(active?'var(--s2)':'transparent')+';border:1px solid '+(active?'var(--b2)':'transparent')+'"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.meta.title+'</div><div style="font-size:10px;color:var(--t2);margin-top:1px">'+m.meta.date+'</div></div>';}).join('');}
 window.goIntelById=function(id){var m=meetingMap.get(id);if(m){currentMeeting=m;renderIntel(m);switchIntelTab('intel');renderSidebarMtgList();}};
@@ -1942,6 +2761,292 @@ Keep the entire brief under 500 words. No fluff. No hedging. This person is busy
 }
 
 window.generateDigest=generateDigest;
+
+// ── ONBOARDING BRIEF ─────────────────────────────────────────
+// Flagship feature: generates a full intelligence package for someone
+// new to the workspace. The SEAL team brief — don't start from zero.
+
+window.openOnboardingBrief=async function(){
+  if(!apiKey){toast('Add API key in Settings to generate briefs');return;}
+  if(!meetings.length){toast('Log some meetings first to generate a brief');return;}
+
+  // Show modal in loading state
+  document.getElementById('brief-modal').style.display='flex';
+  document.getElementById('brief-loading').style.display='block';
+  document.getElementById('brief-body').style.display='none';
+  document.getElementById('brief-copy-btn').style.display='none';
+  document.getElementById('brief-subtitle').textContent='Building your intelligence package...';
+  document.getElementById('brief-count').textContent=meetings.length;
+
+  // Load full history if not already loaded
+  if(!mtgAllLoaded&&meetings.length<20){
+    document.getElementById('brief-subtitle').textContent='Loading meeting history...';
+    try{await loadMoreMeetings();}catch(e){}
+  }
+
+  try{
+    var context=_buildBriefContext();
+    var brief=await _callBriefClaude(context);
+    _renderBrief(brief);
+  }catch(e){
+    document.getElementById('brief-loading').innerHTML='<div style="color:var(--red);font-size:13px;text-align:center;padding:40px">Brief generation failed: '+(e.message||'Unknown error')+'</div>';
+  }
+};
+
+function _buildBriefContext(){
+  var now=new Date();
+
+  // ── People: build full roster from meetings ──────────────────
+  var personMap={};
+  meetings.forEach(function(m){
+    (m.intel.keyPeople||[]).forEach(function(p){
+      if(!p.name||p.name.length<2)return;
+      var k=p.name.toLowerCase();
+      if(!personMap[k])personMap[k]={name:p.name,role:p.role||'',org:p.org||'',stances:[],watchFor:[],meetings:[],riskCount:0};
+      personMap[k].meetings.push(m.id);
+      if(p.stance)personMap[k].stances.push({stance:p.stance,date:m.meta.date,mtg:m.meta.title});
+      if(p.watchFor)personMap[k].watchFor.push(p.watchFor);
+      if(p.role&&!personMap[k].role)personMap[k].role=p.role;
+      if(p.org&&!personMap[k].org)personMap[k].org=p.org;
+    });
+    (m.intel.risks||[]).forEach(function(r){
+      if(r.raisedBy){
+        var k2=r.raisedBy.toLowerCase();
+        if(personMap[k2])personMap[k2].riskCount++;
+      }
+    });
+  });
+  var people=Object.values(personMap).sort(function(a,b){return b.meetings.length-a.meetings.length;}).slice(0,20);
+
+  // ── Opportunities: full status ───────────────────────────────
+  var activeOpps=opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';});
+
+  // ── Open commitments ─────────────────────────────────────────
+  var openCommits=commitments.filter(function(c){return c.status==='open';});
+  var overdueCommits=openCommits.filter(function(c){
+    return c.deadline&&new Date(c.deadline+'T00:00:00')<now;
+  });
+
+  // ── Cooling relationships ────────────────────────────────────
+  var recency={};
+  meetings.forEach(function(m){
+    (m.intel.keyPeople||[]).forEach(function(p){
+      if(!p.name)return;
+      var d=new Date(m.meta.date);
+      if(!recency[p.name]||d>recency[p.name])recency[p.name]=d;
+    });
+  });
+  var cooling=Object.entries(recency)
+    .map(function(e){return{name:e[0],daysAgo:Math.floor((now-e[1])/86400000)};})
+    .filter(function(x){return x.daysAgo>45;})
+    .sort(function(a,b){return b.daysAgo-a.daysAgo;})
+    .slice(0,8);
+
+  // ── Recent signals: top companies ────────────────────────────
+  var companyMentions={};
+  meetings.forEach(function(m){
+    (m.intel.companies||[]).forEach(function(c){
+      if(!c.name)return;
+      companyMentions[c.name]=(companyMentions[c.name]||0)+1;
+    });
+  });
+  var topCompanies=Object.entries(companyMentions)
+    .sort(function(a,b){return b[1]-a[1];}).slice(0,10)
+    .map(function(e){return e[0]+' ('+e[1]+'x)';});
+
+  // ── All action items still open ──────────────────────────────
+  var allActions=meetings.slice(0,30).flatMap(function(m){
+    return(m.intel.actionItems||[]).map(function(a){
+      return Object.assign({},a,{mtg:m.meta.title,date:m.meta.date});
+    });
+  });
+  var hiActions=allActions.filter(function(a){return a.priority==='high';}).slice(0,12);
+
+  // ── All high risks ───────────────────────────────────────────
+  var allRisks=meetings.slice(0,30).flatMap(function(m){
+    return(m.intel.risks||[]).filter(function(r){return r.severity==='high';})
+      .map(function(r){return Object.assign({},r,{mtg:m.meta.title,date:m.meta.date});});
+  }).slice(0,10);
+
+  // ── Recent meetings pulse ────────────────────────────────────
+  var recentMtgs=meetings.slice(0,10);
+
+  // Build context string
+  var ctx='WORKSPACE: '+currentWs.name+'\n';
+  ctx+='ROLE: '+(currentWs.role||'Member')+'\n';
+  ctx+='MEETINGS ON RECORD: '+meetings.length+'\n';
+  ctx+='GENERATED: '+now.toISOString().slice(0,10)+'\n\n';
+
+  ctx+='=== KEY PEOPLE ('+people.length+') ===\n';
+  people.forEach(function(p){
+    ctx+=p.name+(p.role?' | '+p.role:'')+(p.org?' @ '+p.org:'')+' | '+p.meetings.length+' meetings\n';
+    if(p.stances.length){
+      var latest=p.stances[p.stances.length-1];
+      ctx+='  Latest stance ('+latest.date+'): '+latest.stance+'\n';
+    }
+    if(p.watchFor.length)ctx+='  Watch for: '+p.watchFor[p.watchFor.length-1]+'\n';
+  });
+
+  ctx+='\n=== ACTIVE OPPORTUNITIES ('+activeOpps.length+') ===\n';
+  activeOpps.forEach(function(o){
+    ctx+=o.name+' | Stage: '+o.stage+(o.agency?' | '+o.agency:'')+(o.value?' | '+o.value:'')+'\n';
+    if(o.notes)ctx+='  Context: '+o.notes.slice(0,200)+'\n';
+    var oMtgs=meetings.filter(function(m){return m.oppId===o.id||(o.meetings||[]).includes(m.id);});
+    if(oMtgs.length)ctx+='  Meetings tagged: '+oMtgs.length+'\n';
+    if(o.rfpDate)ctx+='  RFP: '+o.rfpDate+'\n';
+    if(o.awardDate)ctx+='  Award: '+o.awardDate+'\n';
+  });
+
+  ctx+='\n=== RECENT MEETINGS (last 10) ===\n';
+  recentMtgs.forEach(function(m){
+    ctx+=m.meta.date+' | '+m.meta.title+' | Pulse: '+(m.intel.companyPulse||'?')+'\n';
+    if(m.intel.summary)ctx+='  '+m.intel.summary.slice(0,200)+'\n';
+    if((m.intel.redFlags||[]).length)ctx+='  ⚠ Red flags: '+m.intel.redFlags.join('; ')+'\n';
+  });
+
+  ctx+='\n=== ORGANIZATIONS IN ORBIT ===\n'+topCompanies.join(', ')+'\n';
+
+  ctx+='\n=== OPEN COMMITMENTS ('+openCommits.length+') ===\n';
+  if(overdueCommits.length)ctx+='OVERDUE ('+overdueCommits.length+'):\n'+overdueCommits.map(function(c){return'- '+c.task+' | Owner: '+(c.owner||'?')+' | Was due: '+c.deadline;}).join('\n')+'\n';
+  var otherCommits=openCommits.filter(function(c){return!c.deadline||new Date(c.deadline+'T00:00:00')>=now;}).slice(0,8);
+  if(otherCommits.length)ctx+='OPEN:\n'+otherCommits.map(function(c){return'- '+c.task+' | '+(c.owner||'?')+(c.deadline?' | Due: '+c.deadline:'');}).join('\n')+'\n';
+
+  ctx+='\n=== HIGH PRIORITY ACTIONS ===\n';
+  hiActions.forEach(function(a){ctx+='- '+a.task+' | '+(a.owner||'?')+(a.deadline?' | Due: '+a.deadline:'')+' | from: '+a.mtg+'\n';});
+
+  ctx+='\n=== ACTIVE HIGH RISKS ===\n';
+  allRisks.forEach(function(r){ctx+='- '+r.risk+(r.raisedBy?' ['+r.raisedBy+']':'')+' | '+r.mtg+'\n';});
+
+  if(cooling.length){
+    ctx+='\n=== COOLING RELATIONSHIPS (>45 days no contact) ===\n';
+    cooling.forEach(function(c){ctx+='- '+c.name+': '+c.daysAgo+'d since last contact\n';});
+  }
+
+  return ctx;
+}
+
+async function _callBriefClaude(context){
+  var sp=`You are a defense BD intelligence analyst delivering a comprehensive onboarding brief for ${currentWs.name}. This brief is for someone stepping into this workspace — they need to hit the ground running.
+
+Write as if you are the outgoing team member handing off to the incoming one. Direct, specific, no fluff. Reference actual names, organizations, and situations from the data. Every section must feel like it was written specifically for this team and these relationships.
+
+OUTPUT EXACTLY this structure with these exact section headers:
+
+MISSION CONTEXT
+2-3 sentences on what ${currentWs.name} is actually trying to accomplish. What is the prize, who is the competition, what is the current state of play.
+
+THE LANDSCAPE
+The key organizations in this ecosystem. Who are they, what role do they play, what is their current disposition toward us. Name them directly.
+
+YOUR 15 PEOPLE
+The most important relationships, ranked by strategic importance. For each person: name, role/org, how many times we've met, their current stance, what we need from them, what to watch out for. Be specific and honest about relationship quality.
+
+ACTIVE OPPORTUNITIES
+Each deal we're working. What it is, where it stands, who the key people are, what's been tried, what's blocking it, what the single best next move is. Don't summarize — give intelligence.
+
+OPEN LOOPS
+Every commitment that hasn't closed, every question that hasn't been answered, every relationship that needs immediate attention. What's at risk if these aren't addressed.
+
+WHAT NOT TO DO
+Based on the meeting history: approaches that haven't worked, relationships that have cooled for a reason, mistakes made. The institutional knowledge that prevents repeating history.
+
+YOUR FIRST WEEK
+5 specific actions for days 1-5. Names, what to say, why it matters. Not generic advice — specific moves based on where things actually stand.
+
+Keep the brief under 900 words. Write with authority and specificity. This is not a summary — it is a briefing.`;
+
+  var res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1800,system:sp,messages:[{role:'user',content:context}]})
+  });
+  if(!res.ok){var e=await res.json().catch(function(){return{};});throw new Error(e.error?e.error.message:'API error '+res.status);}
+  var d=await res.json();
+  return(d.content||[]).map(function(b){return b.text||'';}).join('');
+}
+
+function _renderBrief(text){
+  var sections=[
+    {key:'MISSION CONTEXT',icon:'◉',color:'var(--gold)'},
+    {key:'THE LANDSCAPE',icon:'◈',color:'var(--blue)'},
+    {key:'YOUR 15 PEOPLE',icon:'◉',color:'var(--text)'},
+    {key:'ACTIVE OPPORTUNITIES',icon:'◆',color:'var(--purple)'},
+    {key:'OPEN LOOPS',icon:'⚠',color:'var(--amber)'},
+    {key:'WHAT NOT TO DO',icon:'✗',color:'var(--red)'},
+    {key:'YOUR FIRST WEEK',icon:'✦',color:'var(--green)'}
+  ];
+
+  var html='';
+  var remaining=text;
+
+  sections.forEach(function(sec,i){
+    var nextSec=sections[i+1];
+    var startIdx=remaining.toUpperCase().indexOf(sec.key);
+    if(startIdx===-1)return;
+    var endIdx=nextSec?remaining.toUpperCase().indexOf(nextSec.key,startIdx+sec.key.length):-1;
+    var content=remaining.slice(startIdx+sec.key.length,endIdx>-1?endIdx:undefined).replace(/^[\s\n:]+/,'').trim();
+    if(!content)return;
+
+    var isUrgent=sec.key==='OPEN LOOPS'||sec.key==='YOUR FIRST WEEK';
+    html+='<div style="margin-bottom:12px;padding:13px 16px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid '+(isUrgent?sec.color:'var(--b1)')+';border-radius:var(--r)">';
+    html+='<div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">';
+    html+='<span style="color:'+sec.color+';font-size:13px">'+sec.icon+'</span>';
+    html+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:'+sec.color+'">'+sec.key+'</div>';
+    html+='</div>';
+
+    // Render content: bullet lines as rows, paragraphs as prose
+    var lines=content.split('\n').filter(function(l){return l.trim();});
+    lines.forEach(function(line){
+      var l=line.trim();
+      if(l.match(/^[-•*]\s|^\d+\.\s/)){
+        var txt=l.replace(/^[-•*\d.]\s*/,'').trim();
+        // Check for name: info pattern (people section)
+        var colonIdx=txt.indexOf(':');
+        if(colonIdx>0&&colonIdx<40&&sec.key==='YOUR 15 PEOPLE'){
+          var name=txt.slice(0,colonIdx).trim();
+          var detail=txt.slice(colonIdx+1).trim();
+          html+='<div style="display:flex;gap:9px;padding:6px 0;border-bottom:1px solid rgba(37,45,66,.35);align-items:flex-start">';
+          var ini=name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
+          html+='<div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:'+sec.color+';flex-shrink:0">'+ini+'</div>';
+          html+='<div><div style="font-size:12px;font-weight:600;margin-bottom:2px">'+name+'</div>';
+          html+='<div style="font-size:11px;color:var(--t2);line-height:1.5">'+detail+'</div></div></div>';
+        } else if(sec.key==='YOUR FIRST WEEK'){
+          var dayMatch=txt.match(/^(Day\s*\d+|Day\s*One|Day\s*Two|Day\s*Three|Day\s*Four|Day\s*Five):?\s*/i);
+          html+='<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(37,45,66,.35)">';
+          if(dayMatch){
+            html+='<span style="font-size:9px;color:'+sec.color+';font-family:\'JetBrains Mono\',monospace;font-weight:700;white-space:nowrap;padding-top:2px;min-width:42px">'+dayMatch[0].replace(':','').trim().toUpperCase()+'</span>';
+            html+='<div style="font-size:12px;line-height:1.5">'+txt.slice(dayMatch[0].length)+'</div>';
+          } else {
+            html+='<div style="width:6px;height:6px;border-radius:50%;background:'+sec.color+';flex-shrink:0;margin-top:5px"></div>';
+            html+='<div style="font-size:12px;line-height:1.5">'+txt+'</div>';
+          }
+          html+='</div>';
+        } else {
+          html+='<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid rgba(37,45,66,.3)">';
+          html+='<div style="width:5px;height:5px;border-radius:50%;background:'+sec.color+';flex-shrink:0;margin-top:6px"></div>';
+          html+='<div style="font-size:12px;line-height:1.55">'+txt+'</div></div>';
+        }
+      } else if(l){
+        html+='<div style="font-size:12px;color:var(--t2);line-height:1.7;margin-bottom:4px">'+l+'</div>';
+      }
+    });
+    html+='</div>';
+  });
+
+  // Store raw text for copy
+  window._briefText=text;
+
+  document.getElementById('brief-loading').style.display='none';
+  document.getElementById('brief-body').innerHTML=html;
+  document.getElementById('brief-body').style.display='block';
+  document.getElementById('brief-copy-btn').style.display='block';
+  document.getElementById('brief-subtitle').textContent=currentWs.name+' · '+new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+}
+
+window.copyBrief=function(){
+  if(!window._briefText)return;
+  navigator.clipboard.writeText(window._briefText).then(function(){toast('Brief copied to clipboard');}).catch(function(){toast('Copy failed');});
+};
 
 // ── COMMITMENT TRACKING ───────────────────────────────────────
 var COMMIT_STATUS={
@@ -2176,7 +3281,251 @@ async function loadMoreMeetings(){
 }
 window.loadMoreMeetings=loadMoreMeetings;
 
-function renderBoard(){var empty=document.getElementById('board-empty'),body=document.getElementById('board-body');if(!meetings.length){empty.style.display='block';body.style.display='none';return;}empty.style.display='none';body.style.display='block';var allA=meetings.flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title,mdate:m.meta.date});});});var hiA=allA.filter(function(a){return a.priority==='high';});var hiR=meetings.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var allIns=meetings.flatMap(function(m){return m.intel.learningInsights||[];});var personMap={};meetings.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!personMap[p.name])personMap[p.name]={name:p.name,role:p.role,count:0};personMap[p.name].count++;});});var topPeople=Object.values(personMap).sort(function(a,b){return b.count-a.count;}).slice(0,6);var now=new Date();now.setHours(0,0,0,0);var in48=new Date(now);in48.setDate(in48.getDate()+2);var todayItems=[];allA.forEach(function(a){if(!a.deadline)return;var d=new Date(a.deadline+'T00:00:00');if(d<=in48){var diff=Math.round((d-now)/(1000*60*60*24));todayItems.push({label:a.task,owner:a.owner,urgency:diff<=0?'OVERDUE':diff===0?'TODAY':'TOMORROW',color:diff<=0?'#ef4444':'#f59e0b',source:a.mtg});}});if(meetings[0]&&(meetings[0].intel.redFlags||[]).length)todayItems.push({label:(meetings[0].intel.redFlags||[])[0],urgency:'RED FLAG',color:'#ef4444',source:meetings[0].meta.title});var h='<div style="background:linear-gradient(135deg,rgba(201,162,39,.07),rgba(139,92,246,.05));border:1px solid rgba(201,162,39,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold)">Today\'s Intel -- '+currentWs.name+'</div><button id="digest-btn" onclick="generateDigest()" style="padding:7px 16px;border:1px solid var(--purple);border-radius:var(--rsm);background:var(--purple);color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 0L6.18 3.82L10 5L6.18 6.18L5 10L3.82 6.18L0 5L3.82 3.82L5 0Z" fill="currentColor"/></svg>Weekly Digest</button></div>';if(todayItems.length){todayItems.slice(0,5).forEach(function(item){h+='<div style="display:flex;gap:7px;align-items:flex-start;padding:4px 0;border-bottom:1px solid rgba(37,45,66,.5)"><span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:'+item.color+'22;color:'+item.color+';flex-shrink:0;margin-top:1px">'+item.urgency+'</span><div><div style="font-size:12px;color:var(--text);line-height:1.4">'+item.label+'</div><div style="font-size:10px;color:var(--t3)">'+item.source+(item.owner?' -- '+item.owner:'')+'</div></div></div>';});}else h+='<div style="font-size:12px;color:var(--t3);text-align:center;padding:5px 0">No urgent items in the next 48 hours</div>';h+='</div>';h+='<div class="g4" style="margin-bottom:16px"><div class="board-kpi"><div class="board-kpi-val" style="color:var(--gold)">'+meetings.length+'</div><div class="board-kpi-lbl">Meetings Logged</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(allA.length?'var(--amber)':'var(--text)')+'">'+allA.length+'</div><div class="board-kpi-lbl">Open Actions</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(hiR.length?'var(--red)':'var(--text)')+'">'+hiR.length+'</div><div class="board-kpi-lbl">High Risks</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:var(--blue)">'+Object.keys(personMap).length+'</div><div class="board-kpi-lbl">People Tracked</div></div></div>';var ph=meetings.slice().reverse().slice(-8);if(ph.length>1){h+='<div class="card"><div class="ctitle">Company Pulse -- History</div><div style="display:flex;gap:8px;flex-wrap:wrap">';ph.forEach(function(m){var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};h+='<div style="text-align:center"><div style="font-size:9px;color:var(--t3);margin-bottom:2px;font-family:\'JetBrains Mono\',monospace">'+m.meta.date.slice(5)+'</div>'+bdg(m.intel.companyPulse||'?',pc2)+'</div>';});h+='</div></div>';}h+='<div class="g2"><div class="card"><div class="ctitle">High Priority Actions ('+hiA.length+')</div>';if(hiA.length)hiA.slice(0,7).forEach(function(a){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;font-weight:500;line-height:1.3">'+a.task+'</div><div style="font-size:10px;color:var(--t2)">'+(a.owner||'')+(a.deadline?' -- Due: '+a.deadline:'')+'</div><div style="font-size:10px;color:var(--t3)">from '+a.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None outstanding</div>';h+='</div><div class="card"><div class="ctitle">Active High Risks ('+hiR.length+')</div>';if(hiR.length)hiR.slice(0,7).forEach(function(r){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;line-height:1.3">'+r.risk+'</div>'+(r.raisedBy?'<div style="font-size:11px;color:var(--gold)">Raised by: '+r.raisedBy+'</div>':'')+'<div style="font-size:10px;color:var(--t3)">from '+r.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None flagged</div>';h+='</div></div>';if(topPeople.length){h+='<div class="card"><div class="ctitle">Most Active People</div><div class="g2">';topPeople.forEach(function(p){var ini=p.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div style="display:flex;gap:7px;align-items:center;padding:4px 0"><div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold);flex-shrink:0">'+ini+'</div><div><div style="font-size:12px;font-weight:500">'+p.name+'</div><div style="font-size:10px;color:var(--t3)">'+p.count+' meeting'+(p.count>1?'s':'')+'</div></div></div>';});h+='</div></div>';}// ── COMMITMENTS on Board ──
+// ── INTRODUCTION RECOMMENDATION ENGINE ───────────────────────
+// Scans active opportunities → finds network gaps → runs BFS to find
+// who in the existing network can make the introduction. Returns top 3.
+function computeIntroRecs(){
+  var recs=[];
+  var activeOpps=opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';});
+  if(!activeOpps.length||!nodes.length)return recs;
+
+  // Build adjacency for BFS
+  var adj={};
+  nodes.forEach(function(n){adj[n.id]=[];});
+  links.forEach(function(l){
+    var s=l.source&&l.source.id?l.source.id:l.source;
+    var t=l.target&&l.target.id?l.target.id:l.target;
+    if(!adj[s])adj[s]=[];if(!adj[t])adj[t]=[];
+    adj[s].push(t);adj[t].push(s);
+  });
+
+  function bfsDistance(fromIds,targetId){
+    var dist={};var q=[].concat(fromIds);
+    fromIds.forEach(function(id){dist[id]=0;});
+    var prev={};
+    while(q.length){
+      var cur=q.shift();
+      if(cur===targetId)break;
+      (adj[cur]||[]).forEach(function(nb){
+        if(dist[nb]===undefined){dist[nb]=dist[cur]+1;prev[nb]=cur;q.push(nb);}
+      });
+    }
+    if(dist[targetId]===undefined)return null;
+    // Reconstruct path
+    var path=[];var c=targetId;
+    while(c!==undefined){path.unshift(c);c=prev[c];}
+    return{dist:dist[targetId],path:path};
+  }
+
+  // For each active opportunity, find people mentioned in meetings
+  // but not yet in the network with strong stance
+  activeOpps.slice(0,5).forEach(function(opp){
+    var taggedMtgs=meetings.filter(function(m){return m.oppId===opp.id||(opp.meetings||[]).includes(m.id);});
+    var mentionedPeople={};
+    taggedMtgs.forEach(function(m){
+      (m.intel.keyPeople||[]).forEach(function(p){
+        if(!p.name||p.name.length<3)return;
+        if(!mentionedPeople[p.name])mentionedPeople[p.name]={name:p.name,role:p.role||'',org:p.org||'',count:0,stance:''};
+        mentionedPeople[p.name].count++;
+        if(p.stance)mentionedPeople[p.name].stance=p.stance;
+      });
+    });
+
+    // Find mentioned people who aren't in the network
+    Object.values(mentionedPeople).forEach(function(mp){
+      var inNet=nodes.find(function(n){return nameSimilarity(n.name,mp.name)>=0.8;});
+      if(inNet)return; // already connected
+      if(mp.count<1)return;
+
+      // Find who in my network knows this person (shared meetings)
+      var sharedContacts=[];
+      var allMentionedIn=meetings.filter(function(m){
+        return(m.intel.keyPeople||[]).some(function(p){return nameSimilarity(p.name,mp.name)>=0.8;});
+      });
+      allMentionedIn.forEach(function(m){
+        (m.intel.keyPeople||[]).forEach(function(p){
+          if(nameSimilarity(p.name,mp.name)>=0.8)return;
+          var netNode=nodes.find(function(n){return nameSimilarity(n.name,p.name)>=0.8;});
+          if(netNode&&!sharedContacts.includes(netNode.name))sharedContacts.push(netNode.name);
+        });
+      });
+
+      var viaText=sharedContacts.length?sharedContacts[0]:null;
+      var roleText=(mp.role?mp.role+(mp.org?' @ '+mp.org:''):mp.org)||'key stakeholder';
+
+      recs.push({
+        target:mp.name,
+        reason:'Mentioned '+mp.count+'x in '+opp.name+' meetings as '+roleText+(mp.stance?' — currently "'+mp.stance.slice(0,60)+'"':''),
+        via:viaText,
+        priority:mp.count+(mp.stance&&/positive|interested|engaged/.test(mp.stance.toLowerCase())?2:0)
+      });
+    });
+  });
+
+  // Also: T1 nodes with declining health that haven't been contacted recently
+  nodes.filter(function(n){return n.priority===1&&n.type==='person';}).forEach(function(n){
+    var health=computeRelHealth(n.id);
+    var mtgs=getMtgsForNode(n.id);
+    if(health>0&&health<=3&&mtgs.length>0){
+      var lastMtg=mtgs.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);})[0];
+      var daysAgo=Math.floor((new Date()-new Date(lastMtg.meta.date))/86400000);
+      if(daysAgo>30){
+        recs.push({
+          target:n.name,
+          reason:'T1 relationship — health score '+health+'/10, last contact '+daysAgo+'d ago. Re-engagement overdue.',
+          via:null,
+          priority:5
+        });
+      }
+    }
+  });
+
+  // Deduplicate and rank
+  var seen=new Set();
+  return recs
+    .filter(function(r){if(seen.has(r.target))return false;seen.add(r.target);return true;})
+    .sort(function(a,b){return b.priority-a.priority;})
+    .slice(0,4);
+}
+
+// ── SIGNAL DETECTION ENGINE ──────────────────────────────────
+// Scans across all meetings to surface patterns that are invisible
+// when looking at individual meetings. Called on every Board render.
+function detectSignals(){
+  var signals=[];
+  var now=new Date();
+  var d90=new Date(now-90*86400000);
+
+  // ── 1. Recurring people not in network ──────────────────────
+  var personCounts={};
+  meetings.forEach(function(m){
+    (m.intel.keyPeople||[]).forEach(function(p){
+      if(!p.name||p.name.length<3)return;
+      personCounts[p.name]=(personCounts[p.name]||0)+1;
+    });
+  });
+  Object.entries(personCounts).forEach(function(e){
+    var name=e[0],count=e[1];
+    if(count<3)return;
+    // Check if in network
+    var inNet=nodes.some(function(n){return nameSimilarity(n.name,name)>=0.8;});
+    if(!inNet){
+      signals.push({
+        signal:name+' appears in '+count+' meetings but is not in your Network Map',
+        detail:'This person has significant meeting presence — consider adding them as a node',
+        icon:'◉',color:'var(--gold)'
+      });
+    }
+  });
+
+  // ── 2. Recurring themes / phrases ───────────────────────────
+  var themeCounts={};
+  var themeWords=['budget','funding','contract','sole source','RFP','solicitation','award',
+    'competitor','incumbent','approval','authority','acquisition','prototype','demo','pilot',
+    'delay','timeline','blocked','risk','concern','decision'];
+  meetings.slice(0,40).forEach(function(m){
+    var text=(m.intel.summary||'')+' '+(m.notes||'');
+    themeWords.forEach(function(w){
+      var re=new RegExp('\\b'+w,'gi');
+      var matches=text.match(re)||[];
+      if(matches.length>0)themeCounts[w]=(themeCounts[w]||0)+1;
+    });
+  });
+  var topThemes=Object.entries(themeCounts)
+    .filter(function(e){return e[1]>=3;})
+    .sort(function(a,b){return b[1]-a[1];})
+    .slice(0,3);
+  topThemes.forEach(function(e){
+    var word=e[0],count=e[1];
+    var urgent=['risk','concern','blocked','delay','competitor','incumbent'].includes(word.toLowerCase());
+    signals.push({
+      signal:'"'+word.charAt(0).toUpperCase()+word.slice(1)+'" appears across '+count+' meetings',
+      detail:urgent?'Recurring concern — may require active mitigation':'Recurring theme — may indicate an emerging decision point',
+      icon:urgent?'⚠':'◈',color:urgent?'var(--red)':'var(--blue)'
+    });
+  });
+
+  // ── 3. Opportunities with no recent activity ─────────────────
+  var activeOpps=opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';});
+  activeOpps.forEach(function(o){
+    var lastActivity=new Date(o.updatedAt||o.created);
+    var daysSince=Math.floor((now-lastActivity)/86400000);
+    if(daysSince>30){
+      signals.push({
+        signal:o.name+' has had no activity in '+daysSince+' days',
+        detail:'Stage: '+o.stage+(o.awardDate?' · Award: '+o.awardDate:'')+' — may require re-engagement',
+        icon:'◆',color:'var(--amber)'
+      });
+    }
+  });
+
+  // ── 4. Stance decline detection ─────────────────────────────
+  var personStances={};
+  meetings.slice().reverse().forEach(function(m){
+    (m.intel.keyPeople||[]).forEach(function(p){
+      if(!p.name||!p.stance)return;
+      if(!personStances[p.name])personStances[p.name]=[];
+      personStances[p.name].push({stance:p.stance.toLowerCase(),date:m.meta.date});
+    });
+  });
+  Object.entries(personStances).forEach(function(e){
+    var name=e[0],stances=e[1];
+    if(stances.length<3)return;
+    var recent=stances.slice(-3);
+    var positiveSentiment=function(s){return /positive|engaged|interested|enthusiastic|champion|committed/.test(s);};
+    var negativeSentiment=function(s){return /cautious|hesitant|concerned|cold|negative|blocking/.test(s);};
+    var recentHasNeg=recent.filter(function(s){return negativeSentiment(s.stance);}).length;
+    var olderHasPos=stances.slice(0,-3).filter(function(s){return positiveSentiment(s.stance);}).length;
+    if(recentHasNeg>=2&&olderHasPos>=1){
+      signals.push({
+        signal:name+'\'s engagement appears to be declining across recent meetings',
+        detail:'Previously positive stance has shifted — re-engagement recommended before the relationship cools further',
+        icon:'↘',color:'var(--red)'
+      });
+    }
+  });
+
+  // ── 5. Competitor mentions across meetings ───────────────────
+  var companyMentions={};
+  meetings.slice(0,60).forEach(function(m){
+    (m.intel.companies||[]).forEach(function(c){
+      if(!c.name||c.name.length<2)return;
+      var role=(c.role||c.notes||'').toLowerCase();
+      if(/competitor|competing|incumbent|alternative|instead|versus|vs\.?|losing to|threat/i.test(role)){
+        companyMentions[c.name]=(companyMentions[c.name]||0)+1;
+      }
+    });
+    // Also check raw text for competitor language
+    var rawText=(m.intel.summary||'')+' '+(m.notes||'');
+    var compPattern=/([\w\s]+?)\s+(?:is the|as the)\s+(?:incumbent|competitor|competing firm|prime)/gi;
+    var match;
+    while((match=compPattern.exec(rawText))!==null){
+      var name=match[1].trim();
+      if(name.length>2&&name.length<40){
+        companyMentions[name]=(companyMentions[name]||0)+1;
+      }
+    }
+  });
+  var topCompetitors=Object.entries(companyMentions)
+    .filter(function(e){return e[1]>=1;})
+    .sort(function(a,b){return b[1]-a[1];})
+    .slice(0,3);
+  topCompetitors.forEach(function(e){
+    var name=e[0],count=e[1];
+    signals.push({
+      signal:name+' flagged as competitor'+(count>1?' across '+count+' meetings':''),
+      detail:'Track their relationship with your key contacts — do any of your network members work with them?',
+      icon:'⚡',color:'var(--red)'
+    });
+  });
+
+  // Cap at 8 signals, highest urgency first
+  var urgencyOrder={'var(--red)':0,'var(--amber)':1,'var(--gold)':2,'var(--blue)':3,'var(--text)':4};
+  signals.sort(function(a,b){return (urgencyOrder[a.color]||5)-(urgencyOrder[b.color]||5);});
+  return signals.slice(0,8);
+}
+
+function renderBoard(){var empty=document.getElementById('board-empty'),body=document.getElementById('board-body');if(!meetings.length){empty.style.display='block';body.style.display='none';return;}empty.style.display='none';body.style.display='block';var allA=meetings.flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title,mdate:m.meta.date});});});var hiA=allA.filter(function(a){return a.priority==='high';});var hiR=meetings.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var allIns=meetings.flatMap(function(m){return m.intel.learningInsights||[];});var personMap={};meetings.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!personMap[p.name])personMap[p.name]={name:p.name,role:p.role,count:0};personMap[p.name].count++;});});var topPeople=Object.values(personMap).sort(function(a,b){return b.count-a.count;}).slice(0,6);var now=new Date();now.setHours(0,0,0,0);var in48=new Date(now);in48.setDate(in48.getDate()+2);var todayItems=[];allA.forEach(function(a){if(!a.deadline)return;var d=new Date(a.deadline+'T00:00:00');if(d<=in48){var diff=Math.round((d-now)/(1000*60*60*24));todayItems.push({label:a.task,owner:a.owner,urgency:diff<=0?'OVERDUE':diff===0?'TODAY':'TOMORROW',color:diff<=0?'#ef4444':'#f59e0b',source:a.mtg});}});if(meetings[0]&&(meetings[0].intel.redFlags||[]).length)todayItems.push({label:(meetings[0].intel.redFlags||[])[0],urgency:'RED FLAG',color:'#ef4444',source:meetings[0].meta.title});var cur=getCurrentFYInfo();var q4Opps=opportunities.filter(function(o){if(o.stage==='won'||o.stage==='lost')return false;if(!o.awardDate)return false;var fi=getFYInfo(o.awardDate);return fi&&fi.fq===4&&fi.daysToEOFY>0&&fi.daysToEOFY<=90;});var h='';if(cur){h+='<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r)">';h+='<div style="flex:1">';h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:'+cur.color+'">'+cur.fullLabel+'</span><span style="font-size:9px;color:var(--t3)">'+cur.short+'</span></div>';h+='<div style="font-size:10px;color:var(--t2);margin-top:2px;line-height:1.3">'+cur.context+'</div>';h+='</div>';h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:16px;font-weight:700;color:'+cur.color+'">'+Math.max(0,cur.daysToEOFY)+'</div><div style="font-size:8px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">d to EOFY</div></div>';h+='</div>';if(q4Opps.length){h+='<div style="padding:6px 10px;margin-bottom:10px;border-left:2px solid var(--amber);background:rgba(245,158,11,.06);border-radius:0 var(--rsm) var(--rsm) 0;font-size:11px;color:var(--text)">'+q4Opps.length+' active opportunit'+(q4Opps.length>1?'ies':'y')+' in Q4 EOFY window: '+q4Opps.map(function(o){return o.name;}).join(', ')+'</div>';}}h+='<div style="background:linear-gradient(135deg,rgba(201,162,39,.07),rgba(139,92,246,.05));border:1px solid rgba(201,162,39,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold)">Today\'s Intel -- '+currentWs.name+'</div><button id="digest-btn" onclick="generateDigest()" style="padding:7px 16px;border:1px solid var(--purple);border-radius:var(--rsm);background:var(--purple);color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 0L6.18 3.82L10 5L6.18 6.18L5 10L3.82 6.18L0 5L3.82 3.82L5 0Z" fill="currentColor"/></svg>Weekly Digest</button></div>';if(todayItems.length){todayItems.slice(0,5).forEach(function(item){h+='<div style="display:flex;gap:7px;align-items:flex-start;padding:4px 0;border-bottom:1px solid rgba(37,45,66,.5)"><span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:'+item.color+'22;color:'+item.color+';flex-shrink:0;margin-top:1px">'+item.urgency+'</span><div><div style="font-size:12px;color:var(--text);line-height:1.4">'+item.label+'</div><div style="font-size:10px;color:var(--t3)">'+item.source+(item.owner?' -- '+item.owner:'')+'</div></div></div>';});}else h+='<div style="font-size:12px;color:var(--t3);text-align:center;padding:5px 0">No urgent items in the next 48 hours</div>';h+='</div>';h+='<div class="g4" style="margin-bottom:16px"><div class="board-kpi"><div class="board-kpi-val" style="color:var(--gold)">'+meetings.length+'</div><div class="board-kpi-lbl">Meetings Logged</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(allA.length?'var(--amber)':'var(--text)')+'">'+allA.length+'</div><div class="board-kpi-lbl">Open Actions</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(hiR.length?'var(--red)':'var(--text)')+'">'+hiR.length+'</div><div class="board-kpi-lbl">High Risks</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:var(--blue)">'+Object.keys(personMap).length+'</div><div class="board-kpi-lbl">People Tracked</div></div></div>';var ph=meetings.slice().reverse().slice(-8);if(ph.length>1){h+='<div class="card"><div class="ctitle">Company Pulse -- History</div><div style="display:flex;gap:8px;flex-wrap:wrap">';ph.forEach(function(m){var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};h+='<div style="text-align:center"><div style="font-size:9px;color:var(--t3);margin-bottom:2px;font-family:\'JetBrains Mono\',monospace">'+m.meta.date.slice(5)+'</div>'+bdg(m.intel.companyPulse||'?',pc2)+'</div>';});h+='</div></div>';}h+='<div class="g2"><div class="card"><div class="ctitle">High Priority Actions ('+hiA.length+')</div>';if(hiA.length)hiA.slice(0,7).forEach(function(a){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;font-weight:500;line-height:1.3">'+a.task+'</div><div style="font-size:10px;color:var(--t2)">'+(a.owner||'')+(a.deadline?' -- Due: '+a.deadline:'')+'</div><div style="font-size:10px;color:var(--t3)">from '+a.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None outstanding</div>';h+='</div><div class="card"><div class="ctitle">Active High Risks ('+hiR.length+')</div>';if(hiR.length)hiR.slice(0,7).forEach(function(r){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;line-height:1.3">'+r.risk+'</div>'+(r.raisedBy?'<div style="font-size:11px;color:var(--gold)">Raised by: '+r.raisedBy+'</div>':'')+'<div style="font-size:10px;color:var(--t3)">from '+r.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None flagged</div>';h+='</div></div>';if(topPeople.length){h+='<div class="card"><div class="ctitle">Most Active People</div><div class="g2">';topPeople.forEach(function(p){var ini=p.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div style="display:flex;gap:7px;align-items:center;padding:4px 0"><div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold);flex-shrink:0">'+ini+'</div><div><div style="font-size:12px;font-weight:500">'+p.name+'</div><div style="font-size:10px;color:var(--t3)">'+p.count+' meeting'+(p.count>1?'s':'')+'</div></div></div>';});h+='</div></div>';}// ── COMMITMENTS on Board ──
 var openCommits=commitments.filter(function(c){return c.status==='open';});
 if(openCommits.length){
   var bNow=new Date();bNow.setHours(0,0,0,0);
@@ -2186,7 +3535,45 @@ if(openCommits.length){
   h+=renderCommitmentsSection();
   h+='</div>';
 }
-if(allIns.length){h+='<div class="card"><div class="ctitle">Learning Bank -- '+allIns.length+' insights</div><div style="columns:2;column-gap:14px">';allIns.slice(0,16).forEach(function(ins,i){h+='<div style="break-inside:avoid;margin-bottom:6px;display:flex;gap:6px"><span style="font-size:9px;font-family:\'JetBrains Mono\',monospace;color:var(--t3);flex-shrink:0;padding-top:2px">'+String(i+1).padStart(2,'0')+'</span><span style="font-size:12px;line-height:1.5">'+ins+'</span></div>';});h+='</div></div>';}body.innerHTML=h;}
+if(allIns.length){h+='<div class="card"><div class="ctitle">Learning Bank -- '+allIns.length+' insights</div><div style="columns:2;column-gap:14px">';allIns.slice(0,16).forEach(function(ins,i){h+='<div style="break-inside:avoid;margin-bottom:6px;display:flex;gap:6px"><span style="font-size:9px;font-family:\'JetBrains Mono\',monospace;color:var(--t3);flex-shrink:0;padding-top:2px">'+String(i+1).padStart(2,'0')+'</span><span style="font-size:12px;line-height:1.5">'+ins+'</span></div>';});h+='</div></div>';}
+
+// ── INTRODUCTION RECOMMENDATIONS ──────────────────────────────
+// Proactive: "This week, seek these intros." Uses active opportunities +
+// network gap analysis + BFS path finder to surface specific moves.
+var introRecs=computeIntroRecs();
+if(introRecs.length){
+  h+='<div class="card" style="border-left:3px solid var(--green);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">';
+  h+='<div class="ctitle" style="color:var(--green)">Seek These Intros This Week</div>';
+  introRecs.forEach(function(rec){
+    h+='<div style="padding:8px 0;border-bottom:1px solid rgba(37,45,66,.35)">';
+    h+='<div style="display:flex;gap:8px;align-items:flex-start">';
+    h+='<span style="font-size:13px;color:var(--green);flex-shrink:0">→</span>';
+    h+='<div style="flex:1">';
+    h+='<div style="font-size:12px;font-weight:600;color:var(--text)">'+rec.target+'</div>';
+    h+='<div style="font-size:11px;color:var(--t2);margin-top:2px">'+rec.reason+'</div>';
+    if(rec.via){h+='<div style="font-size:10px;color:var(--t3);margin-top:3px;font-family:\'JetBrains Mono\',monospace">via '+rec.via+'</div>';}
+    h+='</div></div></div>';
+  });
+  h+='</div>';
+}
+
+// ── SIGNAL DETECTION ─────────────────────────────────────────────
+// Cross-meeting pattern analysis: surfaces what humans miss by seeing
+// only one meeting at a time. Runs on every Board render.
+var signals=detectSignals();
+if(signals.length){
+  h+='<div class="card" style="border-left:3px solid var(--purple);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">';
+  h+='<div class="ctitle" style="color:var(--purple)">Signal Board — '+signals.length+' pattern'+(signals.length>1?'s':'')+' detected</div>';
+  signals.forEach(function(sig){
+    h+='<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid rgba(37,45,66,.35)">';
+    h+='<span style="font-size:11px;color:'+sig.color+';flex-shrink:0;margin-top:1px">'+sig.icon+'</span>';
+    h+='<div><div style="font-size:12px;font-weight:500;line-height:1.4;color:var(--text)">'+sig.signal+'</div>';
+    h+='<div style="font-size:10px;color:var(--t3);margin-top:2px">'+sig.detail+'</div></div></div>';
+  });
+  h+='</div>';
+}
+
+body.innerHTML=h;}
 
 window.editMeeting=function(id){var m=meetingMap.get(id);if(!m)return;document.getElementById('edit-title').value=m.meta.title||'';document.getElementById('edit-att').value=m.meta.att||'';document.getElementById('edit-notes').value=m.notes||'';document.getElementById('edit-err').style.display='none';document.getElementById('edit-modal').style.display='flex';document.getElementById('edit-modal')._mid=id;};
 async function reprocessMeeting(){
@@ -2238,7 +3625,7 @@ function filterTLItems(items){return items.filter(function(item){if(tlFilter==='
 
 function bucketTLItems(items){var now=new Date();now.setHours(0,0,0,0);var in7=new Date(now);in7.setDate(in7.getDate()+7);var in30=new Date(now);in30.setDate(in30.getDate()+30);var b={overdue:[],today:[],week:[],month:[],beyond:[],completed:[]};items.forEach(function(item){if(item.status==='completed'){b.completed.push(item);return;}if(!item.deadline){b.beyond.push(item);return;}var d=new Date(item.deadline+'T00:00:00');if(d<now)b.overdue.push(item);else if(d.toDateString()===now.toDateString())b.today.push(item);else if(d<=in7)b.week.push(item);else if(d<=in30)b.month.push(item);else b.beyond.push(item);});return b;}
 
-function renderTimeline(){var all=getTLItems(),filtered=filterTLItems(all),buckets=bucketTLItems(filtered),now=new Date();now.setHours(0,0,0,0);if(document.getElementById('tl-subtitle'))document.getElementById('tl-subtitle').textContent=(currentWs?currentWs.name+' -- ':'')+'all commitments and deadlines';var oc=buckets.overdue.length,wc=buckets.week.length+buckets.today.length,ar=filtered.filter(function(i){return i.status==='at-risk';}).length,cc=buckets.completed.length;document.getElementById('tl-pulse').innerHTML=tlPC(oc,'Overdue',oc>0?'var(--red)':'var(--text)')+tlPC(wc,'Due This Week',wc>0?'var(--amber)':'var(--text)')+tlPC(ar,'At Risk',ar>0?'var(--red)':'var(--text)')+tlPC(cc,'Completed','var(--green)');var srcMap={};all.forEach(function(i){srcMap[i.source]=(srcMap[i.source]||0)+1;});var srcEl=document.getElementById('tl-src-list');if(srcEl)srcEl.innerHTML=Object.keys(srcMap).slice(0,12).map(function(s){var active=tlSrcFilter===s;return '<button class="tl-filter-btn'+(active?' active':'')+'" onclick="setTLSrcFilter(\''+s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')" style="font-size:11px"><div class="tl-filter-dot" style="background:var(--t3)"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;flex:1">'+s+'</span><span style="font-size:10px;color:var(--t3);margin-left:4px">'+srcMap[s]+'</span></button>';}).join('');var defs=[{key:'overdue',label:'Overdue',color:'#ef4444',open:true},{key:'today',label:'Today',color:'#c9a227',open:true},{key:'week',label:'This Week',color:'#22c55e',open:true},{key:'month',label:'This Month',color:'#3b82f6',open:true},{key:'beyond',label:'Beyond 30 Days',color:'#4a5568',open:false},{key:'completed',label:'Completed',color:'#22c55e',open:false}];var html='';defs.forEach(function(sec){var items=buckets[sec.key];if(!items.length)return;html+='<div class="tl-section"><div class="tl-sec-hdr" onclick="toggleTLSection(\'tls-'+sec.key+'\')"><div class="tl-sec-title" style="color:'+sec.color+'">'+sec.label+'</div><div class="tl-sec-count" style="background:'+sec.color+'22;color:'+sec.color+'">'+items.length+'</div><div class="tl-sec-chevron'+(sec.open?' open':'')+'" id="tlc-'+sec.key+'">&#9660;</div></div><div class="tl-sec-body'+(sec.open?' open':'')+'" id="tls-'+sec.key+'">';items.forEach(function(item){html+=renderTLCard(item,now);});html+='</div></div>';});if(!html)html='<div class="empty">No items match the current filter.<br>Process meetings or add a commitment to get started.</div>';document.getElementById('tl-sections').innerHTML=html;}
+function renderTimeline(){var all=getTLItems(),filtered=filterTLItems(all),buckets=bucketTLItems(filtered),now=new Date();now.setHours(0,0,0,0);if(document.getElementById('tl-subtitle'))document.getElementById('tl-subtitle').textContent=(currentWs?currentWs.name+' -- ':'')+'all commitments and deadlines';var oc=buckets.overdue.length,wc=buckets.week.length+buckets.today.length,ar=filtered.filter(function(i){return i.status==='at-risk';}).length,cc=buckets.completed.length;document.getElementById('tl-pulse').innerHTML=tlPC(oc,'Overdue',oc>0?'var(--red)':'var(--text)')+tlPC(wc,'Due This Week',wc>0?'var(--amber)':'var(--text)')+tlPC(ar,'At Risk',ar>0?'var(--red)':'var(--text)')+tlPC(cc,'Completed','var(--green)');var fyBarEl2=document.getElementById('tl-fy-bar');if(fyBarEl2)fyBarEl2.innerHTML=renderFYCalendarBar();var srcMap={};all.forEach(function(i){srcMap[i.source]=(srcMap[i.source]||0)+1;});var srcEl=document.getElementById('tl-src-list');if(srcEl)srcEl.innerHTML=Object.keys(srcMap).slice(0,12).map(function(s){var active=tlSrcFilter===s;return '<button class="tl-filter-btn'+(active?' active':'')+'" onclick="setTLSrcFilter(\''+s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')" style="font-size:11px"><div class="tl-filter-dot" style="background:var(--t3)"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;flex:1">'+s+'</span><span style="font-size:10px;color:var(--t3);margin-left:4px">'+srcMap[s]+'</span></button>';}).join('');var defs=[{key:'overdue',label:'Overdue',color:'#ef4444',open:true},{key:'today',label:'Today',color:'#c9a227',open:true},{key:'week',label:'This Week',color:'#22c55e',open:true},{key:'month',label:'This Month',color:'#3b82f6',open:true},{key:'beyond',label:'Beyond 30 Days',color:'#4a5568',open:false},{key:'completed',label:'Completed',color:'#22c55e',open:false}];var html='';defs.forEach(function(sec){var items=buckets[sec.key];if(!items.length)return;html+='<div class="tl-section"><div class="tl-sec-hdr" onclick="toggleTLSection(\'tls-'+sec.key+'\')"><div class="tl-sec-title" style="color:'+sec.color+'">'+sec.label+'</div><div class="tl-sec-count" style="background:'+sec.color+'22;color:'+sec.color+'">'+items.length+'</div><div class="tl-sec-chevron'+(sec.open?' open':'')+'" id="tlc-'+sec.key+'">&#9660;</div></div><div class="tl-sec-body'+(sec.open?' open':'')+'" id="tls-'+sec.key+'">';items.forEach(function(item){html+=renderTLCard(item,now);});html+='</div></div>';});if(!html)html='<div class="empty">No items match the current filter.<br>Process meetings or add a commitment to get started.</div>';document.getElementById('tl-sections').innerHTML=html;}
 
 function tlPC(num,label,color){return '<div class="tl-pulse-cell"><div class="tl-pulse-num" style="color:'+color+'">'+num+'</div><div class="tl-pulse-lbl">'+label+'</div></div>';}
 
@@ -2281,7 +3668,7 @@ function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas(
 
 function resizeCanvas(){var netView=document.getElementById('network-view');if(!netView||netView.style.display==='none')return;W=netView.offsetWidth-220;H=netView.offsetHeight-42;if(svgEl){svgEl.setAttribute('width',W);svgEl.setAttribute('height',H);}}
 
-function nr(d){var a=d.type==='company'?SZ.company:d.type==='person'?SZ.person:SZ.deal;return a[(d.priority||2)-1];}
+function nr(d){var a=d.type==='company'?SZ.company:d.type==='person'?SZ.person:d.type==='government'?SZ.company:SZ.deal;return a[(d.priority||2)-1];}
 function nc(d){if(d.type==='company'){if(!d.color){d.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}return d.color;}if(d.type==='person'&&d.org){var c=companyByName.get(d.org.toLowerCase());if(c)return nc(c);}if(d.type==='deal')return'#06b6d4';if(d.type==='government')return'#60a5fa';return'#64748b';}
 function ha(hex,a){var r=parseInt(hex.slice(1,3),16),g2=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return 'rgba('+r+','+g2+','+b+','+a+')';}
 function es(label){return EDGE_TYPES[label]||DEF_EDGE;}
@@ -2298,13 +3685,25 @@ function getMtgsForNode(id){
   var n=nodeMap.get(id);
   if(!n)return[];
   var key=n.name.toLowerCase();
+  // Primary: exact match via entityGraph
   var fromGraph=entityGraph.get(key);
   var result=fromGraph?Array.from(fromGraph).map(function(mid){return meetingMap.get(mid);}).filter(Boolean):[];
-  // Also include meetings manually linked via node.meetings array
+  var seen=new Set(result.map(function(m){return m.id;}));
+  // Secondary: check node.meetings direct links
   if(n.meetings&&n.meetings.length){
-    var seen=new Set(result.map(function(m){return m.id;}));
     n.meetings.forEach(function(mid){
       if(!seen.has(mid)){var m=meetingMap.get(mid);if(m){result.push(m);seen.add(mid);}}
+    });
+  }
+  // Tertiary: fuzzy name match across entityGraph for partial/initials matches
+  if(result.length===0&&n.name.length>2){
+    entityGraph.forEach(function(mids,eName){
+      if(eName===key)return; // already checked
+      if(nameSimilarity(n.name,eName)>=0.75){
+        mids.forEach(function(mid){
+          if(!seen.has(mid)){var m=meetingMap.get(mid);if(m){result.push(m);seen.add(mid);}}
+        });
+      }
     });
   }
   return result;
@@ -2386,13 +3785,24 @@ function healthLabel(score,daysAgo){
 }
 
 function nodeClick(ev,d){ev.stopPropagation();if(edgeMode){if(!edgeSource){edgeSource=d;d3.select(this).select('.main-c').attr('stroke-width',5);setNetStatus('Click target to connect to "'+d.name+'"');}else if(edgeSource.id!==d.id){window._eTarget=d;document.getElementById('edge-preview').textContent='"'+edgeSource.name+'"  ->  "'+d.name+'"';document.getElementById('edge-modal').style.display='flex';}return;}openNetPanel(d);}
-function nodeHover(ev,d){if(edgeMode)return;var tt=document.getElementById('tooltip');var mc=getMtgsForNode(d.id).length,st=getStrength(d.id);tt.innerHTML='<div style="font-size:15px;font-weight:700;color:'+nc(d)+';margin-bottom:3px">'+d.name+'</div>'+(d.role?'<div style="font-size:12px;color:var(--text)">'+d.role+'</div>':'')+(d.org?'<div style="font-size:11px;color:var(--t2)">'+d.org+'</div>':'')+'<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;gap:10px"><span style="font-size:11px;color:var(--t3)">T'+(d.priority||2)+'</span><span style="font-size:11px;color:var(--t3)">'+d.type+'</span>'+(mc?'<span style="font-size:11px;color:var(--t3)">'+mc+' mtg</span>':'')+'</div>'+(st>0?'<div style="margin-top:5px"><div style="font-size:10px;color:var(--t3);margin-bottom:2px">Strength</div><div class="strength-bar"><div class="strength-fill" style="width:'+( st*10)+'%;background:'+nc(d)+'"></div></div></div>':'');tt.style.left=(ev.clientX+14)+'px';tt.style.top=(ev.clientY-14)+'px';tt.classList.add('show');}
+function nodeHover(ev,d){if(edgeMode)return;var tt=document.getElementById('tooltip');var mc=getMtgsForNode(d.id).length,health=mc>0?computeRelHealth(d.id):null;tt.innerHTML='<div style="font-size:15px;font-weight:700;color:'+nc(d)+';margin-bottom:3px">'+d.name+'</div>'+(d.role?'<div style="font-size:12px;color:var(--text)">'+d.role+'</div>':'')+(d.org?'<div style="font-size:11px;color:var(--t2)">'+d.org+'</div>':'')+'<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;gap:10px"><span style="font-size:11px;color:var(--t3)">T'+(d.priority||2)+'</span><span style="font-size:11px;color:var(--t3)">'+d.type+'</span>'+(mc?'<span style="font-size:11px;color:var(--t3)">'+mc+' mtg</span>':'')+'</div>'+(health!==null?'<div style="margin-top:5px;display:flex;align-items:center;gap:6px"><div style="font-size:10px;color:var(--t3)">Health</div><div style="flex:1"><div class="strength-bar" style="height:4px"><div class="strength-fill" style="width:'+(health*10)+'%;background:'+healthColor(health)+'"></div></div></div><span style="font-size:10px;font-weight:600;color:'+healthColor(health)+'">'+health+'</span></div>':'');tt.style.left=(ev.clientX+14)+'px';tt.style.top=(ev.clientY-14)+'px';tt.classList.add('show');}
 function nodeLeave(){document.getElementById('tooltip').classList.remove('show');}
 
-function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});el.classList.add('active');['profile','dossier','network'].forEach(function(t){document.getElementById('nptab-'+t).style.display=t===tab?'block':'none';});if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
+function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var el=document.getElementById('nptab-'+t);if(el)el.style.display=t===tab?'block':'none';});if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
 window.switchNetTab=switchNetTab;
 
-function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';document.getElementById('panel-org-fld').style.display=d.type==='company'?'none':'block';[1,2,3].forEach(function(i){var b=document.getElementById('ntier-'+i);b.style.cssText='';if(i===d.priority){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});document.querySelector('.panel-tab').classList.add('active');['profile','dossier','network'].forEach(function(t){document.getElementById('nptab-'+t).style.display=t==='profile'?'block':'none';});currentNetTab='profile';document.getElementById('net-panel').classList.add('open');document.getElementById('org-legend').classList.add('panel-open');}
+function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';document.getElementById('panel-org-fld').style.display=d.type==='company'?'none':'block';[1,2,3].forEach(function(i){var b=document.getElementById('ntier-'+i);b.style.cssText='';if(i===d.priority){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});
+  // Auto-switch to 360 View if node has meeting data — that's where the value is
+  var hasMeetings=getMtgsForNode(d.id).length>0;
+  var defaultTab=hasMeetings?'dossier':'profile';
+  document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});
+  var tabs=document.querySelectorAll('.panel-tab');
+  if(defaultTab==='dossier'&&tabs[1])tabs[1].classList.add('active');
+  else if(tabs[0])tabs[0].classList.add('active');
+  ['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===defaultTab?'block':'none';});
+  currentNetTab=defaultTab;
+  if(defaultTab==='dossier')renderDossier(d);
+  document.getElementById('net-panel').classList.add('open');document.getElementById('org-legend').classList.add('panel-open');}
 function closeNetPanel(){document.getElementById('net-panel').classList.remove('open');document.getElementById('org-legend').classList.remove('panel-open');selectedNode=null;}
 window.closeNetPanel=closeNetPanel;
 
@@ -2465,11 +3875,16 @@ function renderDossier(d){
   h+='</div>';
   // Health score ring
   var circumference=2*Math.PI*14;
-  var dashLen=(healthScore/10)*circumference;
+  var hasData=nm.length>0;
+  var displayScore=hasData?healthScore:'–';
+  var ringColor=hasData?healthC:'var(--b2)';
+  var dashLen=hasData?(Math.max(healthScore,0.5)/10)*circumference:0;
   h+='<div style="text-align:center;flex-shrink:0">';
-  h+='<svg width="38" height="38" viewBox="0 0 38 38"><circle cx="19" cy="19" r="14" fill="none" stroke="var(--b1)" stroke-width="3"/><circle cx="19" cy="19" r="14" fill="none" stroke="'+healthC+'" stroke-width="3" stroke-dasharray="'+dashLen+' '+circumference+'" stroke-dashoffset="'+circumference*0.25+'" stroke-linecap="round" transform="rotate(-90 19 19)"/><text x="19" y="23" text-anchor="middle" font-size="10" font-weight="700" fill="'+healthC+'" font-family="JetBrains Mono,monospace">'+healthScore+'</text></svg>';
-  h+='<div style="font-size:8px;color:var(--t3);margin-top:-2px">health</div></div></div>';
-  h+='<div style="font-size:9px;color:'+healthC+';font-family:\'JetBrains Mono\',monospace;margin-bottom:10px">'+healthLbl+'</div>';
+  h+='<svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="16" fill="none" stroke="var(--b1)" stroke-width="3.5"/>';
+  if(hasData){h+='<circle cx="22" cy="22" r="16" fill="none" stroke="'+ringColor+'" stroke-width="3.5" stroke-dasharray="'+dashLen+' '+(2*Math.PI*16)+'" stroke-linecap="round" transform="rotate(-90 22 22)"/>';}
+  h+='<text x="22" y="26" text-anchor="middle" font-size="11" font-weight="700" fill="'+ringColor+'" font-family="JetBrains Mono,monospace">'+displayScore+'</text></svg>';
+  h+='<div style="font-size:8px;color:var(--t3);margin-top:-2px;letter-spacing:0.05em">HEALTH</div></div></div>';
+  h+='<div style="font-size:9px;color:'+(hasData?healthC:'var(--t3)')+';font-family:\'JetBrains Mono\',monospace;margin-bottom:10px">'+(hasData?healthLbl:'no meetings linked')+'</div>';
 
   // ── STATS ────────────────────────────────────────────────────
   h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px">';
@@ -2583,6 +3998,102 @@ function renderDossier(d){
   document.getElementById('dossier-content').innerHTML=h;
 }
 
+// ── RELATIONSHIP TIMELINE NARRATIVE ──────────────────────────
+// Shows the arc of a relationship chronologically — every meeting,
+// stance shift, watch flag, and commitment as a story with context.
+function renderTimeline360(d){
+  var nm=getMtgsForNode(d.id);
+  var c=nc(d);
+  var sorted=nm.slice().sort(function(a,b){return a.meta.date.localeCompare(b.meta.date);});
+
+  if(!sorted.length){
+    document.getElementById('timeline360-content').innerHTML='<div style="text-align:center;padding:30px 10px;color:var(--t3);font-size:12px">No meetings linked to '+d.name+' yet.<br><br>Process meetings where this person appears and the arc will build itself.</div>';
+    return;
+  }
+
+  var h='';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:12px">';
+  h+=sorted.length+' meetings · relationship arc</div>';
+
+  // Calculate relationship arc: started, turning points, current state
+  var firstMtg=sorted[0];
+  var lastMtg=sorted[sorted.length-1];
+  var totalDays=Math.floor((new Date(lastMtg.meta.date)-new Date(firstMtg.meta.date))/86400000);
+  var health=computeRelHealth(d.id);
+
+  // Arc summary header
+  h+='<div style="padding:9px 12px;background:var(--s2);border-radius:var(--rsm);margin-bottom:14px;border-left:3px solid '+c+'">';
+  h+='<div style="font-size:12px;font-weight:600;margin-bottom:4px">'+d.name+'</div>';
+  h+='<div style="font-size:10px;color:var(--t2)">First contact '+firstMtg.meta.date+' · '+sorted.length+' meetings over '+(totalDays>0?totalDays+'d':'same day')+'</div>';
+  h+='<div style="margin-top:6px;display:flex;align-items:center;gap:8px">';
+  h+='<div style="flex:1"><div class="strength-bar" style="height:4px"><div class="strength-fill" style="width:'+health*10+'%;background:'+healthColor(health)+'"></div></div></div>';
+  h+='<span style="font-size:10px;font-weight:600;color:'+healthColor(health)+'">'+health+'/10</span>';
+  h+='</div></div>';
+
+  // Chronological events
+  sorted.forEach(function(m,i){
+    var pi=(m.intel.keyPeople||[]).find(function(p){return nameSimilarity(p.name,d.name)>=0.8;});
+    var prevPi=i>0?(sorted[i-1].intel.keyPeople||[]).find(function(p){return nameSimilarity(p.name,d.name)>=0.8;}):null;
+    var stanceChanged=pi&&prevPi&&pi.stance&&prevPi.stance&&pi.stance!==prevPi.stance;
+    var isFirst=i===0;
+    var isLast=i===sorted.length-1;
+    var pc=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};
+
+    // Timeline dot color: stance-based
+    var dotColor=c;
+    if(pi&&pi.stance){
+      var sl=pi.stance.toLowerCase();
+      if(/positive|engaged|interested|enthusiastic|champion/.test(sl))dotColor='var(--green)';
+      else if(/cautious|hesitant|concerned/.test(sl))dotColor='var(--amber)';
+      else if(/negative|cold|blocking|opposed/.test(sl))dotColor='var(--red)';
+    }
+
+    h+='<div style="display:flex;gap:0;margin-bottom:0">';
+    // Timeline rail
+    h+='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:22px">';
+    h+='<div style="width:10px;height:10px;border-radius:50%;border:2px solid '+dotColor+';background:'+(isFirst||isLast?dotColor:'var(--bg)')+';flex-shrink:0;z-index:1"></div>';
+    if(!isLast)h+='<div style="width:1px;flex:1;background:var(--b1);min-height:20px"></div>';
+    h+='</div>';
+    // Event content
+    h+='<div style="flex:1;padding:0 0 14px 8px;min-width:0">';
+    h+='<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">';
+    h+='<span style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;flex-shrink:0">'+m.meta.date+'</span>';
+    if(isFirst)h+='<span style="font-size:8px;padding:0 4px;border-radius:3px;background:'+c+'22;color:'+c+'">FIRST CONTACT</span>';
+    if(isLast&&sorted.length>1)h+='<span style="font-size:8px;padding:0 4px;border-radius:3px;background:'+healthColor(health)+'22;color:'+healthColor(health)+'">MOST RECENT</span>';
+    if(stanceChanged)h+='<span style="font-size:8px;padding:0 4px;border-radius:3px;background:rgba(245,158,11,.15);color:var(--amber)">SHIFT</span>';
+    h+='</div>';
+    h+='<div style="font-size:11px;font-weight:500;cursor:pointer;color:var(--text)" onclick="closeNetPanel();goIntelById('+m.id+')">'+m.meta.title+'</div>';
+    if(pi&&pi.stance){
+      h+='<div style="font-size:10px;color:var(--t2);font-style:italic;margin-top:2px;line-height:1.4">'+pi.stance.slice(0,120)+(pi.stance.length>120?'...':'')+'</div>';
+    }
+    if(pi&&pi.watchFor){
+      h+='<div style="font-size:9px;color:var(--amber);margin-top:2px">⚠ '+pi.watchFor+'</div>';
+    }
+    // Actions from this meeting attributed to this person
+    var myActions=(m.intel.actionItems||[]).filter(function(a){return a.owner&&nameSimilarity(a.owner,d.name)>=0.75;});
+    if(myActions.length){
+      myActions.slice(0,2).forEach(function(a){
+        h+='<div style="font-size:9px;color:var(--t3);margin-top:2px">◦ '+a.task+(a.deadline?' · '+a.deadline:'')+'</div>';
+      });
+    }
+    h+='</div></div>';
+  });
+
+  // Commitments section
+  var nodeCommits=commitments.filter(function(c2){return c2.owner&&nameSimilarity(c2.owner,d.name)>=0.75;});
+  if(nodeCommits.length){
+    h+='<div style="margin-top:4px;padding:9px 12px;background:var(--s2);border-radius:var(--rsm)">';
+    h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;color:var(--t3);margin-bottom:6px">Commitments ('+nodeCommits.length+')</div>';
+    nodeCommits.slice(0,5).forEach(function(c2){
+      var statusConf=COMMIT_STATUS[c2.status]||COMMIT_STATUS.open;
+      h+='<div style="font-size:10px;color:'+statusConf.color+';margin-bottom:3px">'+statusConf.label+' — '+c2.task.slice(0,60)+'</div>';
+    });
+    h+='</div>';
+  }
+
+  document.getElementById('timeline360-content').innerHTML=h;
+}
+
 // Jump to Prep tab with this person pre-filled
 window.prepForPerson=function(name){
   closeNetPanel();
@@ -2628,7 +4139,37 @@ window.confirmEdge=confirmEdge;
 
 function setFilter(f,el){activeFilter=f;document.querySelectorAll('.ftag').forEach(function(t){t.style.cssText='';});el.style.borderColor='var(--t2)';el.style.color='var(--text)';el.style.background='var(--s2)';applyFilter();}
 window.setFilter=setFilter;
-function applyFilter(){var f=activeFilter;visibleIds=new Set();nodes.forEach(function(n){var show=f==='all'||f==='tier1'&&n.priority===1||f==='company'&&n.type==='company'||f==='person'&&n.type==='person'||(n.org===f||n.name===f);if(show)visibleIds.add(n.id);});if(ng){ng.selectAll('.node-g').style('opacity',function(d){return visibleIds.has(d.id)?1:0;}).style('pointer-events',function(d){return visibleIds.has(d.id)?'all':'none';});if(lg)lg.selectAll('.link-g').style('opacity',function(d){var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;return visibleIds.has(s)&&visibleIds.has(t)?.7:0;});}updateNodeCount();}
+function applyFilter(){
+  var f=activeFilter;
+  visibleIds=new Set();
+  nodes.forEach(function(n){
+    var show=f==='all'||f==='tier1'&&n.priority===1||f==='company'&&n.type==='company'||f==='person'&&n.type==='person'||f==='government'&&n.type==='government'||(n.org===f||n.name===f);
+    if(show)visibleIds.add(n.id);
+  });
+  if(ng){
+    ng.selectAll('.node-g')
+      .style('opacity',function(d){
+        if(!visibleIds.has(d.id))return 0;
+        // Health decay: person nodes fade as relationship health drops
+        if(d.type==='person'||d.type==='government'){
+          var health=computeRelHealth(d.id);
+          var mtgCount=getMtgsForNode(d.id).length;
+          if(mtgCount===0)return 0.55; // no data — slightly faded
+          if(health<=2)return 0.35;    // cold — significantly faded
+          if(health<=4)return 0.6;     // cooling — somewhat faded
+          if(health<=6)return 0.8;     // warm
+          return 1;                    // healthy — full opacity
+        }
+        return 1;
+      })
+      .style('pointer-events',function(d){return visibleIds.has(d.id)?'all':'none';});
+    if(lg)lg.selectAll('.link-g').style('opacity',function(d){
+      var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;
+      return visibleIds.has(s)&&visibleIds.has(t)?.7:0;
+    });
+  }
+  updateNodeCount();
+}
 function updateNodeCount(){var el=document.getElementById('node-count');if(el)el.textContent=nodes.length?visibleIds.size+'/'+nodes.length+' nodes':'';}
 function updateFilterTags(){var cont=document.getElementById('filter-tags');if(!cont)return;cont.querySelectorAll('[data-org]').forEach(function(e){e.remove();});nodes.filter(function(n){return n.type==='company';}).forEach(function(c){if(cont.querySelector('[data-filter="'+c.name+'"]'))return;var b=document.createElement('button');b.className='ftag';b.dataset.filter=c.name;b.dataset.org='1';b.textContent=c.name;b.style.borderColor=ha(c.color||'#555',.5);b.style.color=c.color||'#555';b.addEventListener('click',function(){document.querySelectorAll('.ftag').forEach(function(t){t.style.cssText='';});this.style.background=ha(c.color||'#555',.2);this.style.borderColor=c.color||'#555';this.style.color=c.color||'#555';activeFilter=c.name;applyFilter();});cont.appendChild(b);});}
 function updateOrgLegend(){var cos=nodes.filter(function(n){return n.type==='company';});var legend=document.getElementById('org-legend');if(!legend)return;if(!cos.length){legend.style.display='none';return;}legend.style.display='block';document.getElementById('org-legend-items').innerHTML=cos.map(function(c){return '<div class="ol-item"><div class="ol-dot" style="background:'+(c.color||'#555')+'"></div><span>'+c.name+'</span></div>';}).join('');}
