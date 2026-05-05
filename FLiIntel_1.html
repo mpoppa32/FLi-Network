@@ -682,6 +682,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div class="ntb-sep"></div>
       <button class="nb" id="path-btn" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.4)">⇢ Path</button>
       <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
+      <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
     </div>
     <!-- PATH FINDER PANEL -->
@@ -1166,6 +1167,9 @@ var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=
 // ── Performance: health score cache + render debounce ─────────
 var _healthCache=new Map(); // nodeId+':'+meetingCount → score
 var _boardTimer=null;       // debounce timer for Firebase-triggered renders
+// ── Auto-link undo state ──────────────────────────────────────
+var _lastAutoLinks=[];      // link IDs created by last autoSyncLinks call
+var _undoLinkTimer=null;    // clears undo state after 12s
 var tlFilter='all',tlSrcFilter='all',currentTLEditId=null;
 
 // ── INDEXED DATA STRUCTURES ──────────────────────────────────
@@ -3128,7 +3132,7 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
     await saveMeeting(m);
     // Link to opportunity if tagged
     if(m.oppId){var opp=opportunities.find(function(o){return o.id===m.oppId;});if(opp){if(!opp.meetings)opp.meetings=[];if(opp.meetings.indexOf(m.id)===-1){opp.meetings.push(m.id);opp.updatedAt=new Date().toISOString();await saveOpp(opp);}}}
-    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);pendingEnts=[];var msg='Meeting processed';if(r.added||r.updated)msg+=' -- '+[r.added?r.added+' new':(null),r.updated?r.updated+' updated':(null)].filter(Boolean).join(', ')+' in Network Map';toast(msg);}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
+    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);pendingEnts=[];var parts=[];if(r.added)parts.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts.push(r.updated+' updated');if(rl.added)parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');if(rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');var msg='Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':'');if(rl.added>0){var toastEl=document.getElementById('toast');toastEl.innerHTML=msg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl.classList.remove('show');},6000);}else{toast(msg);}}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
 
 async function callClaude(notes,meta){
   // Build canonical names list so Claude normalises to existing spellings
@@ -4097,6 +4101,219 @@ function extractEnts(m){var list=[],date=m.meta.date,title=m.meta.title,seen={};
 
 // AUTO SYNC -- runs silently after every process/reprocess
 async function autoSyncEnts(m){
+
+// ══════════════════════════════════════════════════════════════
+// AUTO-SYNC LINKS
+// Runs after autoSyncEnts. Derives three link types from meeting intel:
+//   1. Works-at  — person → their org company/gov node
+//   2. Co-presence — every pair of keyPeople who appeared together
+// Auto-applies silently. Stores IDs for 12s undo window.
+// Duplicate-safe: skips any pair that already has a link.
+// ══════════════════════════════════════════════════════════════
+
+async function autoSyncLinks(m){
+  var newLinks=[];
+  var enriched=0;
+  var base=Date.now()*1000; // microsecond-spaced IDs to avoid collisions in batch
+
+  // ── Helper: does a link already exist between two node IDs? ──
+  function linkExists(idA,idB){
+    return links.some(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      return(String(s)===String(idA)&&String(t)===String(idB))||
+             (String(s)===String(idB)&&String(t)===String(idA));
+    });
+  }
+
+  // ── Helper: find existing link to enrich notes ───────────────
+  function findLink(idA,idB){
+    return links.find(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      return(String(s)===String(idA)&&String(t)===String(idB))||
+             (String(s)===String(idB)&&String(t)===String(idA));
+    });
+  }
+
+  // ── Helper: ensure org company/gov node exists, return it ────
+  function ensureOrgNode(orgName){
+    if(!orgName||orgName.trim().length<2)return null;
+    var key=orgName.trim().toLowerCase();
+    // Check companyByName (includes gov nodes too from confirmAddNode)
+    var existing=companyByName.get(key);
+    if(existing)return existing;
+    // Check nodes by name match
+    var byName=nodes.find(function(n){
+      return(n.type==='company'||n.type==='government')&&
+             n.name.toLowerCase()===key;
+    });
+    if(byName)return byName;
+    // Create new company node for this org
+    var nn={
+      id:base+newLinks.length+500, // offset from link IDs
+      type:'company',
+      name:orgName.trim(),
+      role:'',org:'',
+      notes:'Auto-created from meeting intel: '+m.meta.title,
+      priority:2,meetings:[],
+      x:null,y:null,pinned:false,color:null,
+      created:new Date().toISOString()
+    };
+    nodes.push(nn);nodeMap.set(nn.id,nn);
+    companyByName.set(key,nn);
+    // Save async — don't await here to keep batch fast
+    saveEntity(nn).catch(function(){});
+    return nn;
+  }
+
+  // ── 1. WORKS-AT links: person → their org ────────────────────
+  var keyPpl=m.intel.keyPeople||[];
+  keyPpl.forEach(function(p){
+    if(!p.name||!p.org||p.org.trim().length<2)return;
+    // Find person node
+    var pm=findEntityMatch(p.name,'person');
+    var personNode=pm&&(pm.exact||pm.score>=0.75)?pm.entity:null;
+    if(!personNode)return;
+    // Find or create org node
+    var orgNode=ensureOrgNode(p.org);
+    if(!orgNode)return;
+    if(personNode.id===orgNode.id)return; // sanity check
+    if(linkExists(personNode.id,orgNode.id)){
+      // Enrich existing link notes if this meeting not already mentioned
+      var el=findLink(personNode.id,orgNode.id);
+      if(el&&!(el.notes||'').includes(m.meta.title)){
+        el.notes=(el.notes?el.notes+' | ':'')+m.meta.title;
+        saveLink(el).catch(function(){});
+        enriched++;
+      }
+      return;
+    }
+    var nl={id:base+newLinks.length,source:personNode.id,target:orgNode.id,label:'Works at',dir:'to',notes:m.meta.title+' ('+m.meta.date+')'};
+    links.push(nl);linkMap.set(nl.id,nl);
+    newLinks.push(nl);
+  });
+
+  // ── 2. CO-PRESENCE links: every keyPeople pair ───────────────
+  // Cap at 6 key people — above that it's a group event, not bilateral
+  var eligible=keyPpl
+    .filter(function(p){return p.name&&p.name.trim().length>1;})
+    .slice(0,6);
+
+  for(var i=0;i<eligible.length;i++){
+    for(var j=i+1;j<eligible.length;j++){
+      var pa=eligible[i],pb=eligible[j];
+      var ma=findEntityMatch(pa.name,'person');
+      var mb=findEntityMatch(pb.name,'person');
+      var na2=ma&&(ma.exact||ma.score>=0.75)?ma.entity:null;
+      var nb2=mb&&(mb.exact||mb.score>=0.75)?mb.entity:null;
+      if(!na2||!nb2||na2.id===nb2.id)continue;
+      if(linkExists(na2.id,nb2.id)){
+        // Enrich existing link
+        var el2=findLink(na2.id,nb2.id);
+        if(el2&&!(el2.notes||'').includes(m.meta.title)){
+          el2.notes=(el2.notes?el2.notes+' | ':'')+m.meta.title;
+          saveLink(el2).catch(function(){});
+          enriched++;
+        }
+        continue;
+      }
+      var nl2={id:base+newLinks.length,source:na2.id,target:nb2.id,label:m.meta.title,dir:'both',notes:m.meta.date};
+      links.push(nl2);linkMap.set(nl2.id,nl2);
+      newLinks.push(nl2);
+    }
+  }
+
+  // ── Save all new links to Firebase ───────────────────────────
+  for(var li=0;li<newLinks.length;li++){
+    try{await saveLink(newLinks[li]);}catch(e){}
+  }
+
+  // ── Store for undo ────────────────────────────────────────────
+  if(newLinks.length){
+    _lastAutoLinks=newLinks.map(function(l){return l.id;});
+    clearTimeout(_undoLinkTimer);
+    _undoLinkTimer=setTimeout(function(){_lastAutoLinks=[];},12000);
+  }
+
+  return{added:newLinks.length,enriched:enriched};
+}
+
+// Undo the last auto-link batch — removes from memory, Firebase, re-renders
+window.undoAutoLinks=async function(){
+  if(!_lastAutoLinks.length)return;
+  clearTimeout(_undoLinkTimer);
+  var ids=_lastAutoLinks.slice();
+  _lastAutoLinks=[];
+  ids.forEach(function(id){
+    links=links.filter(function(l){return l.id!==id;});
+    linkMap.delete(id);
+    try{remove(ref(db,wsPath('links/'+id)));}catch(e){}
+  });
+  renderNetwork();
+  toast('Auto-links undone ('+ids.length+' removed)');
+};
+
+// ══════════════════════════════════════════════════════════════
+// RETROACTIVE LINK ALL
+// Scans every meeting already in the workspace and runs
+// autoSyncLinks on each one — creates all missing works-at and
+// co-presence links for nodes that existed before auto-link was built.
+// Safe to run multiple times: linkExists dedup prevents duplicates.
+// ══════════════════════════════════════════════════════════════
+
+var _retroLinkRunning=false;
+
+window.retroLinkAll=async function(){
+  if(_retroLinkRunning){toast('Already running — please wait');return;}
+  if(!nodes.length){toast('No nodes in Network Map yet');return;}
+  _retroLinkRunning=true;
+
+  var btn=document.getElementById('retro-link-btn');
+  if(btn){btn.disabled=true;btn.textContent='Linking...';}
+
+  // Step 1: Load full meeting history if paginated
+  toast('Loading full meeting history...');
+  var loadAttempts=0;
+  while(!mtgAllLoaded&&loadAttempts<25){
+    try{await loadMoreMeetings();}catch(e){break;}
+    loadAttempts++;
+    await new Promise(function(r){setTimeout(r,120);});
+  }
+
+  var totalAdded=0,totalEnriched=0,processed=0;
+  var allMeetings=meetings.slice(); // snapshot — avoid mutation during loop
+
+  // Step 2: Run autoSyncLinks for every meeting
+  for(var i=0;i<allMeetings.length;i++){
+    var m=allMeetings[i];
+    if(btn)btn.textContent='Linking '+(i+1)+'/'+allMeetings.length+'...';
+    try{
+      var rl=await autoSyncLinks(m);
+      totalAdded+=rl.added;
+      totalEnriched+=rl.enriched;
+    }catch(e){
+      console.warn('retroLinkAll: failed on meeting',m.id,e);
+    }
+    processed++;
+    // Yield to browser every 5 meetings to stay responsive
+    if(processed%5===0)await new Promise(function(r){setTimeout(r,0);});
+  }
+
+  // Step 3: Re-render and report
+  renderNetwork();
+
+  var parts=[];
+  if(totalAdded)parts.push(totalAdded+' link'+(totalAdded!==1?'s':'')+' created');
+  if(totalEnriched)parts.push(totalEnriched+' enriched');
+  var msg=parts.length
+    ?'🔗 Done — '+parts.join(', ')+' across '+processed+' meetings'
+    :'🔗 Done — network already fully connected ('+processed+' meetings scanned)';
+
+  toast(msg);
+  _retroLinkRunning=false;
+  if(btn){btn.disabled=false;btn.textContent='🔗 Link All';}
+};
   var ents=extractEnts(m);
   if(!ents.length)return{added:0,updated:0};
   var added=0,updated=0;
@@ -4531,9 +4748,9 @@ async function reprocessMeeting(){
     m.ts=new Date().toISOString();
     await saveMeeting(m);
     closeModal('edit-modal');pendingEnts=[];
-    var r=await autoSyncEnts(m);
+    var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);
     renderIntel(m);
-    toast('Reprocessed'+((r.added||r.updated)?' -- '+[r.added?r.added+' new':null,r.updated?r.updated+' updated':null].filter(Boolean).join(', ')+' in Network Map':'')+(m.intelHistory.length?' (v'+(m.intelHistory.length+1)+' — history preserved)':''));
+    var parts2=[];if(r.added)parts2.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts2.push(r.updated+' updated');if(rl.added)parts2.push(rl.added+' link'+(rl.added>1?'s':'')+' created');var rmsg='Reprocessed'+(parts2.length?' — '+parts2.join(', ')+' in Network Map':'')+(m.intelHistory.length?' (v'+(m.intelHistory.length+1)+')':'');if(rl.added>0){var toastEl2=document.getElementById('toast');toastEl2.innerHTML=rmsg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl2.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl2.classList.remove('show');},6000);}else{toast(rmsg);}
   }catch(e){document.getElementById('edit-err').textContent=e.message||'Failed';document.getElementById('edit-err').style.display='inline';}
   btn.disabled=false;btn.textContent='Reprocess';
 }
