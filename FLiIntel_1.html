@@ -71,7 +71,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit
 .net-cal{position:absolute;top:0;left:0;bottom:0;width:220px;background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;z-index:10}
 .net-panel{position:absolute;top:0;right:0;bottom:0;width:360px;background:var(--s1);border-left:1px solid var(--b1);transform:translateX(100%);transition:transform .25s;z-index:10;display:flex;flex-direction:column;overflow:hidden}
 .net-panel.open{transform:translateX(0)}
-.net-toolbar{position:absolute;top:0;left:220px;right:0;height:42px;background:rgba(11,13,17,.9);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 14px;gap:6px;z-index:9;backdrop-filter:blur(8px)}
+.net-toolbar{position:absolute;top:0;left:220px;right:0;height:42px;background:rgba(11,13,17,.9);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 14px;gap:6px;z-index:9;backdrop-filter:blur(8px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .search-inp{flex:1;max-width:260px;background:transparent;border:none;outline:none;font-size:12px;font-family:'Outfit',sans-serif;color:var(--text)}
 .search-inp::placeholder{color:var(--t3)}
 .filter-scroll{display:flex;gap:4px;overflow-x:auto;flex:1}
@@ -679,10 +679,12 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <button class="nb" onclick="fitGraph()">Fit</button>
       <button class="nb" onclick="zoomIn()">+</button>
       <button class="nb" onclick="zoomOut()">&minus;</button>
+      <button class="nb" id="reset-layout-btn" onclick="resetLayout()" style="color:var(--t2);border-color:var(--b2)" title="Reset ALL node positions — full radial hub layout">↺ Reset</button>
+      <button class="nb" id="auto-arrange-btn" onclick="autoArrange()" style="color:var(--blue);border-color:rgba(59,130,246,.4)" title="Auto-arrange: keeps T1 pins, reorganizes everything else">⊡ Arrange</button>
       <div class="ntb-sep"></div>
       <button class="nb" id="path-btn" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.4)">⇢ Path</button>
       <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
-      <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>
+      <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>out</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
     </div>
     <!-- PATH FINDER PANEL -->
@@ -1170,6 +1172,8 @@ var _boardTimer=null;       // debounce timer for Firebase-triggered renders
 // ── Auto-link undo state ──────────────────────────────────────
 var _lastAutoLinks=[];      // link IDs created by last autoSyncLinks call
 var _undoLinkTimer=null;    // clears undo state after 12s
+// ── Network layout ────────────────────────────────────────────
+var _orgAngleMap=new Map(); // orgId → {angle, cx, cy} for radial clustering
 var tlFilter='all',tlSrcFilter='all',currentTLEditId=null;
 
 // ── INDEXED DATA STRUCTURES ──────────────────────────────────
@@ -1189,8 +1193,10 @@ var PC={'Accelerating':{b:'#061510',t:'#4ade80'},'Steady':{b:'#060e1e',t:'#60a5f
 var DS={'high':'#ef4444','medium':'#f59e0b','low':'#22c55e','upcoming':'#3b82f6','in-progress':'#f59e0b','completed':'#22c55e','at-risk':'#ef4444'};
 var PALETTE=['#c9a227','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#ec4899','#84cc16','#14b8a6','#f59e0b','#6366f1','#10b981','#fb7185','#38bdf8','#d946ef','#4ade80','#fbbf24'];
 var WS_COLORS=['#c9a227','#3b82f6','#22c55e','#ef4444','#a855f7','#f97316','#06b6d4','#ec4899'];
-var EDGE_TYPES={'Reports to':{c:'#3b82f6',dash:false},'Manages':{c:'#3b82f6',dash:false},'Advises':{c:'#8b5cf6',dash:true},'Investor in':{c:'#c9a227',dash:false},'Funded by':{c:'#c9a227',dash:false},'Co-investor':{c:'#f59e0b',dash:true},'Partners with':{c:'#22c55e',dash:false},'Works with':{c:'#64748b',dash:false},'Sells to':{c:'#10b981',dash:false},'Owns':{c:'#06b6d4',dash:false},'Competes with':{c:'#ef4444',dash:true},'Related to':{c:'#475569',dash:true},'Introduced by':{c:'#a78bfa',dash:true}};
-var DEF_EDGE={c:'#4a5568',dash:false};
+var EDGE_TYPES={'Reports to':{c:'#3b82f6',dash:false},'Manages':{c:'#3b82f6',dash:false},'Advises':{c:'#8b5cf6',dash:true},'Investor in':{c:'#c9a227',dash:false},'Funded by':{c:'#c9a227',dash:false},'Co-investor':{c:'#f59e0b',dash:true},'Partners with':{c:'#22c55e',dash:false},'Works with':{c:'#64748b',dash:false},'Sells to':{c:'#10b981',dash:false},'Owns':{c:'#06b6d4',dash:false},'Competes with':{c:'#ef4444',dash:true},'Related to':{c:'#475569',dash:true},'Introduced by':{c:'#a78bfa',dash:true},'Works at':{c:'#60a5fa',dash:false}};
+var DEF_EDGE={c:'#3b4a6b',dash:true}; // co-presence/meeting links — dashed subtle
+// Works at: thin, muted structural link — shows org membership without visual noise
+EDGE_TYPES['Works at']={c:'#475569',dash:false,structural:true};
 var SZ={company:[56,32,16],person:[36,20,10],deal:[26,14,8]};
 var colorIdx=0,activeFilter='all',visibleIds=new Set(),selectedNode=null,edgeMode=false,edgeSource=null,addTier=2,currentNetTab='profile';
 
@@ -5605,7 +5611,56 @@ window.confirmAddCommitment=confirmAddCommitment;
 
 var svgEl,svg,g,lg,ng,zoom,sim,W=800,H=600;
 
-function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas();svg=d3.select(svgEl);svg.selectAll('*').remove();var defs=svg.append('defs');var gf=defs.append('filter').attr('id','glow').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');gf.append('feGaussianBlur').attr('stdDeviation','5').attr('result','b');var fm=gf.append('feMerge');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','SourceGraphic');var gf2=defs.append('filter').attr('id','glow2').attr('x','-30%').attr('y','-30%').attr('width','160%').attr('height','160%');gf2.append('feGaussianBlur').attr('stdDeviation','2').attr('result','b2');var fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');g=svg.append('g');lg=g.append('g');ng=g.append('g');zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',function(e){g.attr('transform',e.transform);});svg.call(zoom).on('dblclick.zoom',null);svg.on('click',function(ev){if(edgeMode&&ev.target===svgEl)cancelEdgeMode();});sim=d3.forceSimulation().force('link',d3.forceLink().id(function(d){return d.id;}).distance(function(d){var sn=nodeMap.get(d.source&&d.source.id||d.source);var tn=nodeMap.get(d.target&&d.target.id||d.target);return(sn?nr(sn):20)+(tn?nr(tn):20)+140;})).force('charge',d3.forceManyBody().strength(function(d){return -1200-nr(d)*24;})).force('collision',d3.forceCollide(function(d){return nr(d)+36;})).alphaDecay(0.024).on('tick',ticked);window.addEventListener('resize',resizeCanvas);}
+function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas();svg=d3.select(svgEl);svg.selectAll('*').remove();var defs=svg.append('defs');var gf=defs.append('filter').attr('id','glow').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');gf.append('feGaussianBlur').attr('stdDeviation','5').attr('result','b');var fm=gf.append('feMerge');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','SourceGraphic');var gf2=defs.append('filter').attr('id','glow2').attr('x','-30%').attr('y','-30%').attr('width','160%').attr('height','160%');gf2.append('feGaussianBlur').attr('stdDeviation','2').attr('result','b2');var fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');g=svg.append('g');lg=g.append('g');ng=g.append('g');zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',function(e){g.attr('transform',e.transform);});svg.call(zoom).on('dblclick.zoom',null);svg.on('click',function(ev){if(edgeMode&&ev.target===svgEl)cancelEdgeMode();});
+sim=d3.forceSimulation()
+  // Link force: Works-at links are short (person orbits org); co-presence are medium; manual are long
+  .force('link',d3.forceLink().id(function(d){return d.id;})
+    .distance(function(d){
+      var label=d.label||'';
+      var sn=nodeMap.get(d.source&&d.source.id||d.source);
+      var tn=nodeMap.get(d.target&&d.target.id||d.target);
+      var rBase=(sn?nr(sn):20)+(tn?nr(tn):20);
+      if(label==='Works at')return rBase+60;       // tight — person clusters with org
+      if(label===''||DEF_EDGE.dash)return rBase+100; // co-presence — medium
+      return rBase+140;                               // manual relationships — standard
+    })
+    .strength(function(d){
+      return d.label==='Works at'?0.9:0.4; // Works-at is stiff; co-presence is gentle
+    })
+  )
+  // Charge: stronger repulsion so nodes don't stack, scales with node size
+  .force('charge',d3.forceManyBody()
+    .strength(function(d){return -1800-nr(d)*30;})
+    .distanceMax(600) // cap at 600px — prevents distant nodes from repelling each other
+  )
+  // Collision: prevent overlap with generous buffer
+  .force('collision',d3.forceCollide(function(d){return nr(d)+28;}).strength(0.85))
+  // Center gravity: keeps graph from drifting — gentle pull toward canvas center
+  .force('center',d3.forceCenter(W/2,H/2).strength(0.04))
+  // Radial org clustering: orgs placed on a ring, people pulled toward their org's sector
+  // _orgAngleMap is recomputed in renderNetwork() before each restart
+  .force('orgX',d3.forceX(function(d){
+    if(d.type==='company'||d.type==='government'){
+      var pos=_orgAngleMap.get(d.id);return pos?pos.cx:W/2;
+    }
+    // Person: find their Works-at org and pull toward same x
+    var orgPos=_getPersonOrgPos(d.id);return orgPos?orgPos.cx:W/2;
+  }).strength(function(d){
+    return d.type==='company'||d.type==='government'?0.30:0.14;
+  }))
+  .force('orgY',d3.forceY(function(d){
+    if(d.type==='company'||d.type==='government'){
+      var pos=_orgAngleMap.get(d.id);return pos?pos.cy:H/2;
+    }
+    var orgPos=_getPersonOrgPos(d.id);return orgPos?orgPos.cy:H/2;
+  }).strength(function(d){
+    return d.type==='company'||d.type==='government'?0.30:0.14;
+  }))
+  .velocityDecay(0.45)   // higher = settles faster (was implicit ~0.4)
+  .alphaDecay(0.028)     // slightly faster settling than 0.024
+  .alphaMin(0.001)
+  .on('tick',ticked);
+window.addEventListener('resize',resizeCanvas);}
 
 function resizeCanvas(){var netView=document.getElementById('network-view');if(!netView||netView.style.display==='none')return;W=netView.offsetWidth-220;H=netView.offsetHeight-42;if(svgEl){svgEl.setAttribute('width',W);svgEl.setAttribute('height',H);}}
 
@@ -5614,7 +5669,91 @@ function nc(d){if(d.type==='company'){if(!d.color){d.color=PALETTE[colorIdx%PALE
 function ha(hex,a){var r=parseInt(hex.slice(1,3),16),g2=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return 'rgba('+r+','+g2+','+b+','+a+')';}
 function es(label){return EDGE_TYPES[label]||DEF_EDGE;}
 
-function renderNetwork(){if(!svg)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','JetBrains Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);});lM.select('text').text(function(d){return d.label||'';}).attr('fill',function(d){return es(d.label).c;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('r',function(d){return nr(d);}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':null;});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(11,13,17,0.8)').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','Outfit,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});sim.nodes(nodes);sim.force('link').links(ld);sim.alpha(0.06).restart();window._lM=lM;window._nM=nM;applyFilter();}
+// Compute radial positions for org nodes — equally spaced on a ring
+// Called before each simulation restart so new orgs get placed correctly
+function computeOrgAngles(){
+  _orgAngleMap.clear();
+  var orgNodes=nodes.filter(function(n){return n.type==='company'||n.type==='government';});
+  if(!orgNodes.length)return;
+  // Orgs with linked people get radial placement; lone orgs drift to center
+  var linkedOrgs=orgNodes.filter(function(org){
+    return links.some(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      return l.label==='Works at'&&String(t)===String(org.id);
+    });
+  });
+  var allOrgs=linkedOrgs.length?linkedOrgs:orgNodes;
+  var ringR=Math.min(W,H)*0.28; // org ring radius — 28% of canvas min dimension
+  allOrgs.forEach(function(org,i){
+    var angle=(i/allOrgs.length)*2*Math.PI-(Math.PI/2); // start at top (12 o'clock)
+    _orgAngleMap.set(org.id,{
+      angle:angle,
+      cx:W/2+Math.cos(angle)*ringR,
+      cy:H/2+Math.sin(angle)*ringR
+    });
+  });
+}
+
+// Returns the canvas position of a person's org node (for force targeting)
+function _getPersonOrgPos(personId){
+  for(var i=0;i<links.length;i++){
+    var l=links[i];
+    if(l.label!=='Works at')continue;
+    var s=l.source&&l.source.id?l.source.id:l.source;
+    var t=l.target&&l.target.id?l.target.id:l.target;
+    if(String(s)===String(personId)){
+      var pos=_orgAngleMap.get(t);
+      if(pos){
+        // Person target: slightly outside the org ring, spread by angle variation
+        return{cx:pos.cx,cy:pos.cy};
+      }
+    }
+  }
+  return null;
+}
+
+function renderNetwork(){if(!svg)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','JetBrains Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){if(d.label==='Works at')return 'none';return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){if(d.label==='Works at')return 1;var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);}).attr('stroke-opacity',function(d){return d.label==='Works at'?0.3:0.7;});lM.select('text').text(function(d){return d.label==='Works at'?'':d.label||'';}).attr('fill',function(d){return es(d.label).c;}).attr('opacity',function(d){return d.label==='Works at'?0:1;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('dblclick',function(ev,d){if(d.pinned){d.fx=null;d.fy=null;d.pinned=false;var nn=nodeMap.get(d.id);if(nn){nn.fx=null;nn.fy=null;nn.pinned=false;}saveNode(d);if(sim)sim.alpha(0.15).restart();setNetStatus(d.name+' unpinned');setTimeout(clearNetStatus,1800);}}).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('r',function(d){return nr(d);}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':null;});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(11,13,17,0.8)').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','Outfit,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});// Recompute org radial positions before restart
+  computeOrgAngles();
+  sim.nodes(nodes);
+  // Smart position seeding — orgs on their radial ring, people near their org
+  var hasNewNodes=false;
+  nodes.forEach(function(n){
+    if(n.x!=null&&n.y!=null)return; // already positioned — respect existing positions
+    hasNewNodes=true;
+    var cx=W/2,cy=H/2;
+    if(n.type==='company'||n.type==='government'){
+      // Use computed ring position if available, else spread around center
+      var rPos=_orgAngleMap.get(n.id);
+      if(rPos){n.x=rPos.cx+(Math.random()-0.5)*60;n.y=rPos.cy+(Math.random()-0.5)*60;}
+      else{n.x=cx+(Math.random()-0.5)*180;n.y=cy+(Math.random()-0.5)*180;}
+    } else {
+      // Person: spawn near their org if Works-at link exists
+      var orgLink=ld.find(function(l){return l.label==='Works at'&&String(l.source&&l.source.id||l.source)===String(n.id);});
+      if(orgLink){
+        var orgId=orgLink.target&&orgLink.target.id||orgLink.target;
+        var rPos2=_orgAngleMap.get(orgId);
+        var on2=nodeMap.get(orgId);
+        var bx=rPos2?rPos2.cx:on2&&on2.x!=null?on2.x:cx;
+        var by=rPos2?rPos2.cy:on2&&on2.y!=null?on2.y:cy;
+        // Spread people further out from their org in the same angular direction
+        var spreadR=nr(n)+60+Math.random()*80;
+        var spreadAngle=rPos2?rPos2.angle+(Math.random()-0.5)*1.2:Math.random()*2*Math.PI;
+        n.x=bx+Math.cos(spreadAngle)*spreadR;
+        n.y=by+Math.sin(spreadAngle)*spreadR;
+      } else {
+        // Orphaned person — place in outer ring
+        var ang=Math.random()*2*Math.PI,outerR=Math.min(W,H)*0.42;
+        n.x=cx+Math.cos(ang)*outerR+(Math.random()-0.5)*60;
+        n.y=cy+Math.sin(ang)*outerR+(Math.random()-0.5)*60;
+      }
+    }
+    n.vx=0;n.vy=0;
+  });
+  sim.force('link').links(ld);
+  // Alpha boost: higher when new nodes need to settle, lower for minor updates
+  var alphaVal=hasNewNodes?0.35:0.08;
+  sim.alpha(alphaVal).restart();window._lM=lM;window._nM=nM;applyFilter();}
 
 function ticked(){if(window._lM){window._lM.select('line').attr('x1',function(d){return d.source&&d.source.x||0;}).attr('y1',function(d){return d.source&&d.source.y||0;}).attr('x2',function(d){return d.target&&d.target.x||0;}).attr('y2',function(d){return d.target&&d.target.y||0;});window._lM.select('text').attr('x',function(d){return((d.source&&d.source.x||0)+(d.target&&d.target.x||0))/2;}).attr('y',function(d){return((d.source&&d.source.y||0)+(d.target&&d.target.y||0))/2;});}if(window._nM)window._nM.attr('transform',function(d){return 'translate('+(d.x||0)+','+(d.y||0)+')';});}
 
@@ -6140,6 +6279,101 @@ function hideNetSearch(){document.getElementById('net-search-results').style.dis
 window.hideNetSearch=hideNetSearch;
 function selectNetSearch(id){var n=nodeMap.get(id);if(!n)return;hideNetSearch();document.getElementById('net-search').value='';openNetPanel(n);if(n.x!=null&&n.y!=null){var transform=d3.zoomTransform(svgEl);svg.transition().duration(500).call(zoom.transform,d3.zoomIdentity.translate(W/2-transform.k*n.x,H/2-transform.k*n.y).scale(transform.k));}}
 window.selectNetSearch=selectNetSearch;
+
+// Smart initial position seeding — places nodes in organized starting positions
+// before physics runs. Orgs in a center ring; people near their org.
+function seedNodePositions(){
+  var cx=W/2, cy=H/2;
+  var orgs=nodes.filter(function(n){return n.type==='company'||n.type==='government';});
+  var people=nodes.filter(function(n){return n.type==='person';});
+
+  // Arrange orgs in a ring around center
+  var orgR=Math.min(W,H)*0.28;
+  orgs.forEach(function(n,i){
+    if(n.pinned&&n.fx!=null)return; // respect pinned positions
+    var angle=(2*Math.PI/Math.max(orgs.length,1))*i - Math.PI/2;
+    n.x=cx+Math.cos(angle)*orgR;
+    n.y=cy+Math.sin(angle)*orgR;
+    n.vx=0;n.vy=0;
+  });
+
+  // Place each person near their org (if linked), else in outer ring
+  var personR=Math.min(W,H)*0.44;
+  var unlinkedPeople=[];
+  people.forEach(function(n){
+    if(n.pinned&&n.fx!=null)return;
+    // Find org this person is linked to
+    var orgLink=links.find(function(l){
+      var s=l.source&&l.source.id||l.source;
+      var t=l.target&&l.target.id||l.target;
+      return l.label==='Works at'&&String(s)===String(n.id);
+    });
+    if(orgLink){
+      var orgId=String(orgLink.target&&orgLink.target.id||orgLink.target);
+      var orgNode=nodeMap.get(Number(orgId))||nodeMap.get(orgId);
+      if(orgNode&&orgNode.x!=null){
+        // Jitter around the org position
+        var jitter=(Math.random()-0.5)*120;
+        var jitter2=(Math.random()-0.5)*120;
+        n.x=(orgNode.x||cx)+jitter;
+        n.y=(orgNode.y||cy)+jitter2;
+        n.vx=0;n.vy=0;
+        return;
+      }
+    }
+    unlinkedPeople.push(n);
+  });
+
+  // Unlinked people go in outer ring
+  unlinkedPeople.forEach(function(n,i){
+    var angle=(2*Math.PI/Math.max(unlinkedPeople.length,1))*i - Math.PI/2;
+    var r=personR+(Math.random()-0.5)*80;
+    n.x=cx+Math.cos(angle)*r;
+    n.y=cy+Math.sin(angle)*r;
+    n.vx=0;n.vy=0;
+  });
+}
+
+// Reset Layout — unpin all, seed positions intelligently, reheat simulation
+window.resetLayout=function(){
+  // Clear ALL pins and positions — full reset
+  nodes.forEach(function(n){
+    n.fx=null;n.fy=null;n.pinned=false;
+    n.x=null;n.y=null;
+  });
+  computeOrgAngles(); // compute radial positions before seeding
+  seedNodePositions();
+  if(sim){
+    sim.nodes(nodes);
+    computeOrgAngles(); // update forces with fresh map
+    sim.force('orgX').initialize&&sim.force('orgX').initialize(nodes);
+    sim.force('orgY').initialize&&sim.force('orgY').initialize(nodes);
+    sim.alpha(0.9).restart();
+  }
+  setTimeout(fitGraph,2400);
+  toast('↺ Full layout reset — all nodes repositioned');
+};
+
+// Auto-arrange: resets positions but PRESERVES T1 nodes you manually pinned
+window.autoArrange=function(){
+  var preserved=0;
+  nodes.forEach(function(n){
+    // Keep T1 nodes that were deliberately pinned (have real coordinates)
+    if(n.priority===1&&n.pinned&&n.x!=null){preserved++;return;}
+    n.fx=null;n.fy=null;n.pinned=false;
+    n.x=null;n.y=null;
+  });
+  computeOrgAngles();
+  seedNodePositions();
+  if(sim){
+    sim.nodes(nodes);
+    computeOrgAngles();
+    sim.alpha(0.8).restart();
+  }
+  setTimeout(fitGraph,2200);
+  var msg=preserved?'Auto-arranged — '+preserved+' T1 node'+(preserved>1?'s':'')+' kept in place':'Auto-arranged — radial hub layout applied';
+  toast(msg);
+};;
 
 function fitGraph(){var vis=nodes.filter(function(n){return visibleIds.has(n.id)&&n.x!=null;});if(!vis.length)return;var pad=80,xs=vis.map(function(n){return n.x;}),ys=vis.map(function(n){return n.y;});var sc=Math.min(W/(Math.max.apply(null,xs)-Math.min.apply(null,xs)+pad*2),H/(Math.max.apply(null,ys)-Math.min.apply(null,ys)+pad*2),.9);var tx=W/2-sc*(Math.min.apply(null,xs)+Math.max.apply(null,xs))/2,ty=H/2-sc*(Math.min.apply(null,ys)+Math.max.apply(null,ys))/2;svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(sc));}
 function zoomIn(){svg.transition().duration(200).call(zoom.scaleBy,1.4);}
