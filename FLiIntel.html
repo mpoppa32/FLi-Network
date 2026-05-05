@@ -586,7 +586,11 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <div id="arch-list"></div>
       </div>
       <div id="itab-board" style="display:none">
-        <div id="board-empty" class="empty">Log meetings to populate the Board</div>
+        <div id="board-empty" style="display:none;padding:24px 20px;max-width:540px;margin:0 auto">
+          <div style="font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text)">Welcome to FLi Intel</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:18px;line-height:1.6">Your defense BD intelligence platform. The Board populates as you log meetings — every entry builds the intelligence layer automatically.</div>
+          <div id="onboarding-checklist"></div>
+        </div>
         <div id="board-body" style="display:none"></div>
       </div>
 
@@ -678,6 +682,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div class="ntb-sep"></div>
       <button class="nb" id="path-btn" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.4)">⇢ Path</button>
       <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
+      <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
     </div>
     <!-- PATH FINDER PANEL -->
@@ -737,7 +742,10 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
         <div class="fld"><div class="plbl">Intelligence Notes</div><textarea id="panel-notes" rows="5" onchange="saveNetPanel()"></textarea></div>
       </div>
       <div class="panel-scroll" id="nptab-dossier" style="display:none"><div id="dossier-content" style="margin-top:8px"></div></div>
-      <div class="panel-scroll" id="nptab-timeline360" style="display:none"><div id="timeline360-content" style="margin-top:8px"></div></div>
+      <div class="panel-scroll" id="nptab-timeline360" style="display:none">
+        <div id="timeline360-narrative" style="display:none"></div>
+        <div id="timeline360-content" style="margin-top:8px"></div>
+      </div>
       <div class="panel-scroll" id="nptab-network" style="display:none"><div id="net-conn-content" style="margin-top:8px"></div></div>
     </div>
     <div class="edge-legend"><div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:7px">Edge Types</div><div id="edge-legend-items"></div></div>
@@ -1156,6 +1164,12 @@ var auth = getAuth(fbApp);
 var db = getDatabase(fbApp);
 
 var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],opportunities=[],commitments=[],calibrationRecords=[],calEntries=[],tlCommitments=[],entities=[],apiKey='',wsApiKey='',wsApiKeySetBy='',currentMeeting=null,currentOpp=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
+// ── Performance: health score cache + render debounce ─────────
+var _healthCache=new Map(); // nodeId+':'+meetingCount → score
+var _boardTimer=null;       // debounce timer for Firebase-triggered renders
+// ── Auto-link undo state ──────────────────────────────────────
+var _lastAutoLinks=[];      // link IDs created by last autoSyncLinks call
+var _undoLinkTimer=null;    // clears undo state after 12s
 var tlFilter='all',tlSrcFilter='all',currentTLEditId=null;
 
 // ── INDEXED DATA STRUCTURES ──────────────────────────────────
@@ -1227,6 +1241,7 @@ function updateApiKeyUI(){
 // ── ARRAY REBUILDERS (keep sorted arrays in sync with Maps) ──
 function rebuildMeetingsArray(){
   meetings=Array.from(meetingMap.values()).sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});
+  _healthCache.clear(); // invalidate health scores — meeting data changed
 }
 function rebuildNodesArray(){
   nodes=Array.from(nodeMap.values());
@@ -1441,7 +1456,7 @@ function connectWorkspace(){
     if(data)Object.values(data).forEach(function(m){meetingMap.set(m.id,m);});
     rebuildMeetingsArray();
     buildEntityGraph();
-    updateCount();renderArchive();renderBoard();renderSidebarMtgList();
+    updateCount();renderArchive();scheduleRenderBoard();renderSidebarMtgList();
     if(currentMeeting){var upd=meetingMap.get(currentMeeting.id);if(upd)currentMeeting=upd;}
     if(activeView==='timeline')renderTimeline();
     setSS('live');
@@ -1529,7 +1544,7 @@ function connectWorkspace(){
   // ── COMMITMENTS ──
   var u10=onValue(ref(db,wsPath('commitments')),function(snap){
     commitments=snap.val()?Object.values(snap.val()):[];
-    if(activeIntelTab==='board')renderBoard();
+    if(activeIntelTab==='board')scheduleRenderBoard();
   });
   // ── CALIBRATION OUTCOMES ──
   var u11=onValue(ref(db,wsPath('calibration')),function(snap){
@@ -3117,7 +3132,7 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
     await saveMeeting(m);
     // Link to opportunity if tagged
     if(m.oppId){var opp=opportunities.find(function(o){return o.id===m.oppId;});if(opp){if(!opp.meetings)opp.meetings=[];if(opp.meetings.indexOf(m.id)===-1){opp.meetings.push(m.id);opp.updatedAt=new Date().toISOString();await saveOpp(opp);}}}
-    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);pendingEnts=[];var msg='Meeting processed';if(r.added||r.updated)msg+=' -- '+[r.added?r.added+' new':(null),r.updated?r.updated+' updated':(null)].filter(Boolean).join(', ')+' in Network Map';toast(msg);}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
+    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);pendingEnts=[];var parts=[];if(r.added)parts.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts.push(r.updated+' updated');if(rl.added)parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');if(rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');var msg='Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':'');if(rl.added>0){var toastEl=document.getElementById('toast');toastEl.innerHTML=msg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl.classList.remove('show');},6000);}else{toast(msg);}}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
 
 async function callClaude(notes,meta){
   // Build canonical names list so Claude normalises to existing spellings
@@ -4086,6 +4101,219 @@ function extractEnts(m){var list=[],date=m.meta.date,title=m.meta.title,seen={};
 
 // AUTO SYNC -- runs silently after every process/reprocess
 async function autoSyncEnts(m){
+
+// ══════════════════════════════════════════════════════════════
+// AUTO-SYNC LINKS
+// Runs after autoSyncEnts. Derives three link types from meeting intel:
+//   1. Works-at  — person → their org company/gov node
+//   2. Co-presence — every pair of keyPeople who appeared together
+// Auto-applies silently. Stores IDs for 12s undo window.
+// Duplicate-safe: skips any pair that already has a link.
+// ══════════════════════════════════════════════════════════════
+
+async function autoSyncLinks(m){
+  var newLinks=[];
+  var enriched=0;
+  var base=Date.now()*1000; // microsecond-spaced IDs to avoid collisions in batch
+
+  // ── Helper: does a link already exist between two node IDs? ──
+  function linkExists(idA,idB){
+    return links.some(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      return(String(s)===String(idA)&&String(t)===String(idB))||
+             (String(s)===String(idB)&&String(t)===String(idA));
+    });
+  }
+
+  // ── Helper: find existing link to enrich notes ───────────────
+  function findLink(idA,idB){
+    return links.find(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      return(String(s)===String(idA)&&String(t)===String(idB))||
+             (String(s)===String(idB)&&String(t)===String(idA));
+    });
+  }
+
+  // ── Helper: ensure org company/gov node exists, return it ────
+  function ensureOrgNode(orgName){
+    if(!orgName||orgName.trim().length<2)return null;
+    var key=orgName.trim().toLowerCase();
+    // Check companyByName (includes gov nodes too from confirmAddNode)
+    var existing=companyByName.get(key);
+    if(existing)return existing;
+    // Check nodes by name match
+    var byName=nodes.find(function(n){
+      return(n.type==='company'||n.type==='government')&&
+             n.name.toLowerCase()===key;
+    });
+    if(byName)return byName;
+    // Create new company node for this org
+    var nn={
+      id:base+newLinks.length+500, // offset from link IDs
+      type:'company',
+      name:orgName.trim(),
+      role:'',org:'',
+      notes:'Auto-created from meeting intel: '+m.meta.title,
+      priority:2,meetings:[],
+      x:null,y:null,pinned:false,color:null,
+      created:new Date().toISOString()
+    };
+    nodes.push(nn);nodeMap.set(nn.id,nn);
+    companyByName.set(key,nn);
+    // Save async — don't await here to keep batch fast
+    saveEntity(nn).catch(function(){});
+    return nn;
+  }
+
+  // ── 1. WORKS-AT links: person → their org ────────────────────
+  var keyPpl=m.intel.keyPeople||[];
+  keyPpl.forEach(function(p){
+    if(!p.name||!p.org||p.org.trim().length<2)return;
+    // Find person node
+    var pm=findEntityMatch(p.name,'person');
+    var personNode=pm&&(pm.exact||pm.score>=0.75)?pm.entity:null;
+    if(!personNode)return;
+    // Find or create org node
+    var orgNode=ensureOrgNode(p.org);
+    if(!orgNode)return;
+    if(personNode.id===orgNode.id)return; // sanity check
+    if(linkExists(personNode.id,orgNode.id)){
+      // Enrich existing link notes if this meeting not already mentioned
+      var el=findLink(personNode.id,orgNode.id);
+      if(el&&!(el.notes||'').includes(m.meta.title)){
+        el.notes=(el.notes?el.notes+' | ':'')+m.meta.title;
+        saveLink(el).catch(function(){});
+        enriched++;
+      }
+      return;
+    }
+    var nl={id:base+newLinks.length,source:personNode.id,target:orgNode.id,label:'Works at',dir:'to',notes:m.meta.title+' ('+m.meta.date+')'};
+    links.push(nl);linkMap.set(nl.id,nl);
+    newLinks.push(nl);
+  });
+
+  // ── 2. CO-PRESENCE links: every keyPeople pair ───────────────
+  // Cap at 6 key people — above that it's a group event, not bilateral
+  var eligible=keyPpl
+    .filter(function(p){return p.name&&p.name.trim().length>1;})
+    .slice(0,6);
+
+  for(var i=0;i<eligible.length;i++){
+    for(var j=i+1;j<eligible.length;j++){
+      var pa=eligible[i],pb=eligible[j];
+      var ma=findEntityMatch(pa.name,'person');
+      var mb=findEntityMatch(pb.name,'person');
+      var na2=ma&&(ma.exact||ma.score>=0.75)?ma.entity:null;
+      var nb2=mb&&(mb.exact||mb.score>=0.75)?mb.entity:null;
+      if(!na2||!nb2||na2.id===nb2.id)continue;
+      if(linkExists(na2.id,nb2.id)){
+        // Enrich existing link
+        var el2=findLink(na2.id,nb2.id);
+        if(el2&&!(el2.notes||'').includes(m.meta.title)){
+          el2.notes=(el2.notes?el2.notes+' | ':'')+m.meta.title;
+          saveLink(el2).catch(function(){});
+          enriched++;
+        }
+        continue;
+      }
+      var nl2={id:base+newLinks.length,source:na2.id,target:nb2.id,label:m.meta.title,dir:'both',notes:m.meta.date};
+      links.push(nl2);linkMap.set(nl2.id,nl2);
+      newLinks.push(nl2);
+    }
+  }
+
+  // ── Save all new links to Firebase ───────────────────────────
+  for(var li=0;li<newLinks.length;li++){
+    try{await saveLink(newLinks[li]);}catch(e){}
+  }
+
+  // ── Store for undo ────────────────────────────────────────────
+  if(newLinks.length){
+    _lastAutoLinks=newLinks.map(function(l){return l.id;});
+    clearTimeout(_undoLinkTimer);
+    _undoLinkTimer=setTimeout(function(){_lastAutoLinks=[];},12000);
+  }
+
+  return{added:newLinks.length,enriched:enriched};
+}
+
+// Undo the last auto-link batch — removes from memory, Firebase, re-renders
+window.undoAutoLinks=async function(){
+  if(!_lastAutoLinks.length)return;
+  clearTimeout(_undoLinkTimer);
+  var ids=_lastAutoLinks.slice();
+  _lastAutoLinks=[];
+  ids.forEach(function(id){
+    links=links.filter(function(l){return l.id!==id;});
+    linkMap.delete(id);
+    try{remove(ref(db,wsPath('links/'+id)));}catch(e){}
+  });
+  renderNetwork();
+  toast('Auto-links undone ('+ids.length+' removed)');
+};
+
+// ══════════════════════════════════════════════════════════════
+// RETROACTIVE LINK ALL
+// Scans every meeting already in the workspace and runs
+// autoSyncLinks on each one — creates all missing works-at and
+// co-presence links for nodes that existed before auto-link was built.
+// Safe to run multiple times: linkExists dedup prevents duplicates.
+// ══════════════════════════════════════════════════════════════
+
+var _retroLinkRunning=false;
+
+window.retroLinkAll=async function(){
+  if(_retroLinkRunning){toast('Already running — please wait');return;}
+  if(!nodes.length){toast('No nodes in Network Map yet');return;}
+  _retroLinkRunning=true;
+
+  var btn=document.getElementById('retro-link-btn');
+  if(btn){btn.disabled=true;btn.textContent='Linking...';}
+
+  // Step 1: Load full meeting history if paginated
+  toast('Loading full meeting history...');
+  var loadAttempts=0;
+  while(!mtgAllLoaded&&loadAttempts<25){
+    try{await loadMoreMeetings();}catch(e){break;}
+    loadAttempts++;
+    await new Promise(function(r){setTimeout(r,120);});
+  }
+
+  var totalAdded=0,totalEnriched=0,processed=0;
+  var allMeetings=meetings.slice(); // snapshot — avoid mutation during loop
+
+  // Step 2: Run autoSyncLinks for every meeting
+  for(var i=0;i<allMeetings.length;i++){
+    var m=allMeetings[i];
+    if(btn)btn.textContent='Linking '+(i+1)+'/'+allMeetings.length+'...';
+    try{
+      var rl=await autoSyncLinks(m);
+      totalAdded+=rl.added;
+      totalEnriched+=rl.enriched;
+    }catch(e){
+      console.warn('retroLinkAll: failed on meeting',m.id,e);
+    }
+    processed++;
+    // Yield to browser every 5 meetings to stay responsive
+    if(processed%5===0)await new Promise(function(r){setTimeout(r,0);});
+  }
+
+  // Step 3: Re-render and report
+  renderNetwork();
+
+  var parts=[];
+  if(totalAdded)parts.push(totalAdded+' link'+(totalAdded!==1?'s':'')+' created');
+  if(totalEnriched)parts.push(totalEnriched+' enriched');
+  var msg=parts.length
+    ?'🔗 Done — '+parts.join(', ')+' across '+processed+' meetings'
+    :'🔗 Done — network already fully connected ('+processed+' meetings scanned)';
+
+  toast(msg);
+  _retroLinkRunning=false;
+  if(btn){btn.disabled=false;btn.textContent='🔗 Link All';}
+};
   var ents=extractEnts(m);
   if(!ents.length)return{added:0,updated:0};
   var added=0,updated=0;
@@ -4434,7 +4662,16 @@ function detectSignals(){
   return signals.slice(0,8);
 }
 
-function renderBoard(){var empty=document.getElementById('board-empty'),body=document.getElementById('board-body');if(!meetings.length){empty.style.display='block';body.style.display='none';return;}empty.style.display='none';body.style.display='block';var allA=meetings.flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title,mdate:m.meta.date});});});var hiA=allA.filter(function(a){return a.priority==='high';});var hiR=meetings.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var allIns=meetings.flatMap(function(m){return m.intel.learningInsights||[];});var personMap={};meetings.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!personMap[p.name])personMap[p.name]={name:p.name,role:p.role,count:0};personMap[p.name].count++;});});var topPeople=Object.values(personMap).sort(function(a,b){return b.count-a.count;}).slice(0,6);var now=new Date();now.setHours(0,0,0,0);var in48=new Date(now);in48.setDate(in48.getDate()+2);var todayItems=[];allA.forEach(function(a){if(!a.deadline)return;var d=new Date(a.deadline+'T00:00:00');if(d<=in48){var diff=Math.round((d-now)/(1000*60*60*24));todayItems.push({label:a.task,owner:a.owner,urgency:diff<=0?'OVERDUE':diff===0?'TODAY':'TOMORROW',color:diff<=0?'#ef4444':'#f59e0b',source:a.mtg});}});if(meetings[0]&&(meetings[0].intel.redFlags||[]).length)todayItems.push({label:(meetings[0].intel.redFlags||[])[0],urgency:'RED FLAG',color:'#ef4444',source:meetings[0].meta.title});var cur=getCurrentFYInfo();var q4Opps=opportunities.filter(function(o){if(o.stage==='won'||o.stage==='lost')return false;if(!o.awardDate)return false;var fi=getFYInfo(o.awardDate);return fi&&fi.fq===4&&fi.daysToEOFY>0&&fi.daysToEOFY<=90;});var h='';if(cur){h+='<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r)">';h+='<div style="flex:1">';h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:'+cur.color+'">'+cur.fullLabel+'</span><span style="font-size:9px;color:var(--t3)">'+cur.short+'</span></div>';h+='<div style="font-size:10px;color:var(--t2);margin-top:2px;line-height:1.3">'+cur.context+'</div>';h+='</div>';h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:16px;font-weight:700;color:'+cur.color+'">'+Math.max(0,cur.daysToEOFY)+'</div><div style="font-size:8px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">d to EOFY</div></div>';h+='</div>';if(q4Opps.length){h+='<div style="padding:6px 10px;margin-bottom:10px;border-left:2px solid var(--amber);background:rgba(245,158,11,.06);border-radius:0 var(--rsm) var(--rsm) 0;font-size:11px;color:var(--text)">'+q4Opps.length+' active opportunit'+(q4Opps.length>1?'ies':'y')+' in Q4 EOFY window: '+q4Opps.map(function(o){return o.name;}).join(', ')+'</div>';}}h+='<div style="background:linear-gradient(135deg,rgba(201,162,39,.07),rgba(139,92,246,.05));border:1px solid rgba(201,162,39,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold)">Today\'s Intel -- '+currentWs.name+'</div><button id="digest-btn" onclick="generateDigest()" style="padding:7px 16px;border:1px solid var(--purple);border-radius:var(--rsm);background:var(--purple);color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 0L6.18 3.82L10 5L6.18 6.18L5 10L3.82 6.18L0 5L3.82 3.82L5 0Z" fill="currentColor"/></svg>Weekly Digest</button></div>';if(todayItems.length){todayItems.slice(0,5).forEach(function(item){h+='<div style="display:flex;gap:7px;align-items:flex-start;padding:4px 0;border-bottom:1px solid rgba(37,45,66,.5)"><span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:'+item.color+'22;color:'+item.color+';flex-shrink:0;margin-top:1px">'+item.urgency+'</span><div><div style="font-size:12px;color:var(--text);line-height:1.4">'+item.label+'</div><div style="font-size:10px;color:var(--t3)">'+item.source+(item.owner?' -- '+item.owner:'')+'</div></div></div>';});}else h+='<div style="font-size:12px;color:var(--t3);text-align:center;padding:5px 0">No urgent items in the next 48 hours</div>';h+='</div>';h+='<div class="g4" style="margin-bottom:16px"><div class="board-kpi"><div class="board-kpi-val" style="color:var(--gold)">'+meetings.length+'</div><div class="board-kpi-lbl">Meetings Logged</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(allA.length?'var(--amber)':'var(--text)')+'">'+allA.length+'</div><div class="board-kpi-lbl">Open Actions</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(hiR.length?'var(--red)':'var(--text)')+'">'+hiR.length+'</div><div class="board-kpi-lbl">High Risks</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:var(--blue)">'+Object.keys(personMap).length+'</div><div class="board-kpi-lbl">People Tracked</div></div></div>';var ph=meetings.slice().reverse().slice(-8);if(ph.length>1){h+='<div class="card"><div class="ctitle">Company Pulse -- History</div><div style="display:flex;gap:8px;flex-wrap:wrap">';ph.forEach(function(m){var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};h+='<div style="text-align:center"><div style="font-size:9px;color:var(--t3);margin-bottom:2px;font-family:\'JetBrains Mono\',monospace">'+m.meta.date.slice(5)+'</div>'+bdg(m.intel.companyPulse||'?',pc2)+'</div>';});h+='</div></div>';}h+='<div class="g2"><div class="card"><div class="ctitle">High Priority Actions ('+hiA.length+')</div>';if(hiA.length)hiA.slice(0,7).forEach(function(a){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;font-weight:500;line-height:1.3">'+a.task+'</div><div style="font-size:10px;color:var(--t2)">'+(a.owner||'')+(a.deadline?' -- Due: '+a.deadline:'')+'</div><div style="font-size:10px;color:var(--t3)">from '+a.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None outstanding</div>';h+='</div><div class="card"><div class="ctitle">Active High Risks ('+hiR.length+')</div>';if(hiR.length)hiR.slice(0,7).forEach(function(r){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;line-height:1.3">'+r.risk+'</div>'+(r.raisedBy?'<div style="font-size:11px;color:var(--gold)">Raised by: '+r.raisedBy+'</div>':'')+'<div style="font-size:10px;color:var(--t3)">from '+r.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None flagged</div>';h+='</div></div>';if(topPeople.length){h+='<div class="card"><div class="ctitle">Most Active People</div><div class="g2">';topPeople.forEach(function(p){var ini=p.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div style="display:flex;gap:7px;align-items:center;padding:4px 0"><div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold);flex-shrink:0">'+ini+'</div><div><div style="font-size:12px;font-weight:500">'+p.name+'</div><div style="font-size:10px;color:var(--t3)">'+p.count+' meeting'+(p.count>1?'s':'')+'</div></div></div>';});h+='</div></div>';}// ── COMMITMENTS on Board ──
+// Debounced renderBoard for Firebase listener calls — prevents triple-render
+// when multiple listeners fire simultaneously (meetings + nodes + commitments)
+function scheduleRenderBoard(){
+  clearTimeout(_boardTimer);
+  _boardTimer=setTimeout(function(){
+    if(activeIntelTab==='board')renderBoard();
+  },150);
+}
+
+function renderBoard(){var empty=document.getElementById('board-empty'),body=document.getElementById('board-body');if(!meetings.length){empty.style.display='block';body.style.display='none';renderOnboardingChecklist();return;}empty.style.display='none';body.style.display='block';var allA=meetings.flatMap(function(m){return(m.intel.actionItems||[]).map(function(a){return Object.assign({},a,{mtg:m.meta.title,mdate:m.meta.date});});});var hiA=allA.filter(function(a){return a.priority==='high';});var hiR=meetings.flatMap(function(m){return(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).map(function(r){return Object.assign({},r,{mtg:m.meta.title});});});var allIns=meetings.flatMap(function(m){return m.intel.learningInsights||[];});var personMap={};meetings.forEach(function(m){(m.intel.keyPeople||[]).forEach(function(p){if(!personMap[p.name])personMap[p.name]={name:p.name,role:p.role,count:0};personMap[p.name].count++;});});var topPeople=Object.values(personMap).sort(function(a,b){return b.count-a.count;}).slice(0,6);var now=new Date();now.setHours(0,0,0,0);var in48=new Date(now);in48.setDate(in48.getDate()+2);var todayItems=[];allA.forEach(function(a){if(!a.deadline)return;var d=new Date(a.deadline+'T00:00:00');if(d<=in48){var diff=Math.round((d-now)/(1000*60*60*24));todayItems.push({label:a.task,owner:a.owner,urgency:diff<=0?'OVERDUE':diff===0?'TODAY':'TOMORROW',color:diff<=0?'#ef4444':'#f59e0b',source:a.mtg});}});if(meetings[0]&&(meetings[0].intel.redFlags||[]).length)todayItems.push({label:(meetings[0].intel.redFlags||[])[0],urgency:'RED FLAG',color:'#ef4444',source:meetings[0].meta.title});var cur=getCurrentFYInfo();var q4Opps=opportunities.filter(function(o){if(o.stage==='won'||o.stage==='lost')return false;if(!o.awardDate)return false;var fi=getFYInfo(o.awardDate);return fi&&fi.fq===4&&fi.daysToEOFY>0&&fi.daysToEOFY<=90;});var h='';if(cur){h+='<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r)">';h+='<div style="flex:1">';h+='<div style="display:flex;align-items:center;gap:6px"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:'+cur.color+'">'+cur.fullLabel+'</span><span style="font-size:9px;color:var(--t3)">'+cur.short+'</span></div>';h+='<div style="font-size:10px;color:var(--t2);margin-top:2px;line-height:1.3">'+cur.context+'</div>';h+='</div>';h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:16px;font-weight:700;color:'+cur.color+'">'+Math.max(0,cur.daysToEOFY)+'</div><div style="font-size:8px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">d to EOFY</div></div>';h+='</div>';if(q4Opps.length){h+='<div style="padding:6px 10px;margin-bottom:10px;border-left:2px solid var(--amber);background:rgba(245,158,11,.06);border-radius:0 var(--rsm) var(--rsm) 0;font-size:11px;color:var(--text)">'+q4Opps.length+' active opportunit'+(q4Opps.length>1?'ies':'y')+' in Q4 EOFY window: '+q4Opps.map(function(o){return o.name;}).join(', ')+'</div>';}}h+='<div style="background:linear-gradient(135deg,rgba(201,162,39,.07),rgba(139,92,246,.05));border:1px solid rgba(201,162,39,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold)">Today\'s Intel -- '+currentWs.name+'</div><button id="digest-btn" onclick="generateDigest()" style="padding:7px 16px;border:1px solid var(--purple);border-radius:var(--rsm);background:var(--purple);color:#fff;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 0L6.18 3.82L10 5L6.18 6.18L5 10L3.82 6.18L0 5L3.82 3.82L5 0Z" fill="currentColor"/></svg>Weekly Digest</button></div>';if(todayItems.length){todayItems.slice(0,5).forEach(function(item){h+='<div style="display:flex;gap:7px;align-items:flex-start;padding:4px 0;border-bottom:1px solid rgba(37,45,66,.5)"><span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:'+item.color+'22;color:'+item.color+';flex-shrink:0;margin-top:1px">'+item.urgency+'</span><div><div style="font-size:12px;color:var(--text);line-height:1.4">'+item.label+'</div><div style="font-size:10px;color:var(--t3)">'+item.source+(item.owner?' -- '+item.owner:'')+'</div></div></div>';});}else h+='<div style="font-size:12px;color:var(--t3);text-align:center;padding:5px 0">No urgent items in the next 48 hours</div>';h+='</div>';h+='<div class="g4" style="margin-bottom:16px"><div class="board-kpi"><div class="board-kpi-val" style="color:var(--gold)">'+meetings.length+'</div><div class="board-kpi-lbl">Meetings Logged</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(allA.length?'var(--amber)':'var(--text)')+'">'+allA.length+'</div><div class="board-kpi-lbl">Open Actions</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:'+(hiR.length?'var(--red)':'var(--text)')+'">'+hiR.length+'</div><div class="board-kpi-lbl">High Risks</div></div><div class="board-kpi"><div class="board-kpi-val" style="color:var(--blue)">'+Object.keys(personMap).length+'</div><div class="board-kpi-lbl">People Tracked</div></div></div>';var ph=meetings.slice().reverse().slice(-8);if(ph.length>1){h+='<div class="card"><div class="ctitle">Company Pulse -- History</div><div style="display:flex;gap:8px;flex-wrap:wrap">';ph.forEach(function(m){var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};h+='<div style="text-align:center"><div style="font-size:9px;color:var(--t3);margin-bottom:2px;font-family:\'JetBrains Mono\',monospace">'+m.meta.date.slice(5)+'</div>'+bdg(m.intel.companyPulse||'?',pc2)+'</div>';});h+='</div></div>';}h+='<div class="g2"><div class="card"><div class="ctitle">High Priority Actions ('+hiA.length+')</div>';if(hiA.length)hiA.slice(0,7).forEach(function(a){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;font-weight:500;line-height:1.3">'+a.task+'</div><div style="font-size:10px;color:var(--t2)">'+(a.owner||'')+(a.deadline?' -- Due: '+a.deadline:'')+'</div><div style="font-size:10px;color:var(--t3)">from '+a.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None outstanding</div>';h+='</div><div class="card"><div class="ctitle">Active High Risks ('+hiR.length+')</div>';if(hiR.length)hiR.slice(0,7).forEach(function(r){h+='<div class="irow"><div class="dot" style="background:var(--red)"></div><div><div style="font-size:13px;line-height:1.3">'+r.risk+'</div>'+(r.raisedBy?'<div style="font-size:11px;color:var(--gold)">Raised by: '+r.raisedBy+'</div>':'')+'<div style="font-size:10px;color:var(--t3)">from '+r.mtg+'</div></div></div>';});else h+='<div style="font-size:13px;color:var(--t2)">None flagged</div>';h+='</div></div>';if(topPeople.length){h+='<div class="card"><div class="ctitle">Most Active People</div><div class="g2">';topPeople.forEach(function(p){var ini=p.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();h+='<div style="display:flex;gap:7px;align-items:center;padding:4px 0"><div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold);flex-shrink:0">'+ini+'</div><div><div style="font-size:12px;font-weight:500">'+p.name+'</div><div style="font-size:10px;color:var(--t3)">'+p.count+' meeting'+(p.count>1?'s':'')+'</div></div></div>';});h+='</div></div>';}// ── COMMITMENTS on Board ──
 var openCommits=commitments.filter(function(c){return c.status==='open';});
 if(openCommits.length){
   var bNow=new Date();bNow.setHours(0,0,0,0);
@@ -4511,9 +4748,9 @@ async function reprocessMeeting(){
     m.ts=new Date().toISOString();
     await saveMeeting(m);
     closeModal('edit-modal');pendingEnts=[];
-    var r=await autoSyncEnts(m);
+    var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);
     renderIntel(m);
-    toast('Reprocessed'+((r.added||r.updated)?' -- '+[r.added?r.added+' new':null,r.updated?r.updated+' updated':null].filter(Boolean).join(', ')+' in Network Map':'')+(m.intelHistory.length?' (v'+(m.intelHistory.length+1)+' — history preserved)':''));
+    var parts2=[];if(r.added)parts2.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts2.push(r.updated+' updated');if(rl.added)parts2.push(rl.added+' link'+(rl.added>1?'s':'')+' created');var rmsg='Reprocessed'+(parts2.length?' — '+parts2.join(', ')+' in Network Map':'')+(m.intelHistory.length?' (v'+(m.intelHistory.length+1)+')':'');if(rl.added>0){var toastEl2=document.getElementById('toast');toastEl2.innerHTML=rmsg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl2.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl2.classList.remove('show');},6000);}else{toast(rmsg);}
   }catch(e){document.getElementById('edit-err').textContent=e.message||'Failed';document.getElementById('edit-err').style.display='inline';}
   btn.disabled=false;btn.textContent='Reprocess';
 }
@@ -4985,6 +5222,212 @@ window.exportBrief=function(){
 // FIREBASE SECURITY RULES — display and copy
 // ══════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════
+// ONBOARDING CHECKLIST
+// Shown on the Board tab when < 3 meetings logged. Tracks 5 key
+// first-run actions. Auto-collapses when all complete.
+// Dismissed state persisted in localStorage per workspace.
+// ══════════════════════════════════════════════════════════════
+
+function getOnboardingDismissed(){
+  try{return localStorage.getItem('fli-onboarding-done-'+(currentWsId||''))===  '1';}catch(e){return false;}
+}
+function setOnboardingDismissed(){
+  try{localStorage.setItem('fli-onboarding-done-'+(currentWsId||''),'1');}catch(e){}
+}
+
+function renderOnboardingChecklist(){
+  var el=document.getElementById('onboarding-checklist');
+  if(!el)return;
+  if(getOnboardingDismissed()){el.innerHTML='';return;}
+
+  // Define 5 steps with live condition checks
+  var steps=[
+    {
+      id:'log',
+      label:'Log your first meeting',
+      detail:'Go to the Log tab — paste Otter.ai transcript or write notes — click Process.',
+      done:meetings.length>0,
+      action:function(){switchIntelTab('log');}
+    },
+    {
+      id:'process',
+      label:'Process a meeting to extract intelligence',
+      detail:'After logging, click Process. Claude extracts people, risks, action items, and stance.',
+      done:meetings.length>0&&meetings.some(function(m){return m.intel&&m.intel.summary;}),
+      action:function(){switchIntelTab('log');}
+    },
+    {
+      id:'network',
+      label:'Add a contact to your Network Map',
+      detail:'Go to Network Map → click + Person → add a T1 or T2 contact you\'re working with.',
+      done:nodes.some(function(n){return n.type==='person';}),
+      action:function(){switchView('network');}
+    },
+    {
+      id:'opp',
+      label:'Create your first opportunity',
+      detail:'Go to Opportunities → + New → name a contract, program, or deal you\'re pursuing.',
+      done:opportunities.length>0,
+      action:function(){switchView('opps');setTimeout(openNewOppModal,100);}
+    },
+    {
+      id:'team',
+      label:'Invite a team member',
+      detail:'Click Members in the nav → enter their email to invite them to the workspace.',
+      done:false, // can't easily check from client without extra FB read
+      action:function(){document.getElementById('nav-members-btn').click();}
+    }
+  ];
+
+  var allDone=steps.filter(function(s){return s.done;}).length;
+  var totalSteps=steps.length;
+
+  // If 4/5 done, auto-dismiss (team invite is hard to track)
+  if(allDone>=4){setOnboardingDismissed();el.innerHTML='';return;}
+
+  var h='<div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden">';
+  h+='<div style="padding:10px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between">';
+  h+='<div><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold)">Getting Started</span>';
+  h+='<span style="font-size:10px;color:var(--t3);margin-left:8px">'+allDone+' / '+totalSteps+' complete</span></div>';
+  // Progress bar
+  h+='<div style="display:flex;align-items:center;gap:8px">';
+  h+='<div style="width:80px;height:4px;background:var(--b1);border-radius:2px"><div style="width:'+(allDone/totalSteps*100)+'%;height:100%;border-radius:2px;background:var(--gold);transition:width .3s"></div></div>';
+  h+='<button onclick="dismissOnboarding()" style="background:none;border:none;color:var(--t3);font-size:12px;cursor:pointer;padding:0" title="Dismiss">×</button>';
+  h+='</div></div>';
+
+  steps.forEach(function(step,i){
+    h+='<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--b1);'+(step.done?'opacity:.5':'')+'cursor:'+(step.done?'default':'pointer')+'"'
+      +(step.done?'':' onclick="onboardingAction('+i+')"')+'>';
+    h+='<div style="width:18px;height:18px;border-radius:50%;border:2px solid '+(step.done?'var(--green)':'var(--b2)')+';background:'+(step.done?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px">';
+    if(step.done)h+='<svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4L3.5 6L6.5 2" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    h+='</div>';
+    h+='<div style="flex:1"><div style="font-size:12px;font-weight:'+(step.done?'400':'600')+';color:'+(step.done?'var(--t2)':'var(--text)')+'">'+step.label+'</div>';
+    if(!step.done)h+='<div style="font-size:10px;color:var(--t3);margin-top:2px;line-height:1.4">'+step.detail+'</div>';
+    h+='</div>';
+    if(!step.done)h+='<div style="color:var(--t3);font-size:14px;margin-top:1px;flex-shrink:0">→</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  el.innerHTML=h;
+}
+
+// Store step actions for onclick handler
+var _onboardingSteps=[];
+window.onboardingAction=function(i){
+  var steps=[
+    function(){switchIntelTab('log');},
+    function(){switchIntelTab('log');},
+    function(){switchView('network');},
+    function(){switchView('opps');setTimeout(function(){if(typeof openNewOppModal==='function')openNewOppModal();},100);},
+    function(){var btn=document.getElementById('nav-members-btn');if(btn)btn.click();}
+  ];
+  if(steps[i])steps[i]();
+};
+window.dismissOnboarding=function(){
+  setOnboardingDismissed();
+  var el=document.getElementById('onboarding-checklist');
+  if(el)el.innerHTML='';
+  // If all meetings logged, show the real board
+  if(meetings.length)renderBoard();
+};
+
+// ══════════════════════════════════════════════════════════════
+// RELATIONSHIP NARRATIVE SUMMARY
+// One Claude call per person — generates a 3-paragraph narrative
+// of how the relationship started, evolved, and where it stands.
+// Injected at top of Timeline tab, cached in _narrativeCache.
+// ══════════════════════════════════════════════════════════════
+
+var _narrativeCache=new Map(); // nodeId → {html, text, generated}
+
+window.generateRelNarrative=async function(){
+  var d=selectedNode;
+  if(!d){toast('Select a contact first');return;}
+  if(!apiKey){toast('Add API key in Settings');return;}
+
+  var nm=getMtgsForNode(d.id);
+  if(!nm.length){toast('No meetings linked to '+d.name);return;}
+
+  var btn=document.getElementById('rel-narrative-btn');
+  var narrativeEl=document.getElementById('timeline360-narrative');
+  if(btn)btn.disabled=true;
+  if(narrativeEl)narrativeEl.innerHTML='<div style="padding:12px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);margin-bottom:10px">'
+    +'<div style="display:inline-flex;gap:6px;align-items:center;font-size:11px;color:var(--t2)">'
+    +'<span class="proc-dots"><span></span><span></span><span></span></span>Synthesizing relationship arc...</div></div>';
+  if(narrativeEl)narrativeEl.style.display='block';
+
+  try{
+    var text=await _callNarrativeClaude(d,nm);
+    var renderedHTML=_renderNarrative(d,text,nm.length);
+    _narrativeCache.set(d.id,{html:renderedHTML,text:text,generated:new Date().toISOString()});
+    if(narrativeEl)narrativeEl.innerHTML=renderedHTML;
+  }catch(e){
+    if(narrativeEl)narrativeEl.innerHTML='<div style="padding:10px;color:var(--red);font-size:11px">Narrative failed: '+(e.message||'Try again')+'</div>';
+  }
+  if(btn){btn.disabled=false;btn.textContent='↺ Refresh';}
+};
+
+async function _callNarrativeClaude(d,meetings){
+  var sorted=meetings.slice().sort(function(a,b){return a.meta.date.localeCompare(b.meta.date);});
+  var stances=[];
+  sorted.forEach(function(m){
+    var p=(m.intel.keyPeople||[]).find(function(x){return nameSimilarity(x.name,d.name)>=0.72;});
+    if(p&&p.stance)stances.push({date:m.meta.date,mtg:m.meta.title,stance:p.stance,watchFor:p.watchFor||''});
+  });
+  var actions=meetings.flatMap(function(m){
+    return(m.intel.actionItems||[]).filter(function(a){return a.owner&&nameSimilarity(a.owner,d.name)>=0.72;})
+      .map(function(a){return a.task+(a.deadline?' (due: '+a.deadline+')':'');});
+  });
+  var redFlags=meetings.flatMap(function(m){return m.intel.redFlags||[];}).slice(0,5);
+
+  var ctx='CONTACT: '+d.name+(d.role?' | '+d.role:'')+(d.org?' @ '+d.org:'')+'\n';
+  ctx+='TOTAL MEETINGS: '+meetings.length+' over '+(Math.floor((new Date(sorted[sorted.length-1].meta.date)-new Date(sorted[0].meta.date))/86400000))+' days\n';
+  ctx+='WORKSPACE: '+currentWs.name+'\n\n';
+  ctx+='MEETING HISTORY:\n';
+  sorted.forEach(function(m){ctx+='['+m.meta.date+'] '+m.meta.title+(m.intel.summary?'\nSummary: '+m.intel.summary.slice(0,200):'')+'\n';});
+  ctx+='\nSTANCE HISTORY:\n';
+  stances.forEach(function(s){ctx+=s.date+': '+s.stance.slice(0,150)+(s.watchFor?' [Watch: '+s.watchFor+']':'')+'\n';});
+  if(actions.length)ctx+='\nTHEIR COMMITMENTS: '+actions.slice(0,5).join('; ')+'\n';
+  if(redFlags.length)ctx+='\nRED FLAGS: '+redFlags.join('; ')+'\n';
+
+  var sp='You are a defense BD analyst writing a relationship intelligence briefing.\n\n'
+    +'Write EXACTLY three paragraphs — no headers, no bullets. Pure prose. Each paragraph should be 3-5 sentences.\n\n'
+    +'Paragraph 1: How this relationship started. When was the first contact, what was the context, what was the initial impression and stance.\n\n'
+    +'Paragraph 2: How it has evolved. What changed over time — stance shifts, key moments, commitments made, concerns raised, what built or damaged trust.\n\n'
+    +'Paragraph 3: Where it stands now. Current disposition, what they need from us, what we need from them, the single most important thing to know about this relationship going forward.\n\n'
+    +'Be specific. Reference actual dates and meeting names. Never fabricate. Under 300 words total.';
+
+  var res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:600,system:sp,messages:[{role:'user',content:ctx}]})
+  });
+  if(!res.ok){var err=await res.json().catch(function(){return{};});throw new Error(err.error?err.error.message:'API error '+res.status);}
+  var d2=await res.json();
+  return(d2.content||[]).map(function(b){return b.text||'';}).join('');
+}
+
+function _renderNarrative(d,text,mtgCount){
+  var paragraphs=text.trim().split(/\n\n+/).filter(function(p){return p.trim().length>20;});
+  var h='<div style="background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(139,92,246,.03));border:1px solid rgba(139,92,246,.2);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px">';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--purple)">Relationship Narrative · '+mtgCount+' meetings</div>';
+  h+='<button onclick="navigator.clipboard.writeText(window._lastNarrativeText||\'\')" style="font-size:9px;padding:1px 6px;border:1px solid rgba(139,92,246,.3);border-radius:3px;background:transparent;color:var(--purple);cursor:pointer">Copy</button>';
+  h+='</div>';
+  paragraphs.forEach(function(p,i){
+    var colors=['var(--t2)','var(--text)','var(--gold)'];
+    var labels=['ORIGIN','EVOLUTION','NOW'];
+    h+='<div style="margin-bottom:'+(i<paragraphs.length-1?'10px':'0')+'">';
+    h+='<div style="font-size:8px;font-family:\'JetBrains Mono\',monospace;color:'+colors[i%3]+';letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">'+(labels[i%3]||'')+'</div>';
+    h+='<div style="font-size:12px;color:var(--text);line-height:1.75">'+p.trim()+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  window._lastNarrativeText=text;
+  return h;
+}
+
 var FIREBASE_RULES=JSON.stringify({
   "rules":{
     "users":{"$uid":{".read":"auth != null && auth.uid === $uid",".write":"auth != null && auth.uid === $uid"}},
@@ -5217,6 +5660,9 @@ function getStrength(id){var connIds=links.filter(function(l){var s=l.source&&l.
 function computeRelHealth(nodeId){
   var n=nodeMap.get(nodeId);if(!n)return 0;
   var mtgs=getMtgsForNode(nodeId);if(!mtgs.length)return 0;
+  // Cache keyed on nodeId + meeting count — invalidated when meetings rebuild
+  var cacheKey=nodeId+':'+mtgs.length;
+  if(_healthCache.has(cacheKey))return _healthCache.get(cacheKey);
   var sorted=mtgs.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);});
   var now=new Date();
 
@@ -5266,7 +5712,9 @@ function computeRelHealth(nodeId){
   }
 
   var raw=recency+freqTrend+stanceScore+fulfillScore;// max = 3+2.5+2.5+2 = 10
-  return Math.min(10,Math.max(0,Math.round(raw)));
+  var result=Math.min(10,Math.max(0,Math.round(raw)));
+  _healthCache.set(cacheKey,result); // cache for this render cycle
+  return result;
 }
 
 // Health color based on score
@@ -5512,8 +5960,19 @@ function renderTimeline360(d){
   }
 
   var h='';
-  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:12px">';
-  h+=sorted.length+' meetings · relationship arc</div>';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">';
+  h+=sorted.length+' meetings · relationship arc';
+  h+='<button id="rel-narrative-btn" onclick="generateRelNarrative()" style="font-size:10px;padding:3px 9px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);cursor:pointer;font-family:\'Outfit\',sans-serif">'
+    +(_narrativeCache.has(d.id)?'↺ Refresh':'✦ Summarize')+'</button>';
+  h+='</div>';
+
+  // Show cached narrative if exists
+  var narrativeEl=document.getElementById('timeline360-narrative');
+  if(narrativeEl){
+    var cached=_narrativeCache.get(d.id);
+    if(cached){narrativeEl.innerHTML=cached.html;narrativeEl.style.display='block';}
+    else{narrativeEl.innerHTML='';narrativeEl.style.display='none';}
+  }
 
   // Calculate relationship arc: started, turning points, current state
   var firstMtg=sorted[0];
