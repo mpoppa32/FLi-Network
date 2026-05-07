@@ -71,7 +71,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit
 .net-cal{position:absolute;top:0;left:0;bottom:0;width:220px;background:var(--s1);border-right:1px solid var(--b1);display:flex;flex-direction:column;z-index:10}
 .net-panel{position:absolute;top:0;right:0;bottom:0;width:360px;background:var(--s1);border-left:1px solid var(--b1);transform:translateX(100%);transition:transform .25s;z-index:10;display:flex;flex-direction:column;overflow:hidden}
 .net-panel.open{transform:translateX(0)}
-.net-toolbar{position:absolute;top:0;left:220px;right:0;height:42px;background:rgba(11,13,17,.9);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 14px;gap:6px;z-index:9;backdrop-filter:blur(8px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.net-toolbar{position:absolute;top:0;left:220px;right:0;height:42px;background:rgba(11,13,17,.9);border-bottom:1px solid var(--b1);display:flex;align-items:center;padding:0 14px;gap:4px;z-index:9;backdrop-filter:blur(8px)}
 .search-inp{flex:1;max-width:260px;background:transparent;border:none;outline:none;font-size:12px;font-family:'Outfit',sans-serif;color:var(--text)}
 .search-inp::placeholder{color:var(--t3)}
 .filter-scroll{display:flex;gap:4px;overflow-x:auto;flex:1}
@@ -390,7 +390,12 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   /* Prep output full width */
   #prep-out .g2{grid-template-columns:1fr}
 }
-.export-btn{padding:3px 8px;border:1px solid rgba(201,162,39,.4);border-radius:4px;background:transparent;color:var(--gold);font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s}
+.comp-sidebar{width:260px;flex-shrink:0;border-right:1px solid var(--b1);display:flex;flex-direction:column;overflow:hidden;background:var(--s1)}
+.comp-item{padding:10px 14px;border-bottom:1px solid var(--b1);cursor:pointer;transition:background .1s}
+.comp-item:hover,.comp-item.active{background:var(--s2)}
+.comp-item.active{border-left:3px solid var(--red)}
+.comp-threat{background:rgba(239,68,68,.08);border-left:3px solid var(--red)}
+.comp-main{flex:1;overflow-y:auto;padding:20px}
 .export-btn:hover{background:rgba(201,162,39,.1)}
 .transcript-banner{background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.04));border:1px solid rgba(34,197,94,.3);border-radius:var(--rsm);padding:8px 11px;margin-bottom:8px;display:none}
 .transcript-speaker-pill{display:inline-block;font-size:10px;padding:1px 7px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);border-radius:10px;color:#22c55e;margin:1px}
@@ -456,6 +461,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <button class="view-tab" id="vtab-opps" onclick="switchView('opps')">Opportunities</button>
       <button class="view-tab" id="vtab-network" onclick="switchView('network')">Network Map</button>
       <button class="view-tab" id="vtab-timeline" onclick="switchView('timeline')">Timeline</button>
+      <button class="view-tab" id="vtab-competitors" onclick="switchView('competitors')" style="color:var(--red)">Competitive</button>
     </div>
     <div class="nav-spacer"></div>
     <div class="sync-pill">
@@ -661,6 +667,8 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;opacity:.4"><circle cx="6" cy="6" r="5" stroke="#e2e8f4" stroke-width="1.5"/><line x1="10" y1="10" x2="13" y2="13" stroke="#e2e8f4" stroke-width="1.5" stroke-linecap="round"/></svg>
       <input class="search-inp" id="net-search" placeholder="Search nodes..." oninput="onNetSearch()" onblur="setTimeout(hideNetSearch,200)">
       <div class="ntb-sep"></div>
+      <button class="nb" id="layout-btn" onclick="toggleLayoutPanel()" style="color:var(--blue);border-color:rgba(59,130,246,.4)" title="Layout tools">⊡ Layout</button>
+      <div class="ntb-sep"></div>
       <button class="nb" onclick="openAddModal('company')">+ Company</button>
       <button class="nb" onclick="openAddModal('person')">+ Person</button>
       <button class="nb" onclick="openAddModal('government')" style="color:#60a5fa;border-color:rgba(96,165,250,.4)">+ Gov</button>
@@ -679,15 +687,36 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <button class="nb" onclick="fitGraph()">Fit</button>
       <button class="nb" onclick="zoomIn()">+</button>
       <button class="nb" onclick="zoomOut()">&minus;</button>
-      <button class="nb" id="reset-layout-btn" onclick="resetLayout()" style="color:var(--t2);border-color:var(--b2)" title="Reset ALL node positions — full radial hub layout">↺ Reset</button>
-      <button class="nb" id="auto-arrange-btn" onclick="autoArrange()" style="color:var(--blue);border-color:rgba(59,130,246,.4)" title="Auto-arrange: keeps T1 pins, reorganizes everything else">⊡ Arrange</button>
       <div class="ntb-sep"></div>
       <button class="nb" id="path-btn" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.4)">⇢ Path</button>
       <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
-      <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>out</button>
+      <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
     </div>
-    <!-- PATH FINDER PANEL -->
+    <!-- LAYOUT PANEL -->
+    <div id="layout-panel" style="display:none;position:absolute;top:52px;left:14px;width:300px;background:var(--s1);border:1px solid rgba(59,130,246,.4);border-radius:var(--r);z-index:20;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--blue)">⊡ Network Layout</div>
+        <button onclick="toggleLayoutPanel()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:14px;line-height:1">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="autoArrange();toggleLayoutPanel();" style="width:100%;padding:10px 12px;background:var(--s2);border:1px solid rgba(59,130,246,.3);border-radius:var(--rsm);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;text-align:left">
+          ⊡ Auto-Arrange
+          <div style="font-size:10px;color:var(--t2);font-weight:400;margin-top:2px">Reorganize into hub-and-spoke layout. Preserves any T1 contacts you manually positioned.</div>
+        </button>
+        <button onclick="resetLayout();toggleLayoutPanel();" style="width:100%;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);color:var(--t2);font-size:12px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;text-align:left">
+          ↺ Full Reset
+          <div style="font-size:10px;color:var(--t3);font-weight:400;margin-top:2px">Clear ALL positions and re-run layout from scratch. Use this first time on existing data.</div>
+        </button>
+        <button onclick="retroLinkAll();toggleLayoutPanel();" style="width:100%;padding:10px 12px;background:var(--s2);border:1px solid rgba(34,197,94,.3);border-radius:var(--rsm);color:var(--green);font-size:12px;font-weight:500;cursor:pointer;font-family:'Outfit',sans-serif;text-align:left">
+          🔗 Connect Unlinked Nodes
+          <div style="font-size:10px;color:var(--t2);font-weight:400;margin-top:2px">Scan all meetings and create missing Works-at and co-presence links. Run before arranging.</div>
+        </button>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--b1);font-size:10px;color:var(--t3);line-height:1.5">
+        Tip: Run <strong style="color:var(--t2)">Connect</strong> first, then <strong style="color:var(--t2)">Auto-Arrange</strong> for the cleanest result.
+      </div>
+    </div>
     <div id="path-panel" style="display:none;position:absolute;top:52px;right:14px;width:320px;background:var(--s1);border:1px solid rgba(139,92,246,.4);border-radius:var(--r);z-index:20;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--purple)">⇢ Relationship Path Finder</div>
@@ -791,6 +820,31 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div id="tl-fy-bar"></div>
       <div id="tl-sections"></div>
     </div>
+  </div>
+</div>
+
+<!-- COMPETITIVE INTELLIGENCE VIEW -->
+<div id="competitors-view" style="display:none;flex:1;overflow:hidden">
+  <div class="comp-sidebar">
+    <div style="padding:11px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--red)">Competitive Intel</div>
+      <span id="comp-count" style="font-size:10px;color:var(--t3)"></span>
+    </div>
+    <div style="padding:7px 10px;border-bottom:1px solid var(--b1);flex-shrink:0">
+      <input type="text" id="comp-search" placeholder="Filter competitors..." autocomplete="off"
+        style="width:100%;background:transparent;border:1px solid var(--b1);border-radius:var(--rsm);padding:5px 8px;color:var(--text);font-size:12px;outline:none;box-sizing:border-box"
+        oninput="renderCompetitorList()">
+    </div>
+    <div id="comp-list" style="overflow-y:auto;flex:1"></div>
+  </div>
+  <div class="comp-main">
+    <div id="comp-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--t3);text-align:center">
+      <div style="font-size:32px;margin-bottom:12px">⚡</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">Competitive Intelligence</div>
+      <div style="font-size:12px;color:var(--t2);max-width:320px;line-height:1.6">Every company flagged as a competitor or incumbent across your meetings — ranked by threat level and mention frequency.</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:12px">Select a competitor to see full analysis</div>
+    </div>
+    <div id="comp-detail" style="display:none"></div>
   </div>
 </div>
 
@@ -1248,6 +1302,7 @@ function updateApiKeyUI(){
 function rebuildMeetingsArray(){
   meetings=Array.from(meetingMap.values()).sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});
   _healthCache.clear(); // invalidate health scores — meeting data changed
+  _competitorCache=null; // invalidate competitor index
 }
 function rebuildNodesArray(){
   nodes=Array.from(nodeMap.values());
@@ -1621,7 +1676,7 @@ function wireListeners(){
   buildEdgeLegend();injectPWA();
 }
 
-function switchView(v){activeView=v;['intel','opps','network','timeline'].forEach(function(x){var el=document.getElementById(x+'-view');if(el)el.style.display=x===v?'flex':'none';var tb=document.getElementById('vtab-'+x);if(tb)tb.classList.toggle('active',x===v);});if(v==='network'){resizeCanvas();setTimeout(function(){if(nodes.length)fitGraph();},200);}if(v==='intel'&&activeIntelTab==='board')renderBoard();if(v==='timeline')renderTimeline();if(v==='opps')renderOppSidebar();}
+function switchView(v){activeView=v;['intel','opps','network','timeline','competitors'].forEach(function(x){var el=document.getElementById(x+'-view');if(el)el.style.display=x===v?'flex':'none';var tb=document.getElementById('vtab-'+x);if(tb)tb.classList.toggle('active',x===v);});if(v==='network'){resizeCanvas();setTimeout(function(){if(nodes.length)fitGraph();},200);}if(v==='intel'&&activeIntelTab==='board')renderBoard();if(v==='timeline')renderTimeline();if(v==='opps')renderOppSidebar();if(v==='competitors'){renderCompetitorList();}}
 
 // ── OPPORTUNITY STAGE CONFIG ─────────────────────────────────
 var OPP_STAGES=[
@@ -5557,6 +5612,236 @@ window.toggleCalibrationPanel=function(){
   detail.innerHTML=h;
 };
 
+// ══════════════════════════════════════════════════════════════
+// COMPETITIVE INTELLIGENCE DASHBOARD
+// Indexes every company mentioned across all meetings, flags
+// competitors/incumbents, shows network overlap, trend, and
+// full meeting-by-meeting mention history.
+// ══════════════════════════════════════════════════════════════
+
+var _competitorCache=null; // invalidated in rebuildMeetingsArray
+var currentCompetitor=null;
+
+var COMP_ROLE_PATTERNS=/competitor|competing|incumbent|alternative|instead of|versus|vs\.?|losing to|lost to|threat|prime contractor|selected over|beat us|they won/i;
+var COMP_ROLE_PARTIAL=/prime|other vendor|existing vendor|current vendor|preferred vendor/i;
+
+function buildCompetitorIndex(){
+  if(_competitorCache)return _competitorCache;
+  var index=new Map(); // companyName.lower → {name, mentions, meetings[], roles[], isCompetitor, lastSeen, trend}
+  var now=new Date();
+  var d30=new Date(now-30*86400000);
+
+  meetings.forEach(function(m){
+    var mDate=new Date(m.meta.date+'T00:00:00');
+    (m.intel.companies||[]).forEach(function(c){
+      if(!c.name||c.name.trim().length<2)return;
+      var key=c.name.trim().toLowerCase();
+      if(!index.has(key))index.set(key,{
+        name:c.name.trim(),mentions:0,meetings:[],
+        roles:[],isCompetitor:false,lastSeen:'',
+        recentMentions:0,contexts:[]
+      });
+      var entry=index.get(key);
+      entry.mentions++;
+      entry.meetings.push({id:m.id,date:m.meta.date,title:m.meta.title,role:c.role||'',notes:c.notes||''});
+      if(c.role&&!entry.roles.includes(c.role))entry.roles.push(c.role);
+      if(!entry.lastSeen||m.meta.date>entry.lastSeen)entry.lastSeen=m.meta.date;
+      if(mDate>d30)entry.recentMentions++;
+      // Check if flagged as competitor
+      var roleText=(c.role||'')+(c.notes||'');
+      if(COMP_ROLE_PATTERNS.test(roleText)||COMP_ROLE_PARTIAL.test(roleText)){
+        entry.isCompetitor=true;
+      }
+      // Store context snippet
+      if(c.notes&&entry.contexts.length<3)entry.contexts.push({date:m.meta.date,text:c.notes.slice(0,200),mtg:m.meta.title});
+    });
+    // Also scan summaries for pattern-based detection
+    var rawText=(m.intel.summary||'');
+    var patt=/([\w\s&\.]+?)\s+(?:is the|as the|as an?)\s+(?:incumbent|competitor|competing firm|prime contractor)/gi;
+    var match;
+    while((match=patt.exec(rawText))!==null){
+      var n=match[1].trim().replace(/^(and|the|with|but)\s+/i,'');
+      if(n.length<2||n.length>50)continue;
+      var key2=n.toLowerCase();
+      if(!index.has(key2))index.set(key2,{name:n,mentions:0,meetings:[],roles:[],isCompetitor:true,lastSeen:m.meta.date,recentMentions:0,contexts:[]});
+      var entry2=index.get(key2);
+      entry2.isCompetitor=true;
+      if(!entry2.roles.includes('Detected: incumbent/competitor'))entry2.roles.push('Detected: incumbent/competitor');
+    }
+  });
+
+  // Compute network overlap for each company
+  index.forEach(function(entry){
+    entry.networkNodes=[];
+    nodes.forEach(function(n){
+      if(!n.org)return;
+      if(nameSimilarity(n.org.toLowerCase(),entry.name.toLowerCase())>=0.75){
+        entry.networkNodes.push({id:n.id,name:n.name,role:n.role||'',type:n.type});
+      }
+    });
+    // Also check if anyone in keyPeople across meetings mentions this company
+    entry.keyContacts=[];
+    entry.meetings.forEach(function(mr){
+      var m=meetingMap.get(mr.id);if(!m)return;
+      (m.intel.keyPeople||[]).forEach(function(p){
+        if(!p.org)return;
+        if(nameSimilarity(p.org.toLowerCase(),entry.name.toLowerCase())>=0.75){
+          if(!entry.keyContacts.find(function(c){return c.name===p.name;})){
+            entry.keyContacts.push({name:p.name,role:p.role||'',org:p.org||''});
+          }
+        }
+      });
+    });
+    // Trend: recent vs historical
+    var historicalRate=entry.mentions>0?(entry.mentions-entry.recentMentions)/Math.max(1,meetings.length-entry.meetings.filter(function(mr){var d=new Date(mr.date+'T00:00:00');return d>new Date(Date.now()-30*86400000);}).length):0;
+    var recentRate=entry.recentMentions/Math.max(1,meetings.filter(function(m){return new Date(m.meta.date+'T00:00:00')>new Date(Date.now()-30*86400000);}).length);
+    entry.trend=recentRate>historicalRate*1.5?'rising':recentRate<historicalRate*0.5?'falling':'stable';
+    // Sort meetings by date desc
+    entry.meetings.sort(function(a,b){return b.date.localeCompare(a.date);});
+  });
+
+  // Convert to sorted array: competitors first, then by mention count
+  var arr=Array.from(index.values()).filter(function(e){return e.mentions>0;});
+  arr.sort(function(a,b){
+    if(a.isCompetitor!==b.isCompetitor)return a.isCompetitor?-1:1;
+    return b.mentions-a.mentions;
+  });
+  _competitorCache=arr;
+  return arr;
+}
+
+window.renderCompetitorList=function(){
+  var competitors=buildCompetitorIndex();
+  var q=(document.getElementById('comp-search')||{}).value||'';
+  var filtered=q?competitors.filter(function(c){return c.name.toLowerCase().includes(q.toLowerCase());}):competitors;
+  var countEl=document.getElementById('comp-count');
+  if(countEl)countEl.textContent=filtered.filter(function(c){return c.isCompetitor;}).length+' threats';
+  var listEl=document.getElementById('comp-list');
+  if(!listEl)return;
+  if(!filtered.length){
+    listEl.innerHTML='<div style="padding:20px;text-align:center;font-size:12px;color:var(--t3)">No competitors detected yet.<br><br>Process meetings where competitors are mentioned and they\'ll appear here.</div>';
+    return;
+  }
+  var h='';
+  filtered.forEach(function(c,i){
+    var trendIcon=c.trend==='rising'?'↑':c.trend==='falling'?'↓':'→';
+    var trendColor=c.trend==='rising'?'var(--red)':c.trend==='falling'?'var(--green)':'var(--t3)';
+    var isActive=currentCompetitor&&currentCompetitor.name===c.name;
+    h+='<div class="comp-item'+(c.isCompetitor?' comp-threat':'')+(isActive?' active':'')+'" onclick="selectCompetitor(\''+c.name.replace(/'/g,"\\'")+'\')">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">';
+    h+='<div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">'+c.name+'</div>';
+    h+='<div style="display:flex;align-items:center;gap:5px;flex-shrink:0">';
+    h+='<span style="font-size:11px;color:'+trendColor+'" title="Mention trend">'+trendIcon+'</span>';
+    h+='<span style="font-size:10px;font-weight:700;color:'+(c.isCompetitor?'var(--red)':'var(--t2)')+';font-family:\'JetBrains Mono\',monospace">'+c.mentions+'</span>';
+    h+='</div></div>';
+    h+='<div style="display:flex;align-items:center;gap:5px">';
+    if(c.isCompetitor)h+='<span style="font-size:9px;padding:1px 5px;background:rgba(239,68,68,.12);color:var(--red);border-radius:3px;font-family:\'JetBrains Mono\',monospace">THREAT</span>';
+    if(c.networkNodes&&c.networkNodes.length)h+='<span style="font-size:9px;padding:1px 5px;background:rgba(139,92,246,.1);color:var(--purple);border-radius:3px">'+c.networkNodes.length+' in network</span>';
+    if(c.recentMentions>0)h+='<span style="font-size:9px;color:var(--t3)">'+c.recentMentions+' recent</span>';
+    h+='</div></div>';
+  });
+  listEl.innerHTML=h;
+};
+
+window.selectCompetitor=function(name){
+  var competitors=buildCompetitorIndex();
+  var c=competitors.find(function(x){return x.name===name;});
+  if(!c)return;
+  currentCompetitor=c;
+  // Highlight in list
+  renderCompetitorList();
+  // Show detail
+  var emptyEl=document.getElementById('comp-empty');
+  var detailEl=document.getElementById('comp-detail');
+  if(emptyEl)emptyEl.style.display='none';
+  if(detailEl){detailEl.style.display='block';detailEl.innerHTML=_buildCompetitorDetail(c);}
+};
+
+function _buildCompetitorDetail(c){
+  var h='';
+  // Header
+  h+='<div style="margin-bottom:20px">';
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px">';
+  h+='<div><div style="font-size:20px;font-weight:700;color:var(--text)">'+c.name+'</div>';
+  if(c.roles.length)h+='<div style="font-size:11px;color:var(--t2);margin-top:3px">'+c.roles.slice(0,3).join(' · ')+'</div>';
+  h+='</div>';
+  // Threat badge
+  if(c.isCompetitor)h+='<div style="padding:4px 10px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);color:var(--red);font-size:11px;font-weight:700;font-family:\'JetBrains Mono\',monospace;flex-shrink:0">ACTIVE THREAT</div>';
+  h+='</div>';
+  // KPI row
+  var trendColor=c.trend==='rising'?'var(--red)':c.trend==='falling'?'var(--green)':'var(--t2)';
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">';
+  [{v:c.mentions,l:'Total Mentions',c2:'var(--red)'},{v:c.recentMentions,l:'Last 30d',c2:trendColor},
+   {v:c.networkNodes?c.networkNodes.length:0,l:'In Network',c2:'var(--purple)'},
+   {v:c.keyContacts?c.keyContacts.length:0,l:'Contacts',c2:'var(--amber)'}
+  ].forEach(function(k){
+    h+='<div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:10px;text-align:center">';
+    h+='<div style="font-size:18px;font-weight:700;color:'+k.c2+'">'+k.v+'</div>';
+    h+='<div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-top:2px">'+k.l+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  // Trend indicator
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding:8px 12px;background:var(--s2);border-radius:var(--rsm)">';
+  h+='<span style="font-size:16px;color:'+trendColor+'">'+(c.trend==='rising'?'↑':c.trend==='falling'?'↓':'→')+'</span>';
+  h+='<div><div style="font-size:11px;font-weight:600;color:'+trendColor+'">'+(c.trend==='rising'?'Rising threat — more frequent recently':'Falling — less mention in last 30 days')+'</div>';
+  h+='<div style="font-size:10px;color:var(--t3)">Last seen: '+c.lastSeen+'</div></div></div>';
+
+  // Network overlap — people in your network at this company
+  if(c.networkNodes&&c.networkNodes.length){
+    h+='<div style="margin-bottom:16px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--purple);margin-bottom:7px">Your Network Contacts at '+c.name+'</div>';
+    c.networkNodes.forEach(function(n){
+      h+='<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--b1)">';
+      var ini=n.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+      h+='<div style="width:26px;height:26px;border-radius:50%;background:var(--s2);border:1px solid var(--purple);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--purple)">'+ini+'</div>';
+      h+='<div><div style="font-size:12px;font-weight:600">'+n.name+'</div>';
+      if(n.role)h+='<div style="font-size:10px;color:var(--t2)">'+n.role+'</div></div>';
+      h+='<button onclick="openNetPanel(nodeMap.get('+n.id+'))" style="margin-left:auto;font-size:9px;padding:2px 7px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t2);cursor:pointer">View →</button>';
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
+  // Key contacts mentioned from this company (from meeting intel)
+  if(c.keyContacts&&c.keyContacts.length){
+    h+='<div style="margin-bottom:16px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--amber);margin-bottom:7px">People Mentioned from '+c.name+'</div>';
+    c.keyContacts.slice(0,6).forEach(function(p){
+      h+='<div style="font-size:11px;padding:5px 0;border-bottom:1px solid var(--b1);display:flex;gap:6px">';
+      h+='<span style="color:var(--t3)">◦</span><span style="font-weight:500">'+p.name+'</span>';
+      if(p.role)h+='<span style="color:var(--t2)">· '+p.role+'</span>';
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
+  // Context snippets
+  if(c.contexts&&c.contexts.length){
+    h+='<div style="margin-bottom:16px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold);margin-bottom:7px">Intelligence Excerpts</div>';
+    c.contexts.forEach(function(ctx){
+      h+='<div style="padding:8px 10px;background:var(--s2);border-left:2px solid var(--gold);border-radius:0 var(--rsm) var(--rsm) 0;margin-bottom:6px">';
+      h+='<div style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;margin-bottom:4px">'+ctx.date+' · '+ctx.mtg+'</div>';
+      h+='<div style="font-size:12px;color:var(--text);line-height:1.55;font-style:italic">"'+ctx.text+'"</div>';
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
+  // Meeting history
+  h+='<div><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:7px">All Mentions ('+c.meetings.length+')</div>';
+  c.meetings.forEach(function(mr){
+    var roleLabel=mr.role?'<span style="font-size:9px;padding:0 5px;background:rgba(239,68,68,.1);color:var(--red);border-radius:3px;font-family:\'JetBrains Mono\',monospace">'+mr.role+'</span>':'';
+    h+='<div style="padding:7px 0;border-bottom:1px solid var(--b1);cursor:pointer" onclick="switchView(\'intel\');setTimeout(function(){goIntelById('+mr.id+');},100)">';
+    h+='<div style="display:flex;align-items:center;gap:7px">';
+    h+='<span style="font-size:9px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;flex-shrink:0">'+mr.date+'</span>';
+    h+='<span style="font-size:11px;font-weight:500;flex:1">'+mr.title+'</span>';
+    h+=roleLabel+'</div>';
+    if(mr.notes)h+='<div style="font-size:10px;color:var(--t2);margin-top:2px;line-height:1.4">'+mr.notes.slice(0,120)+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  return h;
+}
+
 function exportData(){var backup={version:6,app:'FLiIntel',workspace:currentWs.name,exported:new Date().toISOString(),meetings:meetings,entities:entities,nodes:nodes.map(function(n){var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;return c;}),links:links.map(function(l){return{id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};}),calEntries:calEntries,tlCommitments:tlCommitments};var blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FLiIntel_'+currentWs.name+'_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);toast('Backup exported');}
 async function importData(event){var file=event.target.files[0];if(!file)return;var reader=new FileReader();reader.onload=async function(e){try{var data=JSON.parse(e.target.result);var ms=data.meetings||[];var ns=data.entities||data.nodes||[];var ls=data.links||data.edges||[];if(!ms.length&&!ns.length){toast('No data found');return;}if(!confirm('Import '+ms.length+' meetings and '+ns.length+' nodes from '+(data.workspace||'backup')+'?'))return;toast('Uploading...');var existingMIds=new Set(meetings.map(function(m){return m.id;}));for(var i=0;i<ms.length;i++){if(!existingMIds.has(ms[i].id))await saveMeeting(ms[i]);}if(ns.length){var existingNIds=new Set(nodes.map(function(n){return n.id;}));var toAddN=ns.filter(function(n){return!existingNIds.has(n.id);});for(var j=0;j<toAddN.length;j++){var imp=toAddN[j];nodes.push(imp);nodeMap.set(imp.id,imp);await saveNode(imp);}}if(ls.length){for(var k=0;k<ls.length;k++){var l=ls[k];var cl={id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};var ex2=links.find(function(x){return x.id===cl.id;});if(!ex2){links.push(cl);linkMap.set(cl.id,cl);await saveLink(cl);}}}if(data.calEntries&&data.calEntries.length){calEntries=data.calEntries;await saveCal();}if(data.tlCommitments&&data.tlCommitments.length){tlCommitments=data.tlCommitments;await saveTLCommitments();}toast('Import complete');}catch(err){console.error(err);toast('Import failed: '+(err.message||'Could not read file'));}};reader.onerror=function(){toast('Could not read file');};reader.readAsText(file);event.target.value='';}
 
@@ -6355,6 +6640,18 @@ window.resetLayout=function(){
 };
 
 // Auto-arrange: resets positions but PRESERVES T1 nodes you manually pinned
+window.toggleLayoutPanel=function(){
+  var panel=document.getElementById('layout-panel');
+  if(!panel)return;
+  var isOpen=panel.style.display!=='none';
+  panel.style.display=isOpen?'none':'block';
+  // Close other floating panels
+  if(!isOpen){
+    var pp=document.getElementById('path-panel');if(pp)pp.style.display='none';
+    var dp=document.getElementById('dedup-panel');if(dp)dp.style.display='none';
+  }
+};
+
 window.autoArrange=function(){
   var preserved=0;
   nodes.forEach(function(n){
