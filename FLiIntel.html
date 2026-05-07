@@ -421,6 +421,25 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 .rec-footer{padding:7px 12px;border-top:1px solid rgba(239,68,68,.15);display:flex;align-items:center;justify-content:space-between}
 .rec-word-count{font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace}
 .rec-audio-note{font-size:10px;color:var(--t3);padding:6px 12px;border-top:1px solid rgba(239,68,68,.1);display:none}
+
+/* ── PROGRAM VIEW ─────────────────────────────────────────── */
+.pg-toolbar{position:absolute;top:0;left:220px;right:0;height:42px;
+  background:rgba(13,27,46,.97);border-bottom:1px solid rgba(139,92,246,.35);
+  display:none;align-items:center;padding:0 14px;gap:10px;z-index:11}
+.pg-toolbar.active{display:flex}
+.pg-panel{position:absolute;top:0;right:0;bottom:0;width:300px;
+  background:var(--s1);border-left:1px solid rgba(139,92,246,.3);
+  display:none;flex-direction:column;overflow:hidden;z-index:10}
+.pg-panel.active{display:flex}
+.pg-coverage-bar{height:6px;border-radius:3px;background:var(--b1);overflow:hidden}
+.pg-coverage-fill{height:100%;border-radius:3px;transition:width .6s}
+.pg-role{display:flex;align-items:flex-start;gap:7px;padding:5px 0;
+  border-bottom:1px solid rgba(30,54,84,.4)}
+.pg-role:last-child{border-bottom:none}
+.pg-role-icon{width:16px;height:16px;border-radius:50%;flex-shrink:0;
+  margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:9px}
+@keyframes pgPulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+.pg-ghost-pulse{animation:pgPulse 2s ease-in-out infinite}
 </style>
 </head>
 <body>
@@ -762,6 +781,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <button class="nb" onclick="zoomOut()">&minus;</button>
       <div class="ntb-sep"></div>
       <button class="nb" id="path-btn" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.4)">⇢ Path</button>
+      <button class="nb" id="pg-view-btn" onclick="togglePgPicker()" style="color:var(--gold);border-color:rgba(201,162,39,.4)" title="Program View — see your relationship coverage for a specific opportunity">⊞ Program</button>
       <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
       <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
@@ -818,6 +838,39 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div id="dedup-progress" style="display:none;padding:10px 0;text-align:center">
         <span class="proc-dots"><span></span><span></span><span></span></span>
         <span id="dedup-progress-txt" style="font-size:11px;color:var(--t2);margin-left:8px">Merging...</span>
+      </div>
+    </div>
+    <!-- PROGRAM VIEW PICKER -->
+    <div id="pg-picker-panel" style="display:none;position:absolute;top:52px;left:220px;width:320px;background:var(--s1);border:1px solid rgba(201,162,39,.4);border-radius:var(--r);z-index:20;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold)">⊞ Program View</div>
+        <button onclick="togglePgPicker()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:14px;line-height:1">×</button>
+      </div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">Select an active opportunity to see your full relationship coverage — who you have, who you're missing, and how to fill the gaps.</div>
+      <div id="pg-opp-list" style="display:flex;flex-direction:column;gap:5px"></div>
+      <div id="pg-no-opps" style="display:none;font-size:11px;color:var(--t3);text-align:center;padding:12px 0">No active opportunities.<br>Create one in the Opportunities tab first.</div>
+    </div>
+    <!-- PROGRAM VIEW TOOLBAR (replaces net-toolbar when active) -->
+    <div class="pg-toolbar" id="pg-toolbar">
+      <button onclick="exitProgramView()" style="padding:4px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif">← Full Map</button>
+      <div style="width:1px;height:18px;background:var(--b1);flex-shrink:0"></div>
+      <div id="pg-toolbar-name" style="font-size:12px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      <div id="pg-toolbar-stage" style="font-size:10px;padding:2px 8px;border-radius:10px"></div>
+      <div id="pg-toolbar-prob" style="font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace"></div>
+    </div>
+    <!-- PROGRAM VIEW SIDEBAR PANEL -->
+    <div class="pg-panel" id="pg-panel">
+      <div style="padding:12px 14px;border-bottom:1px solid rgba(30,54,84,.5);flex-shrink:0">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--gold);margin-bottom:6px">Acquisition Chain Coverage</div>
+        <div class="pg-coverage-bar"><div class="pg-coverage-fill" id="pg-cov-fill" style="width:0%;background:var(--green)"></div></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <div style="font-size:10px;color:var(--t2)" id="pg-cov-label">Analyzing...</div>
+          <div style="font-size:10px;font-weight:700" id="pg-cov-pct" style="color:var(--green)"></div>
+        </div>
+      </div>
+      <div id="pg-panel-scroll" style="flex:1;overflow-y:auto;padding:10px 14px 20px">
+        <div id="pg-roles-list"></div>
+        <div id="pg-intros-section" style="margin-top:12px"></div>
       </div>
     </div>
     <svg id="net-canvas" style="position:absolute;top:42px;left:220px;right:0;bottom:0"></svg>
@@ -1294,6 +1347,7 @@ var _undoLinkTimer=null;    // clears undo state after 12s
 // ── Network layout ────────────────────────────────────────────
 var _orgAngleMap=new Map(); // orgId → {angle, cx, cy} for radial clustering
 var tlFilter='all',tlSrcFilter='all',currentTLEditId=null;
+var _pgView={active:false,oppId:null,pickerOpen:false};
 
 // ── INDEXED DATA STRUCTURES ──────────────────────────────────
 // O(1) lookup maps — always kept in sync with their array counterparts
@@ -1539,14 +1593,8 @@ document.getElementById('google-signin-btn').addEventListener('click',function()
   if(errEl)errEl.style.display='none';
   var provider=new GoogleAuthProvider();
   signInWithPopup(auth,provider).then(function(result){
-    // Capture OAuth access token for Calendar API calls
-    if(result&&result._tokenResponse&&result._tokenResponse.oauthAccessToken){
-      window._gAccessToken=result._tokenResponse.oauthAccessToken;
-    }else if(result&&result.user){
-      // Try to get from credential
-      try{var cred=window.GoogleAuthProvider&&window.GoogleAuthProvider.credentialFromResult(result);
-        if(cred&&cred.accessToken)window._gAccessToken=cred.accessToken;}catch(e){}
-    }
+    try{var cred=GoogleAuthProvider.credentialFromResult(result);
+      if(cred&&cred.accessToken)window._gAccessToken=cred.accessToken;}catch(e){}
     btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>Sign in with Google';
   }).catch(function(e){
     btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>Sign in with Google';
@@ -5921,7 +5969,7 @@ function _getPersonOrgPos(personId){
   return null;
 }
 
-function renderNetwork(){if(!svg)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','JetBrains Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){if(d.label==='Works at')return 'none';return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){if(d.label==='Works at')return 1;var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);}).attr('stroke-opacity',function(d){return d.label==='Works at'?0.3:0.7;});lM.select('text').text(function(d){return d.label==='Works at'?'':d.label||'';}).attr('fill',function(d){return es(d.label).c;}).attr('opacity',function(d){return d.label==='Works at'?0:1;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('dblclick',function(ev,d){if(d.pinned){d.fx=null;d.fy=null;d.pinned=false;var nn=nodeMap.get(d.id);if(nn){nn.fx=null;nn.fy=null;nn.pinned=false;}saveNode(d);if(sim)sim.alpha(0.15).restart();setNetStatus(d.name+' unpinned');setTimeout(clearNetStatus,1800);}}).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('r',function(d){return nr(d);}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':null;});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(13,27,46,0.9)').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','Outfit,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});// Recompute org radial positions before restart
+function renderNetwork(){if(!svg)return;if(_pgView.active)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','JetBrains Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){if(d.label==='Works at')return 'none';return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){if(d.label==='Works at')return 1;var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);}).attr('stroke-opacity',function(d){return d.label==='Works at'?0.3:0.7;});lM.select('text').text(function(d){return d.label==='Works at'?'':d.label||'';}).attr('fill',function(d){return es(d.label).c;}).attr('opacity',function(d){return d.label==='Works at'?0:1;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('dblclick',function(ev,d){if(d.pinned){d.fx=null;d.fy=null;d.pinned=false;var nn=nodeMap.get(d.id);if(nn){nn.fx=null;nn.fy=null;nn.pinned=false;}saveNode(d);if(sim)sim.alpha(0.15).restart();setNetStatus(d.name+' unpinned');setTimeout(clearNetStatus,1800);}}).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('r',function(d){return nr(d);}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':null;});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(13,27,46,0.9)').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','Outfit,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});// Recompute org radial positions before restart
   computeOrgAngles();
   sim.nodes(nodes);
   // Smart position seeding — orgs on their radial ring, people near their org
@@ -7804,48 +7852,30 @@ var _gcalPanelOpen=false;
 
 // ── Request calendar access (incremental OAuth scope) ─────
 window.requestCalendarAccess=async function(){
-  // Use Google Identity Services for incremental auth
-  // The user is already signed in with Google — we just need an extra scope
-  return new Promise(function(resolve,reject){
-    if(_gcalToken){resolve(_gcalToken);return;}
-    if(!window.google||!window.google.accounts){
-      toast('Google API not loaded yet — try again in a moment');
-      reject(new Error('Google API not ready'));
-      return;
+  try{
+    var provider=new GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    var result=await signInWithPopup(auth,provider);
+    var credential=GoogleAuthProvider.credentialFromResult(result);
+    if(credential&&credential.accessToken){
+      window._gAccessToken=credential.accessToken;
+      return credential.accessToken;
     }
-    var client=window.google.accounts.oauth2.initTokenClient({
-      client_id:'51164371993-YOUR_CLIENT_ID.apps.googleusercontent.com',
-      scope:'https://www.googleapis.com/auth/calendar.readonly',
-      callback:function(resp){
-        if(resp.error){reject(new Error(resp.error));return;}
-        _gcalToken=resp.access_token;
-        resolve(_gcalToken);
-      }
-    });
-    // Check if we already have an active Firebase token we can reuse
-    // For now request new token
-    client.requestAccessToken({prompt:''});
-  });
+    throw new Error('No access token returned');
+  }catch(e){
+    if(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request'){
+      toast('Calendar access cancelled');
+    }else{
+      toast('Could not connect calendar: '+(e.message||e.code));
+    }
+    return null;
+  }
 };
 
 // ── Fetch upcoming meetings from Google Calendar ──────────
 window.loadCalendarEvents=async function(){
   if(!currentUser){return;}
-  // Use Firebase auth token to call Calendar API
-  // First get the current user's OAuth token
-  try{
-    var token=await currentUser.getIdToken();
-  }catch(e){
-    console.warn('Calendar: could not get token',e);
-    return;
-  }
-  // Use Google's calendar API with the OAuth token from sign-in
-  // We need the actual OAuth access token, not the Firebase ID token
-  // Store it during sign-in
-  if(!window._gAccessToken){
-    _renderCalendarPanel([]);
-    return;
-  }
+  if(!window._gAccessToken){_renderCalendarPanel([]);return;}
   try{
     var now=new Date().toISOString();
     var maxTime=new Date(Date.now()+7*24*60*60*1000).toISOString();
@@ -7877,13 +7907,21 @@ window.loadCalendarEvents=async function(){
 };
 
 // ── Calendar panel renderer ────────────────────────────────
+window._connectCalendar=async function(){
+  var container=document.getElementById('cal-panel-content');
+  if(container)container.innerHTML='<div style="padding:12px;text-align:center;font-size:11px;color:var(--t2)"><span class="proc-dots"><span></span><span></span><span></span></span> Connecting...</div>';
+  var token=await requestCalendarAccess();
+  if(token){toast('Google Calendar connected');loadCalendarEvents();}
+  else{_renderCalendarPanel([]);}
+};
+
 function _renderCalendarPanel(events){
   var container=document.getElementById('cal-panel-content');
   if(!container)return;
   if(!window._gAccessToken){
     container.innerHTML='<div style="padding:14px;text-align:center">'
       +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.6">Connect your Google Calendar to see upcoming meetings and prep briefs automatically.</div>'
-      +'<button onclick="window._requestGCalAccess()" class="btn btn-gold btn-sm" style="width:100%">Connect Google Calendar</button>'
+      +'<button onclick="window._connectCalendar()" class="btn btn-gold btn-sm" style="width:100%">Connect Google Calendar</button>'
       +'</div>';
     return;
   }
@@ -8196,6 +8234,576 @@ function _initAlerts(){
   _alertInterval=setInterval(_runAlertCheck,180000); // every 3 min
   setTimeout(_runAlertCheck,4000); // initial run after 4s
 }
+
+// ══════════════════════════════════════════════════════════════
+// PROGRAM VIEW
+// Reorganizes the Network Map around a specific opportunity.
+// Shows: real contacts (health-colored), ghost nodes for missing
+// acquisition chain roles, coverage analysis, and intro paths.
+//
+// State: _pgView.active, _pgView.oppId, _pgView.pickerOpen
+// Guard in renderNetwork() prevents clobbering during pg view.
+// All D3 work uses a separate _pgLayer — real nodes layer (ng)
+// is dimmed but not destroyed so exit restores instantly.
+// ══════════════════════════════════════════════════════════════
+
+// ── Acquisition chain roles for defense BD ─────────────────
+var PG_ROLES=[
+  {pattern:/program.?manager|PM\b|program.?lead|program.?director/i,         label:'Program Manager',      critical:true,  icon:'★'},
+  {pattern:/contract.?officer|KO\b|contracting officer|procurement/i,        label:'Contracting Officer',  critical:true,  icon:'◆'},
+  {pattern:/technical.?director|CTO|technical.?evaluator|S&T director/i,     label:'Technical Authority',  critical:true,  icon:'◈'},
+  {pattern:/budget|resource.?advisor|comptroller|financial/i,                label:'Budget Authority',     critical:true,  icon:'◉'},
+  {pattern:/end.?user|warfighter|operator|user.?rep|fleet/i,                 label:'End User',             critical:false, icon:'◎'},
+  {pattern:/director|deputy director|division chief/i,                       label:'Director Level',       critical:false, icon:'⬡'},
+  {pattern:/scientist|researcher|lab.?director|FFRDC|FFR/i,                  label:'Science & Technology', critical:false, icon:'◇'},
+];
+
+// ── Compute program view data ───────────────────────────────
+function _buildPgData(opp){
+  // Collect meetings tagged to this opportunity
+  var taggedMtgs=meetings.filter(function(m){
+    return(m.oppId===opp.id)||(opp.meetings||[]).indexOf(m.id)!==-1;
+  });
+
+  // Aggregate people and risks
+  var allPeople={};
+  var allRisks=[];
+  taggedMtgs.forEach(function(m){
+    (m.intel.keyPeople||[]).forEach(function(p){
+      if(!p.name)return;
+      if(!allPeople[p.name])allPeople[p.name]={
+        name:p.name,role:p.role||'',org:p.org||'',stances:[],node:null,health:0
+      };
+      if(p.stance)allPeople[p.name].stances.push(p.stance);
+      if(p.role&&!allPeople[p.name].role)allPeople[p.name].role=p.role;
+    });
+    (m.intel.risks||[]).forEach(function(r){allRisks.push(r);});
+  });
+
+  // Match people to network nodes and compute health
+  var realPeople=[];
+  Object.values(allPeople).forEach(function(p){
+    var match=null;
+    for(var i=0;i<nodes.length;i++){
+      if(nodes[i].type==='person'&&nameSimilarity(nodes[i].name,p.name)>=0.75){
+        match=nodes[i];break;
+      }
+    }
+    if(match){
+      p.node=match;
+      p.health=getMtgsForNode(match.id).length>0?computeRelHealth(match.id):0;
+    }
+    realPeople.push(p);
+  });
+  // Sort by health desc so strongest contacts are prominent
+  realPeople.sort(function(a,b){return(b.health||0)-(a.health||0);});
+
+  // Find org nodes associated with these people
+  var orgSet=new Set();
+  realPeople.forEach(function(p){
+    if(p.node&&p.node.org){
+      var orgNode=companyByName.get(p.node.org.toLowerCase());
+      if(orgNode)orgSet.add(orgNode.id);
+    }
+  });
+  var orgNodes=Array.from(orgSet).map(function(id){return nodeMap.get(id);}).filter(Boolean);
+
+  // Determine acquisition chain coverage
+  var coveredRoles=new Set();
+  PG_ROLES.forEach(function(r,i){
+    var covered=Object.values(allPeople).some(function(p){
+      return r.pattern.test(p.role||p.name||'');
+    });
+    if(covered)coveredRoles.add(i);
+  });
+
+  var ghostRoles=PG_ROLES
+    .filter(function(_,i){return !coveredRoles.has(i);})
+    .map(function(r,offset){
+      // Try to find a network connection path to this role type
+      var path=_pgFindIntroPath(r,realPeople);
+      return{
+        id:'ghost-'+offset,
+        label:r.label,
+        critical:r.critical,
+        icon:r.icon,
+        introPath:path,
+        isGhost:true
+      };
+    });
+
+  var criticalTotal=PG_ROLES.filter(function(r){return r.critical;}).length;
+  var criticalCovered=PG_ROLES.filter(function(r,i){return r.critical&&coveredRoles.has(i);}).length;
+  var coveragePct=criticalTotal>0?Math.round(criticalCovered/criticalTotal*100):0;
+
+  // Win probability
+  var wp=computeWinProb(opp,taggedMtgs,allPeople,allRisks);
+
+  return{
+    opp:opp,
+    taggedMtgs:taggedMtgs,
+    realPeople:realPeople,
+    orgNodes:orgNodes,
+    ghostRoles:ghostRoles,
+    allPeople:allPeople,
+    allRisks:allRisks,
+    coveredRoles:coveredRoles,
+    coveragePct:coveragePct,
+    criticalCovered:criticalCovered,
+    criticalTotal:criticalTotal,
+    winProb:wp
+  };
+}
+
+// ── Find best intro path to a missing role ─────────────────
+function _pgFindIntroPath(roleSpec,realPeople){
+  // Walk existing realPeople connections to find who might know this role
+  // Simple: find anyone in the network whose neighbors match the role
+  var candidates=[];
+  realPeople.forEach(function(p){
+    if(!p.node)return;
+    // Check p.node's direct connections
+    links.forEach(function(l){
+      var s=l.source&&l.source.id?l.source.id:l.source;
+      var t=l.target&&l.target.id?l.target.id:l.target;
+      var otherId=(String(s)===String(p.node.id))?t:((String(t)===String(p.node.id))?s:null);
+      if(!otherId)return;
+      var other=nodeMap.get(otherId)||nodeMap.get(parseInt(otherId));
+      if(!other||other.type!=='person')return;
+      if(roleSpec.pattern.test(other.role||'')){
+        candidates.push({via:p.name,target:other.name,targetRole:other.role});
+      }
+    });
+  });
+  return candidates.length?candidates[0]:null;
+}
+
+// ── D3 rendering of program view ───────────────────────────
+var _pgLayer=null; // separate SVG layer for program view
+
+function _renderPgCanvas(pgData){
+  // Stop force simulation — program view uses static layout
+  if(sim)sim.stop();
+
+  // Clear normal node/link layers (dim them)
+  if(ng)ng.selectAll('.node-g').style('opacity',0.08);
+  if(lg)lg.selectAll('.link-g').style('opacity',0.04);
+
+  // Remove any existing pg layer
+  if(_pgLayer){_pgLayer.remove();_pgLayer=null;}
+  _pgLayer=g.append('g').attr('class','pg-layer');
+
+  var cx=W/2,cy=H/2;
+  var innerR=Math.min(W-300,H)*0.21; // people ring — account for sidebar
+  var outerR=Math.min(W-300,H)*0.37; // ghost ring
+  cx=(W-300)/2+220/2; // shift center left to account for sidebar
+
+  var realPeople=pgData.realPeople.slice(0,10); // cap at 10 for layout
+  var ghostRoles=pgData.ghostRoles;
+  var opp=pgData.opp;
+  var wp=pgData.winProb;
+
+  // ── Center: program node ──────────────────────────────────
+  var probColor=wp.score>=65?'#22c55e':wp.score>=35?'#f59e0b':'#ef4444';
+  var sc=opp.stage?opp.stage.charAt(0).toUpperCase()+opp.stage.slice(1):'';
+
+  // Outer glow ring
+  _pgLayer.append('circle')
+    .attr('cx',cx).attr('cy',cy).attr('r',60)
+    .attr('fill','none')
+    .attr('stroke',probColor)
+    .attr('stroke-width',1)
+    .attr('opacity',0.2);
+
+  // Main center circle
+  _pgLayer.append('circle')
+    .attr('cx',cx).attr('cy',cy).attr('r',48)
+    .attr('fill',ha(probColor,0.12))
+    .attr('stroke',probColor)
+    .attr('stroke-width',2);
+
+  // Win probability text
+  _pgLayer.append('text')
+    .attr('x',cx).attr('y',cy-8)
+    .attr('text-anchor','middle')
+    .attr('font-size','18').attr('font-weight','700')
+    .attr('fill',probColor)
+    .attr('font-family','JetBrains Mono,monospace')
+    .text(wp.score+'%');
+
+  _pgLayer.append('text')
+    .attr('x',cx).attr('y',cy+6)
+    .attr('text-anchor','middle')
+    .attr('font-size','8')
+    .attr('fill',probColor)
+    .attr('font-family','JetBrains Mono,monospace')
+    .attr('opacity',0.8)
+    .text('WIN PROB');
+
+  // Program name (wrapped, below circle)
+  var oppName=opp.name.length>28?opp.name.slice(0,26)+'…':opp.name;
+  _pgLayer.append('text')
+    .attr('x',cx).attr('y',cy+68)
+    .attr('text-anchor','middle')
+    .attr('font-size','11').attr('font-weight','600')
+    .attr('fill','var(--text)')
+    .attr('font-family','Outfit,sans-serif')
+    .text(oppName);
+
+  if(opp.agency){
+    _pgLayer.append('text')
+      .attr('x',cx).attr('y',cy+82)
+      .attr('text-anchor','middle')
+      .attr('font-size','9')
+      .attr('fill','var(--t2)')
+      .attr('font-family','JetBrains Mono,monospace')
+      .text(opp.agency.toUpperCase());
+  }
+
+  // ── Real people nodes on inner ring ───────────────────────
+  realPeople.forEach(function(p,i){
+    var angle=(i/Math.max(realPeople.length,1))*2*Math.PI-Math.PI/2;
+    var px=cx+Math.cos(angle)*innerR;
+    var py=cy+Math.sin(angle)*innerR;
+    var hc=healthColor(p.health||0);
+    var nodeR=p.health>=7?18:p.health>=4?14:11;
+
+    // Connection line to center
+    var lineAlpha=p.health>=7?0.6:p.health>=4?0.4:0.2;
+    _pgLayer.append('line')
+      .attr('x1',cx).attr('y1',cy).attr('x2',px).attr('y2',py)
+      .attr('stroke',hc).attr('stroke-width',p.health>=7?2:1)
+      .attr('stroke-opacity',lineAlpha);
+
+    // Node circle
+    var nodeG=_pgLayer.append('g')
+      .attr('transform','translate('+px+','+py+')')
+      .style('cursor','pointer')
+      .on('click',function(){
+        if(p.node)openNetPanel(p.node);
+        else toast('Add "'+p.name+'" to Network Map to see their full profile');
+      });
+
+    nodeG.append('circle')
+      .attr('r',nodeR)
+      .attr('fill',ha(hc,0.15))
+      .attr('stroke',hc)
+      .attr('stroke-width',2);
+
+    // Initials
+    var ini=p.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+    nodeG.append('text')
+      .attr('text-anchor','middle').attr('dominant-baseline','central')
+      .attr('font-size','9').attr('font-weight','700')
+      .attr('fill',hc).attr('font-family','Outfit,sans-serif')
+      .text(ini);
+
+    // Health score badge
+    if(p.health>0){
+      nodeG.append('circle')
+        .attr('cx',nodeR-2).attr('cy',-(nodeR-2)).attr('r',6)
+        .attr('fill','var(--s1)').attr('stroke',hc).attr('stroke-width',1);
+      nodeG.append('text')
+        .attr('x',nodeR-2).attr('y',-(nodeR-5))
+        .attr('text-anchor','middle').attr('dominant-baseline','central')
+        .attr('font-size','7').attr('font-weight','700')
+        .attr('fill',hc).attr('font-family','JetBrains Mono,monospace')
+        .text(p.health);
+    }
+
+    // Name label
+    var nameShort=p.name.split(' ')[0]; // first name only for brevity
+    _pgLayer.append('text')
+      .attr('x',px).attr('y',py+nodeR+12)
+      .attr('text-anchor','middle')
+      .attr('font-size','10').attr('font-weight','500')
+      .attr('fill','var(--text)').attr('font-family','Outfit,sans-serif')
+      .text(nameShort);
+    if(p.role){
+      _pgLayer.append('text')
+        .attr('x',px).attr('y',py+nodeR+23)
+        .attr('text-anchor','middle')
+        .attr('font-size','8')
+        .attr('fill','var(--t3)').attr('font-family','JetBrains Mono,monospace')
+        .text((p.role.length>18?p.role.slice(0,16)+'…':p.role).toUpperCase());
+    }
+  });
+
+  // ── Ghost nodes on outer ring ─────────────────────────────
+  ghostRoles.forEach(function(g2,i){
+    var angle=(i/Math.max(ghostRoles.length,1))*2*Math.PI-Math.PI/2;
+    var gx=cx+Math.cos(angle)*outerR;
+    var gy=cy+Math.sin(angle)*outerR;
+    var borderColor=g2.critical?'#ef4444':'rgba(139,92,246,.6)';
+    var ghostR=g2.critical?16:13;
+
+    // Dashed line to center
+    _pgLayer.append('line')
+      .attr('x1',cx).attr('y1',cy).attr('x2',gx).attr('y2',gy)
+      .attr('stroke',borderColor).attr('stroke-width',1)
+      .attr('stroke-opacity',0.3)
+      .attr('stroke-dasharray','4,4');
+
+    // Ghost circle
+    var ghostG=_pgLayer.append('g')
+      .attr('transform','translate('+gx+','+gy+')')
+      .attr('class','pg-ghost-pulse')
+      .style('cursor','pointer')
+      .on('click',function(){_pgGhostClick(g2.label,pgData.opp.id);});
+
+    ghostG.append('circle')
+      .attr('r',ghostR)
+      .attr('fill','transparent')
+      .attr('stroke',borderColor)
+      .attr('stroke-width',1.5)
+      .attr('stroke-dasharray','4,3');
+
+    ghostG.append('text')
+      .attr('text-anchor','middle').attr('dominant-baseline','central')
+      .attr('font-size','10').attr('fill',borderColor)
+      .attr('font-family','Outfit,sans-serif')
+      .text(g2.icon||'?');
+
+    // Role label
+    var roleLine1=g2.label.split(' ').slice(0,2).join(' ');
+    var roleLine2=g2.label.split(' ').slice(2).join(' ');
+    _pgLayer.append('text')
+      .attr('x',gx).attr('y',gy+ghostR+11)
+      .attr('text-anchor','middle')
+      .attr('font-size','9').attr('font-style','italic')
+      .attr('fill',borderColor).attr('font-family','Outfit,sans-serif')
+      .text(roleLine1);
+    if(roleLine2){
+      _pgLayer.append('text')
+        .attr('x',gx).attr('y',gy+ghostR+21)
+        .attr('text-anchor','middle')
+        .attr('font-size','9').attr('font-style','italic')
+        .attr('fill',borderColor).attr('font-family','Outfit,sans-serif')
+        .text(roleLine2);
+    }
+    if(g2.critical){
+      _pgLayer.append('text')
+        .attr('x',gx).attr('y',gy+ghostR+(roleLine2?32:22))
+        .attr('text-anchor','middle')
+        .attr('font-size','8')
+        .attr('fill','rgba(239,68,68,.6)').attr('font-family','JetBrains Mono,monospace')
+        .text('CRITICAL');
+    }
+  });
+
+  // ── Coverage ring segment (arc behind inner ring) ─────────
+  // Show how much of the inner ring is "covered" vs needs attention
+  if(pgData.coveragePct>0){
+    var arcAngle=(pgData.coveragePct/100)*2*Math.PI;
+    var arcR=innerR+28;
+    var arcPath=_pgArcPath(cx,cy,arcR,arcAngle);
+    _pgLayer.append('path')
+      .attr('d',arcPath)
+      .attr('fill','none')
+      .attr('stroke','rgba(34,197,94,.3)')
+      .attr('stroke-width',4)
+      .attr('stroke-linecap','round');
+  }
+}
+
+function _pgArcPath(cx,cy,r,angle){
+  var startX=cx+Math.cos(-Math.PI/2)*r;
+  var startY=cy+Math.sin(-Math.PI/2)*r;
+  var endAngle=-Math.PI/2+angle;
+  var endX=cx+Math.cos(endAngle)*r;
+  var endY=cy+Math.sin(endAngle)*r;
+  var large=angle>Math.PI?1:0;
+  return 'M'+startX+','+startY+' A'+r+','+r+' 0 '+large+',1 '+endX+','+endY;
+}
+
+// ── Program view sidebar ────────────────────────────────────
+function _renderPgSidebar(opp, pgData){
+  // Toolbar
+  var tn=document.getElementById('pg-toolbar-name');
+  var ts=document.getElementById('pg-toolbar-stage');
+  var tp=document.getElementById('pg-toolbar-prob');
+  if(tn)tn.textContent=opp.name.length>35?opp.name.slice(0,33)+'…':opp.name;
+  if(ts){
+    var sc=opp.stage?opp.stage.charAt(0).toUpperCase()+opp.stage.slice(1):'';
+    ts.textContent=sc;
+    ts.style.cssText='font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(201,162,39,.12);color:var(--gold);font-family:\'JetBrains Mono\',monospace';
+  }
+  if(tp){
+    var pColor=pgData.winProb.score>=65?'var(--green)':pgData.winProb.score>=35?'var(--amber)':'var(--red)';
+    tp.textContent=pgData.winProb.score+'%';
+    tp.style.color=pColor;
+  }
+
+  // Coverage bar
+  var fill=document.getElementById('pg-cov-fill');
+  var lbl=document.getElementById('pg-cov-label');
+  var pct=document.getElementById('pg-cov-pct');
+  var covColor=pgData.coveragePct>=75?'#22c55e':pgData.coveragePct>=50?'#f59e0b':'#ef4444';
+  if(fill){fill.style.width=pgData.coveragePct+'%';fill.style.background=covColor;}
+  if(lbl)lbl.textContent=pgData.criticalCovered+' of '+pgData.criticalTotal+' critical roles covered';
+  if(pct){pct.textContent=pgData.coveragePct+'%';pct.style.color=covColor;}
+
+  // Roles list
+  var rolesEl=document.getElementById('pg-roles-list');
+  if(!rolesEl)return;
+  var h='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(30,54,84,.4)">Acquisition Chain</div>';
+
+  PG_ROLES.forEach(function(role,i){
+    var covered=pgData.coveredRoles.has(i);
+    // Find who covers this role
+    var coverPerson=null;
+    if(covered){
+      Object.values(pgData.allPeople).forEach(function(p){
+        if(!coverPerson&&role.pattern.test(p.role||''))coverPerson=p.name;
+      });
+    }
+    var iconColor=covered?'var(--green)':(role.critical?'var(--red)':'rgba(139,92,246,.7)');
+    var iconBg=covered?'rgba(34,197,94,.12)':(role.critical?'rgba(239,68,68,.1)':'rgba(139,92,246,.08)');
+    h+='<div class="pg-role">';
+    h+='<div class="pg-role-icon" style="background:'+iconBg+';color:'+iconColor+'">'+(covered?'✓':'✗')+'</div>';
+    h+='<div style="flex:1;min-width:0">';
+    h+='<div style="font-size:11px;font-weight:'+(covered?'500':'600')+';color:'+(covered?'var(--t2)':'var(--text)')+'">'+role.label+'</div>';
+    if(covered&&coverPerson){
+      h+='<div style="font-size:10px;color:var(--t3)">'+coverPerson+'</div>';
+    }else if(!covered){
+      var ghostRole=pgData.ghostRoles.find(function(g2){return g2.label===role.label;});
+      if(ghostRole&&ghostRole.introPath){
+        h+='<div style="font-size:10px;color:rgba(139,92,246,.8)">via '+ghostRole.introPath.via+' → try Path Finder</div>';
+      }else if(role.critical){
+        h+='<div style="font-size:10px;color:rgba(239,68,68,.7)">No known path — cold outreach needed</div>';
+      }
+    }
+    h+='</div></div>';
+  });
+
+  rolesEl.innerHTML=h;
+
+  // Intro suggestions
+  var introEl=document.getElementById('pg-intros-section');
+  if(!introEl)return;
+  var introRoles=pgData.ghostRoles.filter(function(g2){return g2.introPath&&g2.critical;});
+  if(!introRoles.length){
+    introEl.innerHTML='';return;
+  }
+  var ih='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(30,54,84,.4)">Suggested Introductions</div>';
+  introRoles.slice(0,3).forEach(function(g2){
+    ih+='<div style="padding:7px 9px;border:1px solid rgba(139,92,246,.2);border-radius:var(--rsm);margin-bottom:6px;background:rgba(139,92,246,.04)">';
+    ih+='<div style="font-size:11px;font-weight:600;margin-bottom:2px">→ '+g2.label+'</div>';
+    ih+='<div style="font-size:10px;color:var(--t2)">Ask <strong style="color:var(--text)">'+g2.introPath.via+'</strong> to introduce you to '+g2.introPath.target+'</div>';
+    ih+='</div>';
+  });
+  introEl.innerHTML=ih;
+}
+
+// ── Ghost node click handler ────────────────────────────────
+window._pgGhostClick=function(roleLabel,oppId){
+  // Open path finder pre-filled to search for this role
+  togglePathFinder();
+  var inp=document.getElementById('path-target-inp');
+  if(inp){
+    inp.value=roleLabel;
+    inp.focus();
+  }
+  toast('Searching for introduction path to '+roleLabel+'…');
+};
+
+// ── Toggle program picker ───────────────────────────────────
+window.togglePgPicker=function(){
+  var panel=document.getElementById('pg-picker-panel');
+  if(!panel)return;
+  _pgView.pickerOpen=!_pgView.pickerOpen;
+  if(!_pgView.pickerOpen){panel.style.display='none';return;}
+
+  // Populate opportunity list
+  var listEl=document.getElementById('pg-opp-list');
+  var noOpps=document.getElementById('pg-no-opps');
+  var activeOpps=opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';});
+  if(!activeOpps.length){
+    if(listEl)listEl.style.display='none';
+    if(noOpps)noOpps.style.display='block';
+  }else{
+    if(noOpps)noOpps.style.display='none';
+    if(listEl){
+      listEl.style.display='flex';
+      listEl.innerHTML=activeOpps.map(function(o){
+        var taggedCount=meetings.filter(function(m){return m.oppId===o.id;}).length;
+        var stageColor='var(--t2)';
+        if(o.stage==='proposal'||o.stage==='submitted')stageColor='var(--gold)';
+        if(o.stage==='award')stageColor='var(--amber)';
+        return '<button onclick="enterProgramView(\''+o.id+'\')" style="text-align:left;width:100%;padding:9px 11px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);cursor:pointer;font-family:\'Outfit\',sans-serif;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b2)\'">'
+          +'<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px">'+o.name+'</div>'
+          +'<div style="display:flex;gap:8px;font-size:10px"><span style="color:'+stageColor+'">'+o.stage+'</span>'+(o.agency?'<span style="color:var(--t3)">'+o.agency+'</span>':'')+'<span style="color:var(--t3)">'+taggedCount+' meetings</span></div>'
+          +'</button>';
+      }).join('');
+    }
+  }
+  panel.style.display='block';
+};
+
+// ── Enter program view ──────────────────────────────────────
+window.enterProgramView=function(oppId){
+  var opp=opportunities.find(function(o){return o.id===oppId;});
+  if(!opp){toast('Opportunity not found');return;}
+
+  // Close picker
+  _pgView.active=true;
+  _pgView.oppId=oppId;
+  _pgView.pickerOpen=false;
+  var picker=document.getElementById('pg-picker-panel');
+  if(picker)picker.style.display='none';
+
+  // Switch to network view if not already there
+  if(activeView!=='network'){
+    switchView('network');
+    setTimeout(function(){enterProgramView(oppId);},300);
+    return;
+  }
+
+  // Show pg toolbar, hide net toolbar
+  var pgTb=document.getElementById('pg-toolbar');
+  var netTb=document.querySelector('.net-toolbar');
+  if(pgTb)pgTb.classList.add('active');
+  if(netTb)netTb.style.display='none';
+
+  // Show pg panel
+  var pgPanel=document.getElementById('pg-panel');
+  if(pgPanel)pgPanel.classList.add('active');
+
+  // Compute and render
+  var pgData=_buildPgData(opp);
+  _renderPgSidebar(opp,pgData);
+  setTimeout(function(){_renderPgCanvas(pgData);},50);
+
+  toast('Program View: '+opp.name+' · Click any node to open dossier · Ghost nodes show missing roles');
+};
+
+// ── Exit program view ───────────────────────────────────────
+window.exitProgramView=function(){
+  _pgView.active=false;
+  _pgView.oppId=null;
+
+  // Remove pg layer
+  if(_pgLayer){_pgLayer.remove();_pgLayer=null;}
+
+  // Restore normal node/link opacity
+  if(ng)ng.selectAll('.node-g').style('opacity',null);
+  if(lg)lg.selectAll('.link-g').style('opacity',null);
+
+  // Restart simulation
+  if(sim)sim.alpha(0.1).restart();
+
+  // Hide pg toolbar, show net toolbar
+  var pgTb=document.getElementById('pg-toolbar');
+  var netTb=document.querySelector('.net-toolbar');
+  if(pgTb)pgTb.classList.remove('active');
+  if(netTb)netTb.style.display='flex';
+
+  // Hide pg panel
+  var pgPanel=document.getElementById('pg-panel');
+  if(pgPanel)pgPanel.classList.remove('active');
+
+  toast('Back to full network map');
+};
 
 </script>
 </body>
