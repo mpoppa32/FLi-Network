@@ -494,7 +494,8 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
     <button class="nav-btn" id="nav-import-trigger">&#8593; Restore</button>
     <input type="file" id="nav-import-file" accept=".json" style="display:none">
     <button class="nav-btn" id="nav-members-btn">&#128100; Members</button>
-    <button class="nav-btn" id="nav-brief-btn" style="background:linear-gradient(135deg,rgba(201,162,39,.15),rgba(139,92,246,.1));border-color:rgba(201,162,39,.4);color:var(--gold)" onclick="openOnboardingBrief()">&#9889; Brief Me</button>
+    <button class="nav-btn" id="nav-alerts-btn" onclick="toggleAlertsPanel()" title="Relationship alerts" style="position:relative">🔔</button>
+    <button class="nav-btn" id="nav-brief-btn" style="position:relative;background:linear-gradient(135deg,rgba(201,162,39,.15),rgba(139,92,246,.1));border-color:rgba(201,162,39,.4);color:var(--gold)" onclick="openOnboardingBrief()">&#9889; Brief Me</button>
     <div class="user-chip" id="user-chip-btn"><img id="user-chip-img" src="" alt=""></div>
     <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()"><svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="currentColor"/><rect y="5" width="16" height="2" rx="1" fill="currentColor"/><rect y="10" width="16" height="2" rx="1" fill="currentColor"/></svg></button>
   </div>
@@ -715,7 +716,20 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   </div>
   <div class="network-view" id="network-view" style="display:none">
     <div class="net-cal">
-      <div class="cal-hdr"><div class="cal-lbl">Intel Calendar</div><div class="cal-today" id="cal-today-lbl"></div></div>
+      <div class="cal-hdr" style="padding-bottom:6px">
+        <div class="cal-lbl">Intel Calendar</div>
+        <div class="cal-today" id="cal-today-lbl"></div>
+        <button onclick="toggleCalPanel()" id="gcal-btn" style="margin-top:6px;width:100%;padding:4px 8px;border:1px solid rgba(66,133,244,.35);border-radius:var(--rsm);background:transparent;color:#4285f4;font-size:10px;cursor:pointer;font-family:'Outfit',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px">
+          <svg width="10" height="10" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
+          Upcoming Meetings
+        </button>
+      </div>
+      <!-- Google Calendar events panel -->
+      <div id="cal-events-panel" style="display:none;border-bottom:1px solid rgba(30,54,84,.5)">
+        <div id="cal-panel-content" style="max-height:220px;overflow-y:auto">
+          <div style="padding:12px;text-align:center;font-size:11px;color:var(--t3)">Loading...</div>
+        </div>
+      </div>
       <div class="cal-scroll" id="cal-scroll"></div>
       <div class="cal-add">
         <input type="text" id="cal-new-lbl" placeholder="Add reminder...">
@@ -1014,6 +1028,20 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <button class="btn btn-sm" id="save-api-key-btn">Save Personal Key</button>
     </div>
 
+    <!-- DEEPGRAM KEY: enhanced transcription -->
+    <div style="margin-bottom:12px;padding:11px 13px;background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.2);border-radius:var(--r)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--green)">Deepgram Key <span style="color:var(--t3);font-weight:400">(enhanced transcription)</span></div>
+        <div id="dg-status-badge" style="font-size:9px;padding:1px 7px;border-radius:10px;display:none"></div>
+      </div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:7px;line-height:1.5">Multi-speaker, 95%+ accuracy transcription. Free tier: $200 credit (~775 hrs). <a href="https://console.deepgram.com/" target="_blank" style="color:var(--green)">Get key →</a></div>
+      <div class="fld" style="margin-bottom:7px"><input type="password" id="dg-key-setting" placeholder="Deepgram API key..."></div>
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-sm" id="save-dg-key-btn" style="border-color:rgba(34,197,94,.4);color:var(--green)">Save Deepgram Key</button>
+        <button class="btn btn-sm" id="remove-dg-key-btn" style="color:var(--t3);display:none">Remove</button>
+      </div>
+    </div>
+
     <div style="border-top:1px solid var(--b1);padding-top:12px;display:flex;gap:7px;justify-content:space-between">
       <button class="btn btn-sm" id="signout-btn" style="color:var(--red);border-color:var(--red)">Sign Out</button>
       <div style="display:flex;gap:7px">
@@ -1256,7 +1284,7 @@ var fbApp = initializeApp(FB_CFG);
 var auth = getAuth(fbApp);
 var db = getDatabase(fbApp);
 
-var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],opportunities=[],commitments=[],calibrationRecords=[],calEntries=[],tlCommitments=[],entities=[],apiKey='',wsApiKey='',wsApiKeySetBy='',currentMeeting=null,currentOpp=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
+var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],opportunities=[],commitments=[],calibrationRecords=[],calEntries=[],tlCommitments=[],entities=[],apiKey='',wsApiKey='',wsApiKeySetBy='',deepgramKey='',currentMeeting=null,currentOpp=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
 // ── Performance: health score cache + render debounce ─────────
 var _healthCache=new Map(); // nodeId+':'+meetingCount → score
 var _boardTimer=null;       // debounce timer for Firebase-triggered renders
@@ -1304,6 +1332,8 @@ function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
 function refreshApiKey(){
   var personal=currentUser?localStorage.getItem('fli-apikey-'+currentUser.uid)||'':'';
   apiKey=wsApiKey||personal;
+  deepgramKey=currentUser?localStorage.getItem('fli-dgkey-'+currentUser.uid)||'':'';
+  _updateDgKeyUI();
 }
 async function saveWsApiKey(key){
   if(!currentWsId)return;
@@ -1508,7 +1538,15 @@ document.getElementById('google-signin-btn').addEventListener('click',function()
   var errEl=document.getElementById('auth-error');
   if(errEl)errEl.style.display='none';
   var provider=new GoogleAuthProvider();
-  signInWithPopup(auth,provider).then(function(){
+  signInWithPopup(auth,provider).then(function(result){
+    // Capture OAuth access token for Calendar API calls
+    if(result&&result._tokenResponse&&result._tokenResponse.oauthAccessToken){
+      window._gAccessToken=result._tokenResponse.oauthAccessToken;
+    }else if(result&&result.user){
+      // Try to get from credential
+      try{var cred=window.GoogleAuthProvider&&window.GoogleAuthProvider.credentialFromResult(result);
+        if(cred&&cred.accessToken)window._gAccessToken=cred.accessToken;}catch(e){}
+    }
     btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>Sign in with Google';
   }).catch(function(e){
     btn.disabled=false;btn.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>Sign in with Google';
@@ -1535,7 +1573,7 @@ document.getElementById('ws-new-btn').addEventListener('click',function(){docume
 document.getElementById('ws-cancel-btn').addEventListener('click',function(){closeModal('create-ws-modal');document.getElementById('ws-screen').style.display='flex';});
 document.getElementById('ws-create-btn').addEventListener('click',async function(){var name=document.getElementById('ws-name-inp').value.trim();var role=document.getElementById('ws-role-inp').value.trim()||'Member';if(!name){alert('Enter a workspace name');return;}if(!currentUser){alert('Not signed in');return;}var btn=document.getElementById('ws-create-btn');btn.disabled=true;btn.textContent='Creating...';try{var wsId=Date.now().toString();var color=WS_COLORS[Math.floor(Math.random()*WS_COLORS.length)];var ws={id:wsId,name:name,color:color,createdBy:currentUser.uid,created:new Date().toISOString()};var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,photo:currentUser.photoURL||'',role:role,joined:new Date().toISOString()};await set(ref(db,'workspaces/'+wsId+'/info'),ws);await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{id:wsId,name:name,color:color,role:role});userWorkspaces.push({id:wsId,name:name,color:color,role:role});closeModal('create-ws-modal');selectWorkspace(wsId);}catch(e){alert('Failed: '+e.message);btn.disabled=false;btn.textContent='Create Workspace';}});
 
-async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);}catch(e){alert('Failed to open workspace: '+e.message);}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);}catch(e){alert('Failed to open workspace: '+e.message);}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
@@ -1739,6 +1777,20 @@ function wireListeners(){
     await saveWsApiKey('');updateApiKeyUI();
   });
   document.getElementById('signout-btn').addEventListener('click',function(){if(!confirm('Sign out?'))return;signOut(auth);closeModal('user-modal');});
+  document.getElementById('save-dg-key-btn').addEventListener('click',function(){
+    var k=document.getElementById('dg-key-setting').value.trim();
+    if(!k){toast('Paste your Deepgram API key first');return;}
+    localStorage.setItem('fli-dgkey-'+currentUser.uid,k);
+    deepgramKey=k;_updateDgKeyUI();
+    document.getElementById('dg-key-setting').value='';
+    toast('Deepgram key saved — enhanced transcription active');
+    closeModal('user-modal');
+  });
+  document.getElementById('remove-dg-key-btn').addEventListener('click',function(){
+    localStorage.removeItem('fli-dgkey-'+currentUser.uid);
+    deepgramKey='';_updateDgKeyUI();
+    toast('Deepgram key removed — using browser transcription');
+  });
   document.getElementById('edit-cancel').addEventListener('click',function(){closeModal('edit-modal');});
   document.getElementById('edit-proc').addEventListener('click',reprocessMeeting);
   document.getElementById('sync-cancel').addEventListener('click',function(){closeModal('sync-modal');});
@@ -7393,6 +7445,757 @@ window._recDownloadAudio=function(){
   a.click();
   URL.revokeObjectURL(url);
 };
+
+// ══════════════════════════════════════════════════════════════
+// DEEPGRAM STREAMING TRANSCRIPTION ENGINE
+// Replaces Web Speech API with professional multi-speaker ASR.
+// Falls back to Web Speech API automatically if no Deepgram key.
+//
+// Mode 'mic'     — getUserMedia microphone stream
+// Mode 'display' — getDisplayMedia system audio + mic overlay
+//
+// Output: Otter.ai-compatible format so detectTranscript() works.
+// Speaker labels: "Speaker 0", "Speaker 1" etc from diarization.
+// ══════════════════════════════════════════════════════════════
+
+// ── Deepgram key UI helper ─────────────────────────────────
+function _updateDgKeyUI(){
+  var badge=document.getElementById('dg-status-badge');
+  var removeBtn=document.getElementById('remove-dg-key-btn');
+  if(!badge)return;
+  if(deepgramKey){
+    badge.textContent='ACTIVE';
+    badge.style.cssText='font-size:9px;padding:1px 7px;border-radius:10px;background:rgba(34,197,94,.15);color:var(--green);border:1px solid rgba(34,197,94,.3);display:inline';
+    if(removeBtn)removeBtn.style.display='inline-flex';
+  }else{
+    badge.style.display='none';
+    if(removeBtn)removeBtn.style.display='none';
+  }
+  // Update recording button label to show mode
+  var recBtn=document.getElementById('rec-start-btn');
+  if(recBtn){
+    recBtn.innerHTML=deepgramKey
+      ?'<span style="font-size:14px">🔴</span>Record Meeting <span style="font-size:9px;padding:1px 5px;background:rgba(34,197,94,.15);color:var(--green);border-radius:3px;margin-left:4px">HD</span>'
+      :'<span style="font-size:14px">🔴</span>Record Meeting';
+  }
+}
+
+// ── Deepgram WebSocket streaming ───────────────────────────
+var _dgSocket=null;
+var _dgRecorder=null;
+var _dgStream=null;
+
+async function _startDgRecording(mode){
+  var params=[
+    'model=nova-2',
+    'diarize=true',
+    'punctuate=true',
+    'smart_format=true',
+    'language=en-US',
+    'filler_words=false',
+    'interim_results=true',
+    'utterance_end_ms=1500',
+    'vad_events=true'
+  ].join('&');
+
+  try{
+    // Get audio stream
+    if(mode==='display'){
+      try{
+        _dgStream=await navigator.mediaDevices.getDisplayMedia({audio:true,video:false});
+        var modeLbl=document.getElementById('rec-mode-lbl');
+        if(modeLbl)modeLbl.textContent='🖥 Screen Audio (Deepgram HD)';
+        // Watch for user ending screen share
+        _dgStream.getAudioTracks().forEach(function(t){
+          t.onended=function(){if(_rec.state==='recording')stopRecording();};
+        });
+      }catch(e){
+        // Fall back to mic if display denied
+        _dgStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+        var modeLbl2=document.getElementById('rec-mode-lbl');
+        if(modeLbl2)modeLbl2.textContent='🎙 Microphone (Deepgram HD)';
+      }
+    }else{
+      _dgStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+      var modeLbl3=document.getElementById('rec-mode-lbl');
+      if(modeLbl3)modeLbl3.textContent='🎙 Microphone (Deepgram HD)';
+    }
+
+    // Open Deepgram WebSocket
+    _dgSocket=new WebSocket(
+      'wss://api.deepgram.com/v1/listen?'+params,
+      ['token',deepgramKey]
+    );
+
+    _dgSocket.onopen=function(){
+      // Start MediaRecorder — send audio chunks to Deepgram
+      var mimeType=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ?'audio/webm;codecs=opus':'audio/webm';
+      _dgRecorder=new MediaRecorder(_dgStream,{mimeType:mimeType});
+      _dgRecorder.ondataavailable=function(e){
+        if(e.data&&e.data.size>0&&_dgSocket&&_dgSocket.readyState===WebSocket.OPEN){
+          _dgSocket.send(e.data);
+        }
+      };
+      _dgRecorder.start(250); // 250ms chunks for low latency
+    };
+
+    _dgSocket.onmessage=function(evt){
+      if(_rec.state!=='recording')return;
+      try{
+        var data=JSON.parse(evt.data);
+        // Handle transcript results
+        if(data.type==='Results'){
+          var alt=data.channel&&data.channel.alternatives&&data.channel.alternatives[0];
+          if(!alt||!alt.transcript)return;
+          var txt=alt.transcript.trim();
+          if(!txt)return;
+          var isFinal=data.is_final;
+          // Get speaker from word-level diarization
+          var speaker=0;
+          if(alt.words&&alt.words.length>0&&alt.words[0].speaker!==undefined){
+            speaker=alt.words[0].speaker;
+          }
+          if(isFinal&&data.speech_final){
+            var elapsed=Math.floor((Date.now()-_rec.startTime)/1000);
+            var speakerLabel='Speaker '+speaker;
+            _rec.segments.push({elapsed:elapsed,text:txt,speaker:speakerLabel});
+            _recRenderSegmentMulti(txt,elapsed,speakerLabel);
+            _recUpdateInterim('');
+          }else if(!isFinal){
+            _recUpdateInterim(txt);
+          }
+        }
+        // Handle utterance end (speech pause)
+        if(data.type==='UtteranceEnd'){
+          _recUpdateInterim('');
+        }
+      }catch(e){console.warn('Deepgram parse error:',e);}
+    };
+
+    _dgSocket.onerror=function(e){
+      console.error('Deepgram socket error:',e);
+      toast('Deepgram connection error — check your API key in Settings');
+      stopRecording();
+    };
+
+    _dgSocket.onclose=function(evt){
+      if(_rec.state==='recording'&&evt.code!==1000){
+        // Unexpected close — try to reconnect once
+        setTimeout(function(){
+          if(_rec.state==='recording')_startDgRecording(mode);
+        },1500);
+      }
+    };
+
+    return true;
+  }catch(e){
+    toast('Could not start recording: '+e.message);
+    return false;
+  }
+}
+
+function _stopDgRecording(){
+  if(_dgRecorder&&_dgRecorder.state!=='inactive'){
+    try{_dgRecorder.stop();}catch(e){}
+    _dgRecorder=null;
+  }
+  if(_dgSocket){
+    // Send close signal to Deepgram
+    if(_dgSocket.readyState===WebSocket.OPEN){
+      try{_dgSocket.send(JSON.stringify({type:'CloseStream'}));}catch(e){}
+      try{_dgSocket.close(1000,'Recording stopped');}catch(e){}
+    }
+    _dgSocket=null;
+  }
+  if(_dgStream){
+    _dgStream.getTracks().forEach(function(t){t.stop();});
+    _dgStream=null;
+  }
+}
+
+// ── Override _recFormatTranscript for multi-speaker output ──
+// Replaces the single-speaker version from the base recorder
+var _recFormatTranscriptBase=window._recFormatTranscript||function(){return '';};
+function _recFormatTranscriptMulti(){
+  if(!_rec.segments.length)return '';
+  var lines=[];
+  // Group consecutive segments by same speaker
+  var groups=[];
+  _rec.segments.forEach(function(seg){
+    var spk=seg.speaker||'You';
+    var last=groups[groups.length-1];
+    if(last&&last.speaker===spk&&seg.elapsed-last.elapsed<8){
+      // Same speaker, close in time — merge
+      last.text+=' '+seg.text;
+    }else{
+      groups.push({speaker:spk,elapsed:seg.elapsed,text:seg.text});
+    }
+  });
+  groups.forEach(function(g){
+    var mm=Math.floor(g.elapsed/60);
+    var ss=String(g.elapsed%60).padStart(2,'0');
+    // Otter.ai format: "Speaker Name  MM:SS" (2+ spaces between name and time)
+    lines.push(g.speaker+'  '+mm+':'+ss);
+    lines.push(g.text);
+    lines.push('');
+  });
+  return lines.join('\n').trim();
+}
+
+// Override the format function globally
+window._recFormatTranscript=_recFormatTranscriptMulti;
+
+// ── Multi-speaker color coding ─
+var _speakerColors=['var(--gold)','var(--blue)','var(--green)','var(--purple)','var(--amber)'];
+var _recRenderSegmentMulti=function(text,elapsed,speaker){
+  var container=document.getElementById('rec-transcript');
+  if(!container)return;
+  var interim=document.getElementById('rec-interim');
+  if(interim)interim.remove();
+  var mm=Math.floor(elapsed/60);
+  var ss=String(elapsed%60).padStart(2,'0');
+  var spkNum=parseInt((speaker||'0').replace(/\D/g,''))||0;
+  var spkColor=_speakerColors[spkNum%_speakerColors.length];
+  var seg=document.createElement('div');
+  seg.className='rec-segment';
+  seg.innerHTML='<div class="rec-seg-time" style="color:'+spkColor+'">'+(speaker||'You')+'  '+mm+':'+ss+'</div>'
+    +'<div class="rec-seg-text">'+text+'</div>';
+  container.appendChild(seg);
+  var im=document.createElement('div');
+  im.id='rec-interim';im.className='rec-interim-text';im.textContent='';
+  container.appendChild(im);
+  container.scrollTop=container.scrollHeight;
+  _rec.wordCount+=text.split(/\s+/).filter(Boolean).length;
+  var wc=document.getElementById('rec-word-count');
+  if(wc)wc.textContent=_rec.wordCount+' words';
+}
+
+// ── Override startRecording to use Deepgram when key is set ──
+var _startRecordingBase=window.startRecording;
+window.startRecording=async function(mode){
+  if(_rec.state==='recording'){toast('Already recording');return;}
+  _rec.mode=mode;
+  _rec.state='recording';
+  _rec.segments=[];
+  _rec.interimText='';
+  _rec.startTime=Date.now();
+  _rec.wordCount=0;
+  _rec.audioChunks=[];
+
+  // Reset panel UI
+  var transcript=document.getElementById('rec-transcript');
+  if(transcript){
+    var engineNote=deepgramKey
+      ?'<div style="font-size:10px;color:var(--green);text-align:center;padding:6px 0;opacity:.7">⚡ Deepgram HD — multi-speaker transcription active</div>'
+      :'<div style="font-size:10px;color:var(--t3);text-align:center;padding:6px 0;opacity:.7">Browser transcription — add Deepgram key in Settings for multi-speaker HD</div>';
+    transcript.innerHTML=engineNote+'<div id="rec-interim" class="rec-interim-text">Waiting for speech...</div>';
+  }
+
+  _recShowPanel();
+  _rec.timer=setInterval(_recUpdateElapsed,1000);
+  var wc=document.getElementById('rec-word-count');
+  if(wc)wc.textContent='0 words';
+
+  var ok=false;
+  if(deepgramKey){
+    // Use Deepgram streaming
+    ok=await _startDgRecording(mode);
+  }else{
+    // Fall back to Web Speech API
+    ok=_recStartSpeechRecognition();
+    if(mode==='display'&&ok){
+      // For display mode without Deepgram, still try to capture system audio
+      try{
+        _rec.stream=await navigator.mediaDevices.getDisplayMedia({audio:true,video:false});
+        var mimeType=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
+        _rec.mediaRec=new MediaRecorder(_rec.stream,{mimeType:mimeType});
+        _rec.mediaRec.ondataavailable=function(e){if(e.data&&e.data.size>0)_rec.audioChunks.push(e.data);};
+        _rec.mediaRec.onstop=function(){
+          if(_rec.audioChunks.length){
+            var blob=new Blob(_rec.audioChunks,{type:'audio/webm'});
+            _rec._audioBlob=blob;
+            var note=document.getElementById('rec-audio-note');
+            if(note){note.style.display='block';note.innerHTML='🖥 Full call audio saved — <a href="#" onclick="window._recDownloadAudio();return false" style="color:var(--green)">Download .webm</a>';}
+          }
+        };
+        _rec.mediaRec.start(1000);
+        _rec.stream.getAudioTracks().forEach(function(t){t.onended=function(){if(_rec.state==='recording')stopRecording();};});
+        var modeLbl=document.getElementById('rec-mode-lbl');
+        if(modeLbl)modeLbl.textContent='🖥 Screen Audio (mic transcript)';
+      }catch(e){
+        var modeLbl2=document.getElementById('rec-mode-lbl');
+        if(modeLbl2)modeLbl2.textContent='🎙 Microphone (browser)';
+      }
+    }else{
+      var modeLbl3=document.getElementById('rec-mode-lbl');
+      if(modeLbl3)modeLbl3.textContent='🎙 Microphone (browser)';
+    }
+  }
+
+  if(!ok){
+    _rec.state='idle';
+    clearInterval(_rec.timer);
+    _recHidePanel();
+  }
+};
+
+// ── Override stopRecording to clean up Deepgram ───────────
+var _stopRecordingBase=window.stopRecording;
+window.stopRecording=function(){
+  if(_rec.state!=='recording')return;
+  _rec.state='idle';
+  clearInterval(_rec.timer);
+  _rec.timer=null;
+
+  // Stop whichever engine is running
+  if(deepgramKey){
+    _stopDgRecording();
+  }else{
+    if(_rec.recog){
+      _rec.recog.onend=null;
+      try{_rec.recog.stop();}catch(e){}
+      _rec.recog=null;
+    }
+    if(_rec.mediaRec&&_rec.mediaRec.state!=='inactive'){
+      try{_rec.mediaRec.stop();}catch(e){}
+      _rec.mediaRec=null;
+    }
+    if(_rec.stream){
+      _rec.stream.getTracks().forEach(function(t){t.stop();});
+      _rec.stream=null;
+    }
+  }
+
+  // Format and fill notes
+  var formatted=_recFormatTranscriptMulti();
+  var notesEl=document.getElementById('m-notes');
+  var transcriptBanner=document.getElementById('transcript-banner');
+  if(formatted&&notesEl){
+    notesEl.style.display='block';
+    notesEl.value=formatted;
+    if(transcriptBanner)transcriptBanner.style.display='none';
+    onNotesInput();
+    var pasteHdr=document.getElementById('paste-mode-hdr');
+    if(pasteHdr)pasteHdr.style.display='flex';
+    var modeRow=document.getElementById('rec-mode-row');
+    if(modeRow)modeRow.style.display='none';
+    _recHidePanel();
+    var spkCount=new Set(_rec.segments.map(function(s){return s.speaker||'You';})).size;
+    var spkNote=spkCount>1?' · '+spkCount+' speakers detected':'';
+    toast('Recording complete — '+_rec.wordCount+' words'+spkNote+'. Click Process to extract intelligence.');
+  }else{
+    _recHidePanel();
+    showPasteMode();
+    toast('Recording stopped — no speech detected. Try again or paste notes manually.');
+  }
+};
+
+// ══════════════════════════════════════════════════════════════
+// GOOGLE CALENDAR INTEGRATION
+// Uses the existing Google OAuth token to fetch upcoming meetings.
+// Surfaces them in a panel with one-click brief prep and auto-fill.
+// No additional login required — requests calendar scope on demand.
+// ══════════════════════════════════════════════════════════════
+
+var _gcalToken=null;
+var _gcalEvents=[];
+var _gcalPanelOpen=false;
+
+// ── Request calendar access (incremental OAuth scope) ─────
+window.requestCalendarAccess=async function(){
+  // Use Google Identity Services for incremental auth
+  // The user is already signed in with Google — we just need an extra scope
+  return new Promise(function(resolve,reject){
+    if(_gcalToken){resolve(_gcalToken);return;}
+    if(!window.google||!window.google.accounts){
+      toast('Google API not loaded yet — try again in a moment');
+      reject(new Error('Google API not ready'));
+      return;
+    }
+    var client=window.google.accounts.oauth2.initTokenClient({
+      client_id:'51164371993-YOUR_CLIENT_ID.apps.googleusercontent.com',
+      scope:'https://www.googleapis.com/auth/calendar.readonly',
+      callback:function(resp){
+        if(resp.error){reject(new Error(resp.error));return;}
+        _gcalToken=resp.access_token;
+        resolve(_gcalToken);
+      }
+    });
+    // Check if we already have an active Firebase token we can reuse
+    // For now request new token
+    client.requestAccessToken({prompt:''});
+  });
+};
+
+// ── Fetch upcoming meetings from Google Calendar ──────────
+window.loadCalendarEvents=async function(){
+  if(!currentUser){return;}
+  // Use Firebase auth token to call Calendar API
+  // First get the current user's OAuth token
+  try{
+    var token=await currentUser.getIdToken();
+  }catch(e){
+    console.warn('Calendar: could not get token',e);
+    return;
+  }
+  // Use Google's calendar API with the OAuth token from sign-in
+  // We need the actual OAuth access token, not the Firebase ID token
+  // Store it during sign-in
+  if(!window._gAccessToken){
+    _renderCalendarPanel([]);
+    return;
+  }
+  try{
+    var now=new Date().toISOString();
+    var maxTime=new Date(Date.now()+7*24*60*60*1000).toISOString();
+    var url='https://www.googleapis.com/calendar/v3/calendars/primary/events'
+      +'?timeMin='+encodeURIComponent(now)
+      +'&timeMax='+encodeURIComponent(maxTime)
+      +'&singleEvents=true'
+      +'&orderBy=startTime'
+      +'&maxResults=10'
+      +'&fields=items(id,summary,start,end,attendees,description,location)';
+    var resp=await fetch(url,{
+      headers:{'Authorization':'Bearer '+window._gAccessToken}
+    });
+    if(!resp.ok){
+      if(resp.status===401){window._gAccessToken=null;}
+      _renderCalendarPanel([]);
+      return;
+    }
+    var data=await resp.json();
+    _gcalEvents=(data.items||[]).filter(function(e){
+      // Only show events with other attendees (actual meetings)
+      return e.attendees&&e.attendees.length>1;
+    });
+    _renderCalendarPanel(_gcalEvents);
+  }catch(e){
+    console.warn('Calendar fetch failed:',e);
+    _renderCalendarPanel([]);
+  }
+};
+
+// ── Calendar panel renderer ────────────────────────────────
+function _renderCalendarPanel(events){
+  var container=document.getElementById('cal-panel-content');
+  if(!container)return;
+  if(!window._gAccessToken){
+    container.innerHTML='<div style="padding:14px;text-align:center">'
+      +'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.6">Connect your Google Calendar to see upcoming meetings and prep briefs automatically.</div>'
+      +'<button onclick="window._requestGCalAccess()" class="btn btn-gold btn-sm" style="width:100%">Connect Google Calendar</button>'
+      +'</div>';
+    return;
+  }
+  if(!events.length){
+    container.innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--t3)">No upcoming meetings with others in the next 7 days.</div>';
+    return;
+  }
+  var now=new Date();
+  var h='';
+  events.forEach(function(evt){
+    var start=new Date(evt.start.dateTime||evt.start.date);
+    var end=new Date(evt.end.dateTime||evt.end.date);
+    var diffMs=start-now;
+    var diffMins=Math.floor(diffMs/60000);
+    var timeLabel='';
+    if(diffMins<0)timeLabel='<span style="color:var(--amber)">In progress</span>';
+    else if(diffMins<60)timeLabel='<span style="color:var(--gold);font-weight:600">In '+diffMins+'m</span>';
+    else if(diffMins<1440){
+      var hrs=Math.floor(diffMins/60);
+      timeLabel='In '+hrs+'h '+(diffMins%60)+'m';
+    }else{
+      var days=Math.floor(diffMins/1440);
+      timeLabel='In '+days+'d';
+    }
+    var attendees=(evt.attendees||[])
+      .filter(function(a){return !a.self;})
+      .map(function(a){return a.displayName||a.email.split('@')[0];})
+      .slice(0,4).join(', ');
+    var dur=Math.round((end-start)/60000);
+    var durLabel=dur<60?dur+'min':Math.floor(dur/60)+'h'+(dur%60?(' '+(dur%60)+'m'):'');
+    var evtId=evt.id.replace(/[^a-zA-Z0-9]/g,'');
+    h+='<div style="padding:10px 12px;border-bottom:1px solid rgba(30,54,84,.5);cursor:default">';
+    h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">';
+    h+='<div style="font-size:12px;font-weight:600;flex:1;line-height:1.35">'+evt.summary+'</div>';
+    h+='<div style="font-size:10px;flex-shrink:0;text-align:right">'+timeLabel+'</div></div>';
+    if(attendees)h+='<div style="font-size:10px;color:var(--t2);margin-bottom:4px">With: '+attendees+'</div>';
+    h+='<div style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;margin-bottom:7px">';
+    h+=start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' · '+durLabel+'</div>';
+    h+='<div style="display:flex;gap:5px">';
+    h+='<button onclick="window._calPrepBrief(\''+evtId+'\')" style="flex:1;padding:4px 8px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif;font-weight:600">⚡ Prep Brief</button>';
+    h+='<button onclick="window._calAutoFillLog(\''+evtId+'\')" style="flex:1;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif">✏ Log Meeting</button>';
+    h+='</div></div>';
+  });
+  container.innerHTML=h;
+}
+
+// ── Action handlers ────────────────────────────────────────
+window._calPrepBrief=function(evtId){
+  var evt=_gcalEvents.find(function(e){return e.id.replace(/[^a-zA-Z0-9]/g,'')==evtId;});
+  if(!evt)return;
+  var attendees=(evt.attendees||[])
+    .filter(function(a){return !a.self;})
+    .map(function(a){return a.displayName||a.email.split('@')[0];})
+    .join(', ');
+  switchView('intel');
+  switchIntelTab('prep');
+  document.getElementById('prep-title').value=evt.summary||'';
+  document.getElementById('prep-att').value=attendees;
+  toast('Brief pre-filled from calendar — add objectives and generate');
+};
+
+window._calAutoFillLog=function(evtId){
+  var evt=_gcalEvents.find(function(e){return e.id.replace(/[^a-zA-Z0-9]/g,'')==evtId;});
+  if(!evt)return;
+  var start=new Date(evt.start.dateTime||evt.start.date);
+  var end=new Date(evt.end.dateTime||evt.end.date);
+  var dur=Math.round((end-start)/60000);
+  var durLabel=dur<60?dur+' min':Math.floor(dur/60)+'h '+(dur%60?dur%60+' min':'');
+  var attendees=(evt.attendees||[])
+    .filter(function(a){return !a.self;})
+    .map(function(a){return a.displayName||a.email.split('@')[0];})
+    .join(', ');
+  var dateStr=start.toISOString().split('T')[0];
+  switchView('intel');
+  switchIntelTab('log');
+  document.getElementById('m-title').value=evt.summary||'';
+  document.getElementById('m-date').value=dateStr;
+  document.getElementById('m-dur').value=durLabel;
+  document.getElementById('m-att').value=attendees;
+  document.getElementById('m-notes').focus();
+  showPasteMode();
+  toast('Meeting auto-filled from calendar — add notes and process');
+};
+
+// ── Toggle calendar panel ─────────────────────────────────
+window.toggleCalPanel=function(){
+  _gcalPanelOpen=!_gcalPanelOpen;
+  var panel=document.getElementById('cal-events-panel');
+  if(!panel)return;
+  if(_gcalPanelOpen){
+    panel.style.display='block';
+    loadCalendarEvents();
+  }else{
+    panel.style.display='none';
+  }
+};
+
+// ── Capture Google OAuth access token at sign-in ──────────
+// We need to intercept the popup result to grab the access token
+var _origSignInWithPopup=signInWithPopup;
+// (The access token is available on the credential result)
+// We'll capture it in the existing sign-in handler by checking
+// the result credential — done in wireListeners via auth state change.
+// Store it on window when GoogleAuthProvider credential is available.
+
+// ══════════════════════════════════════════════════════════════
+// PROACTIVE RELATIONSHIP ALERTS
+// Scans network and commitments periodically. Surfaces urgent
+// items as a badge on the Brief Me button and a notification panel.
+// Alerts fire for: cold T1 contacts, overdue commitments,
+// stalled deals, and relationships with declining health scores.
+// ══════════════════════════════════════════════════════════════
+
+var _alerts=[];
+var _alertsLastRun=0;
+var _alertsPanelOpen=false;
+
+function _computeAlerts(){
+  var now=new Date();
+  var alerts=[];
+
+  // ── 1. Cold T1 contacts ──────────────────────────────────
+  nodes.filter(function(n){return n.type==='person'&&n.priority===1;}).forEach(function(n){
+    var mtgs=getMtgsForNode(n.id);
+    if(!mtgs.length)return;
+    var latest=mtgs.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);})[0];
+    var daysAgo=Math.floor((now-new Date(latest.meta.date+'T00:00:00'))/86400000);
+    if(daysAgo>=30){
+      alerts.push({
+        type:'cold',
+        severity:daysAgo>=60?'high':'medium',
+        icon:'❄',
+        title:n.name+' has gone cold',
+        body:daysAgo+'d since last contact — T1 relationship',
+        action:function(){openNetPanel(n);},
+        actionLabel:'Open Dossier',
+        nodeId:n.id,
+        daysAgo:daysAgo
+      });
+    }
+  });
+
+  // ── 2. Overdue commitments ───────────────────────────────
+  var today=new Date();today.setHours(0,0,0,0);
+  commitments.filter(function(c){return c.status==='open'&&c.deadline;}).forEach(function(c){
+    var d=new Date(c.deadline+'T00:00:00');
+    var daysLate=Math.floor((today-d)/86400000);
+    if(daysLate>0){
+      alerts.push({
+        type:'overdue',
+        severity:daysLate>=7?'high':'medium',
+        icon:'⚠',
+        title:(c.owner?c.owner+': ':'')+c.task.slice(0,60),
+        body:daysLate+'d overdue · from '+c.sourceMtgTitle,
+        action:function(){switchView('timeline');},
+        actionLabel:'View Timeline',
+        daysLate:daysLate
+      });
+    }
+  });
+
+  // ── 3. Stalled opportunities ─────────────────────────────
+  opportunities.filter(function(o){
+    return o.stage!=='won'&&o.stage!=='lost';
+  }).forEach(function(o){
+    var lastActivity=new Date(o.updatedAt||o.created);
+    var daysSince=Math.floor((now-lastActivity)/86400000);
+    if(daysSince>=21){
+      var fy=o.awardDate?getFYInfo(o.awardDate):null;
+      var isQ4=fy&&fy.fq===4;
+      alerts.push({
+        type:'stalled',
+        severity:isQ4&&daysSince>=14?'high':'medium',
+        icon:isQ4?'⚡':'◎',
+        title:o.name+' — no activity',
+        body:daysSince+'d stalled at '+o.stage+(isQ4?' · Q4 EOFY window!':''),
+        action:function(){switchView('opps');selectOpp(o.id);},
+        actionLabel:'View Opportunity',
+        daysSince:daysSince
+      });
+    }
+  });
+
+  // ── 4. Declining health on T1/T2 ─────────────────────────
+  nodes.filter(function(n){return n.type==='person'&&n.priority<=2;}).forEach(function(n){
+    var mtgs=getMtgsForNode(n.id);
+    if(mtgs.length<3)return;
+    var health=computeRelHealth(n.id);
+    if(health<=3&&n.priority===1){
+      alerts.push({
+        type:'health',
+        severity:'high',
+        icon:'↘',
+        title:n.name+' — relationship deteriorating',
+        body:'Health score: '+health+'/10 · Needs immediate attention',
+        action:function(){openNetPanel(n);},
+        actionLabel:'View Dossier',
+        nodeId:n.id
+      });
+    }else if(health<=2&&n.priority===2){
+      alerts.push({
+        type:'health',
+        severity:'medium',
+        icon:'↘',
+        title:n.name+' — relationship cooling',
+        body:'Health score: '+health+'/10',
+        action:function(){openNetPanel(n);},
+        actionLabel:'View Dossier',
+        nodeId:n.id
+      });
+    }
+  });
+
+  // Sort: high severity first, then by date impact
+  alerts.sort(function(a,b){
+    var sv={high:0,medium:1};
+    return (sv[a.severity]||2)-(sv[b.severity]||2);
+  });
+
+  return alerts.slice(0,12);
+}
+
+function _runAlertCheck(){
+  if(!currentWsId||!nodes.length)return;
+  var now=Date.now();
+  if(now-_alertsLastRun<120000)return; // throttle: 2 min
+  _alertsLastRun=now;
+  _alerts=_computeAlerts();
+  _updateAlertBadge();
+  if(_alertsPanelOpen)_renderAlertsPanel();
+}
+
+function _updateAlertBadge(){
+  var btn=document.getElementById('nav-brief-btn');
+  if(!btn)return;
+  var badge=document.getElementById('alert-badge');
+  var highCount=_alerts.filter(function(a){return a.severity==='high';}).length;
+  var totalCount=_alerts.length;
+  if(totalCount===0){
+    if(badge)badge.style.display='none';
+    return;
+  }
+  if(!badge){
+    badge=document.createElement('span');
+    badge.id='alert-badge';
+    badge.style.cssText='position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;font-family:\'JetBrains Mono\',monospace;pointer-events:none';
+    btn.style.position='relative';
+    btn.appendChild(badge);
+  }
+  badge.textContent=totalCount;
+  badge.style.background=highCount>0?'var(--red)':'var(--amber)';
+  badge.style.display='flex';
+}
+
+window.toggleAlertsPanel=function(){
+  _alertsPanelOpen=!_alertsPanelOpen;
+  var panel=document.getElementById('alerts-panel');
+  if(!panel){
+    // Create panel
+    panel=document.createElement('div');
+    panel.id='alerts-panel';
+    panel.style.cssText='position:fixed;top:52px;right:0;width:340px;max-height:calc(100vh - 60px);overflow-y:auto;background:var(--s1);border-left:1px solid rgba(30,54,84,.6);border-bottom:1px solid rgba(30,54,84,.6);z-index:45;box-shadow:-8px 0 32px rgba(0,0,0,.4)';
+    document.body.appendChild(panel);
+  }
+  if(_alertsPanelOpen){
+    _runAlertCheck();
+    _renderAlertsPanel();
+    panel.style.display='block';
+  }else{
+    panel.style.display='none';
+  }
+};
+
+function _renderAlertsPanel(){
+  var panel=document.getElementById('alerts-panel');
+  if(!panel)return;
+  if(!_alerts.length){
+    panel.innerHTML='<div style="padding:20px;text-align:center">'
+      +'<div style="font-size:24px;margin-bottom:8px">✓</div>'
+      +'<div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:4px">All clear</div>'
+      +'<div style="font-size:11px;color:var(--t2)">No urgent relationship or commitment issues.</div>'
+      +'<button onclick="toggleAlertsPanel()" style="margin-top:12px;padding:5px 14px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer">Close</button>'
+      +'</div>';
+    return;
+  }
+  var h='<div style="padding:10px 14px;border-bottom:1px solid rgba(30,54,84,.5);display:flex;align-items:center;justify-content:space-between">';
+  h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--red)">'+_alerts.length+' Alert'+(  _alerts.length!==1?'s':'')+' Require Attention</div>';
+  h+='<button onclick="toggleAlertsPanel()" style="background:none;border:none;color:var(--t3);font-size:16px;cursor:pointer;line-height:1">×</button></div>';
+  _alerts.forEach(function(alert,i){
+    var borderColor=alert.severity==='high'?'var(--red)':'var(--amber)';
+    h+='<div style="padding:11px 14px;border-bottom:1px solid rgba(30,54,84,.4);border-left:3px solid '+borderColor+'">';
+    h+='<div style="display:flex;gap:8px;align-items:flex-start">';
+    h+='<span style="font-size:14px;flex-shrink:0;margin-top:1px">'+alert.icon+'</span>';
+    h+='<div style="flex:1;min-width:0">';
+    h+='<div style="font-size:12px;font-weight:600;line-height:1.35;margin-bottom:2px">'+alert.title+'</div>';
+    h+='<div style="font-size:11px;color:var(--t2);line-height:1.4;margin-bottom:7px">'+alert.body+'</div>';
+    h+='<button onclick="window._alertActions['+i+']();toggleAlertsPanel()" style="padding:3px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif">'+alert.actionLabel+' →</button>';
+    h+='</div></div></div>';
+  });
+  // Store action callbacks (functions can't be in innerHTML)
+  window._alertActions=_alerts.map(function(a){return a.action;});
+  panel.innerHTML=h;
+}
+
+// ── Wire alert checks into the app lifecycle ──────────────
+// Run after data loads and periodically
+var _alertInterval=null;
+function _initAlerts(){
+  clearInterval(_alertInterval);
+  _alertInterval=setInterval(_runAlertCheck,180000); // every 3 min
+  setTimeout(_runAlertCheck,4000); // initial run after 4s
+}
 
 </script>
 </body>
