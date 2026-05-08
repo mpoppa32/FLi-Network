@@ -7871,18 +7871,25 @@ window.requestCalendarAccess=async function(){
   try{
     var provider=new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+    // Force account chooser so user can pick their work account
+    provider.setCustomParameters({prompt:'select_account'});
+    toast('Choose your work calendar account in the popup...');
     var result=await signInWithPopup(auth,provider);
     var credential=GoogleAuthProvider.credentialFromResult(result);
     if(credential&&credential.accessToken){
       window._gAccessToken=credential.accessToken;
+      window._gCalEmail=result.user?result.user.email:'';
       return credential.accessToken;
     }
     throw new Error('No access token returned');
   }catch(e){
     if(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request'){
-      toast('Calendar access cancelled');
+      toast('Calendar connection cancelled — try again');
+    }else if(e.code==='auth/popup-blocked'){
+      toast('Popup blocked — allow popups for this site then try again');
     }else{
       toast('Could not connect calendar: '+(e.message||e.code));
+      console.error('Calendar auth error:',e);
     }
     return null;
   }
@@ -7942,11 +7949,13 @@ function _renderCalendarPanel(events){
     return;
   }
   if(!events.length){
-    container.innerHTML='<div style="padding:14px;text-align:center;font-size:12px;color:var(--t3)">No upcoming meetings with others in the next 7 days.</div>';
+    var acctNote=window._gCalEmail?'<div style="font-size:10px;color:var(--green);margin-bottom:8px;text-align:center">✓ Connected: '+window._gCalEmail+'</div>':'';
+    container.innerHTML=acctNote+'<div style="padding:14px;text-align:center;font-size:12px;color:var(--t3)">No upcoming meetings with others in the next 7 days.</div>';
     return;
   }
   var now=new Date();
-  var h='';
+  var acctBadge=window._gCalEmail?'<div style="font-size:10px;color:var(--green);padding:5px 12px;border-bottom:1px solid rgba(30,54,84,.4)">✓ '+window._gCalEmail+'</div>':'';
+  var h=acctBadge;
   events.forEach(function(evt){
     var start=new Date(evt.start.dateTime||evt.start.date);
     var end=new Date(evt.end.dateTime||evt.end.date);
