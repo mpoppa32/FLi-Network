@@ -2092,6 +2092,107 @@ function checkMondayDigestPrompt(){
   },2000); // 2s delay so app fully renders first
 }
 
+
+// Opens Log tab with attendee pre-filled for one-click follow-up from decay alerts
+window._openLogForContact=function(name){
+  switchView('intel');
+  switchIntelTab('log');
+  setTimeout(function(){
+    var attEl=document.getElementById('m-att');
+    if(attEl&&!attEl.value){attEl.value=name;}
+    // Focus the title field so user can start typing immediately
+    var titleEl=document.getElementById('m-title');
+    if(titleEl){titleEl.focus();}
+    toast('Fill in the meeting details for '+name);
+  },150);
+};
+
+// ── Tag Meeting to Opportunity ────────────────────────────────────────────
+// Returns HTML for the "Tag" button shown in renderIntel.
+// Green if already tagged, gold if untagged.
+function _tagOppBtnHtml(m){
+  if(!opportunities.length)return '';
+  var tagged=opportunities.find(function(o){return o.id===m.oppId||(o.meetings||[]).includes(m.id);});
+  var label=tagged?('⊞ '+tagged.name.slice(0,18)+(tagged.name.length>18?'…':'')):'⊞ Tag Opp';
+  var col=tagged?'var(--green)':'var(--gold)';
+  return '<button onclick="window._tagMeetingToOpp('+m.id+')" style="padding:3px 8px;border:1px solid '+col+';border-radius:4px;background:transparent;color:'+col+';font-size:11px;cursor:pointer;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(tagged?'Tagged to '+tagged.name:'Tag this meeting to an opportunity')+'">'+label+'</button>';
+}
+
+window._tagMeetingToOpp=async function(mtgId){
+  if(!opportunities.length){toast('No opportunities yet — create one first');switchView('opps');return;}
+  var m=meetingMap.get(mtgId);
+  if(!m)return;
+  // Build option list — show currently tagged opp first
+  var currentTagged=opportunities.find(function(o){return o.id===m.oppId||(o.meetings||[]).includes(m.id);});
+  var activeOpps=opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';});
+  if(!activeOpps.length){toast('No active opportunities to tag to');return;}
+
+  // Show a select-style modal
+  var result=await _showOppPickerModal(m,activeOpps,currentTagged);
+  if(result===undefined)return; // dismissed
+  if(result===null){
+    // Untag
+    m.oppId=null;
+    await fbSet(wsPath('meetings/'+mtgId+'/oppId'),null);
+    toast('Meeting untagged');
+  }else{
+    // Tag to selected opp
+    m.oppId=result.id;
+    await fbSet(wsPath('meetings/'+mtgId+'/oppId'),result.id);
+    // Also update opp.updatedAt
+    result.updatedAt=new Date().toISOString();
+    await saveOpp(result);
+    toast('Tagged to "'+result.name+'"');
+  }
+  // Re-render intel view to update button state
+  if(currentMeeting&&currentMeeting.id===mtgId)renderIntel(m);
+};
+
+function _showOppPickerModal(m,activeOpps,currentTagged){
+  return new Promise(function(resolve){
+    var existing=document.getElementById('opp-picker-modal');
+    if(existing)existing.remove();
+    var overlay=document.createElement('div');
+    overlay.id='opp-picker-modal';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+    var title=m.meta.title.slice(0,60)+(m.meta.title.length>60?'…':'');
+    var inner='<div style="background:var(--s1);border:1px solid var(--b2);border-radius:var(--r);padding:20px 22px;max-width:400px;width:90%;max-height:80vh;overflow-y:auto">';
+    inner+='<div style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold);margin-bottom:4px">Tag to Opportunity</div>';
+    inner+='<div style="font-size:12px;color:var(--t2);margin-bottom:14px;font-style:italic">'+title+'</div>';
+    activeOpps.forEach(function(o){
+      var isTagged=currentTagged&&currentTagged.id===o.id;
+      var sc=oppStageConfig(o.stage);
+      inner+='<div data-opp-id="'+o.id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid '+(isTagged?'var(--green)':'var(--b2)')+';border-radius:var(--rsm);margin-bottom:6px;cursor:pointer;background:'+(isTagged?'rgba(34,197,94,.06)':'transparent')+'" '+
+        'onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\''+( isTagged?'var(--green)':'var(--b2)')+'\'">'+
+        '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:12px;font-weight:600">'+o.name+'</div>'+
+        '<div style="font-size:10px;color:'+sc.color+';margin-top:2px">'+sc.label+(o.agency?' · '+o.agency:'')+'</div>'+
+        '</div>'+
+        (isTagged?'<span style="font-size:12px;color:var(--green)">✓</span>':'')+
+        '</div>';
+    });
+    if(currentTagged){
+      inner+='<button style="width:100%;margin-top:4px;padding:7px;border:1px dashed rgba(239,68,68,.4);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:11px;cursor:pointer;font-family:Outfit,sans-serif" id="opp-picker-untag">Remove tag</button>';
+    }
+    inner+='<button style="width:100%;margin-top:8px;padding:7px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:Outfit,sans-serif" id="opp-picker-cancel">Cancel</button>';
+    inner+='</div>';
+    overlay.innerHTML=inner;
+    // Wire clicks
+    overlay.querySelectorAll('[data-opp-id]').forEach(function(el){
+      el.addEventListener('click',function(){
+        var opp=activeOpps.find(function(o){return String(o.id)===el.dataset.oppId;});
+        overlay.remove();resolve(opp);
+      });
+    });
+    var untagBtn=overlay.querySelector('#opp-picker-untag');
+    if(untagBtn)untagBtn.addEventListener('click',function(){overlay.remove();resolve(null);});
+    var cancelBtn=overlay.querySelector('#opp-picker-cancel');
+    if(cancelBtn)cancelBtn.addEventListener('click',function(){overlay.remove();resolve(undefined);});
+    overlay.addEventListener('click',function(e){if(e.target===overlay){overlay.remove();resolve(undefined);}});
+    document.body.appendChild(overlay);
+  });
+}
+
 function wireListeners(){
   document.querySelector('.intel-tabs').addEventListener('click',function(e){var tab=e.target.dataset.itab;if(tab)switchIntelTab(tab);});
   document.getElementById('ws-switcher').addEventListener('click',function(){document.getElementById('ws-screen').style.display='flex';document.getElementById('main-app').style.display='none';renderWsList();});
@@ -2961,7 +3062,39 @@ function renderOppDetail(opp){
 
   // Meeting log
   if(taggedMtgs.length){
-    h+='<div class="card" style="margin-bottom:10px"><div class="opp-detail-hdr">Meeting Log ('+taggedMtgs.length+')</div>';
+    h+='<div class="card" style="margin-bottom:10px">';
+    h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h+='<div class="opp-detail-hdr" style="margin:0">Meeting Log ('+taggedMtgs.length+')</div>';
+    h+='</div>';
+    // ── Pulse trajectory ─────────────────────────────────────────
+    // Show chronological dots colored by companyPulse for at-a-glance momentum
+    var chronoPulses=taggedMtgs.slice().reverse(); // oldest first
+    if(chronoPulses.length>1){
+      h+='<div style="margin-bottom:10px;padding:8px 10px;background:var(--s2);border-radius:var(--rsm)">';
+      h+='<div style="font-size:9px;font-family:JetBrains Mono,monospace;text-transform:uppercase;letter-spacing:0.08em;color:var(--t3);margin-bottom:7px">Momentum Trend — oldest → newest</div>';
+      h+='<div style="display:flex;align-items:center;gap:0;overflow-x:auto;padding-bottom:2px">';
+      chronoPulses.forEach(function(m,i){
+        var pc2=PC[m.intel.companyPulse]||{t:'#6b7280'};
+        var pulse=m.intel.companyPulse||'?';
+        h+='<div style="display:flex;flex-direction:column;align-items:center;min-width:44px;cursor:pointer" onclick="switchView(\'intel\');goIntelById('+m.id+')" title="'+m.meta.title+' · '+m.meta.date+'">';
+        h+='<div style="width:28px;height:28px;border-radius:50%;background:'+pc2.t+'22;border:2px solid '+pc2.t+';display:flex;align-items:center;justify-content:center">';
+        h+='<div style="width:10px;height:10px;border-radius:50%;background:'+pc2.t+'"></div></div>';
+        h+='<div style="font-size:7px;color:'+pc2.t+';text-align:center;margin-top:3px;font-family:JetBrains Mono,monospace;max-width:42px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+pulse+'</div>';
+        h+='</div>';
+        if(i<chronoPulses.length-1)h+='<div style="width:12px;height:1px;background:var(--b2);flex-shrink:0;margin-top:-10px"></div>';
+      });
+      h+='</div>';
+      // Trend summary
+      var pList=chronoPulses.map(function(m){return m.intel.companyPulse;}).filter(Boolean);
+      if(pList.length>=2){
+        var pOrd={Accelerating:5,Building:4,Steady:3,Pivoting:3,Stalling:2,Crisis:1};
+        var pFirst=pOrd[pList[0]]||3,pLast=pOrd[pList[pList.length-1]]||3;
+        var trendTxt=pLast>pFirst?'↑ Momentum improving':pLast<pFirst?'↓ Momentum declining':'→ Momentum stable';
+        var trendC=pLast>pFirst?'var(--green)':pLast<pFirst?'var(--red)':'var(--t2)';
+        h+='<div style="font-size:10px;font-weight:600;color:'+trendC+';margin-top:6px">'+trendTxt+'</div>';
+      }
+      h+='</div>';
+    }
     taggedMtgs.slice(0,8).forEach(function(m){
       var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};
       h+='<div style="padding:6px 0;border-bottom:1px solid rgba(37,45,66,.3);cursor:pointer" onclick="switchView(\'intel\');goIntelById('+m.id+')">';
@@ -4214,8 +4347,24 @@ async function generateDigest(){
   context+='\nOVERDUE COMMITMENTS ('+overdue.length+'):\n';
   overdue.slice(0,8).forEach(function(o){context+='- ['+o.daysLate+'d late] '+o.task+' ('+o.owner+') from: '+o.mtg+'\n';});
 
-  context+='\nCOOLING RELATIONSHIPS (last contact >45 days):\n';
-  cooling.forEach(function(c){context+='- '+c.name+': '+c.daysAgo+' days since last contact\n';});
+  // Augment cooling with health scores from node map + use _buildDecayAlerts
+  var decayData=_buildDecayAlerts();
+  var decayByName={};
+  decayData.forEach(function(a){decayByName[a.node.name]=a;});
+  context+='\nCOOLING RELATIONSHIPS — ranked by risk (days silent / health score):\n';
+  // Merge cooling from meeting history with decay alerts from node map
+  var allCooling=cooling.slice();
+  decayData.slice(0,6).forEach(function(a){
+    if(!allCooling.find(function(x){return x.name===a.node.name;}))
+      allCooling.push({name:a.node.name,daysAgo:a.daysAgo});
+  });
+  allCooling.sort(function(a,b){return b.daysAgo-a.daysAgo;}).slice(0,8).forEach(function(ci){
+    var da=decayByName[ci.name];
+    var tier=da?da.tier:'';
+    var health=da?da.health:null;
+    var severity=ci.daysAgo>=60?'CRITICAL':ci.daysAgo>=45?'WARNING':'WATCH';
+    context+='- ['+severity+'] '+ci.name+(tier?' ('+tier+')':'')+': '+ci.daysAgo+'d silent'+(health!==null?', health '+health+'/10':'')+(da&&da.lastMtg?' — last: '+da.lastMtg.meta.title:'')+' ← CONTACT THIS WEEK\n';
+  });
 
   context+='\nACTIVE OPPORTUNITIES ('+opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';}).length+'):\n';
   opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';}).forEach(function(o){
@@ -4272,6 +4421,28 @@ Keep the entire brief under 500 words. No fluff. No hedging. This person is busy
     html+='<div><div style="font-size:16px;font-weight:700">Weekly Brief</div>';
     html+='<div style="font-size:11px;color:var(--t2)">'+currentWs.name+' · '+new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})+'</div></div>';
     html+='<button onclick="closeModal(\'digest-modal\')" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;line-height:1">×</button></div>';
+
+    // ── TOP 3 ACTIONS callout — extract from "THIS WEEK'S PRIORITIES" section ──
+    var top3Html='';
+    var priIdx=text.toUpperCase().indexOf("THIS WEEK'S PRIORITIES");
+    if(priIdx!==-1){
+      var priBlock=text.slice(priIdx+24,priIdx+800);
+      // Extract numbered items 1-3
+      var lines=priBlock.split('\n').map(function(l){return l.trim();}).filter(function(l){return l.match(/^[1-3][\.\)]/);});
+      if(lines.length>=2){
+        top3Html='<div style="margin-bottom:14px;padding:12px 14px;background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.04));border:1px solid rgba(34,197,94,.25);border-radius:var(--r)">';
+        top3Html+='<div style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--green);margin-bottom:8px">Top Actions This Week</div>';
+        lines.slice(0,3).forEach(function(l,i){
+          var clean=l.replace(/^[1-3][\.\)]\s*/,'');
+          top3Html+='<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:'+(i<lines.length-1?'6px':'0')+'">';
+          top3Html+='<div style="width:18px;height:18px;border-radius:50%;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.3);color:var(--green);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(i+1)+'</div>';
+          top3Html+='<div style="font-size:12px;font-weight:500;line-height:1.45;color:var(--text)">'+clean+'</div>';
+          top3Html+='</div>';
+        });
+        top3Html+='</div>';
+      }
+    }
+    html+=top3Html;
 
     // Render each section
     var remaining=text;
@@ -4732,7 +4903,7 @@ function renderIntel(m){var intel=m.intel,meta=m.meta;var tc=TC[meta.type]||TC['
   // Version history pill
   var histCount=(m.intelHistory||[]).length;
   var histPill=histCount?'<button class="history-pill" onclick="toggleIntelHistory(\''+m.id+'\')" title="'+histCount+' previous version'+(histCount>1?'s':'')+'">&#128336; v'+(histCount+1)+'</button>':'';
-  var h='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:7px"><div><div style="font-size:16px;font-weight:700;margin-bottom:2px">'+meta.title+'</div><div style="font-size:12px;color:var(--t2);display:flex;align-items:center;gap:5px">'+meta.date+(meta.att?' -- '+meta.att:'')+(meta.dur?' -- '+meta.dur:'')+(m.loggedBy?' ':''+(m.loggedBy?who(m.loggedBy,mc):''))+'</div></div><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'+histPill+bdg(meta.type,tc)+bdg(intel.companyPulse||'?',pc)+'<button onclick="showSyncModal()" style="padding:3px 8px;border:1px solid var(--gold);border-radius:4px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer" title="Review or manually edit Network Map entities">Edit Sync</button><button onclick="editMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--blue);border-radius:4px;background:transparent;color:var(--blue);font-size:11px;cursor:pointer">Edit</button><button onclick="delMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--b1);border-radius:4px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer">Remove</button></div></div>';
+  var h='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:7px"><div><div style="font-size:16px;font-weight:700;margin-bottom:2px">'+meta.title+'</div><div style="font-size:12px;color:var(--t2);display:flex;align-items:center;gap:5px">'+meta.date+(meta.att?' -- '+meta.att:'')+(meta.dur?' -- '+meta.dur:'')+(m.loggedBy?' ':''+(m.loggedBy?who(m.loggedBy,mc):''))+'</div></div><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'+histPill+bdg(meta.type,tc)+bdg(intel.companyPulse||'?',pc)+'<button onclick="showSyncModal()" style="padding:3px 8px;border:1px solid var(--gold);border-radius:4px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer" title="Review or manually edit Network Map entities">Edit Sync</button><button onclick="editMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--blue);border-radius:4px;background:transparent;color:var(--blue);font-size:11px;cursor:pointer">Edit</button>'+_tagOppBtnHtml(m)+'<button onclick="delMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--b1);border-radius:4px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer">Remove</button></div></div>';
   // History panel (hidden by default)
   if(histCount){
     h+='<div id="intel-history-panel" style="display:none;margin-bottom:12px;border:1px solid rgba(139,92,246,.3);border-radius:var(--r);overflow:hidden">';
@@ -5399,6 +5570,47 @@ function detectSignals(){
   return signals.slice(0,8);
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// RELATIONSHIP DECAY ALERTS
+// Scans T1/T2 person nodes, computes days since last meeting,
+// and returns sorted alert list for Board and Digest.
+//   severity: 'critical' (60+d), 'warning' (45-59d), 'watch' (30-44d)
+// ══════════════════════════════════════════════════════════════════
+function _buildDecayAlerts(){
+  var now=new Date();now.setHours(0,0,0,0);
+  var alerts=[];
+  nodes.forEach(function(n){
+    if(n.type!=='person'&&n.type!=='government')return;
+    if(n.priority!==1&&n.priority!==2)return; // T1/T2 only
+    var mtgs=getMtgsForNode(n.id);
+    if(!mtgs.length)return;
+    var sorted=mtgs.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);});
+    var lastDate=new Date(sorted[0].meta.date+'T00:00:00');
+    var daysAgo=Math.floor((now-lastDate)/86400000);
+    if(daysAgo<30)return; // active — skip
+    var health=computeRelHealth(n.id);
+    var severity=daysAgo>=60?'critical':daysAgo>=45?'warning':'watch';
+    // Escalate severity if health is also low
+    if(health<=3&&severity==='watch')severity='warning';
+    alerts.push({
+      node:n,
+      daysAgo:daysAgo,
+      health:health,
+      lastMtg:sorted[0],
+      severity:severity,
+      tier:n.priority===1?'T1':'T2'
+    });
+  });
+  // Sort: critical first, then by daysAgo descending
+  var ord={critical:0,warning:1,watch:2};
+  alerts.sort(function(a,b){
+    if(ord[a.severity]!==ord[b.severity])return ord[a.severity]-ord[b.severity];
+    return b.daysAgo-a.daysAgo;
+  });
+  return alerts;
+}
+
 // Debounced renderBoard for Firebase listener calls — prevents triple-render
 // when multiple listeners fire simultaneously (meetings + nodes + commitments)
 function scheduleRenderBoard(){
@@ -5443,6 +5655,51 @@ if(introRecs.length){
 // ── SIGNAL DETECTION ─────────────────────────────────────────────
 // Cross-meeting pattern analysis: surfaces what humans miss by seeing
 // only one meeting at a time. Runs on every Board render.
+// ── RELATIONSHIP DECAY SECTION ──────────────────────────────────────────────
+var decayAlerts=_buildDecayAlerts();
+if(decayAlerts.length){
+  var critCount=decayAlerts.filter(function(a){return a.severity==='critical';}).length;
+  var warnCount=decayAlerts.filter(function(a){return a.severity==='warning';}).length;
+  var borderColor=critCount?'var(--red)':warnCount?'var(--amber)':'var(--t3)';
+  var headerColor=critCount?'var(--red)':warnCount?'var(--amber)':'var(--t2)';
+  h+='<div class="card" style="border-left:3px solid '+borderColor+';margin-bottom:10px">';
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  h+='<div class="ctitle" style="color:'+headerColor+'">Relationships at Risk';
+  if(critCount)h+=' <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:rgba(239,68,68,.15);color:var(--red);margin-left:6px">'+critCount+' CRITICAL</span>';
+  if(warnCount)h+=' <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:rgba(245,158,11,.12);color:var(--amber);margin-left:4px">'+warnCount+' WARNING</span>';
+  h+='</div>';
+  h+='<div style="font-size:10px;color:var(--t3)">'+decayAlerts.length+' contact'+(decayAlerts.length>1?'s':'')+' not contacted recently</div>';
+  h+='</div>';
+  decayAlerts.slice(0,6).forEach(function(a){
+    var sevColor=a.severity==='critical'?'var(--red)':a.severity==='warning'?'var(--amber)':'var(--t3)';
+    var hColor=a.health>=7?'var(--green)':a.health>=4?'var(--amber)':'var(--red)';
+    var ini=a.node.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
+    h+='<div style="display:flex;gap:9px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(37,45,66,.35)">';
+    // Avatar
+    h+='<div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;background:var(--s2);border:2px solid '+sevColor+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--gold)">'+ini+'</div>';
+    // Info
+    h+='<div style="flex:1;min-width:0">';
+    h+='<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">';
+    h+='<span style="font-size:12px;font-weight:600">'+a.node.name+'</span>';
+    h+='<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--s2);border:1px solid var(--b2);color:var(--t2);font-family:JetBrains Mono,monospace">'+a.tier+'</span>';
+    h+='</div>';
+    h+='<div style="font-size:10px;color:var(--t3)">';
+    if(a.node.role)h+=a.node.role+(a.node.org?' @ '+a.node.org:'');
+    h+='</div>';
+    h+='<div style="font-size:10px;color:var(--t2);margin-top:2px">Last: '+a.lastMtg.meta.title+' <span style="color:var(--t3)">· '+a.lastMtg.meta.date+'</span></div>';
+    h+='</div>';
+    // Right side: days + health + action
+    h+='<div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px">';
+    h+='<div style="font-size:15px;font-weight:700;color:'+sevColor+'">'+a.daysAgo+'<span style="font-size:8px;font-weight:400">d</span></div>';
+    h+='<div style="font-size:9px;color:'+hColor+';font-family:JetBrains Mono,monospace">health '+a.health+'/10</div>';
+    h+='<button onclick="_openLogForContact(\''+a.node.name.replace(/'/g,"\'")+'\')" style="font-size:10px;padding:3px 8px;border:1px solid '+sevColor+';border-radius:var(--rsm);background:transparent;color:'+sevColor+';cursor:pointer;font-family:Outfit,sans-serif;white-space:nowrap">Log Meeting</button>';
+    h+='</div>';
+    h+='</div>';
+  });
+  if(decayAlerts.length>6)h+='<div style="text-align:center;padding:6px 0 2px;font-size:11px;color:var(--t3)">+' +(decayAlerts.length-6)+' more — open Network Map to see all</div>';
+  h+='</div>';
+}
+
 var signals=detectSignals();
 if(signals.length){
   h+='<div class="card" style="border-left:3px solid var(--purple);border-radius:var(--r);padding:12px 14px;margin-bottom:10px">';
