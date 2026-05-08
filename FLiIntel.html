@@ -457,6 +457,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 .tv-leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -1412,6 +1413,12 @@ var FB_CFG = {
 var fbApp = initializeApp(FB_CFG);
 var auth = getAuth(fbApp);
 var db = getDatabase(fbApp);
+
+// ── EMAILJS CONFIG ─────────────────────────────────────────────────────────
+var EMAILJS_SERVICE_ID  = 'service_up5vfsa';
+var EMAILJS_TEMPLATE_ID = 'template_mkt974o';
+var EMAILJS_PUBLIC_KEY  = 'X0t4sWBbiwBlKIVrr';
+// ──────────────────────────────────────────────────────────────────────────
 
 var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],opportunities=[],commitments=[],calibrationRecords=[],calEntries=[],tlCommitments=[],entities=[],apiKey='',wsApiKey='',wsApiKeySetBy='',deepgramKey='',currentMeeting=null,currentOpp=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
 // ── Performance: health score cache + render debounce ─────────
@@ -5941,7 +5948,31 @@ async function inviteMember(){
     invited:new Date().toISOString()
   });
   document.getElementById('invite-email').value='';
-  toast('Invite sent to '+email+' as '+role);
+  var ejsReady=(typeof emailjs!=='undefined');
+  if(ejsReady){
+    try{
+      var appUrl=window.location.origin+(window.location.pathname.length>1?window.location.pathname:'');
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          to_email:      email,
+          from_name:     currentUser.displayName||currentUser.email,
+          from_email:    currentUser.email,
+          workspace_name:currentWs.name,
+          role:          role,
+          signin_url:    appUrl
+        },
+        {publicKey: EMAILJS_PUBLIC_KEY}
+      );
+      toast('Invite sent ✓ — email delivered to '+email);
+    }catch(ejsErr){
+      console.warn('EmailJS send failed:',ejsErr);
+      toast('Invite saved — email notification failed');
+    }
+  } else {
+    toast('Invite sent to '+email+' as '+role);
+  }
   showMembers();
 }
 
