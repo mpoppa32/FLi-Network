@@ -441,6 +441,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 @keyframes pgPulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
 .pg-ghost-pulse{animation:pgPulse 2s ease-in-out infinite}
 </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -1080,6 +1081,17 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:6px">Personal Key <span style="color:var(--t3);font-weight:400">(fallback)</span></div>
       <div class="fld" style="margin-bottom:7px"><input type="password" id="api-key-setting" placeholder="sk-ant-api03-..."></div>
       <button class="btn btn-sm" id="save-api-key-btn">Save Personal Key</button>
+    </div>
+
+    <!-- GOOGLE CALENDAR CLIENT ID -->
+    <div style="margin-bottom:12px;padding:11px 13px;background:rgba(66,133,244,.05);border:1px solid rgba(66,133,244,.2);border-radius:var(--r)">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:#4285f4;margin-bottom:4px">Google Calendar <span style="color:var(--t3);font-weight:400">(OAuth Client ID)</span></div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:7px;line-height:1.5">Required to sync your work calendar without affecting your login. <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:#4285f4">Get from Google Cloud Console →</a></div>
+      <div class="fld" style="margin-bottom:7px"><input type="text" id="gcal-cid-setting" placeholder="xxxxxxxxx.apps.googleusercontent.com"></div>
+      <div style="display:flex;gap:7px;align-items:center">
+        <button class="btn btn-sm" id="save-gcal-cid-btn" style="border-color:rgba(66,133,244,.4);color:#4285f4">Save</button>
+        <div id="gcal-cid-status" style="font-size:10px;color:var(--t3)"></div>
+      </div>
     </div>
 
     <!-- DEEPGRAM KEY: enhanced transcription -->
@@ -1841,6 +1853,21 @@ function wireListeners(){
   // Sign out from workspace picker screen
   var wsSO=document.getElementById('ws-signout-btn');
   if(wsSO)wsSO.addEventListener('click',function(){signOut(auth);});
+  // Calendar Client ID save
+  document.getElementById('save-gcal-cid-btn').addEventListener('click',function(){
+    var cid=document.getElementById('gcal-cid-setting').value.trim();
+    if(!cid){toast('Paste your Google OAuth Client ID first');return;}
+    localStorage.setItem('fli-gcal-cid',cid);
+    window._gcalClientId=cid;
+    var st=document.getElementById('gcal-cid-status');
+    if(st)st.textContent='✓ Saved';
+    document.getElementById('gcal-cid-setting').value='';
+    toast('Google Calendar Client ID saved');
+  });
+  // Load saved client ID on init
+  var savedCid=localStorage.getItem('fli-gcal-cid');
+  if(savedCid)window._gcalClientId=savedCid;
+
   document.getElementById('save-dg-key-btn').addEventListener('click',function(){
     var k=document.getElementById('dg-key-setting').value.trim();
     if(!k){toast('Paste your Deepgram API key first');return;}
@@ -7867,32 +7894,46 @@ var _gcalEvents=[];
 var _gcalPanelOpen=false;
 
 // ── Request calendar access (incremental OAuth scope) ─────
-window.requestCalendarAccess=async function(){
-  try{
-    var provider=new GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/calendar.readonly');
-    // Force account chooser so user can pick their work account
-    provider.setCustomParameters({prompt:'select_account'});
-    toast('Choose your work calendar account in the popup...');
-    var result=await signInWithPopup(auth,provider);
-    var credential=GoogleAuthProvider.credentialFromResult(result);
-    if(credential&&credential.accessToken){
-      window._gAccessToken=credential.accessToken;
-      window._gCalEmail=result.user?result.user.email:'';
-      return credential.accessToken;
+window.requestCalendarAccess=function(){
+  // Uses Google Identity Services token client — completely separate from
+  // Firebase auth. This gets a calendar OAuth token WITHOUT switching the
+  // Firebase sign-in session. The user stays logged in as their original account.
+  return new Promise(function(resolve,reject){
+    // Wait for GIS library to load
+    var calCid=window._gcalClientId||localStorage.getItem('fli-gcal-cid')||'';
+    if(!calCid){
+      toast('Add your Google OAuth Client ID in Settings → Calendar to enable calendar sync');
+      reject(new Error('No client ID configured'));
+      return;
     }
-    throw new Error('No access token returned');
-  }catch(e){
-    if(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request'){
-      toast('Calendar connection cancelled — try again');
-    }else if(e.code==='auth/popup-blocked'){
-      toast('Popup blocked — allow popups for this site then try again');
-    }else{
-      toast('Could not connect calendar: '+(e.message||e.code));
-      console.error('Calendar auth error:',e);
+    if(!window.google||!window.google.accounts||!window.google.accounts.oauth2){
+      // GIS not loaded yet — retry after short delay
+      setTimeout(function(){
+        window.requestCalendarAccess().then(resolve).catch(reject);
+      },800);
+      return;
     }
-    return null;
-  }
+    var client=window.google.accounts.oauth2.initTokenClient({
+      // Google Cloud project client ID (same project as Firebase)
+      client_id:window._gcalClientId||localStorage.getItem('fli-gcal-cid')||'',
+      scope:'https://www.googleapis.com/auth/calendar.readonly',
+      // Force account chooser so user picks their work account
+      prompt:'select_account',
+      callback:function(resp){
+        if(resp.error){
+          console.error('GIS token error:',resp.error);
+          toast('Calendar connection failed: '+resp.error);
+          reject(new Error(resp.error));
+          return;
+        }
+        window._gAccessToken=resp.access_token;
+        // Get the email from the hint if available
+        if(resp.hint)window._gCalEmail=resp.hint;
+        resolve(resp.access_token);
+      }
+    });
+    client.requestAccessToken();
+  });
 };
 
 // ── Fetch upcoming meetings from Google Calendar ──────────
