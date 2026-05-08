@@ -440,6 +440,21 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:9px}
 @keyframes pgPulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
 .pg-ghost-pulse{animation:pgPulse 2s ease-in-out infinite}
+
+/* ── TERRITORY VIEW ───────────────────────────────────────── */
+.tv-toolbar{position:absolute;top:0;left:220px;right:0;height:42px;
+  background:rgba(13,27,46,.97);border-bottom:1px solid rgba(59,130,246,.35);
+  display:none;align-items:center;padding:0 14px;gap:10px;z-index:11}
+.tv-toolbar.active{display:flex}
+.tv-panel{position:absolute;top:0;right:0;bottom:0;width:280px;
+  background:var(--s1);border-left:1px solid rgba(59,130,246,.25);
+  display:none;flex-direction:column;overflow:hidden;z-index:10}
+.tv-panel.active{display:flex}
+.tv-org-btn{width:100%;text-align:left;padding:7px 10px;border:1px solid var(--b2);
+  border-radius:var(--rsm);background:var(--s2);cursor:pointer;
+  font-family:'Outfit',sans-serif;transition:border-color .15s}
+.tv-org-btn:hover{border-color:var(--blue)}
+.tv-leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -784,6 +799,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div class="ntb-sep"></div>
       <button class="nb" id="path-btn" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.4)">⇢ Path</button>
       <button class="nb" id="pg-view-btn" onclick="togglePgPicker()" style="color:var(--gold);border-color:rgba(201,162,39,.4)" title="Program View — see your relationship coverage for a specific opportunity">⊞ Program</button>
+      <button class="nb" id="tv-view-btn" onclick="toggleTvPicker()" style="color:var(--blue);border-color:rgba(59,130,246,.4)" title="Territory View — see your full coverage of an organization">⬡ Territory</button>
       <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
       <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
@@ -873,6 +889,41 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
       <div id="pg-panel-scroll" style="flex:1;overflow-y:auto;padding:10px 14px 20px">
         <div id="pg-roles-list"></div>
         <div id="pg-intros-section" style="margin-top:12px"></div>
+      </div>
+    </div>
+    <!-- TERRITORY VIEW PICKER -->
+    <div id="tv-picker-panel" style="display:none;position:absolute;top:52px;left:220px;width:300px;background:var(--s1);border:1px solid rgba(59,130,246,.4);border-radius:var(--r);z-index:20;padding:14px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--blue)">⬡ Territory View</div>
+        <button onclick="toggleTvPicker()" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:14px;line-height:1">×</button>
+      </div>
+      <div style="font-size:11px;color:var(--t2);margin-bottom:10px;line-height:1.5">Select an organization to see your full relationship coverage — who you know, how warm they are, and where the gaps are.</div>
+      <div id="tv-org-list" style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto"></div>
+      <div id="tv-no-orgs" style="display:none;font-size:11px;color:var(--t3);text-align:center;padding:12px 0">No organizations in your network yet.</div>
+    </div>
+    <!-- TERRITORY VIEW TOOLBAR -->
+    <div class="tv-toolbar" id="tv-toolbar">
+      <button onclick="exitTerritoryView()" style="padding:4px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif">← Full Map</button>
+      <div style="width:1px;height:18px;background:var(--b1);flex-shrink:0"></div>
+      <div id="tv-toolbar-org" style="font-size:12px;font-weight:600;color:var(--text);flex:1"></div>
+      <div id="tv-toolbar-stats" style="font-size:10px;color:var(--t2);font-family:'JetBrains Mono',monospace"></div>
+    </div>
+    <!-- TERRITORY VIEW SIDEBAR -->
+    <div class="tv-panel" id="tv-panel">
+      <div style="padding:12px 14px 8px;border-bottom:1px solid rgba(30,54,84,.5);flex-shrink:0">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--blue);margin-bottom:8px">Coverage Legend</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;align-items:center;gap:7px"><div class="tv-leg-dot" style="background:#22c55e"></div><div style="font-size:11px;color:var(--t2)">Strong (health 7–10)</div></div>
+          <div style="display:flex;align-items:center;gap:7px"><div class="tv-leg-dot" style="background:#f59e0b"></div><div style="font-size:11px;color:var(--t2)">Warm (health 4–6)</div></div>
+          <div style="display:flex;align-items:center;gap:7px"><div class="tv-leg-dot" style="background:#ef4444"></div><div style="font-size:11px;color:var(--t2)">Cold (health 1–3)</div></div>
+          <div style="display:flex;align-items:center;gap:7px"><div class="tv-leg-dot" style="background:transparent;border:1.5px dashed rgba(139,92,246,.6)"></div><div style="font-size:11px;color:var(--t2)">No meetings logged</div></div>
+        </div>
+      </div>
+      <div id="tv-panel-scroll" style="flex:1;overflow-y:auto;padding:10px 14px 20px">
+        <div id="tv-contacts-list"></div>
+      </div>
+      <div style="padding:8px 14px;border-top:1px solid rgba(30,54,84,.5);flex-shrink:0">
+        <button onclick="exitTerritoryView()" style="width:100%;padding:6px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif">← Back to Full Map</button>
       </div>
     </div>
     <svg id="net-canvas" style="position:absolute;top:42px;left:220px;right:0;bottom:0"></svg>
@@ -1361,6 +1412,7 @@ var _undoLinkTimer=null;    // clears undo state after 12s
 var _orgAngleMap=new Map(); // orgId → {angle, cx, cy} for radial clustering
 var tlFilter='all',tlSrcFilter='all',currentTLEditId=null;
 var _pgView={active:false,oppId:null,pickerOpen:false};
+var _tvView={active:false,orgId:null,pickerOpen:false};
 
 // ── INDEXED DATA STRUCTURES ──────────────────────────────────
 // O(1) lookup maps — always kept in sync with their array counterparts
@@ -6012,7 +6064,7 @@ function _getPersonOrgPos(personId){
   return null;
 }
 
-function renderNetwork(){if(!svg)return;if(_pgView.active)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','JetBrains Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){if(d.label==='Works at')return 'none';return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){if(d.label==='Works at')return 1;var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);}).attr('stroke-opacity',function(d){return d.label==='Works at'?0.3:0.7;});lM.select('text').text(function(d){return d.label==='Works at'?'':d.label||'';}).attr('fill',function(d){return es(d.label).c;}).attr('opacity',function(d){return d.label==='Works at'?0:1;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('dblclick',function(ev,d){if(d.pinned){d.fx=null;d.fy=null;d.pinned=false;var nn=nodeMap.get(d.id);if(nn){nn.fx=null;nn.fy=null;nn.pinned=false;}saveNode(d);if(sim)sim.alpha(0.15).restart();setNetStatus(d.name+' unpinned');setTimeout(clearNetStatus,1800);}}).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('r',function(d){return nr(d);}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':null;});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(13,27,46,0.9)').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','Outfit,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});// Recompute org radial positions before restart
+function renderNetwork(){if(!svg)return;if(_pgView.active)return;if(_tvView.active)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','JetBrains Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){if(d.label==='Works at')return 'none';return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){if(d.label==='Works at')return 1;var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);}).attr('stroke-opacity',function(d){return d.label==='Works at'?0.3:0.7;});lM.select('text').text(function(d){return d.label==='Works at'?'':d.label||'';}).attr('fill',function(d){return es(d.label).c;}).attr('opacity',function(d){return d.label==='Works at'?0:1;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('dblclick',function(ev,d){if(d.pinned){d.fx=null;d.fy=null;d.pinned=false;var nn=nodeMap.get(d.id);if(nn){nn.fx=null;nn.fy=null;nn.pinned=false;}saveNode(d);if(sim)sim.alpha(0.15).restart();setNetStatus(d.name+' unpinned');setTimeout(clearNetStatus,1800);}}).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('r',function(d){return nr(d);}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':null;});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(13,27,46,0.9)').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','Outfit,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});// Recompute org radial positions before restart
   computeOrgAngles();
   sim.nodes(nodes);
   // Smart position seeding — orgs on their radial ring, people near their org
@@ -9196,6 +9248,388 @@ _initAlerts=function(){
   setTimeout(_checkCommitmentToasts,6000);
   setInterval(_checkCommitmentToasts,6*60*60*1000);
 }
+
+// ══════════════════════════════════════════════════════════════
+// TERRITORY VIEW
+// Shows your full relationship coverage of a specific organization.
+// Every person in the org is shown — contacts you have are solid
+// and colored by health (green/amber/red). People you know exist
+// but have never met appear as hollow nodes. The sidebar lists
+// everyone with their health score, role, last contact date,
+// and a quick-action to open their dossier or log a meeting.
+//
+// State: _tvView.active, _tvView.orgId, _tvView.pickerOpen
+// Guard in renderNetwork() prevents overwrite during TV mode.
+// Uses a separate _tvLayer on the D3 canvas.
+// ══════════════════════════════════════════════════════════════
+
+var _tvLayer=null;
+
+// ── Build org list for picker ───────────────────────────────
+function _getTvOrgs(){
+  // Get all company/org nodes with at least one person linked
+  var orgs=[];
+  nodes.filter(function(n){return n.type==='org'||n.type==='company';}).forEach(function(org){
+    // Count people in this org
+    var people=nodes.filter(function(n){
+      return n.type==='person'&&(
+        (n.org&&n.org.toLowerCase()===org.name.toLowerCase())||
+        links.some(function(l){
+          var s=l.source&&l.source.id!=null?l.source.id:l.source;
+          var t=l.target&&l.target.id!=null?l.target.id:l.target;
+          return(String(s)===String(org.id)||String(t)===String(org.id))&&
+                (String(s)===String(n.id)||String(t)===String(n.id));
+        })
+      );
+    });
+    if(people.length>0){
+      var withMtgs=people.filter(function(p){return getMtgsForNode(p.id).length>0;});
+      orgs.push({
+        id:org.id,
+        name:org.name,
+        total:people.length,
+        covered:withMtgs.length,
+        pct:Math.round(withMtgs.length/people.length*100)
+      });
+    }
+  });
+  // Also include orgs from person.org strings (not necessarily a node)
+  var orgNames=new Set(orgs.map(function(o){return o.name.toLowerCase();}));
+  var personOrgs={};
+  nodes.filter(function(n){return n.type==='person'&&n.org;}).forEach(function(n){
+    var key=n.org.toLowerCase();
+    if(!orgNames.has(key)){
+      if(!personOrgs[key])personOrgs[key]={name:n.org,people:[]};
+      personOrgs[key].people.push(n);
+    }
+  });
+  Object.values(personOrgs).forEach(function(o){
+    var withMtgs=o.people.filter(function(p){return getMtgsForNode(p.id).length>0;});
+    orgs.push({
+      id:'org-name-'+o.name.toLowerCase().replace(/\s/g,'-'),
+      name:o.name,
+      total:o.people.length,
+      covered:withMtgs.length,
+      pct:Math.round(withMtgs.length/o.people.length*100),
+      byName:true
+    });
+  });
+  orgs.sort(function(a,b){return b.total-a.total;});
+  return orgs;
+}
+
+// ── Get all people in an org ────────────────────────────────
+function _getTvPeople(orgEntry){
+  var people=[];
+  if(orgEntry.byName){
+    people=nodes.filter(function(n){
+      return n.type==='person'&&n.org&&
+             n.org.toLowerCase()===orgEntry.name.toLowerCase();
+    });
+  }else{
+    var orgNode=nodeMap.get(orgEntry.id)||nodeMap.get(parseInt(orgEntry.id));
+    people=nodes.filter(function(n){
+      return n.type==='person'&&(
+        (n.org&&n.org.toLowerCase()===orgEntry.name.toLowerCase())||
+        (orgNode&&links.some(function(l){
+          var s=l.source&&l.source.id!=null?l.source.id:l.source;
+          var t=l.target&&l.target.id!=null?l.target.id:l.target;
+          return(String(s)===String(orgNode.id)||String(t)===String(orgNode.id))&&
+                (String(s)===String(n.id)||String(t)===String(n.id));
+        }))
+      );
+    });
+  }
+  // Annotate with health + last contact
+  return people.map(function(p){
+    var mtgs=getMtgsForNode(p.id);
+    var health=mtgs.length>0?computeRelHealth(p.id):0;
+    var lastDate=mtgs.length>0?mtgs.slice().sort(function(a,b){
+      return b.meta.date.localeCompare(a.meta.date);})[0].meta.date:null;
+    var daysAgo=lastDate?Math.floor((Date.now()-new Date(lastDate+'T00:00:00'))/86400000):null;
+    return{node:p,health:health,mtgCount:mtgs.length,lastDate:lastDate,daysAgo:daysAgo};
+  }).sort(function(a,b){return b.health-a.health;});
+}
+
+// ── D3 canvas render ────────────────────────────────────────
+function _renderTvCanvas(orgEntry,people){
+  if(sim)sim.stop();
+  if(ng)ng.selectAll('.node-g').style('opacity',0.06);
+  if(lg)lg.selectAll('.link-g').style('opacity',0.03);
+  if(_tvLayer){_tvLayer.remove();_tvLayer=null;}
+  _tvLayer=g.append('g').attr('class','tv-layer');
+
+  var canvasW=W-280; // account for sidebar
+  var cx=canvasW/2+220/2;
+  var cy=H/2;
+  var total=people.length;
+  if(!total)return;
+
+  // Layout: rings based on count
+  // Up to 8 in inner ring, rest in outer ring
+  var innerPeople=people.slice(0,Math.min(8,total));
+  var outerPeople=people.slice(Math.min(8,total));
+  var innerR=Math.min(canvasW*.22,H*.25);
+  var outerR=Math.min(canvasW*.38,H*.42);
+
+  // Org center node
+  var covPct=orgEntry.covered/Math.max(orgEntry.total,1);
+  var centerColor=covPct>=0.7?'#22c55e':covPct>=0.4?'#f59e0b':'#ef4444';
+
+  _tvLayer.append('circle')
+    .attr('cx',cx).attr('cy',cy).attr('r',52)
+    .attr('fill',ha(centerColor,0.08))
+    .attr('stroke',centerColor).attr('stroke-width',2);
+
+  _tvLayer.append('text')
+    .attr('x',cx).attr('y',cy-6)
+    .attr('text-anchor','middle')
+    .attr('font-size','16').attr('font-weight','700')
+    .attr('fill',centerColor)
+    .attr('font-family','JetBrains Mono,monospace')
+    .text(orgEntry.covered+'/'+orgEntry.total);
+
+  _tvLayer.append('text')
+    .attr('x',cx).attr('y',cy+8)
+    .attr('text-anchor','middle')
+    .attr('font-size','8').attr('fill',centerColor)
+    .attr('font-family','JetBrains Mono,monospace')
+    .attr('opacity',.8).text('COVERED');
+
+  var nameShort=orgEntry.name.length>20?orgEntry.name.slice(0,18)+'…':orgEntry.name;
+  _tvLayer.append('text')
+    .attr('x',cx).attr('y',cy+66)
+    .attr('text-anchor','middle')
+    .attr('font-size','12').attr('font-weight','600')
+    .attr('fill','var(--text)').attr('font-family','Outfit,sans-serif')
+    .text(nameShort);
+
+  // Draw people on rings
+  function drawPerson(personData,idx,ringSize,ringR){
+    var angle=(idx/Math.max(ringSize,1))*2*Math.PI - Math.PI/2;
+    var px=cx+Math.cos(angle)*ringR;
+    var py=cy+Math.sin(angle)*ringR;
+    var p=personData.node;
+    var h=personData.health;
+    var hasMtgs=personData.mtgCount>0;
+    var hc=hasMtgs?healthColor(h):'rgba(139,92,246,.5)';
+    var nodeR=h>=7?16:h>=4?13:hasMtgs?11:10;
+
+    // Line to center
+    _tvLayer.append('line')
+      .attr('x1',cx).attr('y1',cy)
+      .attr('x2',px).attr('y2',py)
+      .attr('stroke',hc)
+      .attr('stroke-width',h>=7?1.5:1)
+      .attr('stroke-opacity',hasMtgs?0.35:0.15)
+      .attr('stroke-dasharray',hasMtgs?'none':'4,3');
+
+    var nodeG=_tvLayer.append('g')
+      .attr('transform','translate('+px+','+py+')')
+      .style('cursor','pointer')
+      .on('click',function(){openNetPanel(p);});
+
+    // Circle — solid if has meetings, dashed if known but no meetings
+    nodeG.append('circle')
+      .attr('r',nodeR)
+      .attr('fill',hasMtgs?ha(hc,0.15):'transparent')
+      .attr('stroke',hc)
+      .attr('stroke-width',1.5)
+      .attr('stroke-dasharray',hasMtgs?'none':'4,3');
+
+    // Initials
+    var ini=p.name.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+    nodeG.append('text')
+      .attr('text-anchor','middle').attr('dominant-baseline','central')
+      .attr('font-size','8').attr('font-weight','700')
+      .attr('fill',hc).attr('font-family','Outfit,sans-serif')
+      .text(ini);
+
+    // Health badge (only if has meetings)
+    if(hasMtgs&&h>0){
+      nodeG.append('circle')
+        .attr('cx',nodeR-1).attr('cy',-(nodeR-1)).attr('r',6)
+        .attr('fill','var(--s1)').attr('stroke',hc).attr('stroke-width',1);
+      nodeG.append('text')
+        .attr('x',nodeR-1).attr('y',-(nodeR-4))
+        .attr('text-anchor','middle').attr('dominant-baseline','central')
+        .attr('font-size','7').attr('font-weight','700')
+        .attr('fill',hc).attr('font-family','JetBrains Mono,monospace')
+        .text(h);
+    }
+
+    // Name label
+    var firstName=p.name.split(' ')[0];
+    _tvLayer.append('text')
+      .attr('x',px).attr('y',py+nodeR+11)
+      .attr('text-anchor','middle')
+      .attr('font-size','9').attr('font-weight',hasMtgs?'500':'400')
+      .attr('fill',hasMtgs?'var(--text)':'var(--t3)')
+      .attr('font-family','Outfit,sans-serif')
+      .text(firstName);
+
+    // Days since label for cold contacts
+    if(hasMtgs&&personData.daysAgo>=30){
+      _tvLayer.append('text')
+        .attr('x',px).attr('y',py+nodeR+21)
+        .attr('text-anchor','middle')
+        .attr('font-size','8')
+        .attr('fill','rgba(239,68,68,.7)')
+        .attr('font-family','JetBrains Mono,monospace')
+        .text(personData.daysAgo+'d ago');
+    }
+  }
+
+  innerPeople.forEach(function(p,i){drawPerson(p,i,innerPeople.length,innerR);});
+  outerPeople.forEach(function(p,i){drawPerson(p,i,outerPeople.length,outerR);});
+}
+
+// ── Sidebar renderer ────────────────────────────────────────
+function _renderTvSidebar(orgEntry,people){
+  var orgEl=document.getElementById('tv-toolbar-org');
+  var statsEl=document.getElementById('tv-toolbar-stats');
+  if(orgEl)orgEl.textContent=orgEntry.name.length>32?orgEntry.name.slice(0,30)+'…':orgEntry.name;
+  if(statsEl){
+    var pct=orgEntry.pct||0;
+    var col=pct>=70?'var(--green)':pct>=40?'var(--amber)':'var(--red)';
+    statsEl.textContent=orgEntry.covered+'/'+orgEntry.total+' contacts covered';
+    statsEl.style.color=col;
+  }
+
+  var listEl=document.getElementById('tv-contacts-list');
+  if(!listEl)return;
+
+  var h='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(30,54,84,.4)">Contacts ('+people.length+')</div>';
+
+  people.forEach(function(pd){
+    var p=pd.node;
+    var hc=pd.mtgCount>0?healthColor(pd.health):'rgba(139,92,246,.5)';
+    var lastStr=pd.daysAgo===null?'No meetings':
+                pd.daysAgo===0?'Today':
+                pd.daysAgo===1?'Yesterday':
+                pd.daysAgo+'d ago';
+    var lastColor=pd.daysAgo===null?'var(--t3)':
+                  pd.daysAgo<=7?'var(--green)':
+                  pd.daysAgo<=30?'var(--amber)':'var(--red)';
+
+    h+='<div style="padding:7px 0;border-bottom:1px solid rgba(30,54,84,.3);cursor:pointer" onclick="_tvOpenDossier(\''+p.id+'\')">';
+    h+='<div style="display:flex;align-items:center;gap:7px">';
+    h+='<div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:'+hc+'"></div>';
+    h+='<div style="flex:1;min-width:0">';
+    h+='<div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.name+'</div>';
+    if(p.role)h+='<div style="font-size:9px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.role+'</div>';
+    h+='</div>';
+    h+='<div style="text-align:right;flex-shrink:0">';
+    if(pd.mtgCount>0){
+      h+='<div style="font-size:10px;font-weight:700;color:'+hc+'">'+pd.health+'/10</div>';
+    }else{
+      h+='<div style="font-size:9px;color:var(--t3)">No mtgs</div>';
+    }
+    h+='<div style="font-size:9px;color:'+lastColor+'">'+lastStr+'</div>';
+    h+='</div></div></div>';
+  });
+
+  listEl.innerHTML=h;
+}
+
+window._tvOpenDossier=function(nodeId){
+  var node=nodeMap.get(nodeId)||nodeMap.get(parseInt(nodeId));
+  if(node)openNetPanel(node);
+};
+
+// ── Toggle territory picker ─────────────────────────────────
+window.toggleTvPicker=function(){
+  // Close program view picker if open
+  var pgPicker=document.getElementById('pg-picker-panel');
+  if(pgPicker)pgPicker.style.display='none';
+  _pgView.pickerOpen=false;
+
+  _tvView.pickerOpen=!_tvView.pickerOpen;
+  var panel=document.getElementById('tv-picker-panel');
+  if(!panel)return;
+  if(!_tvView.pickerOpen){panel.style.display='none';return;}
+
+  var listEl=document.getElementById('tv-org-list');
+  var noOrgs=document.getElementById('tv-no-orgs');
+  var orgs=_getTvOrgs();
+
+  if(!orgs.length){
+    if(listEl)listEl.style.display='none';
+    if(noOrgs)noOrgs.style.display='block';
+  }else{
+    if(noOrgs)noOrgs.style.display='none';
+    if(listEl){
+      listEl.style.display='flex';
+      listEl.innerHTML=orgs.map(function(o){
+        var pct=o.pct||0;
+        var col=pct>=70?'var(--green)':pct>=40?'var(--amber)':'var(--red)';
+        return '<button class="tv-org-btn" onclick="enterTerritoryView(\''+o.id+'\')">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between">'+
+          '<div style="font-size:12px;font-weight:600">'+o.name+'</div>'+
+          '<div style="font-size:11px;font-weight:700;color:'+col+'">'+pct+'%</div></div>'+
+          '<div style="font-size:10px;color:var(--t2);margin-top:2px">'+o.covered+' of '+o.total+' contacts covered</div>'+
+          '</button>';
+      }).join('');
+    }
+  }
+  panel.style.display='block';
+};
+
+// ── Enter territory view ────────────────────────────────────
+window.enterTerritoryView=function(orgId){
+  var orgs=_getTvOrgs();
+  var orgEntry=orgs.find(function(o){return String(o.id)===String(orgId);});
+  if(!orgEntry){toast('Organization not found');return;}
+
+  _tvView.active=true;
+  _tvView.orgId=orgId;
+  _tvView.pickerOpen=false;
+  var picker=document.getElementById('tv-picker-panel');
+  if(picker)picker.style.display='none';
+
+  if(activeView!=='network'){
+    switchView('network');
+    setTimeout(function(){enterTerritoryView(orgId);},300);
+    return;
+  }
+
+  // Show TV toolbar, hide net toolbar
+  var tvTb=document.getElementById('tv-toolbar');
+  var netTb=document.querySelector('.net-toolbar');
+  if(tvTb)tvTb.classList.add('active');
+  if(netTb)netTb.style.display='none';
+
+  // Show TV panel
+  var tvPanel=document.getElementById('tv-panel');
+  if(tvPanel)tvPanel.classList.add('active');
+
+  var people=_getTvPeople(orgEntry);
+  _renderTvSidebar(orgEntry,people);
+  setTimeout(function(){_renderTvCanvas(orgEntry,people);},50);
+
+  toast('Territory View: '+orgEntry.name+' · '+orgEntry.covered+' of '+orgEntry.total+' contacts covered · Click any node to open dossier');
+};
+
+// ── Exit territory view ─────────────────────────────────────
+window.exitTerritoryView=function(){
+  _tvView.active=false;
+  _tvView.orgId=null;
+
+  if(_tvLayer){_tvLayer.remove();_tvLayer=null;}
+  if(ng)ng.selectAll('.node-g').style('opacity',null);
+  if(lg)lg.selectAll('.link-g').style('opacity',null);
+  if(sim)sim.alpha(0.1).restart();
+
+  var tvTb=document.getElementById('tv-toolbar');
+  var netTb=document.querySelector('.net-toolbar');
+  if(tvTb)tvTb.classList.remove('active');
+  if(netTb)netTb.style.display='flex';
+
+  var tvPanel=document.getElementById('tv-panel');
+  if(tvPanel)tvPanel.classList.remove('active');
+
+  toast('Back to full network map');
+};
 
 </script>
 </body>
