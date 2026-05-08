@@ -1642,12 +1642,33 @@ function initAttendeeAutocomplete(inputId){
   });
 }
 async function saveMeeting(m){await fbSet(wsPath('meetings/'+m.id),m);}
-async function deleteMeeting(id){setSS('saving');await remove(ref(db,wsPath('meetings/'+id)));setSS('live');}
+async function deleteMeeting(id){
+  setSS('saving');
+  // Clean up commitments referencing this meeting (prevent orphaned Board/Timeline entries)
+  var orphanedC=commitments.filter(function(c){return String(c.sourceMtgId)===String(id);});
+  for(var i=0;i<orphanedC.length;i++){
+    commitments=commitments.filter(function(c){return c.id!==orphanedC[i].id;});
+    try{await remove(ref(db,wsPath('commitments/'+orphanedC[i].id)));}catch(e){}
+  }
+  // Clean up tlCommitments derived from this meeting's milestones/actions
+  var orphanedTL=tlCommitments.filter(function(c){
+    return c.sourceId&&(c.sourceId.startsWith('ai-'+id+'-')||c.sourceId.startsWith('mi-'+id+'-'));
+  });
+  for(var j=0;j<orphanedTL.length;j++){
+    tlCommitments=tlCommitments.filter(function(c){return c.id!==orphanedTL[j].id;});
+    try{await remove(ref(db,wsPath('tl_commitments/'+orphanedTL[j].id)));}catch(e){}
+  }
+  await remove(ref(db,wsPath('meetings/'+id)));
+  setSS('live');
+}
 async function saveEntities(){var o={};nodes.forEach(function(n){var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;o[n.id]=c;});await fbSet(wsPath('nodes'),o);}
 async function saveNodes(){var o={};nodes.forEach(function(n){var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;o[n.id]=c;});await fbSet(wsPath('nodes'),o);}
 async function saveLinks(){var o={};links.forEach(function(l){o[l.id]={id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};});await fbSet(wsPath('links'),o);}
 async function saveCal(){var o={};calEntries.forEach(function(e){o[e.id]=e;});await fbSet(wsPath('cal'),o);}
 async function saveTLCommitments(){var o={};tlCommitments.forEach(function(c){o[c.id]=c;});await fbSet(wsPath('tl_commitments'),o);}
+// Granular single-item write/delete — preferred over full collection write
+async function saveTLCommitment(item){await fbSet(wsPath('tl_commitments/'+item.id),item);}
+async function deleteTLCommitmentDB(id){setSS('saving');try{await remove(ref(db,wsPath('tl_commitments/'+id)));setSS('live');}catch(e){setSS('error');}  }
 async function saveOpp(opp){await fbSet(wsPath('opportunities/'+opp.id),opp);}
 async function deleteOpp(id){setSS('saving');await remove(ref(db,wsPath('opportunities/'+id)));setSS('live');}
 async function saveCommitment(c){await fbSet(wsPath('commitments/'+c.id),c);}
@@ -1725,9 +1746,9 @@ function renderWsList(){var list=document.getElementById('ws-list');if(!userWork
 
 document.getElementById('ws-new-btn').addEventListener('click',function(){document.getElementById('create-ws-modal').style.display='flex';document.getElementById('ws-screen').style.display='none';});
 document.getElementById('ws-cancel-btn').addEventListener('click',function(){closeModal('create-ws-modal');document.getElementById('ws-screen').style.display='flex';});
-document.getElementById('ws-create-btn').addEventListener('click',async function(){var name=document.getElementById('ws-name-inp').value.trim();var role=document.getElementById('ws-role-inp').value.trim()||'Member';if(!name){alert('Enter a workspace name');return;}if(!currentUser){alert('Not signed in');return;}var btn=document.getElementById('ws-create-btn');btn.disabled=true;btn.textContent='Creating...';try{var wsId=Date.now().toString();var color=WS_COLORS[Math.floor(Math.random()*WS_COLORS.length)];var ws={id:wsId,name:name,color:color,createdBy:currentUser.uid,created:new Date().toISOString()};var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,photo:currentUser.photoURL||'',role:role,joined:new Date().toISOString()};await set(ref(db,'workspaces/'+wsId+'/info'),ws);await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{id:wsId,name:name,color:color,role:role});userWorkspaces.push({id:wsId,name:name,color:color,role:role});closeModal('create-ws-modal');selectWorkspace(wsId);}catch(e){alert('Failed: '+e.message);btn.disabled=false;btn.textContent='Create Workspace';}});
+document.getElementById('ws-create-btn').addEventListener('click',async function(){var name=document.getElementById('ws-name-inp').value.trim();var role=document.getElementById('ws-role-inp').value.trim()||'Member';if(!name){toast('Enter a workspace name');return;}if(!currentUser){toast('Not signed in');return;}var btn=document.getElementById('ws-create-btn');btn.disabled=true;btn.textContent='Creating...';try{var wsId=Date.now().toString();var color=WS_COLORS[Math.floor(Math.random()*WS_COLORS.length)];var ws={id:wsId,name:name,color:color,createdBy:currentUser.uid,created:new Date().toISOString()};var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,photo:currentUser.photoURL||'',role:role,joined:new Date().toISOString()};await set(ref(db,'workspaces/'+wsId+'/info'),ws);await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{id:wsId,name:name,color:color,role:role});userWorkspaces.push({id:wsId,name:name,color:color,role:role});closeModal('create-ws-modal');selectWorkspace(wsId);}catch(e){toast('Failed: '+(e.message||'Try again'));btn.disabled=false;btn.textContent='Create Workspace';}});
 
-async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);}catch(e){alert('Failed to open workspace: '+e.message);}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);}catch(e){toast('Failed to open workspace: '+(e.message||'Try again'));}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
@@ -1770,8 +1791,8 @@ function _showNewMemberBanner(){
     +'<div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:4px">Welcome to '+currentWs.name+'</div>'
     +'<div style="font-size:12px;color:var(--t2);line-height:1.6">This workspace has <strong style="color:var(--text)">'+meetings.length+' meetings</strong> of relationship intelligence logged. Generate your onboarding brief to get up to speed on every key person, open deal, and outstanding commitment — before your first conversation.</div>'
     +'<div style="display:flex;gap:8px;margin-top:10px">'
-    +'<button onclick="document.getElementById(\'fli-nmb\').remove();openOnboardingBrief()" style="padding:7px 16px;background:var(--gold);border:none;border-radius:var(--rsm);color:#0d1b2e;font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif">⚡ Generate My Brief</button>'
-    +'<button onclick="document.getElementById(\'fli-nmb\').remove()" style="padding:7px 12px;background:transparent;border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t2);font-size:12px;cursor:pointer;font-family:\'Outfit\',sans-serif">Later</button>'
+    +'<button onclick="document.getElementById(\'fli-nmb\').remove();openOnboardingBrief()" style="padding:7px 16px;background:var(--gold);border:none;border-radius:var(--rsm);color:#0d1b2e;font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif">⚡ Generate My Brief</button>'
+    +'<button onclick="document.getElementById(\'fli-nmb\').remove()" style="padding:7px 12px;background:transparent;border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t2);font-size:12px;cursor:pointer;font-family:Outfit,sans-serif">Later</button>'
     +'</div></div>'
     +'<button onclick="document.getElementById(\'fli-nmb\').remove()" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer;flex-shrink:0;line-height:1;padding:0">×</button>';
   document.body.appendChild(b);
@@ -1927,10 +1948,10 @@ function wireListeners(){
     updateApiKeyUI();this.disabled=false;this.textContent='Set Workspace Key';
   });
   document.getElementById('remove-ws-key-btn').addEventListener('click',async function(){
-    if(!confirm('Remove the workspace API key? All members will need personal keys to use AI.'))return;
+    if(!await showConfirm('All team members will need personal keys to use AI features.',{title:'Remove Workspace API Key?',confirmLabel:'Remove Key',danger:true}))return;
     await saveWsApiKey('');updateApiKeyUI();
   });
-  document.getElementById('signout-btn').addEventListener('click',function(){if(!confirm('Sign out?'))return;signOut(auth);closeModal('user-modal');});
+  document.getElementById('signout-btn').addEventListener('click',async function(){if(!await showConfirm('Sign out of Fli Intel?',{confirmLabel:'Sign Out'}))return;signOut(auth);closeModal('user-modal');});
   // Sign out from workspace picker screen
   var wsSO=document.getElementById('ws-signout-btn');
   if(wsSO)wsSO.addEventListener('click',function(){signOut(auth);});
@@ -1996,10 +2017,12 @@ function switchView(v){
     setTimeout(function(){var q=document.getElementById('memory-query');if(q){q.focus();}},80);
     return;
   }
+  // Pause simulation when leaving network view to save CPU
+  if(activeView==='network'&&v!=='network'&&sim){sim.stop();}
   activeView=v;['intel','opps','network','timeline'].forEach(function(x){var el=document.getElementById(x+'-view');if(el)el.style.display=x===v?'flex':'none';var tb=document.getElementById('vtab-'+x);if(tb)tb.classList.toggle('active',x===v);});
   // Clear Ask Fli active state when switching to any other view
   var asBtn2=document.getElementById('vtab-askfli');if(asBtn2)asBtn2.classList.remove('active');
-  if(v==='network'){resizeCanvas();setTimeout(function(){if(nodes.length)fitGraph();},200);}if(v==='intel'&&activeIntelTab==='board')renderBoard();if(v==='timeline')renderTimeline();if(v==='opps')renderOppSidebar();}
+  if(v==='network'){if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();setTimeout(function(){if(nodes.length)fitGraph();},200);}if(v==='intel'&&activeIntelTab==='board')renderBoard();if(v==='timeline')renderTimeline();if(v==='opps')renderOppSidebar();}
 
 // ── OPPORTUNITY STAGE CONFIG ─────────────────────────────────
 var OPP_STAGES=[
@@ -2769,7 +2792,8 @@ window.updateOppStage=async function(id){
 };
 
 window.deleteCurrentOpp=async function(){
-  if(!currentOpp||!confirm('Delete "'+currentOpp.name+'"? This cannot be undone.'))return;
+  if(!currentOpp)return;
+  if(!await showConfirm('"'+currentOpp.name+'" will be permanently removed.',{title:'Delete Opportunity?',confirmLabel:'Delete',danger:true}))return;
   await deleteOpp(currentOpp.id);
   currentOpp=null;
   document.getElementById('opp-empty').style.display='flex';
@@ -2777,14 +2801,16 @@ window.deleteCurrentOpp=async function(){
   toast('Opportunity deleted');
 };
 
-window.editOppNotes=function(id){
+window.editOppNotes=async function(id){
   var opp=opportunities.find(function(o){return o.id===id;});
   if(!opp)return;
-  var notes=prompt('Edit context / competitive notes:',opp.notes||'');
+  var notes=await showPrompt('Context / Competitive Notes',opp.notes||'',{title:'Edit Opportunity Notes',description:'Competitive landscape, incumbent details, key context.',confirmLabel:'Save Notes',rows:5});
   if(notes===null)return;
   opp.notes=notes;
   opp.updatedAt=new Date().toISOString();
-  saveOpp(opp).then(function(){renderOppDetail(opp);});
+  await saveOpp(opp);
+  renderOppDetail(opp);
+  toast('Notes saved');
 };
 
 function updateOppSelectors(){
@@ -2871,7 +2897,7 @@ function initMemoryTab(){
       var exIcons=['🕸','⏱','⚠','📊','🔍'];
       var icon=exIcons[exBtns.childElementCount%exIcons.length];
       b.innerHTML='<span style="font-size:13px;flex-shrink:0;display:block;margin-bottom:5px">'+icon+'</span><span style="flex:1">'+ex+'</span>';
-      b.style.cssText='display:flex;flex-direction:column;text-align:left;padding:10px 11px;border:1px solid var(--b1);border-radius:var(--r);background:var(--s2);color:var(--t2);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif;transition:all .15s;line-height:1.45;gap:0';
+      b.style.cssText='display:flex;flex-direction:column;text-align:left;padding:10px 11px;border:1px solid var(--b1);border-radius:var(--r);background:var(--s2);color:var(--t2);font-size:11px;cursor:pointer;font-family:Outfit,sans-serif;transition:all .15s;line-height:1.45;gap:0';
       b.onmouseover=function(){this.style.borderColor='var(--purple)';this.style.color='var(--text)';this.style.background='rgba(139,92,246,.07)';};
       b.onmouseout=function(){this.style.borderColor='var(--b1)';this.style.color='var(--t2)';this.style.background='var(--s2)';};
       b.onclick=function(){
@@ -3186,7 +3212,7 @@ function _renderMemoryResults(query,answer,topMeetings,totalMatches){
   });
 
   // New search button
-  h+='<button onclick="clearMemorySearch()" style="width:100%;margin-top:10px;padding:7px;border:1px dashed var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif">+ Ask another question</button>';
+  h+='<button onclick="clearMemorySearch()" style="width:100%;margin-top:10px;padding:7px;border:1px dashed var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:Outfit,sans-serif">+ Ask another question</button>';
 
   document.getElementById('memory-results').innerHTML=h;
 }
@@ -3552,7 +3578,11 @@ async function callClaudeTranscript(notes,meta){
   }
 }
 
-async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){showProcErr('Add API key in user settings');return;}var meta={title:document.getElementById('m-title').value,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,att:document.getElementById('m-att').value,dur:document.getElementById('m-dur').value};var btn=document.getElementById('proc-btn');btn.disabled=true;btn.innerHTML='<span class="proc-dots"><span></span><span></span><span></span></span>Analyzing';clearProcErr();
+async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){showProcErr('Add API key in user settings');return;}
+  // Auto-fill today's date if not set — prevents empty date strings in stored meetings
+  var dateInp=document.getElementById('m-date');
+  if(!dateInp.value){dateInp.value=new Date().toISOString().slice(0,10);toast('Date set to today — update if needed');}
+  var meta={title:document.getElementById('m-title').value,date:document.getElementById('m-date').value,type:document.getElementById('m-type').value,att:document.getElementById('m-att').value,dur:document.getElementById('m-dur').value};var btn=document.getElementById('proc-btn');btn.disabled=true;btn.innerHTML='<span class="proc-dots"><span></span><span></span><span></span></span>Analyzing';clearProcErr();
   // Route to transcript-aware Claude if input is a transcript
   var txInfo=detectTranscript(notes);
   var isTranscript=txInfo.isTranscript||meta.type==='Call Transcript';
@@ -5194,7 +5224,7 @@ async function reprocessMeeting(){
   }catch(e){document.getElementById('edit-err').textContent=e.message||'Failed';document.getElementById('edit-err').style.display='inline';}
   btn.disabled=false;btn.textContent='Reprocess';
 }
-window.delMeeting=async function(id){if(!confirm('Remove this meeting?'))return;await deleteMeeting(id);document.getElementById('intel-body').style.display='none';document.getElementById('intel-empty').style.display='block';};
+window.delMeeting=async function(id){if(!await showConfirm('This meeting and its intelligence will be removed.',{title:'Remove Meeting?',confirmLabel:'Remove',danger:true}))return;await deleteMeeting(id);document.getElementById('intel-body').style.display='none';document.getElementById('intel-empty').style.display='block';};
 
 // ══════════════════════════════════════════════════════════════
 // WORKSPACE INTELLIGENCE EXPORT
@@ -6015,8 +6045,33 @@ window.toggleCalibrationPanel=function(){
   detail.innerHTML=h;
 };
 
-function exportData(){var backup={version:6,app:'FLiIntel',workspace:currentWs.name,exported:new Date().toISOString(),meetings:meetings,entities:entities,nodes:nodes.map(function(n){var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;return c;}),links:links.map(function(l){return{id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};}),calEntries:calEntries,tlCommitments:tlCommitments};var blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FLiIntel_'+currentWs.name+'_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);toast('Backup exported');}
-async function importData(event){var file=event.target.files[0];if(!file)return;var reader=new FileReader();reader.onload=async function(e){try{var data=JSON.parse(e.target.result);var ms=data.meetings||[];var ns=data.entities||data.nodes||[];var ls=data.links||data.edges||[];if(!ms.length&&!ns.length){toast('No data found');return;}if(!confirm('Import '+ms.length+' meetings and '+ns.length+' nodes from '+(data.workspace||'backup')+'?'))return;toast('Uploading...');var existingMIds=new Set(meetings.map(function(m){return m.id;}));for(var i=0;i<ms.length;i++){if(!existingMIds.has(ms[i].id))await saveMeeting(ms[i]);}if(ns.length){var existingNIds=new Set(nodes.map(function(n){return n.id;}));var toAddN=ns.filter(function(n){return!existingNIds.has(n.id);});for(var j=0;j<toAddN.length;j++){var imp=toAddN[j];nodes.push(imp);nodeMap.set(imp.id,imp);await saveNode(imp);}}if(ls.length){for(var k=0;k<ls.length;k++){var l=ls[k];var cl={id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};var ex2=links.find(function(x){return x.id===cl.id;});if(!ex2){links.push(cl);linkMap.set(cl.id,cl);await saveLink(cl);}}}if(data.calEntries&&data.calEntries.length){calEntries=data.calEntries;await saveCal();}if(data.tlCommitments&&data.tlCommitments.length){tlCommitments=data.tlCommitments;await saveTLCommitments();}toast('Import complete');}catch(err){console.error(err);toast('Import failed: '+(err.message||'Could not read file'));}};reader.onerror=function(){toast('Could not read file');};reader.readAsText(file);event.target.value='';}
+function exportData(){var backup={version:7,app:'FLiIntel',workspace:currentWs.name,exported:new Date().toISOString(),meetings:meetings,entities:entities,nodes:nodes.map(function(n){var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;return c;}),links:links.map(function(l){return{id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};}),calEntries:calEntries,tlCommitments:tlCommitments,commitments:commitments,calibrationRecords:calibrationRecords};var blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FLiIntel_'+currentWs.name+'_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);toast('Backup exported — includes commitments and win model data');}
+async function importData(event){var file=event.target.files[0];if(!file)return;var reader=new FileReader();reader.onload=async function(e){try{var data=JSON.parse(e.target.result);var ms=data.meetings||[];var ns=data.entities||data.nodes||[];var ls=data.links||data.edges||[];if(!ms.length&&!ns.length){toast('No data found');return;}if(!await showConfirm('Import '+ms.length+' meetings and '+ns.length+' nodes from "'+(data.workspace||'backup')+'"? Existing data is preserved.',{title:'Import Backup?',confirmLabel:'Import'}))return;toast('Uploading...');var existingMIds=new Set(meetings.map(function(m){return m.id;}));for(var i=0;i<ms.length;i++){if(!existingMIds.has(ms[i].id))await saveMeeting(ms[i]);}if(ns.length){var existingNIds=new Set(nodes.map(function(n){return n.id;}));var toAddN=ns.filter(function(n){return!existingNIds.has(n.id);});for(var j=0;j<toAddN.length;j++){var imp=toAddN[j];nodes.push(imp);nodeMap.set(imp.id,imp);await saveNode(imp);}}if(ls.length){for(var k=0;k<ls.length;k++){var l=ls[k];var cl={id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};var ex2=links.find(function(x){return x.id===cl.id;});if(!ex2){links.push(cl);linkMap.set(cl.id,cl);await saveLink(cl);}}}// calEntries: merge by ID (don't replace existing)
+      if(data.calEntries&&data.calEntries.length){
+        var existingCalIds=new Set(calEntries.map(function(e){return e.id;}));
+        var newCal=data.calEntries.filter(function(e){return!existingCalIds.has(e.id);});
+        calEntries=calEntries.concat(newCal);
+        if(newCal.length)await saveCal();
+      }
+      // tlCommitments: merge by ID
+      if(data.tlCommitments&&data.tlCommitments.length){
+        var existingTLIds=new Set(tlCommitments.map(function(c){return c.id;}));
+        var newTL=data.tlCommitments.filter(function(c){return!existingTLIds.has(c.id);});
+        for(var ti=0;ti<newTL.length;ti++){tlCommitments.push(newTL[ti]);await saveTLCommitment(newTL[ti]);}
+      }
+      // commitments: merge by ID
+      if(data.commitments&&data.commitments.length){
+        var existingCIds=new Set(commitments.map(function(c){return c.id;}));
+        var newC=data.commitments.filter(function(c){return!existingCIds.has(c.id);});
+        for(var ci2=0;ci2<newC.length;ci2++){commitments.push(newC[ci2]);await saveCommitment(newC[ci2]);}
+      }
+      // calibrationRecords: merge by ID
+      if(data.calibrationRecords&&data.calibrationRecords.length){
+        var existingCRIds=new Set(calibrationRecords.map(function(r){return r.id;}));
+        var newCR=data.calibrationRecords.filter(function(r){return!existingCRIds.has(r.id);});
+        for(var ri=0;ri<newCR.length;ri++){calibrationRecords.push(newCR[ri]);try{await fbSet(wsPath('calibration/'+newCR[ri].id),newCR[ri]);}catch(e){}}
+      }
+      toast('Import complete');}catch(err){console.error(err);toast('Import failed: '+(err.message||'Could not read file'));}};reader.onerror=function(){toast('Could not read file');};reader.readAsText(file);event.target.value='';}
 
 async function inviteMember(){
   var email=document.getElementById('invite-email').value.trim();
@@ -6122,7 +6177,7 @@ async function showMembers(){
           +'<div style="font-size:10px;color:var(--t3)">'+(inv.role||'Member')+(sentDate?' · Invited '+sentDate:'')+(inv.invitedBy?' · by '+inv.invitedBy:'')+'</div>'
           +'</div>'
           +'<button data-wsid="'+currentWsId+'" data-ekey="'+inv.email.replace(/\./ ,'_')+'" onclick="window._cancelInvite(this.dataset.wsid,this.dataset.ekey,this)" '
-          +'style="padding:3px 8px;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif;flex-shrink:0">Cancel</button>'
+          +'style="padding:3px 8px;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif;flex-shrink:0">Cancel</button>'
           +'</div>';
       }).join('');
     }else{
@@ -6173,7 +6228,7 @@ function _showInviteCard(inv,user){
     'background:var(--s1)','border:1px solid rgba(201,162,39,.45)',
     'border-left:3px solid var(--gold)','border-radius:var(--r)',
     'padding:16px 18px','box-shadow:0 16px 48px rgba(0,0,0,.75)',
-    'animation:invIn .3s ease','font-family:\'Outfit\',sans-serif'
+    'animation:invIn .3s ease','font-family:Outfit,sans-serif'
   ].join(';');
 
   card.innerHTML='<div style="display:flex;align-items:flex-start;gap:10px">'
@@ -6188,9 +6243,9 @@ function _showInviteCard(inv,user){
     +'Invited as '+user.email+'</div>'
     +'<div style="display:flex;gap:8px">'
     +'<button class="inv-accept-btn" data-wsid="'+inv.wsId+'" data-ekey="'+inv.email.replace(/\./g,'_')+'" '
-    +'style="padding:8px 20px;background:var(--gold);border:none;border-radius:var(--rsm);color:#0d1b2e;font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif">Accept &amp; Join</button>'
+    +'style="padding:8px 20px;background:var(--gold);border:none;border-radius:var(--rsm);color:#0d1b2e;font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif">Accept &amp; Join</button>'
     +'<button class="inv-dismiss-btn" data-wsid="'+inv.wsId+'" '
-    +'style="padding:8px 14px;background:transparent;border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t2);font-size:12px;cursor:pointer;font-family:\'Outfit\',sans-serif">Not Now</button>'
+    +'style="padding:8px 14px;background:transparent;border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t2);font-size:12px;cursor:pointer;font-family:Outfit,sans-serif">Not Now</button>'
     +'</div></div></div>';
   document.body.appendChild(card);
   // Wire buttons via event delegation on the card
@@ -6279,22 +6334,79 @@ window.setTLSrcFilter=setTLSrcFilter;
 
 document.addEventListener('click',function(e){var btn=e.target.closest('#tlf-src-all');if(btn){tlSrcFilter='all';document.querySelectorAll('#tl-src-list .tl-filter-btn').forEach(function(b){b.classList.remove('active');});btn.classList.add('active');renderTimeline();}});
 
-async function toggleTLComplete(id){var all=getTLItems(),item=all.find(function(i){return i.id===id;});if(!item)return;var ns=item.status==='completed'?'upcoming':'completed';if(item.isManual){var mc=tlCommitments.find(function(c){return 'cm-'+c.id===id;});if(mc)mc.status=ns;}else{var ex=tlCommitments.find(function(c){return c.sourceId===id;});if(ex)ex.status=ns;else tlCommitments.push({id:Date.now(),sourceId:id,title:item.title,type:item.type,deadline:item.deadline,status:ns,priority:item.priority,owner:item.owner,notes:item.notes,source:item.source,created:new Date().toISOString()});}await saveTLCommitments();renderTimeline();}
+async function toggleTLComplete(id){
+  var all=getTLItems(),item=all.find(function(i){return i.id===id;});
+  if(!item)return;
+  var ns=item.status==='completed'?'upcoming':'completed';
+  var changedItem=null;
+  if(item.isManual){
+    var mc=tlCommitments.find(function(c){return 'cm-'+c.id===id;});
+    if(mc){mc.status=ns;changedItem=mc;}
+  }else{
+    var ex=tlCommitments.find(function(c){return c.sourceId===id;});
+    if(ex){ex.status=ns;changedItem=ex;}
+    else{changedItem={id:Date.now(),sourceId:id,title:item.title,type:item.type,deadline:item.deadline,status:ns,priority:item.priority,owner:item.owner,notes:item.notes,source:item.source,created:new Date().toISOString()};tlCommitments.push(changedItem);}
+  }
+  if(changedItem)await saveTLCommitment(changedItem);
+  renderTimeline();
+}
 window.toggleTLComplete=toggleTLComplete;
 
 function openTLCardModal(id){var all=getTLItems(),item=all.find(function(i){return i.id===id;});if(!item)return;currentTLEditId=id;document.getElementById('tl-card-modal-title').textContent=item.type.charAt(0).toUpperCase()+item.type.slice(1)+' Details';document.getElementById('tce-title').value=item.title||'';document.getElementById('tce-status').value=item.status||'upcoming';document.getElementById('tce-priority').value=item.priority||'medium';document.getElementById('tce-date').value=item.deadline||'';document.getElementById('tce-owner').value=item.owner||'';document.getElementById('tce-notes').value=item.notes||'';document.getElementById('tl-card-modal').style.display='flex';}
 window.openTLCardModal=openTLCardModal;
 
-async function saveTLCardEdit(){if(!currentTLEditId)return;var title=document.getElementById('tce-title').value.trim(),status=document.getElementById('tce-status').value,priority=document.getElementById('tce-priority').value,deadline=document.getElementById('tce-date').value,owner=document.getElementById('tce-owner').value.trim(),notes=document.getElementById('tce-notes').value.trim();var all=getTLItems(),item=all.find(function(i){return i.id===currentTLEditId;});if(!item)return;if(item.isManual){var mc=tlCommitments.find(function(c){return 'cm-'+c.id===currentTLEditId;});if(mc){mc.title=title;mc.status=status;mc.priority=priority;mc.deadline=deadline;mc.owner=owner;mc.notes=notes;}}else{var ex=tlCommitments.find(function(c){return c.sourceId===currentTLEditId;});if(ex){ex.title=title;ex.status=status;ex.priority=priority;ex.deadline=deadline;ex.owner=owner;ex.notes=notes;}else tlCommitments.push({id:Date.now(),sourceId:currentTLEditId,title:title,type:item.type,deadline:deadline,status:status,priority:priority,owner:owner,notes:notes,source:item.source,created:new Date().toISOString()});}await saveTLCommitments();closeModal('tl-card-modal');renderTimeline();toast('Saved');}
+async function saveTLCardEdit(){
+  if(!currentTLEditId)return;
+  var title=document.getElementById('tce-title').value.trim(),status=document.getElementById('tce-status').value,priority=document.getElementById('tce-priority').value,deadline=document.getElementById('tce-date').value,owner=document.getElementById('tce-owner').value.trim(),notes=document.getElementById('tce-notes').value.trim();
+  var all=getTLItems(),item=all.find(function(i){return i.id===currentTLEditId;});
+  if(!item)return;
+  var saved=null;
+  if(item.isManual){
+    var mc=tlCommitments.find(function(c){return 'cm-'+c.id===currentTLEditId;});
+    if(mc){mc.title=title;mc.status=status;mc.priority=priority;mc.deadline=deadline;mc.owner=owner;mc.notes=notes;saved=mc;}
+  }else{
+    var ex=tlCommitments.find(function(c){return c.sourceId===currentTLEditId;});
+    if(ex){ex.title=title;ex.status=status;ex.priority=priority;ex.deadline=deadline;ex.owner=owner;ex.notes=notes;saved=ex;}
+    else{saved={id:Date.now(),sourceId:currentTLEditId,title:title,type:item.type,deadline:deadline,status:status,priority:priority,owner:owner,notes:notes,source:item.source,created:new Date().toISOString()};tlCommitments.push(saved);}
+  }
+  if(saved)await saveTLCommitment(saved);
+  closeModal('tl-card-modal');renderTimeline();toast('Saved');
+}
 window.saveTLCardEdit=saveTLCardEdit;
 
-async function deleteTLItem(){if(!currentTLEditId||!confirm('Remove this item?'))return;var all=getTLItems(),item=all.find(function(i){return i.id===currentTLEditId;});if(!item)return;if(item.isManual){tlCommitments=tlCommitments.filter(function(c){return 'cm-'+c.id!==currentTLEditId;});}else{tlCommitments=tlCommitments.filter(function(c){return c.sourceId!==currentTLEditId;});tlCommitments.push({id:Date.now(),sourceId:currentTLEditId,title:item.title,type:item.type,deadline:item.deadline,status:'completed',priority:item.priority,owner:item.owner,notes:item.notes,source:item.source,created:new Date().toISOString()});}await saveTLCommitments();closeModal('tl-card-modal');renderTimeline();toast(item.isManual?'Deleted':'Hidden (marked completed)');}
+async function deleteTLItem(){
+  if(!currentTLEditId)return;
+  if(!await showConfirm('This item will be removed from the Timeline.',{title:'Remove Item?',confirmLabel:'Remove',danger:true}))return;
+  var all=getTLItems(),item=all.find(function(i){return i.id===currentTLEditId;});
+  if(!item)return;
+  if(item.isManual){
+    var mc=tlCommitments.find(function(c){return 'cm-'+c.id===currentTLEditId;});
+    if(mc){
+      tlCommitments=tlCommitments.filter(function(c){return c.id!==mc.id;});
+      await deleteTLCommitmentDB(mc.id);
+    }
+  }else{
+    tlCommitments=tlCommitments.filter(function(c){return c.sourceId!==currentTLEditId;});
+    var override={id:Date.now(),sourceId:currentTLEditId,title:item.title,type:item.type,deadline:item.deadline,status:'completed',priority:item.priority,owner:item.owner,notes:item.notes,source:item.source,created:new Date().toISOString()};
+    tlCommitments.push(override);
+    await saveTLCommitment(override);
+  }
+  closeModal('tl-card-modal');renderTimeline();toast(item.isManual?'Deleted':'Hidden (marked completed)');
+}
 window.deleteTLItem=deleteTLItem;
 
 function openAddCommitmentModal(){currentTLEditId=null;['ac-title','ac-owner','ac-source','ac-notes'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('ac-type').value='commitment';document.getElementById('ac-priority').value='medium';document.getElementById('ac-date').value='';document.getElementById('add-commitment-modal').style.display='flex';setTimeout(function(){document.getElementById('ac-title').focus();},80);}
 window.openAddCommitmentModal=openAddCommitmentModal;
 
-async function confirmAddCommitment(){var title=document.getElementById('ac-title').value.trim(),deadline=document.getElementById('ac-date').value;if(!title){toast('Title required');return;}if(!deadline){toast('Deadline required');return;}tlCommitments.push({id:Date.now(),title:title,type:document.getElementById('ac-type').value,priority:document.getElementById('ac-priority').value,deadline:deadline,owner:document.getElementById('ac-owner').value.trim(),source:document.getElementById('ac-source').value.trim()||'Manual',notes:document.getElementById('ac-notes').value.trim(),status:'upcoming',created:new Date().toISOString()});await saveTLCommitments();closeModal('add-commitment-modal');renderTimeline();toast('Commitment added');}
+async function confirmAddCommitment(){
+  var title=document.getElementById('ac-title').value.trim(),deadline=document.getElementById('ac-date').value;
+  if(!title){toast('Title required');return;}
+  if(!deadline){toast('Deadline required');return;}
+  var item={id:Date.now(),title:title,type:document.getElementById('ac-type').value,priority:document.getElementById('ac-priority').value,deadline:deadline,owner:document.getElementById('ac-owner').value.trim(),source:document.getElementById('ac-source').value.trim()||'Manual',notes:document.getElementById('ac-notes').value.trim(),status:'upcoming',created:new Date().toISOString()};
+  tlCommitments.push(item);
+  await saveTLCommitment(item);
+  closeModal('add-commitment-modal');renderTimeline();toast('Commitment added');
+}
 window.confirmAddCommitment=confirmAddCommitment;
 
 // ─── NETWORK MAP ─────────────────────────────────────────────
@@ -6583,14 +6695,30 @@ function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('pan
 function closeNetPanel(){document.getElementById('net-panel').classList.remove('open');document.getElementById('org-legend').classList.remove('panel-open');selectedNode=null;}
 window.closeNetPanel=closeNetPanel;
 
-async function saveNetPanel(){if(!selectedNode)return;selectedNode.name=document.getElementById('panel-name').value;selectedNode.role=document.getElementById('panel-role').value;selectedNode.org=document.getElementById('panel-org').value;selectedNode.notes=document.getElementById('panel-notes').value;await saveNode(selectedNode);renderNetwork();updateFilterTags();updateOrgLegend();}
+var _netPanelSaveTimer=null;
+function saveNetPanel(){
+  if(!selectedNode)return;
+  // Update in-memory immediately so UI feels instant
+  selectedNode.name=document.getElementById('panel-name').value;
+  selectedNode.role=document.getElementById('panel-role').value;
+  selectedNode.org=document.getElementById('panel-org').value;
+  selectedNode.notes=document.getElementById('panel-notes').value;
+  // Debounce the expensive Firebase write + D3 re-render to 600ms
+  clearTimeout(_netPanelSaveTimer);
+  _netPanelSaveTimer=setTimeout(function(){
+    if(!selectedNode)return;
+    saveNode(selectedNode).catch(function(e){toast('Save failed — check connection');});
+    renderNetwork();updateFilterTags();updateOrgLegend();
+  },600);
+}
 window.saveNetPanel=saveNetPanel;
 
 async function setNetTier(t){if(!selectedNode)return;selectedNode.priority=t;var c=nc(selectedNode);[1,2,3].forEach(function(i){var b=document.getElementById('ntier-'+i);b.style.cssText='';if(i===t){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});await saveNode(selectedNode);renderNetwork();}
 window.setNetTier=setNetTier;
 
 async function deleteSelectedNode(){
-  if(!selectedNode||!confirm('Delete "'+selectedNode.name+'"?'))return;
+  if(!selectedNode)return;
+  if(!await showConfirm('"'+selectedNode.name+'" and all its connections will be removed.',{title:'Delete Node?',confirmLabel:'Delete',danger:true}))return;
   var id=selectedNode.id;
   // Collect links to delete before filtering
   var linksToDelete=links.filter(function(l){var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;return s===id||t===id;});
@@ -6770,7 +6898,7 @@ function renderDossier(d){
   }
 
   // ── PREP BRIEF SHORTCUT ──────────────────────────────────────
-  h+='<button onclick="prepForPerson(\''+d.name.replace(/'/g,"\\'")+'\')" style="width:100%;padding:9px;border:1px solid var(--purple);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:12px;font-weight:500;cursor:pointer;font-family:\'Outfit\',sans-serif;transition:all .15s;margin-top:2px" onmouseover="this.style.background=\'rgba(139,92,246,.1)\'" onmouseout="this.style.background=\'transparent\'">⚡ Generate Prep Brief for '+d.name+'</button>';
+  h+='<button onclick="prepForPerson(\''+d.name.replace(/'/g,"\\'")+'\')" style="width:100%;padding:9px;border:1px solid var(--purple);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:12px;font-weight:500;cursor:pointer;font-family:Outfit,sans-serif;transition:all .15s;margin-top:2px" onmouseover="this.style.background=\'rgba(139,92,246,.1)\'" onmouseout="this.style.background=\'transparent\'">⚡ Generate Prep Brief for '+d.name+'</button>';
 
   document.getElementById('dossier-content').innerHTML=h;
 }
@@ -6791,7 +6919,7 @@ function renderTimeline360(d){
   var h='';
   h+='<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">';
   h+=sorted.length+' meetings · relationship arc';
-  h+='<button id="rel-narrative-btn" onclick="generateRelNarrative()" style="font-size:10px;padding:3px 9px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);cursor:pointer;font-family:\'Outfit\',sans-serif">'
+  h+='<button id="rel-narrative-btn" onclick="generateRelNarrative()" style="font-size:10px;padding:3px 9px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);cursor:pointer;font-family:Outfit,sans-serif">'
     +(_narrativeCache.has(d.id)?'↺ Refresh':'✦ Summarize')+'</button>';
   h+='</div>';
 
@@ -7250,7 +7378,7 @@ function _renderDedupPair(c,i){
     +'</div>'
     // Action buttons
     +'<div style="display:flex;gap:6px">'
-    +'<button onclick="toggleDedupPair('+i+')" id="dedup-toggle-'+i+'" style="flex:1;padding:5px;border:1px solid rgba(201,162,39,.4);border-radius:var(--rsm);background:rgba(201,162,39,.1);color:var(--gold);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif">✓ Will Merge</button>'
+    +'<button onclick="toggleDedupPair('+i+')" id="dedup-toggle-'+i+'" style="flex:1;padding:5px;border:1px solid rgba(201,162,39,.4);border-radius:var(--rsm);background:rgba(201,162,39,.1);color:var(--gold);font-size:11px;cursor:pointer;font-family:Outfit,sans-serif">✓ Will Merge</button>'
     +'<button onclick="skipDedupPair('+i+')" style="padding:5px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer">Skip</button>'
     +'</div>'
     +'</div>';
@@ -7524,6 +7652,60 @@ function showProcErr(m){var e=document.getElementById('proc-err');e.textContent=
 function clearProcErr(){document.getElementById('proc-err').style.display='none';}
 function closeModal(id){var el=document.getElementById(id);if(el)el.style.display='none';}
 window.closeModal=closeModal;
+
+// Styled confirm dialog — replaces native confirm(). Returns Promise<boolean>.
+window.showConfirm=function(message,opts){
+  opts=opts||{};
+  return new Promise(function(resolve){
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(2px)';
+    var isDanger=opts.danger||false;
+    var confirmColor=isDanger?'var(--red)':'var(--gold)';
+    var confirmText=isDanger?'#fff':'#0b0d11';
+    ov.innerHTML='<div style="background:var(--s1);border:1px solid var(--b2);border-radius:var(--r);padding:22px 24px;max-width:380px;width:calc(100% - 40px);box-shadow:0 24px 64px rgba(0,0,0,.75)">'
+      +'<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">'+(opts.title||(isDanger?'Confirm Delete':'Confirm'))+'</div>'
+      +'<div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:20px">'+message+'</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end">'
+      +'<button class="sc-cancel" style="padding:7px 16px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:12px;cursor:pointer;font-family:Outfit,sans-serif">Cancel</button>'
+      +'<button class="sc-ok" style="padding:7px 16px;border:none;border-radius:var(--rsm);background:'+confirmColor+';color:'+confirmText+';font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif">'+(opts.confirmLabel||(isDanger?'Delete':'Confirm'))+'</button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+    function done(v){document.body.removeChild(ov);document.removeEventListener('keydown',kh);resolve(v);}
+    ov.querySelector('.sc-ok').addEventListener('click',function(){done(true);});
+    ov.querySelector('.sc-cancel').addEventListener('click',function(){done(false);});
+    ov.addEventListener('click',function(e){if(e.target===ov)done(false);});
+    function kh(e){if(e.key==='Enter'){e.preventDefault();done(true);}else if(e.key==='Escape'){done(false);}}
+    document.addEventListener('keydown',kh);
+    setTimeout(function(){var btn=ov.querySelector('.sc-ok');if(btn)btn.focus();},50);
+  });
+};
+
+// Styled prompt dialog — replaces native prompt(). Returns Promise<string|null>.
+window.showPrompt=function(label,defaultVal,opts){
+  opts=opts||{};
+  return new Promise(function(resolve){
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(2px)';
+    var escaped=(defaultVal||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    ov.innerHTML='<div style="background:var(--s1);border:1px solid var(--b2);border-radius:var(--r);padding:22px 24px;max-width:480px;width:calc(100% - 40px);box-shadow:0 24px 64px rgba(0,0,0,.75)">'
+      +'<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px">'+(opts.title||label)+'</div>'
+      +(opts.description?'<div style="font-size:12px;color:var(--t2);margin-bottom:10px;line-height:1.5">'+opts.description+'</div>':'')
+      +'<textarea id="sp-inp" rows="'+(opts.rows||4)+'" style="width:100%;min-height:90px;resize:vertical;box-sizing:border-box;margin-bottom:16px;font-size:13px;padding:8px 10px;font-family:Outfit,sans-serif">'+escaped+'</textarea>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end">'
+      +'<button class="sp-cancel" style="padding:7px 16px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:12px;cursor:pointer;font-family:Outfit,sans-serif">Cancel</button>'
+      +'<button class="sp-ok" style="padding:7px 16px;border:none;border-radius:var(--rsm);background:var(--gold);color:#0b0d11;font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif">'+(opts.confirmLabel||'Save')+'</button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+    var inp=ov.querySelector('#sp-inp');
+    function done(v){document.body.removeChild(ov);document.removeEventListener('keydown',kh);resolve(v);}
+    ov.querySelector('.sp-ok').addEventListener('click',function(){done(inp.value);});
+    ov.querySelector('.sp-cancel').addEventListener('click',function(){done(null);});
+    ov.addEventListener('click',function(e){if(e.target===ov)done(null);});
+    function kh(e){if(e.key==='Escape')done(null);}
+    document.addEventListener('keydown',kh);
+    setTimeout(function(){inp.focus();var len=inp.value.length;inp.setSelectionRange(len,len);},50);
+  });
+};
 var _tt;
 function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('show');},3200);}
 window.showToast=toast;
@@ -8418,8 +8600,8 @@ function _renderCalendarPanel(events){
     h+='<div style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;margin-bottom:7px">';
     h+=start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' · '+durLabel+'</div>';
     h+='<div style="display:flex;gap:5px">';
-    h+='<button onclick="window._calPrepBrief(\''+evtId+'\')" style="flex:1;padding:4px 8px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif;font-weight:600">⚡ Prep Brief</button>';
-    h+='<button onclick="window._calAutoFillLog(\''+evtId+'\')" style="flex:1;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif">✏ Log Meeting</button>';
+    h+='<button onclick="window._calPrepBrief(\''+evtId+'\')" style="flex:1;padding:4px 8px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif;font-weight:600">⚡ Prep Brief</button>';
+    h+='<button onclick="window._calAutoFillLog(\''+evtId+'\')" style="flex:1;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">✏ Log Meeting</button>';
     h+='</div></div>';
   });
   container.innerHTML=h;
@@ -8675,7 +8857,7 @@ function _renderAlertsPanel(){
     h+='<div style="flex:1;min-width:0">';
     h+='<div style="font-size:12px;font-weight:600;line-height:1.35;margin-bottom:2px">'+alert.title+'</div>';
     h+='<div style="font-size:11px;color:var(--t2);line-height:1.4;margin-bottom:7px">'+alert.body+'</div>';
-    h+='<button onclick="window._alertActions['+i+']();toggleAlertsPanel()" style="padding:3px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif">'+alert.actionLabel+' →</button>';
+    h+='<button onclick="window._alertActions['+i+']();toggleAlertsPanel()" style="padding:3px 10px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">'+alert.actionLabel+' →</button>';
     h+='</div></div></div>';
   });
   // Store action callbacks (functions can't be in innerHTML)
@@ -9187,7 +9369,7 @@ window.togglePgPicker=function(){
         var stageColor='var(--t2)';
         if(o.stage==='proposal'||o.stage==='submitted')stageColor='var(--gold)';
         if(o.stage==='award')stageColor='var(--amber)';
-        return '<button onclick="enterProgramView(\''+o.id+'\')" style="text-align:left;width:100%;padding:9px 11px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);cursor:pointer;font-family:\'Outfit\',sans-serif;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b2)\'">'
+        return '<button onclick="enterProgramView(\''+o.id+'\')" style="text-align:left;width:100%;padding:9px 11px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);cursor:pointer;font-family:Outfit,sans-serif;transition:border-color .15s" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b2)\'">'
           +'<div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px">'+o.name+'</div>'
           +'<div style="display:flex;gap:8px;font-size:10px"><span style="color:'+stageColor+'">'+o.stage+'</span>'+(o.agency?'<span style="color:var(--t3)">'+o.agency+'</span>':'')+'<span style="color:var(--t3)">'+taggedCount+' meetings</span></div>'
           +'</button>';
@@ -9321,7 +9503,7 @@ window._showAutoPrompt=function(meeting){
     'box-shadow:0 16px 48px rgba(0,0,0,.7)',
     'z-index:90',
     'animation:apSlideIn .3s ease',
-    'font-family:\'Outfit\',sans-serif',
+    'font-family:Outfit,sans-serif',
   ].join(';');
 
   // Auto-dismiss progress bar
@@ -9391,25 +9573,25 @@ window._showAutoPrompt=function(meeting){
   // Action: Prep next meeting with same people
   if(people.length){
     var attStr=people.map(function(p){return p.name;}).join(', ');
-    h+='<button onclick="window._apAction(\'prep\',\''+encodeURIComponent(attStr)+'\')" style="padding:7px 6px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;text-align:left;font-family:\'Outfit\',sans-serif;line-height:1.3">'
+    h+='<button onclick="window._apAction(\'prep\',\''+encodeURIComponent(attStr)+'\')" style="padding:7px 6px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;text-align:left;font-family:Outfit,sans-serif;line-height:1.3">'
       +'<span style="display:block;font-size:13px;margin-bottom:2px">🎯</span>Prep Next Meeting</button>';
   }
 
   // Action: Open network map for first person
   var firstPerson=people[0];
   if(firstPerson){
-    h+='<button onclick="window._apAction(\'network\',\''+encodeURIComponent(firstPerson.name)+'\')" style="padding:7px 6px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;text-align:left;font-family:\'Outfit\',sans-serif;line-height:1.3">'
+    h+='<button onclick="window._apAction(\'network\',\''+encodeURIComponent(firstPerson.name)+'\')" style="padding:7px 6px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;text-align:left;font-family:Outfit,sans-serif;line-height:1.3">'
       +'<span style="display:block;font-size:13px;margin-bottom:2px">🕸</span>Open Network Map</button>';
   }
 
   // Action: View timeline (commitments)
   if(myCommits.length||theirCommits.length){
-    h+='<button onclick="window._apAction(\'timeline\')" style="padding:7px 6px;border:1px solid rgba(245,158,11,.3);border-radius:var(--rsm);background:transparent;color:var(--amber);font-size:10px;cursor:pointer;text-align:left;font-family:\'Outfit\',sans-serif;line-height:1.3">'
+    h+='<button onclick="window._apAction(\'timeline\')" style="padding:7px 6px;border:1px solid rgba(245,158,11,.3);border-radius:var(--rsm);background:transparent;color:var(--amber);font-size:10px;cursor:pointer;text-align:left;font-family:Outfit,sans-serif;line-height:1.3">'
       +'<span style="display:block;font-size:13px;margin-bottom:2px">📋</span>View Commitments</button>';
   }
 
   // Action: Ask Fli about this meeting
-  h+='<button onclick="window._apAction(\'askfli\',\''+encodeURIComponent('What are the key takeaways and next steps from '+title+'?')+'\')" style="padding:7px 6px;border:1px solid rgba(139,92,246,.3);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:10px;cursor:pointer;text-align:left;font-family:\'Outfit\',sans-serif;line-height:1.3">'
+  h+='<button onclick="window._apAction(\'askfli\',\''+encodeURIComponent('What are the key takeaways and next steps from '+title+'?')+'\')" style="padding:7px 6px;border:1px solid rgba(139,92,246,.3);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:10px;cursor:pointer;text-align:left;font-family:Outfit,sans-serif;line-height:1.3">'
     +'<span style="display:block;font-size:13px;margin-bottom:2px">⚡</span>Ask Fli</button>';
 
   h+='</div></div>';
