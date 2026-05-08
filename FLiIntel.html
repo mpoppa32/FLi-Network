@@ -340,9 +340,10 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   .timeline-view{flex-direction:column}
   .tl-main{padding:14px 14px 20px;overflow-y:visible}
 
-  /* Network view hidden on mobile */
-  #vtab-network{display:none}
-  #network-view{display:none!important}
+  /* Network view — accessible on mobile via contact list */
+  #vtab-network{display:none}  /* still hidden from desktop tab bar */
+  /* network-view accessible via mobile drawer */
+  .net-toolbar{display:none}  /* toolbar hidden on mobile — use mob-net-list instead */
 
   /* Grids collapse */
   .g2{grid-template-columns:1fr!important}
@@ -398,6 +399,13 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 
   /* Toast above mobile nav */
   .toast{bottom:76px}
+
+  /* FAB quick-log button */
+  #mob-fab{display:flex!important}
+
+  /* Quick-log sheet swipe handle */
+  #quick-log-sheet{display:none}
+  #quick-log-sheet.open{display:block}
 
   /* Prep output full width */
   #prep-out .g2{grid-template-columns:1fr}
@@ -973,6 +981,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
           <div id="panel-type-lbl" style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3)"></div>
           <div style="display:flex;gap:4px">
             <button class="export-btn" onclick="exportDossier()" id="panel-export-btn" style="display:none">&#8599; Export</button>
+            <button class="btn btn-sm" id="panel-brief-btn" onclick="generatePersonBrief(selectedNode)" style="display:none;color:var(--purple);border-color:rgba(139,92,246,.5);font-size:10px;background:rgba(139,92,246,.07)" title="Generate AI intel brief for this contact">✦ Brief</button>
             <button class="btn btn-sm" id="panel-del-btn" style="color:var(--red);border-color:var(--red);font-size:10px">Delete</button>
             <button class="nb" onclick="closeNetPanel()">x</button>
           </div>
@@ -1298,6 +1307,27 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   </div>
 </div>
 
+
+<!-- MOBILE QUICK-LOG FAB -->
+<button id="mob-fab" onclick="openQuickLog()" aria-label="Quick log meeting" style="display:none;position:fixed;bottom:76px;right:16px;width:52px;height:52px;border-radius:50%;background:var(--gold);border:none;color:#0d1b2e;font-size:24px;font-weight:700;cursor:pointer;z-index:190;box-shadow:0 4px 16px rgba(201,162,39,.5);align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;transition:transform .15s">+</button>
+
+<!-- QUICK LOG BOTTOM SHEET -->
+<div class="mob-drawer-overlay" id="ql-overlay" onclick="closeQuickLog()" style="display:none"></div>
+<div id="quick-log-sheet" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--s1);border-radius:18px 18px 0 0;border-top:1px solid var(--b2);z-index:301;padding:20px 18px 32px;padding-bottom:calc(32px + env(safe-area-inset-bottom));max-height:85dvh;overflow-y:auto">
+  <div style="width:36px;height:4px;background:var(--b2);border-radius:2px;margin:0 auto 16px"></div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--gold);margin-bottom:14px">Quick Log Meeting</div>
+  <div class="fld" style="margin-bottom:10px"><input type="text" id="ql-title" placeholder="Meeting title..." style="font-size:16px"></div>
+  <div class="fld" style="margin-bottom:10px"><input type="text" id="ql-att" placeholder="Who was there?" style="font-size:16px"></div>
+  <div class="fld" style="margin-bottom:10px">
+    <textarea id="ql-notes" placeholder="Key points, decisions, next steps..." style="min-height:120px;font-size:16px;resize:none"></textarea>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="btn btn-gold" id="ql-proc-btn" onclick="processQuickLog()" style="flex:1;padding:12px;font-size:14px">Process with AI</button>
+    <button class="btn" onclick="closeQuickLog()" style="padding:12px 16px;font-size:14px">Cancel</button>
+  </div>
+  <div id="ql-err" style="display:none;margin-top:8px;font-size:12px;color:var(--red)"></div>
+</div>
+
 <!-- MOBILE BOTTOM NAV -->
 <nav class="mob-nav">
   <button class="mob-tab active" id="mbt-log" onclick="mobNav('log')">
@@ -1332,8 +1362,8 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   <div class="mob-drawer-item" onclick="closeMobDrawer();switchView('askfli')">
     <span class="di-icon">⚡</span><span>Ask Fli <span style="font-size:11px;color:var(--purple)">— search your intel</span></span>
   </div>
-  <div class="mob-drawer-item" onclick="closeMobDrawer();setTimeout(function(){switchView('network');},100)" style="opacity:.6">
-    <span class="di-icon">🕸</span><span>Network Map <span style="font-size:11px;color:var(--t3)">(desktop only)</span></span>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();setTimeout(function(){switchView('network');},100)">
+    <span class="di-icon">🕸</span><span>Contacts &amp; Network</span>
   </div>
   <div style="height:1px;background:var(--b1);margin:8px 0"></div>
   <div class="mob-drawer-item" onclick="closeMobDrawer();exportData()">
@@ -2304,6 +2334,568 @@ window.toggleCoolingStrip=function(){
   if(!isOpen)renderCoolingStrip(); // render on first open
 };
 
+
+// ══════════════════════════════════════════════════════════════════
+// D1: SINGLE-CONTACT AI INTEL BRIEF
+// One-click brief for any person in the Network Map.
+// Synthesizes all meeting history, stance trajectory, network
+// connections, and linked opportunities into a tactical briefing.
+// Demo-ready: generates in ~15 seconds, reads in under 2 minutes.
+// ══════════════════════════════════════════════════════════════════
+window.generatePersonBrief=async function(d){
+  if(!d)return;
+  if(!apiKey){toast('Add API key in Settings');return;}
+
+  var btn=document.getElementById('panel-brief-btn');
+  if(btn){btn.disabled=true;btn.textContent='Generating...';}
+
+  // Switch to 360 View tab and show loading state
+  var dossierTab=document.querySelector('.panel-tab[onclick*=\'dossier\']');
+  switchNetTab('dossier',dossierTab);
+
+  var dc=document.getElementById('dossier-content');
+  if(dc)dc.innerHTML='<div style="padding:40px 0;text-align:center">'    +'<div style="display:inline-flex;gap:8px;align-items:center;color:var(--purple);font-size:12px">'    +'<span class="proc-dots"><span></span><span></span><span></span></span>'    +'<span id="pb-loading-txt">Scanning meeting history for '+d.name+'...</span>'    +'</div></div>';
+
+  try{
+    var ctx=_buildPersonBriefContext(d);
+    var loadTxt=document.getElementById('pb-loading-txt');
+    if(loadTxt)loadTxt.textContent='Synthesizing intelligence on '+d.name+'...';
+    var text=await _callPersonBriefClaude(d,ctx);
+    _renderPersonBrief(d,text,ctx,dc);
+  }catch(e){
+    if(dc)dc.innerHTML='<div style="color:var(--red);font-size:12px;padding:20px 0">Brief failed: '+(e.message||'Unknown error')+'</div>';
+    toast('Brief failed: '+(e.message||'Error'));
+  }
+
+  if(btn){btn.disabled=false;btn.textContent='❆ Brief';}
+};
+
+function _buildPersonBriefContext(d){
+  var now=new Date();
+  var mtgs=getMtgsForNode(d.id);
+  var sorted=mtgs.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);});
+  var health=computeRelHealth(d.id);
+  var lastMtg=sorted[0];
+  var daysAgo=lastMtg?Math.floor((now-new Date(lastMtg.meta.date+'T00:00:00'))/86400000):null;
+
+  // Full stance history across all meetings
+  var stanceHistory=[];
+  sorted.forEach(function(m){
+    var p=(m.intel.keyPeople||[]).find(function(x){return nameSimilarity(x.name,d.name)>=0.72;});
+    if(p&&p.stance)stanceHistory.push({date:m.meta.date,stance:p.stance,watchFor:p.watchFor||'',mtg:m.meta.title,pulse:m.intel.companyPulse});
+  });
+
+  // Actions owned by this person
+  var theirActions=sorted.flatMap(function(m){
+    return(m.intel.actionItems||[]).filter(function(a){
+      return a.owner&&nameSimilarity(a.owner,d.name)>=0.72;
+    }).map(function(a){return Object.assign({},a,{mtg:m.meta.title,date:m.meta.date});});
+  });
+
+  // Open questions from meetings where they were present
+  var openQs=sorted.flatMap(function(m){
+    return(m.intel.openQuestions||[]).map(function(q){
+      var qo=typeof q==='string'?{question:q,askedBy:''}:q;
+      return Object.assign({},qo,{mtg:m.meta.title,date:m.meta.date});
+    });
+  }).slice(0,6);
+
+  // Red flags about / from this person
+  var personRisks=sorted.flatMap(function(m){
+    return(m.intel.risks||[]).filter(function(r){
+      return r.raisedBy&&nameSimilarity(r.raisedBy,d.name)>=0.72;
+    }).map(function(r){return Object.assign({},r,{mtg:m.meta.title,date:m.meta.date});});
+  });
+
+  // Network connections (first-degree)
+  var connections=[];
+  links.forEach(function(l){
+    var src=l.source&&l.source.id?l.source.id:l.source;
+    var tgt=l.target&&l.target.id?l.target.id:l.target;
+    if(String(src)===String(d.id)||String(tgt)===String(d.id)){
+      var otherId=String(src)===String(d.id)?tgt:src;
+      var other=nodeMap.get(otherId)||nodeMap.get(Number(otherId));
+      if(other)connections.push({name:other.name,type:other.type,role:other.role||'',label:l.label||'connected'});
+    }
+  });
+
+  // Linked opportunities
+  var linkedOpps=[];
+  sorted.forEach(function(m){
+    if(m.oppId){
+      var opp=opportunities.find(function(o){return o.id===m.oppId;});
+      if(opp&&!linkedOpps.find(function(o){return o.id===opp.id;})){linkedOpps.push(opp);}
+    }
+  });
+
+  // Build context string
+  var ctx='PERSON: '+d.name+(d.role?' | '+d.role:'')+(d.org?' @ '+d.org:'')+'\n';
+  ctx+='NODE TIER: T'+(d.priority||2)+'\n';
+  ctx+='RELATIONSHIP HEALTH: '+health+'/10\n';
+  ctx+='TOTAL MEETINGS: '+mtgs.length+'\n';
+  if(daysAgo!==null)ctx+='LAST CONTACT: '+lastMtg.meta.date+' ('+daysAgo+'d ago)\n';
+  if(d.notes)ctx+='NOTES: '+d.notes.slice(0,300)+'\n';
+  ctx+='\n';
+
+  if(stanceHistory.length){
+    ctx+='STANCE HISTORY ('+stanceHistory.length+' data points, most recent first):\n';
+    stanceHistory.slice(0,8).forEach(function(s){
+      ctx+='  ['+s.date+'] '+s.mtg+' — "'+s.stance.slice(0,200)+'"';
+      if(s.watchFor)ctx+=' | Watch: '+s.watchFor;
+      ctx+='\n';
+    });
+    ctx+='\n';
+  }
+
+  if(theirActions.length){
+    ctx+='COMMITMENTS THEY\'VE MADE ('+theirActions.length+'):\n';
+    theirActions.slice(0,6).forEach(function(a){
+      ctx+='  - "'+a.task+'"'+(a.deadline?' (due '+a.deadline+')':'')+' | from: '+a.mtg+'\n';
+    });
+    ctx+='\n';
+  }
+
+  if(personRisks.length){
+    ctx+='RISKS/CONCERNS THEY\'VE RAISED:\n';
+    personRisks.slice(0,5).forEach(function(r){
+      ctx+='  ['+r.severity+'] '+r.risk+' | '+r.mtg+'\n';
+    });
+    ctx+='\n';
+  }
+
+  if(openQs.length){
+    ctx+='OPEN QUESTIONS FROM MEETINGS WITH THEM:\n';
+    openQs.slice(0,4).forEach(function(q){
+      ctx+='  ? '+q.question+(q.askedBy?' (asked by '+q.askedBy+')':'')+'\n';
+    });
+    ctx+='\n';
+  }
+
+  if(connections.length){
+    ctx+='NETWORK CONNECTIONS ('+connections.length+' direct):\n';
+    connections.slice(0,8).forEach(function(cn){
+      ctx+='  - '+cn.name+(cn.role?' ('+cn.role+')':'')+' | rel: '+cn.label+'\n';
+    });
+    ctx+='\n';
+  }
+
+  if(linkedOpps.length){
+    ctx+='LINKED OPPORTUNITIES:\n';
+    linkedOpps.forEach(function(o){
+      var fy=o.awardDate?getFYInfo(o.awardDate):null;
+      ctx+='  '+o.name+' | Stage: '+o.stage+(fy?' | '+fy.fullLabel:'')+(o.value?' | '+o.value:'')+'\n';
+    });
+    ctx+='\n';
+  }
+
+  // Recent meeting summaries
+  ctx+='RECENT MEETINGS WITH THEM:\n';
+  sorted.slice(0,5).forEach(function(m){
+    ctx+='  ['+m.meta.date+'] '+m.meta.title+'\n';
+    if(m.intel.summary)ctx+='  Summary: '+m.intel.summary.slice(0,200)+'\n';
+    ctx+='\n';
+  });
+
+  return {text:ctx,stanceHistory:stanceHistory,mtgCount:mtgs.length,daysAgo:daysAgo,health:health,connections:connections,linkedOpps:linkedOpps,theirActions:theirActions};
+}
+
+async function _callPersonBriefClaude(d,ctx){
+  var sp='You are a defense BD intelligence analyst generating a TACTICAL CONTACT BRIEF on '+d.name+'. This brief is for someone about to interact with this person — they need to walk in knowing exactly who they are, where they stand, and what to do.\n\n'    +'Output EXACTLY this structure with these exact section headers (all caps, on their own line):\n\n'    +'WHO THEY ARE\n'    +'3-4 sentences: their actual role in the ecosystem, their decision authority, what they control or influence, how long they have been in this network. Be specific — not generic.\n\n'    +'STANCE TRAJECTORY\n'    +'How has their position evolved? Show the arc — where they started, what shifted it, where they are now. Quote their actual stance language if available. One sentence on whether the trend is improving or declining.\n\n'    +'WHAT DRIVES THEM\n'    +'Based on what they say and what they ask about: their actual priorities, concerns, and motivations. What do they consistently push on? What do they avoid? What do they need from this relationship?\n\n'    +'WATCH OUT FOR\n'    +'Specific landmines: what topics have derailed conversations, what commitments they made and did not keep, what signals of discomfort or disengagement to watch for. Be specific — no generic warnings.\n\n'    +'WHAT HAS CHANGED\n'    +'Since last contact: what has happened in the broader context that affects this relationship? New risks, new opportunities, shifts in their org or the programs they are tied to. If nothing significant has changed, say so directly.\n\n'    +'RECOMMENDED NEXT MOVE\n'    +'One specific action. Not a category — an actual move: who to contact, what to say, what to ask for, what to bring to the conversation. Based entirely on the intelligence available.\n\n'    +'Keep the entire brief under 400 words. Direct. Specific. No fluff. If data is thin (few meetings), be honest about the limits of the intelligence and focus on what is known.';
+
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:900,system:sp,messages:[{role:'user',content:ctx.text}]});
+  var d2=await res.json();
+  return(d2.content||[]).map(function(b){return b.text||'';}).join('');
+}
+
+function _renderPersonBrief(d,text,ctx,container){
+  var SECTIONS=[
+    {key:'WHO THEY ARE',color:'var(--text)',icon:'◉'},
+    {key:'STANCE TRAJECTORY',color:'var(--purple)',icon:'↗'},
+    {key:'WHAT DRIVES THEM',color:'var(--blue)',icon:'◆'},
+    {key:'WATCH OUT FOR',color:'var(--red)',icon:'⚠'},
+    {key:'WHAT HAS CHANGED',color:'var(--amber)',icon:'↻'},
+    {key:'RECOMMENDED NEXT MOVE',color:'var(--green)',icon:'→'}
+  ];
+
+  var h='';
+
+  // Person header card
+  var health=ctx.health;
+  var hColor=health>=7?'var(--green)':health>=4?'var(--amber)':'var(--red)';
+  var ini=d.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
+  var circumference=2*Math.PI*18;
+  var dash=(health/10)*circumference;
+
+  h+='<div style="padding:10px 12px;margin-bottom:12px;background:linear-gradient(135deg,rgba(139,92,246,.08),rgba(139,92,246,.04));border:1px solid rgba(139,92,246,.25);border-radius:var(--r);display:flex;align-items:center;gap:12px">';
+  // Circular health gauge
+  h+='<div style="flex-shrink:0;text-align:center">';
+  h+='<svg width="46" height="46" viewBox="0 0 46 46">';
+  h+='<circle cx="23" cy="23" r="18" fill="none" stroke="var(--b1)" stroke-width="3"/>';
+  h+='<circle cx="23" cy="23" r="18" fill="none" stroke="'+hColor+'" stroke-width="3" stroke-dasharray="'+dash+' '+circumference+'" stroke-linecap="round" transform="rotate(-90 23 23)"/>';
+  h+='<text x="23" y="27" text-anchor="middle" font-size="11" font-weight="700" fill="var(--gold)" font-family="Outfit,sans-serif">'+ini+'</text>';
+  h+='</svg>';
+  h+='<div style="font-size:8px;color:'+hColor+';font-family:JetBrains Mono,monospace;font-weight:700">'+health+'/10</div>';
+  h+='</div>';
+  // Meta
+  h+='<div style="flex:1">';
+  h+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+d.name+'</div>';
+  if(d.role||d.org)h+='<div style="font-size:11px;color:var(--t2)">'+(d.role||'')+(d.org?' @ '+d.org:'')+'</div>';
+  h+='<div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap">';
+  h+='<span style="font-size:9px;color:var(--t3);font-family:JetBrains Mono,monospace">'+ctx.mtgCount+' meetings</span>';
+  if(ctx.daysAgo!==null)h+='<span style="font-size:9px;color:'+(ctx.daysAgo>60?'var(--red)':ctx.daysAgo>30?'var(--amber)':'var(--t3)')+';font-family:JetBrains Mono,monospace">last: '+ctx.daysAgo+'d ago</span>';
+  if(ctx.connections.length)h+='<span style="font-size:9px;color:var(--t3);font-family:JetBrains Mono,monospace">'+ctx.connections.length+' connections</span>';
+  if(ctx.linkedOpps.length)h+='<span style="font-size:9px;color:var(--gold);font-family:JetBrains Mono,monospace">'+ctx.linkedOpps.length+' deal'+(ctx.linkedOpps.length>1?'s':'')+'</span>';
+  h+='</div></div>';
+  // Copy button
+  h+='<button onclick="window._copyPersonBrief()" style="flex-shrink:0;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">Copy</button>';
+  h+='</div>';
+
+  // Section render
+  var remaining=text;
+  SECTIONS.forEach(function(sec,si){
+    var startIdx=remaining.toUpperCase().indexOf(sec.key);
+    if(startIdx===-1)return;
+    var nextKeys=SECTIONS.slice(si+1).map(function(s){return s.key;});
+    var endIdx=-1;
+    nextKeys.forEach(function(k){
+      var ki=remaining.toUpperCase().indexOf(k,startIdx+sec.key.length);
+      if(ki>-1&&(endIdx===-1||ki<endIdx))endIdx=ki;
+    });
+    var content=remaining.slice(startIdx+sec.key.length,endIdx>-1?endIdx:undefined).replace(/^[\s\n:]+/,'').trim();
+    if(!content)return;
+
+    var isAction=sec.key==='RECOMMENDED NEXT MOVE';
+    h+='<div style="margin-bottom:10px;padding:9px 11px;background:'+(isAction?'rgba(34,197,94,.05)':'var(--s2)')+';border:1px solid '+(isAction?'rgba(34,197,94,.25)':'var(--b1)')+';border-radius:var(--rsm)">';
+    h+='<div style="font-family:JetBrains Mono,monospace;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:'+sec.color+';margin-bottom:6px">'+sec.icon+' '+sec.key+'</div>';
+    if(isAction){
+      h+='<div style="font-size:12px;font-weight:600;color:var(--green);line-height:1.55">'+content.replace(/\n/g,'<br>')+'</div>';
+    }else{
+      h+='<div style="font-size:12px;color:var(--text);line-height:1.65">'+content.replace(/\n\n/g,'</p><p style="margin-top:5px">').replace(/\n/g,'<br>')+'</div>';
+    }
+    h+='</div>';
+  });
+
+  // Stance sparkline if we have data
+  if(ctx.stanceHistory.length>1){
+    h+='<div style="margin-bottom:8px;padding:8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm)">';
+    h+='<div style="font-family:JetBrains Mono,monospace;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:6px">↗ Stance Timeline</div>';
+    ctx.stanceHistory.slice(0,6).reverse().forEach(function(s){
+      h+='<div style="display:flex;gap:6px;padding:3px 0;border-bottom:1px solid rgba(37,45,66,.25)">';
+      h+='<span style="font-size:9px;color:var(--t3);font-family:JetBrains Mono,monospace;flex-shrink:0;min-width:42px">'+s.date.slice(5)+'</span>';
+      h+='<div style="font-size:10px;color:var(--t2);font-style:italic;line-height:1.4">'+s.stance.slice(0,90)+(s.stance.length>90?'…':'')+'</div>';
+      h+='</div>';
+    });
+    h+='</div>';
+  }
+
+  h+='<div style="font-size:9px;color:var(--t3);text-align:center;padding:6px 0">Brief generated '+(new Date().toLocaleDateString())+'</div>';
+
+  // Store for copy
+  window._personBriefText=text;
+  if(container)container.innerHTML=h;
+}
+
+window._copyPersonBrief=function(){
+  if(!window._personBriefText)return;
+  navigator.clipboard.writeText(window._personBriefText)
+    .then(function(){toast('Brief copied');}).catch(function(){toast('Copy failed');});
+};
+
+
+// ── D2: Mobile Quick Log + UX Improvements ───────────────────────────────
+window.openQuickLog=function(){
+  var sheet=document.getElementById('quick-log-sheet');
+  var overlay=document.getElementById('ql-overlay');
+  if(!sheet)return;
+  // Pre-fill date in background
+  document.getElementById('m-date').value=new Date().toISOString().slice(0,10);
+  sheet.style.display='block';
+  if(overlay)overlay.style.display='block';
+  setTimeout(function(){
+    var titleInp=document.getElementById('ql-title');
+    if(titleInp)titleInp.focus();
+  },80);
+};
+
+window.closeQuickLog=function(){
+  var sheet=document.getElementById('quick-log-sheet');
+  var overlay=document.getElementById('ql-overlay');
+  if(sheet)sheet.style.display='none';
+  if(overlay)overlay.style.display='none';
+  var err=document.getElementById('ql-err');
+  if(err)err.style.display='none';
+};
+
+window.processQuickLog=async function(){
+  var title=(document.getElementById('ql-title').value||'').trim();
+  var att=(document.getElementById('ql-att').value||'').trim();
+  var notes=(document.getElementById('ql-notes').value||'').trim();
+  var err=document.getElementById('ql-err');
+
+  if(!notes&&!title){err.textContent='Add meeting title and notes';err.style.display='block';return;}
+  if(!notes){err.textContent='Add meeting notes to process';err.style.display='block';return;}
+  if(!apiKey){err.textContent='Add API key in Settings first';err.style.display='block';return;}
+  err.style.display='none';
+
+  // Pre-fill main log form and submit
+  document.getElementById('m-title').value=title||('Quick Note '+new Date().toLocaleDateString());
+  document.getElementById('m-att').value=att;
+  document.getElementById('m-notes').value=notes;
+  document.getElementById('m-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('m-type').value='Strategy';
+
+  // Show paste mode so notes textarea is visible
+  showPasteMode();
+
+  closeQuickLog();
+  // Clear quick log fields for next time
+  document.getElementById('ql-title').value='';
+  document.getElementById('ql-att').value='';
+  document.getElementById('ql-notes').value='';
+
+  // Switch to log tab and trigger process
+  switchView('intel');
+  switchIntelTab('log');
+  setTimeout(function(){
+    processNotes();
+  },100);
+};
+
+// ── D2d: Swipe left/right on intel tabs (mobile) ─────────────────────────
+(function(){
+  var tabOrder=['log','intel','prep','archive','board','memory'];
+  var touchStartX=0,touchStartY=0;
+  var SWIPE_THRESHOLD=60,SWIPE_ANGLE=30;
+
+  document.addEventListener('touchstart',function(e){
+    touchStartX=e.touches[0].clientX;
+    touchStartY=e.touches[0].clientY;
+  },{passive:true});
+
+  document.addEventListener('touchend',function(e){
+    if(!e.changedTouches.length)return;
+    var dx=e.changedTouches[0].clientX-touchStartX;
+    var dy=e.changedTouches[0].clientY-touchStartY;
+    if(Math.abs(dx)<SWIPE_THRESHOLD)return;
+    if(Math.abs(dy)>Math.abs(dx)*Math.tan(SWIPE_ANGLE*Math.PI/180))return;
+    // Only on intel view
+    if(activeView!=='intel')return;
+    // Don't swipe when typing
+    if(document.activeElement&&document.activeElement.matches('input,textarea,select'))return;
+    var curIdx=tabOrder.indexOf(activeIntelTab);
+    if(curIdx===-1)return;
+    if(dx<0&&curIdx<tabOrder.length-1){
+      // Swipe left → next tab
+      switchIntelTab(tabOrder[curIdx+1]);
+    }else if(dx>0&&curIdx>0){
+      // Swipe right → prev tab
+      switchIntelTab(tabOrder[curIdx-1]);
+    }
+  },{passive:true});
+})();
+
+// ── D2e: Auto-show paste mode on mobile log tab ────────────────────────────
+var _origSwitchIntelTab=switchIntelTab;
+function switchIntelTab(t){
+  _origSwitchIntelTab(t);
+  // On mobile, auto-show paste mode when switching to log tab
+  if(t==='log'&&window.innerWidth<=768){
+    setTimeout(function(){
+      var pasteHdr=document.getElementById('paste-mode-hdr');
+      var notes=document.getElementById('m-notes');
+      if(pasteHdr&&pasteHdr.style.display==='none'&&notes&&notes.style.display==='none'){
+        showPasteMode();
+      }
+    },50);
+  }
+}
+window.switchIntelTab=switchIntelTab;
+
+// ── D2f: Network Map on mobile — show contact list instead of D3 ──────────
+// Remove the "desktop only" restriction and show a touch-friendly
+// contact list with health scores and decay status
+function renderMobileNetworkList(){
+  var view=document.getElementById('network-view');
+  if(!view)return;
+  // Hide the D3 canvas and toolbar, show contact list
+  var canvas=document.getElementById('net-canvas');
+  var toolbar=document.querySelector('.net-toolbar');
+  var calCol=document.querySelector('.net-cal');
+  if(canvas)canvas.style.display='none';
+  if(toolbar)toolbar.style.display='none';
+
+  var existing=document.getElementById('mob-net-list');
+  if(existing)existing.remove();
+
+  var container=document.createElement('div');
+  container.id='mob-net-list';
+  container.style.cssText='position:absolute;inset:0;overflow-y:auto;background:var(--s1);padding:12px;-webkit-overflow-scrolling:touch';
+
+  var people=nodes.filter(function(n){return n.type==='person'||n.type==='government';});
+  people.sort(function(a,b){return (a.priority||3)-(b.priority||3);});
+
+  var h='<div style="font-family:JetBrains Mono,monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:12px">'+people.length+' contacts</div>';
+
+  var decay=_buildDecayAlerts();
+  var decayIds=new Set(decay.map(function(a){return a.node.id;}));
+
+  people.forEach(function(n){
+    var mtgs=getMtgsForNode(n.id);
+    var health=mtgs.length?computeRelHealth(n.id):null;
+    var hColor=health===null?'var(--t3)':health>=7?'var(--green)':health>=4?'var(--amber)':'var(--red)';
+    var ini=n.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
+    var isDecay=decayIds.has(n.id);
+    var da=decay.find(function(a){return a.node.id===n.id;});
+    var tierColor=n.priority===1?'var(--gold)':n.priority===2?'var(--blue)':'var(--t3)';
+
+    h+='<div data-nid="'+n.id+'" onclick="window.openMobContact(this.dataset.nid)" style="display:flex;align-items:center;gap:10px;padding:11px 10px;border-bottom:1px solid var(--b1);cursor:pointer;-webkit-tap-highlight-color:rgba(201,162,39,.1)">';
+    // Avatar
+    h+='<div style="width:36px;height:36px;border-radius:50%;flex-shrink:0;background:var(--s2);border:2px solid '+(isDecay&&da?'var(--'+(da.severity==='critical'?'red':'amber')+')':tierColor)+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--gold)">'+ini+'</div>';
+    // Info
+    h+='<div style="flex:1;min-width:0">';
+    h+='<div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+n.name+'</div>';
+    h+='<div style="font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(n.role||'')+(n.org?' @ '+n.org:'')+'</div>';
+    h+='</div>';
+    // Right: health + days
+    h+='<div style="text-align:right;flex-shrink:0">';
+    if(health!==null)h+='<div style="font-size:13px;font-weight:700;color:'+hColor+'">'+health+'<span style="font-size:9px;font-weight:400">/10</span></div>';
+    if(da)h+='<div style="font-size:9px;color:'+(da.severity==='critical'?'var(--red)':'var(--amber)')+'">'+da.daysAgo+'d ago</div>';
+    else if(mtgs.length)h+='<div style="font-size:9px;color:var(--t3)">'+mtgs.length+' mtg'+(mtgs.length>1?'s':'')+'</div>';
+    h+='</div>';
+    h+='</div>';
+  });
+
+  if(!people.length){
+    h+='<div style="text-align:center;padding:60px 0;color:var(--t3);font-size:13px">No contacts yet.<br>Process a meeting to add people.</div>';
+  }
+
+  container.innerHTML=h;
+  view.appendChild(container);
+}
+
+window.openMobContact=function(nodeId){
+  var node=nodeMap.get(nodeId)||nodeMap.get(Number(nodeId));
+  if(!node)return;
+  // Pre-generate brief for this contact in the background
+  // For mobile, show a simple bottom sheet with key stats
+  _showMobContactSheet(node);
+};
+
+function _showMobContactSheet(node){
+  var existing=document.getElementById('mob-contact-sheet');
+  if(existing)existing.remove();
+
+  var overlay=document.createElement('div');
+  overlay.className='mob-drawer-overlay open';
+  overlay.id='mob-contact-overlay';
+  overlay.addEventListener('click',function(){overlay.remove();sheet.remove();});
+
+  var sheet=document.createElement('div');
+  sheet.id='mob-contact-sheet';
+  sheet.className='mob-drawer open';
+  sheet.style.maxHeight='80dvh';
+  sheet.style.overflow='auto';
+
+  var mtgs=getMtgsForNode(node.id);
+  var health=mtgs.length?computeRelHealth(node.id):null;
+  var hColor=health===null?'var(--t3)':health>=7?'var(--green)':health>=4?'var(--amber)':'var(--red)';
+  var ini=node.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
+  var sorted=mtgs.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);});
+  var lastMtg=sorted[0];
+  var daysAgo=lastMtg?Math.floor((Date.now()-new Date(lastMtg.meta.date+'T00:00:00'))/86400000):null;
+
+  // Latest stance
+  var latestStance='';
+  if(lastMtg){
+    var p=(lastMtg.intel.keyPeople||[]).find(function(x){return nameSimilarity(x.name,node.name)>=0.72;});
+    if(p&&p.stance)latestStance=p.stance;
+  }
+
+  var h='<div style="width:36px;height:4px;background:var(--b2);border-radius:2px;margin:0 auto 16px"></div>';
+  h+='<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px">';
+  h+='<div style="width:48px;height:48px;border-radius:50%;background:var(--s2);border:2px solid '+(health>=7?'var(--green)':health>=4?'var(--amber)':health>=1?'var(--red)':'var(--b2)')+';display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:var(--gold);flex-shrink:0">'+ini+'</div>';
+  h+='<div style="flex:1"><div style="font-size:16px;font-weight:700">'+node.name+'</div>';
+  if(node.role||node.org)h+='<div style="font-size:12px;color:var(--t2)">'+(node.role||'')+(node.org?' @ '+node.org:'')+'</div>';
+  h+='<div style="display:flex;gap:8px;margin-top:4px">';
+  if(health!==null)h+='<span style="font-size:11px;color:'+hColor+';font-family:JetBrains Mono,monospace;font-weight:700">'+health+'/10 health</span>';
+  h+='<span style="font-size:11px;color:var(--t3)">T'+(node.priority||2)+' · '+mtgs.length+' meeting'+(mtgs.length!==1?'s':'')+'</span>';
+  h+='</div></div></div>';
+
+  if(latestStance)h+='<div style="padding:10px 12px;background:var(--s2);border-radius:var(--rsm);margin-bottom:12px;font-size:12px;color:var(--text);font-style:italic;line-height:1.55">'+latestStance+'</div>';
+
+  if(daysAgo!==null)h+='<div style="font-size:11px;color:var(--t3);margin-bottom:14px">Last contact: '+lastMtg.meta.date+' ('+daysAgo+'d ago)</div>';
+
+  h+='<div style="display:flex;gap:8px">';
+  h+='<button data-name="'+encodeURIComponent(node.name)+'" onclick="window._openLogForContact(decodeURIComponent(this.dataset.name))" style="flex:1;padding:12px;border:1px solid var(--gold);border-radius:var(--rsm);background:transparent;color:var(--gold);font-size:14px;font-weight:600;cursor:pointer;font-family:Outfit,sans-serif">Log Meeting</button>';
+  if(apiKey)h+='<button data-nid="'+node.id+'" onclick="window._mobGenerateBrief(this.dataset.nid)" style="flex:1;padding:12px;border:1px solid rgba(139,92,246,.5);border-radius:var(--rsm);background:rgba(139,92,246,.07);color:var(--purple);font-size:14px;font-weight:600;cursor:pointer;font-family:Outfit,sans-serif">\u2746 Brief</button>';
+  h+='</div>';
+
+  sheet.innerHTML=h;
+  document.body.appendChild(overlay);
+  document.body.appendChild(sheet);
+}
+
+window._mobGenerateBrief=function(nodeId){
+  var node=nodeMap.get(nodeId)||nodeMap.get(Number(nodeId));
+  if(!node)return;
+  // Remove contact sheet
+  var sheet=document.getElementById('mob-contact-sheet');
+  var overlay=document.getElementById('mob-contact-overlay');
+  if(sheet)sheet.remove();
+  if(overlay)overlay.remove();
+  // Show brief in a bottom sheet
+  var briefSheet=document.createElement('div');
+  briefSheet.id='mob-brief-sheet';
+  briefSheet.className='mob-drawer open';
+  briefSheet.style.maxHeight='90dvh';
+  briefSheet.style.overflow='auto';
+  briefSheet.innerHTML='<div style="width:36px;height:4px;background:var(--b2);border-radius:2px;margin:0 auto 12px"></div>'    +'<div style="font-family:JetBrains Mono,monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--purple);margin-bottom:14px">✦ Intel Brief — '+node.name+'</div>'    +'<div id="mob-brief-content" style="text-align:center;padding:30px 0;color:var(--t2);font-size:12px">'    +'<span class="proc-dots"><span></span><span></span><span></span></span> Generating...</div>';
+  var briefOverlay=document.createElement('div');
+  briefOverlay.className='mob-drawer-overlay open';
+  briefOverlay.addEventListener('click',function(){briefSheet.remove();briefOverlay.remove();});
+  document.body.appendChild(briefOverlay);
+  document.body.appendChild(briefSheet);
+
+  // Generate brief and render
+  var ctx=_buildPersonBriefContext(node);
+  _callPersonBriefClaude(node,ctx).then(function(text){
+    var briefEl=document.getElementById('mob-brief-content');
+    if(!briefEl)return;
+    // Simplified mobile render
+    var h='<div style="text-align:left">';
+    var SECTIONS=['WHO THEY ARE','STANCE TRAJECTORY','WHAT DRIVES THEM','WATCH OUT FOR','WHAT HAS CHANGED','RECOMMENDED NEXT MOVE'];
+    var colors={
+      'WHO THEY ARE':'var(--text)',
+      'STANCE TRAJECTORY':'var(--purple)',
+      'WHAT DRIVES THEM':'var(--blue)',
+      'WATCH OUT FOR':'var(--red)',
+      'WHAT HAS CHANGED':'var(--amber)',
+      'RECOMMENDED NEXT MOVE':'var(--green)'
+    };
+    var remaining=text;
+    SECTIONS.forEach(function(key,si){
+      var startIdx=remaining.toUpperCase().indexOf(key);
+      if(startIdx===-1)return;
+      var nextKeys=SECTIONS.slice(si+1);
+      var endIdx=-1;
+      nextKeys.forEach(function(k){var ki=remaining.toUpperCase().indexOf(k,startIdx+key.length);if(ki>-1&&(endIdx===-1||ki<endIdx))endIdx=ki;});
+      var content=remaining.slice(startIdx+key.length,endIdx>-1?endIdx:undefined).replace(/^[\s\n:]+/,'').trim();
+      if(!content)return;
+      var isAction=key==='RECOMMENDED NEXT MOVE';
+      h+='<div style="margin-bottom:12px;padding:10px 12px;background:'+(isAction?'rgba(34,197,94,.05)':'var(--s2)')+';border-radius:var(--rsm);border:1px solid '+(isAction?'rgba(34,197,94,.3)':'var(--b1)')+'>">';
+      h+='<div style="font-size:9px;font-family:JetBrains Mono,monospace;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:'+colors[key]+';margin-bottom:6px">'+key+'</div>';
+      h+='<div style="font-size:13px;line-height:1.6;color:var(--text)">'+content.replace(/\n/g,'<br>')+'</div>';
+      h+='</div>';
+    });
+    h+='<button onclick="this.closest(\'[id=mob-brief-sheet]\').remove();document.querySelector(\'[class*=mob-drawer-overlay]\').remove();" style="width:100%;padding:12px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:13px;cursor:pointer;font-family:Outfit,sans-serif;margin-top:4px">Close</button>';
+    h+='</div>';
+    briefEl.innerHTML=h;
+  }).catch(function(e){
+    var briefEl=document.getElementById('mob-brief-content');
+    if(briefEl)briefEl.innerHTML='<div style="color:var(--red);font-size:12px">Failed: '+(e.message||'error')+'</div>';
+  });
+};
+
 function wireListeners(){
   document.querySelector('.intel-tabs').addEventListener('click',function(e){var tab=e.target.dataset.itab;if(tab)switchIntelTab(tab);});
   document.getElementById('ws-switcher').addEventListener('click',function(){document.getElementById('ws-screen').style.display='flex';document.getElementById('main-app').style.display='none';renderWsList();});
@@ -2427,7 +3019,7 @@ function switchView(v){
   activeView=v;['intel','opps','network','timeline'].forEach(function(x){var el=document.getElementById(x+'-view');if(el)el.style.display=x===v?'flex':'none';var tb=document.getElementById('vtab-'+x);if(tb)tb.classList.toggle('active',x===v);});
   // Clear Ask Fli active state when switching to any other view
   var asBtn2=document.getElementById('vtab-askfli');if(asBtn2)asBtn2.classList.remove('active');
-  if(v==='network'){if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);}if(v==='intel'&&activeIntelTab==='board')renderBoard();if(v==='timeline')renderTimeline();if(v==='opps')renderOppSidebar();}
+  if(v==='network'){if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);}if(v==='intel'&&activeIntelTab==='board')renderBoard();if(v==='timeline')renderTimeline();if(v==='opps')renderOppSidebar();}
 
 // ── OPPORTUNITY STAGE CONFIG ─────────────────────────────────
 var OPP_STAGES=[
@@ -7402,10 +7994,10 @@ function nodeClick(ev,d){ev.stopPropagation();if(edgeMode){if(!edgeSource){edgeS
 function nodeHover(ev,d){if(edgeMode)return;var tt=document.getElementById('tooltip');var mc=getMtgsForNode(d.id).length,health=mc>0?computeRelHealth(d.id):null;tt.innerHTML='<div style="font-size:15px;font-weight:700;color:'+nc(d)+';margin-bottom:3px">'+d.name+'</div>'+(d.role?'<div style="font-size:12px;color:var(--text)">'+d.role+'</div>':'')+(d.org?'<div style="font-size:11px;color:var(--t2)">'+d.org+'</div>':'')+'<div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--b1);display:flex;gap:10px"><span style="font-size:11px;color:var(--t3)">T'+(d.priority||2)+'</span><span style="font-size:11px;color:var(--t3)">'+d.type+'</span>'+(mc?'<span style="font-size:11px;color:var(--t3)">'+mc+' mtg</span>':'')+'</div>'+(health!==null?'<div style="margin-top:5px;display:flex;align-items:center;gap:6px"><div style="font-size:10px;color:var(--t3)">Health</div><div style="flex:1"><div class="strength-bar" style="height:4px"><div class="strength-fill" style="width:'+(health*10)+'%;background:'+healthColor(health)+'"></div></div></div><span style="font-size:10px;font-weight:600;color:'+healthColor(health)+'">'+health+'</span></div>':'');tt.style.left=(ev.clientX+14)+'px';tt.style.top=(ev.clientY-14)+'px';tt.classList.add('show');}
 function nodeLeave(){document.getElementById('tooltip').classList.remove('show');}
 
-function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===tab?'block':'none';});var exportBtn=document.getElementById('panel-export-btn');if(exportBtn)exportBtn.style.display=(tab==='dossier'||tab==='timeline360')?'block':'none';if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
+function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});if(el)el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===tab?'block':'none';});var exportBtn=document.getElementById('panel-export-btn');if(exportBtn)exportBtn.style.display=(tab==='dossier'||tab==='timeline360')?'block':'none';if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
 window.switchNetTab=switchNetTab;
 
-function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';document.getElementById('panel-org-fld').style.display=d.type==='company'?'none':'block';[1,2,3].forEach(function(i){var b=document.getElementById('ntier-'+i);b.style.cssText='';if(i===d.priority){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});
+function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>';var briefBtn=document.getElementById('panel-brief-btn');if(briefBtn)briefBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';document.getElementById('panel-org-fld').style.display=d.type==='company'?'none':'block';[1,2,3].forEach(function(i){var b=document.getElementById('ntier-'+i);b.style.cssText='';if(i===d.priority){b.style.background=c;b.style.color='#0b0d11';b.style.borderColor=c;b.style.fontWeight='600';}});
   // Auto-switch to 360 View if node has meeting data — that's where the value is
   var hasMeetings=getMtgsForNode(d.id).length>0;
   var defaultTab=hasMeetings?'dossier':'profile';
