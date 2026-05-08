@@ -1095,13 +1095,25 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 
 <!-- MEMBERS MODAL -->
 <div class="overlay" id="members-modal" style="display:none">
-  <div class="modal" style="max-width:420px">
+  <div class="modal" style="max-width:460px">
     <div class="modal-title">Workspace Members</div>
     <div id="members-list" style="margin-bottom:14px"></div>
+    <div id="pending-invites-section" style="display:none;margin-bottom:14px">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--amber);margin-bottom:8px">Pending Invites</div>
+      <div id="pending-invites-list"></div>
+    </div>
     <div style="border-top:1px solid var(--b1);padding-top:14px">
-      <div class="lbl" style="margin-bottom:6px">Invite by email</div>
-      <div style="display:flex;gap:8px"><input type="email" id="invite-email" placeholder="bryce@flisolutions.io" style="flex:1"><button class="btn btn-gold btn-sm" id="invite-btn">Invite</button></div>
-      <div style="font-size:11px;color:var(--t3);margin-top:6px">They will see this workspace when they sign in with that Google account.</div>
+      <div class="lbl" style="margin-bottom:6px">Invite someone</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input type="email" id="invite-email" placeholder="colleague@atlasmotionsystems.com" style="flex:1">
+        <select id="invite-role" style="padding:6px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);color:var(--text);font-size:12px;font-family:'Outfit',sans-serif;cursor:pointer">
+          <option value="Member">Member</option>
+          <option value="Admin">Admin</option>
+          <option value="Observer">Observer</option>
+        </select>
+        <button class="btn btn-gold btn-sm" id="invite-btn">Invite</button>
+      </div>
+      <div style="font-size:11px;color:var(--t3)">They'll see this workspace when they sign in with that Google account.</div>
     </div>
     <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn btn-sm" onclick="closeModal('members-modal')">Close</button></div>
   </div>
@@ -5911,9 +5923,187 @@ window.toggleCalibrationPanel=function(){
 function exportData(){var backup={version:6,app:'FLiIntel',workspace:currentWs.name,exported:new Date().toISOString(),meetings:meetings,entities:entities,nodes:nodes.map(function(n){var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;return c;}),links:links.map(function(l){return{id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};}),calEntries:calEntries,tlCommitments:tlCommitments};var blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FLiIntel_'+currentWs.name+'_'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(a.href);toast('Backup exported');}
 async function importData(event){var file=event.target.files[0];if(!file)return;var reader=new FileReader();reader.onload=async function(e){try{var data=JSON.parse(e.target.result);var ms=data.meetings||[];var ns=data.entities||data.nodes||[];var ls=data.links||data.edges||[];if(!ms.length&&!ns.length){toast('No data found');return;}if(!confirm('Import '+ms.length+' meetings and '+ns.length+' nodes from '+(data.workspace||'backup')+'?'))return;toast('Uploading...');var existingMIds=new Set(meetings.map(function(m){return m.id;}));for(var i=0;i<ms.length;i++){if(!existingMIds.has(ms[i].id))await saveMeeting(ms[i]);}if(ns.length){var existingNIds=new Set(nodes.map(function(n){return n.id;}));var toAddN=ns.filter(function(n){return!existingNIds.has(n.id);});for(var j=0;j<toAddN.length;j++){var imp=toAddN[j];nodes.push(imp);nodeMap.set(imp.id,imp);await saveNode(imp);}}if(ls.length){for(var k=0;k<ls.length;k++){var l=ls[k];var cl={id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''};var ex2=links.find(function(x){return x.id===cl.id;});if(!ex2){links.push(cl);linkMap.set(cl.id,cl);await saveLink(cl);}}}if(data.calEntries&&data.calEntries.length){calEntries=data.calEntries;await saveCal();}if(data.tlCommitments&&data.tlCommitments.length){tlCommitments=data.tlCommitments;await saveTLCommitments();}toast('Import complete');}catch(err){console.error(err);toast('Import failed: '+(err.message||'Could not read file'));}};reader.onerror=function(){toast('Could not read file');};reader.readAsText(file);event.target.value='';}
 
-async function showMembers(){var snap=await get(ref(db,'workspaces/'+currentWsId+'/members'));var members=snap.val()?Object.values(snap.val()):[];document.getElementById('members-list').innerHTML='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:10px">'+currentWs.name+' -- '+members.length+' member'+(members.length!==1?'s':'')+'</div>'+members.map(function(m){return '<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--b1)"><img src="'+(m.photo||'')+'" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--b2)"><div><div style="font-size:13px;font-weight:500">'+m.name+'</div><div style="font-size:11px;color:var(--t3)">'+m.email+' -- '+(m.role||'Member')+'</div></div></div>';}).join('');document.getElementById('members-modal').style.display='flex';}
-async function inviteMember(){var email=document.getElementById('invite-email').value.trim();if(!email){toast('Enter an email');return;}await fbSet('invites/'+currentWsId+'/'+email.replace(/\./g,'_'),{email:email,workspaceId:currentWsId,workspaceName:currentWs.name,workspaceColor:currentWs.color,invitedBy:currentUser.email,invited:new Date().toISOString()});document.getElementById('invite-email').value='';toast('Invite sent to '+email);}
-async function checkInvites(user){var email=user.email.replace(/\./g,'_');var snap=await get(ref(db,'invites'));if(!snap.val())return;var invites=snap.val();var myInvites=[];Object.keys(invites).forEach(function(wsId){if(invites[wsId][email]){myInvites.push(Object.assign({},invites[wsId][email],{wsId:wsId}));}});for(var i=0;i<myInvites.length;i++){var inv=myInvites[i];if(confirm('You have been invited to join the "'+inv.workspaceName+'" workspace. Accept?')){var member={uid:user.uid,name:user.displayName,email:user.email,photo:user.photoURL,role:'Member',joined:new Date().toISOString()};await set(ref(db,'workspaces/'+inv.wsId+'/members/'+user.uid),member);await set(ref(db,'users/'+user.uid+'/workspaces/'+inv.wsId),{id:inv.wsId,name:inv.workspaceName,color:inv.workspaceColor,role:'Member'});await remove(ref(db,'invites/'+inv.wsId+'/'+email));userWorkspaces.push({id:inv.wsId,name:inv.workspaceName,color:inv.workspaceColor,role:'Member'});}}}
+async function inviteMember(){
+  var email=document.getElementById('invite-email').value.trim();
+  if(!email){toast('Enter an email address');return;}
+  if(!/^[^@]+@[^@]+\.[^@]+$/.test(email)){toast('Enter a valid email address');return;}
+  var roleEl=document.getElementById('invite-role');
+  var role=roleEl?roleEl.value:'Member';
+  var key=email.replace(/\./g,'_');
+  await fbSet('invites/'+currentWsId+'/'+key,{
+    email:email,
+    role:role,
+    workspaceId:currentWsId,
+    workspaceName:currentWs.name,
+    workspaceColor:currentWs.color||'',
+    invitedBy:currentUser.displayName||currentUser.email,
+    invitedByEmail:currentUser.email,
+    invited:new Date().toISOString()
+  });
+  document.getElementById('invite-email').value='';
+  toast('Invite sent to '+email+' as '+role);
+  showMembers();
+}
+
+async function showMembers(){
+  openModal('members-modal');
+  var membSnap=await get(ref(db,'workspaces/'+currentWsId+'/members'));
+  var members=membSnap.val()?Object.values(membSnap.val()):[];
+  var roleColors={Admin:'var(--gold)',Member:'var(--blue)',Observer:'var(--t2)'};
+  var roleIcons={Admin:'★',Member:'●',Observer:'◎'};
+
+  // Role badge helper
+  function roleBadge(role){
+    var r=role||'Member';
+    var col=roleColors[r]||'var(--t2)';
+    return '<span style="font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid '+col+'33;color:'+col+';font-family:\'JetBrains Mono\',monospace;font-weight:600">'+r.toUpperCase()+'</span>';
+  }
+
+  // Render members list
+  var listEl=document.getElementById('members-list');
+  if(listEl){
+    var h='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:10px">';
+    h+=currentWs.name+' · '+members.length+' member'+(members.length!==1?'s':'')+'</div>';
+    h+=members.map(function(m){
+      var isMe=m.uid===currentUser.uid;
+      var joinedDate=m.joined?new Date(m.joined).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'}):'';
+      var initials=(m.name||'?').split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(30,54,84,.4)">'
+        +'<div style="position:relative;flex-shrink:0">'
+        +(m.photo?'<img src="'+m.photo+'" style="width:32px;height:32px;border-radius:50%;border:1.5px solid var(--b2)">'
+          :'<div style="width:32px;height:32px;border-radius:50%;background:var(--b2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text)">'+initials+'</div>')
+        +'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+        +'<div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.name+(isMe?' <span style="font-size:9px;color:var(--t3)">(you)</span>':'')+'</div>'
+        +roleBadge(m.role)
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--t3)">'+m.email+(joinedDate?' · Joined '+joinedDate:'')+'</div>'
+        +'</div>'
+        +'</div>';
+    }).join('');
+    listEl.innerHTML=h;
+  }
+
+  // Render pending invites (only visible to workspace creator/admin)
+  var isAdmin=members.find(function(m){return m.uid===currentUser.uid&&(m.role==='Admin'||m.uid===currentWs.createdBy);});
+  var pendingSection=document.getElementById('pending-invites-section');
+  var pendingList=document.getElementById('pending-invites-list');
+  if(pendingSection&&pendingList){
+    var invSnap=await get(ref(db,'invites/'+currentWsId));
+    var invites=invSnap.val()?Object.values(invSnap.val()):[];
+    if(invites.length>0){
+      pendingSection.style.display='block';
+      pendingList.innerHTML=invites.map(function(inv){
+        var sentDate=inv.invited?new Date(inv.invited).toLocaleDateString([],{month:'short',day:'numeric'}):'';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.15);border-radius:var(--rsm);margin-bottom:5px">'
+          +'<span style="font-size:14px;flex-shrink:0">✉</span>'
+          +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+inv.email+'</div>'
+          +'<div style="font-size:10px;color:var(--t3)">'+(inv.role||'Member')+(sentDate?' · Invited '+sentDate:'')+(inv.invitedBy?' · by '+inv.invitedBy:'')+'</div>'
+          +'</div>'
+          +'<button data-wsid="'+currentWsId+'" data-ekey="'+inv.email.replace(/\./ ,'_')+'" onclick="window._cancelInvite(this.dataset.wsid,this.dataset.ekey,this)" '
+          +'style="padding:3px 8px;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:10px;cursor:pointer;font-family:\'Outfit\',sans-serif;flex-shrink:0">Cancel</button>'
+          +'</div>';
+      }).join('');
+    }else{
+      pendingSection.style.display='none';
+    }
+  }
+}
+
+window._cancelInvite=async function(wsId,emailKey,btn){
+  btn.disabled=true;btn.textContent='...';
+  await remove(ref(db,'invites/'+wsId+'/'+emailKey));
+  toast('Invite cancelled');
+  showMembers();
+};
+
+
+async function checkInvites(user){
+  var email=user.email.replace(/\./g,'_');
+  var snap=await get(ref(db,'invites'));
+  if(!snap.val())return;
+  var invites=snap.val();
+  var myInvites=[];
+  Object.keys(invites).forEach(function(wsId){
+    if(invites[wsId][email]){
+      myInvites.push(Object.assign({},invites[wsId][email],{wsId:wsId}));
+    }
+  });
+  if(!myInvites.length)return;
+  // Show styled invite cards on workspace picker screen
+  myInvites.forEach(function(inv){_showInviteCard(inv,user);});
+}
+
+function _showInviteCard(inv,user){
+  // Remove any existing card for this workspace
+  var existing=document.getElementById('inv-card-'+inv.wsId);
+  if(existing)existing.remove();
+
+  var s=document.createElement('style');
+  s.id='inv-style';
+  s.textContent='@keyframes invIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}';
+  if(!document.getElementById('inv-style'))document.head.appendChild(s);
+
+  var card=document.createElement('div');
+  card.id='inv-card-'+inv.wsId;
+  card.style.cssText=[
+    'position:fixed','top:16px','left:50%','transform:translateX(-50%)',
+    'z-index:95','max-width:480px','width:calc(100% - 32px)',
+    'background:var(--s1)','border:1px solid rgba(201,162,39,.45)',
+    'border-left:3px solid var(--gold)','border-radius:var(--r)',
+    'padding:16px 18px','box-shadow:0 16px 48px rgba(0,0,0,.75)',
+    'animation:invIn .3s ease','font-family:\'Outfit\',sans-serif'
+  ].join(';');
+
+  card.innerHTML='<div style="display:flex;align-items:flex-start;gap:10px">'
+    +'<span style="font-size:22px;flex-shrink:0">✉</span>'
+    +'<div style="flex:1">'
+    +'<div style="font-size:13px;font-weight:700;color:var(--gold);margin-bottom:3px">Workspace Invitation</div>'
+    +'<div style="font-size:12px;color:var(--text);margin-bottom:4px">'
+    +(inv.invitedBy?'<strong>'+inv.invitedBy+'</strong> invited you to join ':'You have been invited to join ')
+    +'<strong>'+inv.workspaceName+'</strong>.</div>'
+    +'<div style="font-size:11px;color:var(--t2);margin-bottom:12px">'
+    +(inv.role?'Role: <span style="color:var(--text);font-weight:500">'+inv.role+'</span> · ':'')
+    +'Invited as '+user.email+'</div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button class="inv-accept-btn" data-wsid="'+inv.wsId+'" data-ekey="'+inv.email.replace(/\./g,'_')+'" '
+    +'style="padding:8px 20px;background:var(--gold);border:none;border-radius:var(--rsm);color:#0d1b2e;font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif">Accept &amp; Join</button>'
+    +'<button class="inv-dismiss-btn" data-wsid="'+inv.wsId+'" '
+    +'style="padding:8px 14px;background:transparent;border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t2);font-size:12px;cursor:pointer;font-family:\'Outfit\',sans-serif">Not Now</button>'
+    +'</div></div></div>';
+  document.body.appendChild(card);
+  // Wire buttons via event delegation on the card
+  card.addEventListener('click',function(e){
+    var acceptBtn=e.target.closest('.inv-accept-btn');
+    var dismissBtn=e.target.closest('.inv-dismiss-btn');
+    if(acceptBtn){window._acceptInvite(acceptBtn.dataset.wsid,acceptBtn.dataset.ekey);}
+    if(dismissBtn){var c2=document.getElementById('inv-card-'+dismissBtn.dataset.wsid);if(c2)c2.remove();}
+  });
+}
+
+window._acceptInvite=async function(wsId,emailKey){
+  var btn=document.getElementById('inv-accept-'+wsId);
+  if(btn){btn.disabled=true;btn.textContent='Joining...';}
+  var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,
+    photo:currentUser.photoURL,role:'Member',joined:new Date().toISOString()};
+  await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);
+  // Get workspace info to add to user's list
+  var wsSnap=await get(ref(db,'workspaces/'+wsId));
+  var wsData=wsSnap.val()||{};
+  await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{
+    id:wsId,name:wsData.name||'Workspace',color:wsData.color||'var(--gold)',role:'Member'
+  });
+  await remove(ref(db,'invites/'+wsId+'/'+emailKey));
+  // Add to local workspaces and refresh picker
+  userWorkspaces.push({id:wsId,name:wsData.name||'Workspace',color:wsData.color||'var(--gold)',role:'Member'});
+  var card=document.getElementById('inv-card-'+wsId);
+  if(card)card.remove();
+  renderWsList();
+  toast('Welcome to '+wsData.name+'!');
+};
+
 
 // ─── TIMELINE ───────────────────────────────────────────────
 
