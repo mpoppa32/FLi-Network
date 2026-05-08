@@ -1418,6 +1418,7 @@ var db = getDatabase(fbApp);
 var EMAILJS_SERVICE_ID  = 'service_up5vfsa';
 var EMAILJS_TEMPLATE_ID = 'template_mkt974o';
 var EMAILJS_PUBLIC_KEY  = 'X0t4sWBbiwBlKIVrr';
+var EMAILJS_ACCEPTED_TEMPLATE_ID = 'template_4bg0fw5'; // sent to inviter when teammate accepts
 // ──────────────────────────────────────────────────────────────────────────
 
 var currentUser=null,currentWs=null,currentWsId=null,userWorkspaces=[],meetings=[],nodes=[],links=[],opportunities=[],commitments=[],calibrationRecords=[],calEntries=[],tlCommitments=[],entities=[],apiKey='',wsApiKey='',wsApiKeySetBy='',deepgramKey='',currentMeeting=null,currentOpp=null,pendingEnts=[],activeIntelTab='log',activeView='intel',netListeners=[];
@@ -6117,18 +6118,40 @@ function _showInviteCard(inv,user){
 window._acceptInvite=async function(wsId,emailKey){
   var btn=document.getElementById('inv-accept-'+wsId);
   if(btn){btn.disabled=true;btn.textContent='Joining...';}
+  // Read invite BEFORE removing — need invitedByEmail for notification
+  var invSnap=await get(ref(db,'invites/'+wsId+'/'+emailKey));
+  var invData=invSnap.val()||{};
   var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,
-    photo:currentUser.photoURL,role:'Member',joined:new Date().toISOString()};
+    photo:currentUser.photoURL,role:invData.role||'Member',joined:new Date().toISOString()};
   await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);
   // Get workspace info to add to user's list
   var wsSnap=await get(ref(db,'workspaces/'+wsId));
   var wsData=wsSnap.val()||{};
   await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{
-    id:wsId,name:wsData.name||'Workspace',color:wsData.color||'var(--gold)',role:'Member'
+    id:wsId,name:wsData.name||'Workspace',color:wsData.color||'var(--gold)',role:invData.role||'Member'
   });
   await remove(ref(db,'invites/'+wsId+'/'+emailKey));
+  // Notify the inviter by email
+  if(invData.invitedByEmail && typeof emailjs!=='undefined'){
+    try{
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_ACCEPTED_TEMPLATE_ID,
+        {
+          to_email:      invData.invitedByEmail,
+          invitee_name:  currentUser.displayName||currentUser.email,
+          invitee_email: currentUser.email,
+          workspace_name:wsData.name||invData.workspaceName||'the workspace',
+          role:          invData.role||'Member'
+        },
+        {publicKey: EMAILJS_PUBLIC_KEY}
+      );
+    }catch(e){
+      console.warn('Acceptance notification failed:',e);
+    }
+  }
   // Add to local workspaces and refresh picker
-  userWorkspaces.push({id:wsId,name:wsData.name||'Workspace',color:wsData.color||'var(--gold)',role:'Member'});
+  userWorkspaces.push({id:wsId,name:wsData.name||'Workspace',color:wsData.color||'var(--gold)',role:invData.role||'Member'});
   var card=document.getElementById('inv-card-'+wsId);
   if(card)card.remove();
   renderWsList();
