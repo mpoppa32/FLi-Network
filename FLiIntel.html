@@ -1696,9 +1696,9 @@ button:focus-visible,
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Smooth view transitions ── */
-[id$="-view"]{
-  animation:viewFadeIn .25s cubic-bezier(.2,.6,.3,1)
-}
+/* View fade-in handled per view via switchView function — remove global animation 
+   that applied to ALL [id$=-view] elements and caused flicker */
+
 @keyframes viewFadeIn{
   from{opacity:0;transform:translateY(4px)}
   to{opacity:1;transform:translateY(0)}
@@ -2014,11 +2014,10 @@ input:focus,select:focus,textarea:focus{
   position:fixed;
   inset:0;
   background:radial-gradient(ellipse at center,transparent 50%,rgba(0,0,0,.18) 100%);
-  pointer-events:none;
-  z-index:1
+  pointer-events:none
 }
 .app{position:relative}
-.app > *{position:relative;z-index:2}
+/* .app children keep their own position/z-index — removed rule that broke overlay stacking */
 .light-mode .app::before{
   background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,.04) 100%)
 }
@@ -2444,13 +2443,11 @@ select{
              0 4px 16px rgba(201,162,39,.4) !important
 }
 
-/* ── HEADER STICKINESS for long content ────────────────────────────────── */
+/* ── TAB HEADER TREATMENT ─────────────────────────────────────────────── */
 .intel-tabs,.panel-tabs{
-  position:sticky;
-  top:0;
-  z-index:5;
-  background:linear-gradient(180deg,rgba(10,18,30,.98),rgba(10,18,30,.94)) !important;
-  backdrop-filter:blur(8px)
+  /* sticky removed — incompatible with overflow:hidden flex containers */
+  flex-shrink:0;
+  background:linear-gradient(180deg,rgba(10,18,30,.98),rgba(10,18,30,.94))
 }
 
 /* ── REFINED POPOVERS — Better shadow hierarchy ────────────────────────── */
@@ -2531,7 +2528,7 @@ select{
   from{opacity:0;filter:blur(6px)}
   to{opacity:1;filter:blur(0)}
 }
-#main-app{animation:appBoot .5s cubic-bezier(.2,.65,.3,1) both}
+/* appBoot animation removed — 'fill-mode:both' caused opacity:0 flash when main-app first shown */
 
 /* ── PIN ICON for pinned nodes ─────────────────────────────────────────── */
 .pinned-indicator{
@@ -2577,7 +2574,7 @@ select{
       Sign in with Google
     </button>
     <div id="auth-error" style="display:none;margin-top:12px;padding:10px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:12px;color:#ef4444;line-height:1.5;text-align:left"></div>
-    <div class="auth-note">Your data is encrypted and stored in your organization's private workspace. FLi Intel never shares data between organizations.</div>
+    <div id="auth-loading-bar" style="height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);border-radius:1px;margin-bottom:14px;animation:pulse 1.5s ease-in-out infinite;opacity:.6"></div><div class="auth-note">Your data is encrypted and stored in your organization's private workspace. FLi Intel never shares data between organizations.</div>
   </div>
 </div>
 
@@ -4253,6 +4250,8 @@ async function saveEntity(e){var c=Object.assign({},e);delete c.fx;delete c.fy;d
 function showAuthError(msg){var el=document.getElementById('auth-error');if(el){el.textContent=msg;el.style.display='block';}}
 
 onAuthStateChanged(auth,function(user){if(user){currentUser=user;refreshApiKey();loadUserWorkspaces(user);}else{document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';}});
+// Safety net for slow Firebase auth resolution
+setTimeout(function(){var as=document.getElementById('auth-screen');if(as&&as.style.display!=='none'){var lb=document.getElementById('auth-loading-bar');if(lb)lb.style.animation='none';var btn=document.getElementById('google-signin-btn');if(btn&&!btn.disabled){}}},8000);
 
 // Handle redirect result on page load (for browsers that block popups)
 getRedirectResult(auth).then(function(result){
@@ -4286,7 +4285,7 @@ document.getElementById('google-signin-btn').addEventListener('click',function()
   });
 });
 
-async function loadUserWorkspaces(user){document.getElementById('auth-screen').style.display='none';var snap=await get(ref(db,'users/'+user.uid+'/workspaces'));userWorkspaces=snap.val()?Object.values(snap.val()):[];if(userWorkspaces.length===0){showWsPicker(user);}else if(userWorkspaces.length===1){selectWorkspace(userWorkspaces[0].id);}else{showWsPicker(user);}}
+async function loadUserWorkspaces(user){document.getElementById('auth-screen').style.display='none';var alb=document.getElementById('auth-loading-bar');if(alb)alb.style.display='none';var snap=await get(ref(db,'users/'+user.uid+'/workspaces'));userWorkspaces=snap.val()?Object.values(snap.val()):[];if(userWorkspaces.length===0){showWsPicker(user);}else if(userWorkspaces.length===1){selectWorkspace(userWorkspaces[0].id);}else{showWsPicker(user);}}
 
 function showWsPicker(user){
   document.getElementById('ws-screen').style.display='flex';
@@ -7700,7 +7699,7 @@ function wireListeners(){
   // Online / offline feedback
   window.addEventListener('offline',function(){setSS('offline');toast('No connection — writes will retry when back online');});
   window.addEventListener('online',function(){setSS('live');toast('Back online');});
-  document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(edgeMode)cancelEdgeMode();else if(selectedNode)closeNetPanel();}if((e.key==='f'||e.key==='F')&&!e.target.matches('input,textarea')&&activeView==='network')fitGraph();if(e.key==='/'&&!e.target.matches('input,textarea')&&activeView==='network'){e.preventDefault();document.getElementById('net-search').focus();}if((e.metaKey||e.ctrlKey)&&e.key==='k'&&!e.shiftKey){e.preventDefault();e.stopPropagation();var mq=document.getElementById('memory-query');switchView('intel');switchIntelTab('memory');setTimeout(function(){if(mq)mq.focus();},150);}if(e.key==='?'&&!e.target.matches('input,textarea,select')){e.preventDefault();showShortcutsModal();}});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'){if(edgeMode){cancelEdgeMode();}else if(selectedNode){closeNetPanel();}var openOverlays=document.querySelectorAll('.overlay');openOverlays.forEach(function(ov){if(ov.style.display!=='none'&&ov.id!=='entity-inspector-modal'){ov.style.display='none';}});}if((e.key==='f'||e.key==='F')&&!e.target.matches('input,textarea')&&activeView==='network')fitGraph();if(e.key==='/'&&!e.target.matches('input,textarea')&&activeView==='network'){e.preventDefault();document.getElementById('net-search').focus();}if((e.metaKey||e.ctrlKey)&&e.key==='k'&&!e.shiftKey){e.preventDefault();e.stopPropagation();var mq=document.getElementById('memory-query');switchView('intel');switchIntelTab('memory');setTimeout(function(){if(mq)mq.focus();},150);}if(e.key==='?'&&!e.target.matches('input,textarea,select')){e.preventDefault();showShortcutsModal();}});
   ['edit-modal','sync-modal','digest-modal','add-node-modal','edge-modal','members-modal','user-modal','add-commitment-modal','tl-card-modal','commit-modal','new-opp-modal','brief-modal','security-modal','intel-brief-modal','contact-movements-modal','vehicle-modal','library-section-modal','onboarding-brief-modal','audit-log-modal','contact-timeline-modal','portfolio-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',function(e){if(e.target.id===id)closeModal(id);});});
   buildEdgeLegend();injectPWA();
 }
@@ -12768,7 +12767,7 @@ window.confirmAddCommitment=confirmAddCommitment;
 
 var svgEl,svg,g,lg,ng,zoom,sim,W=800,H=600;
 
-function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas();svg=d3.select(svgEl);svg.selectAll('*').remove();var defs=svg.append('defs');var gf=defs.append('filter').attr('id','glow').attr('x','-100%').attr('y','-100%').attr('width','300%').attr('height','300%');gf.append('feGaussianBlur').attr('stdDeviation','6').attr('result','b');var fm=gf.append('feMerge');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','SourceGraphic');var gf2=defs.append('filter').attr('id','glow2').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');gf2.append('feGaussianBlur').attr('stdDeviation','3').attr('result','b2');var fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');var ds=defs.append('filter').attr('id','dshadow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');ds.append('feGaussianBlur').attr('in','SourceAlpha').attr('stdDeviation','3').attr('result','dsb');ds.append('feOffset').attr('in','dsb').attr('dx','0').attr('dy','2').attr('result','dso');ds.append('feComponentTransfer').append('feFuncA').attr('type','linear').attr('slope','0.6');var dsm=ds.append('feMerge');dsm.append('feMergeNode');dsm.append('feMergeNode').attr('in','SourceGraphic');var pat=defs.append('pattern').attr('id','netgrid').attr('width','40').attr('height','40').attr('patternUnits','userSpaceOnUse');pat.append('path').attr('d','M 40 0 L 0 0 0 40').attr('fill','none').attr('stroke','rgba(26,48,80,0.18)').attr('stroke-width','0.5');var pat2=defs.append('pattern').attr('id','netgrid2').attr('width','200').attr('height','200').attr('patternUnits','userSpaceOnUse');pat2.append('path').attr('d','M 200 0 L 0 0 0 200').attr('fill','none').attr('stroke','rgba(26,48,80,0.35)').attr('stroke-width','1');var rg=defs.append('radialGradient').attr('id','netbg').attr('cx','50%').attr('cy','50%').attr('r','60%');rg.append('stop').attr('offset','0%').attr('stop-color','rgba(13,24,40,0.8)');rg.append('stop').attr('offset','100%').attr('stop-color','rgba(8,15,26,0.0)');svg.append('rect').attr('class','net-bg-grid').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid)');svg.append('rect').attr('class','net-bg-grid2').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid2)');svg.append('rect').attr('class','net-bg-radial').attr('width','100%').attr('height','100%').attr('fill','url(#netbg)').style('pointer-events','none');g=svg.append('g');lg=g.append('g');ng=g.append('g');zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',function(e){g.attr('transform',e.transform);});svg.call(zoom).on('dblclick.zoom',null);svg.on('click',function(ev){if(edgeMode&&ev.target===svgEl)cancelEdgeMode();});
+function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas();svg=d3.select(svgEl);svg.selectAll('*').remove();var defs=svg.append('defs');var gf=defs.append('filter').attr('id','glow').attr('x','-100%').attr('y','-100%').attr('width','300%').attr('height','300%');gf.append('feGaussianBlur').attr('stdDeviation','6').attr('result','b');var fm=gf.append('feMerge');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','SourceGraphic');var gf2=defs.append('filter').attr('id','glow2').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');gf2.append('feGaussianBlur').attr('stdDeviation','3').attr('result','b2');var fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');var ds=defs.append('filter').attr('id','dshadow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');ds.append('feGaussianBlur').attr('in','SourceAlpha').attr('stdDeviation','3').attr('result','dsb');ds.append('feOffset').attr('in','dsb').attr('dx','0').attr('dy','2').attr('result','dso');ds.append('feComponentTransfer').append('feFuncA').attr('type','linear').attr('slope','0.6');var dsm=ds.append('feMerge');dsm.append('feMergeNode');dsm.append('feMergeNode').attr('in','SourceGraphic');var pat=defs.append('pattern').attr('id','netgrid').attr('width','40').attr('height','40').attr('patternUnits','userSpaceOnUse');pat.append('path').attr('d','M 40 0 L 0 0 0 40').attr('fill','none').attr('stroke','rgba(26,48,80,0.18)').attr('stroke-width','0.5');var pat2=defs.append('pattern').attr('id','netgrid2').attr('width','200').attr('height','200').attr('patternUnits','userSpaceOnUse');pat2.append('path').attr('d','M 200 0 L 0 0 0 200').attr('fill','none').attr('stroke','rgba(26,48,80,0.35)').attr('stroke-width','1');var rg=defs.append('radialGradient').attr('id','netbg').attr('cx','50%').attr('cy','50%').attr('r','60%');rg.append('stop').attr('offset','0%').attr('stop-color','rgba(13,24,40,0.8)');rg.append('stop').attr('offset','100%').attr('stop-color','rgba(8,15,26,0.0)');svg.append('rect').attr('class','net-bg-grid').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid)');svg.append('rect').attr('class','net-bg-grid2').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid2)');svg.append('rect').attr('class','net-bg-radial').attr('width','100%').attr('height','100%').attr('fill','url(#netbg)').style('pointer-events','none');g=svg.append('g');lg=g.append('g');ng=g.append('g');zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',function(e){g.attr('transform',e.transform);});svg.call(zoom).on('dblclick.zoom',null);svg.on('click',function(ev){if(edgeMode&&ev.target===svgEl){cancelEdgeMode();return;}if(ev.target===svgEl&&!edgeMode&&selectedNode){closeNetPanel();}});
 sim=d3.forceSimulation()
   // Link force: Works-at links are short (person orbits org); co-presence are medium; manual are long
   .force('link',d3.forceLink().id(function(d){return d.id;})
@@ -13087,6 +13086,21 @@ function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('pan
   document.getElementById('net-panel').classList.add('open');document.getElementById('org-legend').classList.add('panel-open');}
 function closeNetPanel(){document.getElementById('net-panel').classList.remove('open');document.getElementById('org-legend').classList.remove('panel-open');selectedNode=null;}
 window.closeNetPanel=closeNetPanel;
+// Click outside net-panel to close (document-level handler)
+document.addEventListener('click',function(ev){
+  if(!selectedNode)return;
+  if(activeView!=='network')return;
+  var panel=document.getElementById('net-panel');
+  if(!panel||!panel.classList.contains('open'))return;
+  // Don't close if clicking inside the panel itself
+  if(panel.contains(ev.target))return;
+  // Don't close if clicking a tooltip or overlay
+  if(ev.target.closest('.overlay,.tooltip'))return;
+  // Don't close if clicking the SVG (handled separately by SVG click handler)
+  var svgC=document.getElementById('net-canvas');
+  if(svgC&&svgC.contains(ev.target))return;
+},true);
+
 
 var _netPanelSaveTimer=null;
 function saveNetPanel(){
