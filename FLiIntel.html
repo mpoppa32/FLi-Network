@@ -115,7 +115,7 @@ html,body{
   background-image:
     radial-gradient(ellipse 60% 50% at 50% 20%,rgba(59,130,246,.08) 0%,transparent 70%),
     radial-gradient(ellipse 40% 40% at 80% 80%,rgba(201,162,39,.06) 0%,transparent 60%);
-  display:flex;align-items:center;justify-content:center;z-index:200;padding:20px
+  display:none;align-items:center;justify-content:center;z-index:200;padding:20px
 }
 .auth-card{
   background:linear-gradient(160deg,rgba(13,24,40,.98) 0%,rgba(10,18,32,.99) 100%);
@@ -579,7 +579,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   background:linear-gradient(180deg,rgba(10,18,30,.99),rgba(8,15,26,.99));
   border-left:1px solid rgba(26,48,80,.5);
   transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
-  z-index:10;display:flex;flex-direction:column;overflow:hidden;
+  z-index:15;display:flex;flex-direction:column;overflow:hidden;
   box-shadow:-6px 0 24px rgba(0,0,0,.5)
 }
 .net-panel.open{transform:translateX(0)}
@@ -2547,7 +2547,20 @@ select{
 <body>
 <div id="d3-fallback-msg" style="display:none;position:fixed;top:0;left:0;right:0;background:#7f1d1d;color:#fff;padding:10px 16px;font-size:12px;font-family:Outfit,sans-serif;text-align:center;z-index:99999">⚠️ Network map unavailable — could not load the D3 library. Check your connection and reload.</div>
 
-<div class="auth-screen" id="auth-screen">
+<!-- PAGE LOADING SCREEN — shows while Firebase auth resolves -->
+<div id="page-loader" style="position:fixed;inset:0;background:var(--bg);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+  <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+    <rect x="1" y="1" width="34" height="34" rx="8" fill="rgba(201,162,39,.08)" stroke="#c9a227" stroke-width="1.2"/>
+    <line x1="18" y1="4" x2="18" y2="32" stroke="#c9a227" stroke-width=".8" opacity=".3"/>
+    <line x1="4" y1="18" x2="32" y2="18" stroke="#c9a227" stroke-width=".8" opacity=".3"/>
+    <circle cx="18" cy="18" r="5" fill="none" stroke="#c9a227" stroke-width="1.8"/>
+    <circle cx="18" cy="18" r="2" fill="#c9a227"/>
+  </svg>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:rgba(201,162,39,.6)">FLi Intel</div>
+  <div style="width:120px;height:1px;background:linear-gradient(90deg,transparent,rgba(201,162,39,.4),transparent);animation:pulse 1.5s ease-in-out infinite"></div>
+</div>
+
+<div class="auth-screen" id="auth-screen" style="display:none">
   <div class="auth-card">
     <div class="auth-logo">
       <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
@@ -3105,7 +3118,7 @@ select{
             <button class="btn btn-sm" id="panel-inspect-btn" onclick="if(selectedNode)window.openEntityInspector(selectedNode.id)" style="color:var(--cyan);border-color:rgba(6,182,212,.4);font-size:10px;background:rgba(6,182,212,.06)" title="Inspect entity in graph">&#9678; Inspect</button>
             <button class="btn btn-sm" id="panel-timeline-btn" onclick="window._openContactTimeline(selectedNode)" style="display:none;color:var(--blue);border-color:rgba(59,130,246,.4);font-size:10px;background:rgba(59,130,246,.06)" title="Relationship timeline">&#9675; Timeline</button>
             <button class="btn btn-sm" id="panel-del-btn" style="color:var(--red);border-color:var(--red);font-size:10px">Delete</button>
-            <button class="nb" onclick="closeNetPanel()">x</button>
+            <button onclick="closeNetPanel()" style="width:28px;height:28px;border-radius:50%;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:var(--red);cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;position:relative;z-index:20" onmouseover="this.style.background='var(--red)';this.style.color='#fff'" onmouseout="this.style.background='rgba(239,68,68,.12)';this.style.color='var(--red)'">&#x2715;</button>
           </div>
         </div>
         <div style="margin-bottom:7px"><div class="plbl">Name</div><input type="text" id="panel-name" onchange="saveNetPanel()"></div>
@@ -4249,9 +4262,9 @@ async function saveEntity(e){var c=Object.assign({},e);delete c.fx;delete c.fy;d
 
 function showAuthError(msg){var el=document.getElementById('auth-error');if(el){el.textContent=msg;el.style.display='block';}}
 
-onAuthStateChanged(auth,function(user){if(user){currentUser=user;refreshApiKey();loadUserWorkspaces(user);}else{document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';}});
+onAuthStateChanged(auth,function(user){var pl=document.getElementById('page-loader');if(pl)pl.style.display='none';if(user){currentUser=user;refreshApiKey();loadUserWorkspaces(user);}else{document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';}});
 // Safety net for slow Firebase auth resolution
-setTimeout(function(){var as=document.getElementById('auth-screen');if(as&&as.style.display!=='none'){var lb=document.getElementById('auth-loading-bar');if(lb)lb.style.animation='none';var btn=document.getElementById('google-signin-btn');if(btn&&!btn.disabled){}}},8000);
+setTimeout(function(){var pl2=document.getElementById('page-loader');if(pl2&&pl2.style.display!=='none'){pl2.style.display='none';var as0=document.getElementById('auth-screen');if(as0&&as0.style.display==='none')as0.style.display='flex';}var as=document.getElementById('auth-screen');if(as&&as.style.display!=='none'){var lb=document.getElementById('auth-loading-bar');if(lb)lb.style.animation='none';var btn=document.getElementById('google-signin-btn');if(btn&&!btn.disabled){}}},8000);
 
 // Handle redirect result on page load (for browsers that block popups)
 getRedirectResult(auth).then(function(result){
