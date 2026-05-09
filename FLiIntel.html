@@ -4269,6 +4269,10 @@ onAuthStateChanged(auth,function(user){
     _authResolved=true;
     var pl=document.getElementById('page-loader');
     if(pl)pl.style.display='none';
+    // Cancel Google FedCM / One-Tap sign-in prompt (Chrome injects this automatically)
+    try{if(window.google&&window.google.accounts&&window.google.accounts.id){
+      window.google.accounts.id.cancel();
+    }}catch(e){}
     currentUser=user;refreshApiKey();loadUserWorkspaces(user);
   } else {
     // Firebase fires null first even for signed-in users.
@@ -12802,7 +12806,23 @@ window.confirmAddCommitment=confirmAddCommitment;
 
 var svgEl,svg,g,lg,ng,zoom,sim,W=800,H=600;
 
-function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas();svg=d3.select(svgEl);svg.selectAll('*').remove();var defs=svg.append('defs');var gf=defs.append('filter').attr('id','glow').attr('x','-100%').attr('y','-100%').attr('width','300%').attr('height','300%');gf.append('feGaussianBlur').attr('stdDeviation','6').attr('result','b');var fm=gf.append('feMerge');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','SourceGraphic');var gf2=defs.append('filter').attr('id','glow2').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');gf2.append('feGaussianBlur').attr('stdDeviation','3').attr('result','b2');var fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');var ds=defs.append('filter').attr('id','dshadow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');ds.append('feGaussianBlur').attr('in','SourceAlpha').attr('stdDeviation','3').attr('result','dsb');ds.append('feOffset').attr('in','dsb').attr('dx','0').attr('dy','2').attr('result','dso');ds.append('feComponentTransfer').append('feFuncA').attr('type','linear').attr('slope','0.6');var dsm=ds.append('feMerge');dsm.append('feMergeNode');dsm.append('feMergeNode').attr('in','SourceGraphic');var pat=defs.append('pattern').attr('id','netgrid').attr('width','40').attr('height','40').attr('patternUnits','userSpaceOnUse');pat.append('path').attr('d','M 40 0 L 0 0 0 40').attr('fill','none').attr('stroke','rgba(26,48,80,0.18)').attr('stroke-width','0.5');var pat2=defs.append('pattern').attr('id','netgrid2').attr('width','200').attr('height','200').attr('patternUnits','userSpaceOnUse');pat2.append('path').attr('d','M 200 0 L 0 0 0 200').attr('fill','none').attr('stroke','rgba(26,48,80,0.35)').attr('stroke-width','1');var rg=defs.append('radialGradient').attr('id','netbg').attr('cx','50%').attr('cy','50%').attr('r','60%');rg.append('stop').attr('offset','0%').attr('stop-color','rgba(13,24,40,0.8)');rg.append('stop').attr('offset','100%').attr('stop-color','rgba(8,15,26,0.0)');svg.append('rect').attr('class','net-bg-grid').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid)');svg.append('rect').attr('class','net-bg-grid2').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid2)');svg.append('rect').attr('class','net-bg-radial').attr('width','100%').attr('height','100%').attr('fill','url(#netbg)').style('pointer-events','none');g=svg.append('g');lg=g.append('g');ng=g.append('g');zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',function(e){g.attr('transform',e.transform);});svg.call(zoom).on('dblclick.zoom',null);svg.on('click',function(ev){if(edgeMode){if(ev.target===svgEl||ev.target.tagName==='rect'||ev.target.tagName==='line')cancelEdgeMode();return;}if(!selectedNode)return;var isInteractive=ev.target.closest&&(ev.target.closest('.node-g')||ev.target.closest('.link-g'));if(!isInteractive)closeNetPanel();});
+function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas();svg=d3.select(svgEl);svg.selectAll('*').remove();var defs=svg.append('defs');var gf=defs.append('filter').attr('id','glow').attr('x','-100%').attr('y','-100%').attr('width','300%').attr('height','300%');gf.append('feGaussianBlur').attr('stdDeviation','6').attr('result','b');var fm=gf.append('feMerge');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','SourceGraphic');var gf2=defs.append('filter').attr('id','glow2').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');gf2.append('feGaussianBlur').attr('stdDeviation','3').attr('result','b2');var fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');var ds=defs.append('filter').attr('id','dshadow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');ds.append('feGaussianBlur').attr('in','SourceAlpha').attr('stdDeviation','3').attr('result','dsb');ds.append('feOffset').attr('in','dsb').attr('dx','0').attr('dy','2').attr('result','dso');ds.append('feComponentTransfer').append('feFuncA').attr('type','linear').attr('slope','0.6');var dsm=ds.append('feMerge');dsm.append('feMergeNode');dsm.append('feMergeNode').attr('in','SourceGraphic');var pat=defs.append('pattern').attr('id','netgrid').attr('width','40').attr('height','40').attr('patternUnits','userSpaceOnUse');pat.append('path').attr('d','M 40 0 L 0 0 0 40').attr('fill','none').attr('stroke','rgba(26,48,80,0.18)').attr('stroke-width','0.5');var pat2=defs.append('pattern').attr('id','netgrid2').attr('width','200').attr('height','200').attr('patternUnits','userSpaceOnUse');pat2.append('path').attr('d','M 200 0 L 0 0 0 200').attr('fill','none').attr('stroke','rgba(26,48,80,0.35)').attr('stroke-width','1');var rg=defs.append('radialGradient').attr('id','netbg').attr('cx','50%').attr('cy','50%').attr('r','60%');rg.append('stop').attr('offset','0%').attr('stop-color','rgba(13,24,40,0.8)');rg.append('stop').attr('offset','100%').attr('stop-color','rgba(8,15,26,0.0)');svg.append('rect').attr('class','net-bg-grid').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid)');svg.append('rect').attr('class','net-bg-grid2').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid2)');svg.append('rect').attr('class','net-bg-radial').attr('width','100%').attr('height','100%').attr('fill','url(#netbg)').style('pointer-events','none');g=svg.append('g');lg=g.append('g');ng=g.append('g');zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',function(e){g.attr('transform',e.transform);});svg.call(zoom).on('dblclick.zoom',null);
+// Mousedown on SVG canvas: close panel when clicking empty space
+// Uses native mousedown (not D3 click) so it fires before D3 zoom
+var svgCanvasEl=document.getElementById('net-canvas');
+if(svgCanvasEl){
+  svgCanvasEl.addEventListener('mousedown',function(ev){
+    if(!selectedNode)return;
+    var t=ev.target;
+    // Don't close if mousedown is on a node, link, or inside the panel
+    if(t.closest&&(t.closest('.node-g')||t.closest('.link-g')))return;
+    var panel=document.getElementById('net-panel');
+    if(panel&&panel.contains(t))return;
+    if(t.closest&&t.closest('.overlay'))return;
+    closeNetPanel();
+  },true);
+}
+svg.on('click',function(ev){if(edgeMode){if(ev.target===svgEl||ev.target.tagName==='rect'||ev.target.tagName==='line')cancelEdgeMode();return;}if(!selectedNode)return;var isInteractive=ev.target.closest&&(ev.target.closest('.node-g')||ev.target.closest('.link-g'));if(!isInteractive)closeNetPanel();});
 sim=d3.forceSimulation()
   // Link force: Works-at links are short (person orbits org); co-presence are medium; manual are long
   .force('link',d3.forceLink().id(function(d){return d.id;})
@@ -13122,21 +13142,7 @@ function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('pan
 function closeNetPanel(){document.getElementById('net-panel').classList.remove('open');document.getElementById('org-legend').classList.remove('panel-open');selectedNode=null;}
 window.closeNetPanel=closeNetPanel;
 
-// Click anywhere outside the panel to close it
-// Fires in capture phase so it runs before SVG D3 handlers
-document.addEventListener('click',function(ev){
-  if(!selectedNode)return;
-  if(activeView!=='network')return;
-  var panel=document.getElementById('net-panel');
-  if(!panel||!panel.classList.contains('open'))return;
-  // Keep panel open if clicking inside it
-  if(panel.contains(ev.target))return;
-  // Keep panel open if clicking a node or link (they may open a different node)
-  var closest=ev.target.closest&&ev.target.closest('.node-g,.link-g,.overlay,.tooltip');
-  if(closest)return;
-  // Everything else: close
-  closeNetPanel();
-},true);
+// Panel close wired to SVG mousedown in initNetwork (see below)
 
 var _netPanelSaveTimer=null;
 function saveNetPanel(){
