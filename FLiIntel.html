@@ -2625,7 +2625,7 @@ div[aria-label*="One Tap" i]{
   gap:14px !important
 }
 </style>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- GIS/One-Tap removed: signInWithPopup works without it, GIS caused FedCM auto-prompt -->
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
@@ -12939,7 +12939,7 @@ window.confirmAddCommitment=confirmAddCommitment;
 var svgEl,svg,g,lg,ng,zoom,sim,W=800,H=600;
 
 function initNetwork(){svgEl=document.getElementById('net-canvas');resizeCanvas();svg=d3.select(svgEl);svg.selectAll('*').remove();var defs=svg.append('defs');var gf=defs.append('filter').attr('id','glow').attr('x','-100%').attr('y','-100%').attr('width','300%').attr('height','300%');gf.append('feGaussianBlur').attr('stdDeviation','6').attr('result','b');var fm=gf.append('feMerge');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','b');fm.append('feMergeNode').attr('in','SourceGraphic');var gf2=defs.append('filter').attr('id','glow2').attr('x','-60%').attr('y','-60%').attr('width','220%').attr('height','220%');gf2.append('feGaussianBlur').attr('stdDeviation','3').attr('result','b2');var fm2=gf2.append('feMerge');fm2.append('feMergeNode').attr('in','b2');fm2.append('feMergeNode').attr('in','SourceGraphic');var ds=defs.append('filter').attr('id','dshadow').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');ds.append('feGaussianBlur').attr('in','SourceAlpha').attr('stdDeviation','3').attr('result','dsb');ds.append('feOffset').attr('in','dsb').attr('dx','0').attr('dy','2').attr('result','dso');ds.append('feComponentTransfer').append('feFuncA').attr('type','linear').attr('slope','0.6');var dsm=ds.append('feMerge');dsm.append('feMergeNode');dsm.append('feMergeNode').attr('in','SourceGraphic');var pat=defs.append('pattern').attr('id','netgrid').attr('width','40').attr('height','40').attr('patternUnits','userSpaceOnUse');pat.append('path').attr('d','M 40 0 L 0 0 0 40').attr('fill','none').attr('stroke','rgba(26,48,80,0.18)').attr('stroke-width','0.5');var pat2=defs.append('pattern').attr('id','netgrid2').attr('width','200').attr('height','200').attr('patternUnits','userSpaceOnUse');pat2.append('path').attr('d','M 200 0 L 0 0 0 200').attr('fill','none').attr('stroke','rgba(26,48,80,0.35)').attr('stroke-width','1');var rg=defs.append('radialGradient').attr('id','netbg').attr('cx','50%').attr('cy','50%').attr('r','60%');rg.append('stop').attr('offset','0%').attr('stop-color','rgba(13,24,40,0.8)');rg.append('stop').attr('offset','100%').attr('stop-color','rgba(8,15,26,0.0)');svg.append('rect').attr('class','net-bg-grid').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid)');svg.append('rect').attr('class','net-bg-grid2').attr('width','100%').attr('height','100%').attr('fill','url(#netgrid2)');svg.append('rect').attr('class','net-bg-radial').attr('width','100%').attr('height','100%').attr('fill','url(#netbg)').style('pointer-events','none');g=svg.append('g');lg=g.append('g');ng=g.append('g');zoom=d3.zoom().scaleExtent([0.03,8]).on('zoom',function(e){g.attr('transform',e.transform);});svg.call(zoom).on('dblclick.zoom',null);
-svg.on('click',function(ev){if(edgeMode){if(ev.target===svgEl||ev.target.tagName==='rect'||ev.target.tagName==='line')cancelEdgeMode();return;}if(!selectedNode)return;var isInteractive=ev.target.closest&&(ev.target.closest('.node-g')||ev.target.closest('.link-g'));if(!isInteractive)closeNetPanel();});
+svg.on('click',function(ev){if(edgeMode){if(!ev.target.closest||!ev.target.closest('.node-g'))cancelEdgeMode();return;}if(!selectedNode)return;var isOnNode=ev.target.closest&&(ev.target.closest('.node-g')||ev.target.closest('.link-g'));if(!isOnNode){closeNetPanel();}});
 sim=d3.forceSimulation()
   // Link force: Works-at links are short (person orbits org); co-presence are medium; manual are long
   .force('link',d3.forceLink().id(function(d){return d.id;})
@@ -13270,19 +13270,18 @@ document.addEventListener('click',function(ev){
   if(!selectedNode)return;
   if(activeView!=='network')return;
   var panel=document.getElementById('net-panel');
-  if(!panel||!panel.classList.contains('open'))return;
+  if(!panel)return;
   var t=ev.target;
   if(!t)return;
-  // Keep panel open if click is INSIDE the panel
   if(panel.contains(t))return;
-  // Keep panel open if clicking an interactive overlay or node
-  if(t.closest&&t.closest('.node-g,.link-g,.overlay,.modal,'+
-    '.att-suggest,.search-results,.tooltip,.net-toolbar,'+
-    '#layout-panel,#path-panel,#dedup-panel,#pg-picker-panel,'+
-    '#tv-picker-panel,.net-cal,#cooling-strip,'+
-    '.add-menu-wrap,#add-menu,#org-legend,.edge-legend,.tier-legend'))return;
+  if(t.closest&&t.closest('.node-g,.link-g,.overlay,.modal,'
+    +'.att-suggest,.search-results,.tooltip,.net-toolbar,'
+    +'#layout-panel,#path-panel,#dedup-panel,#pg-picker-panel,'
+    +'#tv-picker-panel,.net-cal,#cooling-strip,'
+    +'.add-menu-wrap,#add-menu,#org-legend,.edge-legend,.tier-legend'))return;
   closeNetPanel();
 },true);
+
 
 // Also: keydown Escape (additional safety net to existing handler)
 document.addEventListener('keydown',function(ev){
