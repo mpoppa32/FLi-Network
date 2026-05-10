@@ -3767,6 +3767,14 @@ div[aria-label*="One Tap" i]{
         </div>
         <div style="font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:8px">Expose your entity graph to external AI tools (Claude, ChatGPT, Copilot) via MCP server. Requires hosted backend on Cloud Functions, Vercel, or Cloudflare Workers.</div>
         <button onclick="window._showMcpSetup()" style="padding:5px 12px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif">View API Spec</button>
+        <div style="margin-top:10px">
+          <div style="font-size:10px;color:var(--t2);margin-bottom:4px;letter-spacing:.05em">ENDPOINT URL</div>
+          <input id="mcp-endpoint-input" type="text" placeholder="https://mcpapi-xxxx-uc.a.run.app" style="width:100%;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);color:var(--text);font-size:11px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" />
+          <div style="font-size:10px;color:var(--t2);margin-bottom:4px;margin-top:8px;letter-spacing:.05em">BEARER TOKEN</div>
+          <input id="mcp-token-input" type="password" placeholder="Your MCP API secret" style="width:100%;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);color:var(--text);font-size:11px;box-sizing:border-box;font-family:'JetBrains Mono',monospace" />
+          <button onclick="window._saveMcpConfig()" style="margin-top:8px;padding:6px 14px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);color:var(--purple);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif;width:100%">Save MCP Config</button>
+          <div id="mcp-save-status" style="font-size:10px;color:var(--green);margin-top:4px;text-align:center"></div>
+        </div>
       </div>
     </div>
 
@@ -7795,6 +7803,19 @@ function wireListeners(){
       secBtn.style.display=isWsAdmin?'inline-flex':'none';
     }
     document.getElementById('user-modal').style.display='flex';
+  // Pre-populate MCP fields from saved settings
+  try {
+    var savedEp = localStorage.getItem('flintel_mcp_endpoint') || '';
+    var savedTk = localStorage.getItem('flintel_mcp_token') || '';
+    var epEl = document.getElementById('mcp-endpoint-input');
+    var tkEl = document.getElementById('mcp-token-input');
+    if (epEl && savedEp) epEl.value = savedEp;
+    if (tkEl && savedTk) tkEl.value = savedTk;
+    if (savedEp) {
+      var badge = document.getElementById('mcp-api-status');
+      if (badge) { badge.textContent = 'CONNECTED'; badge.style.color = 'var(--green)'; }
+    }
+  } catch(e) {}
   });
   document.getElementById('save-api-key-btn').addEventListener('click',function(){
     var k=document.getElementById('api-key-setting').value.trim();
@@ -20540,6 +20561,26 @@ window._renderAutoCaptureSetup = function() {
   h += '</div>';
 
   return h;
+};
+
+window._saveMcpConfig = function() {
+  var url   = (document.getElementById('mcp-endpoint-input').value || '').trim();
+  var token = (document.getElementById('mcp-token-input').value || '').trim();
+  if (!url) { document.getElementById('mcp-save-status').textContent = 'Enter an endpoint URL'; return; }
+  // Save to Firebase workspace settings
+  if (typeof fbSet === 'function' && currentWsId) {
+    fbSet(wsPath('settings/mcpEndpoint'), url);
+    if (token) fbSet(wsPath('settings/mcpToken'), token);
+  }
+  // Also save to localStorage as fallback
+  try { localStorage.setItem('flintel_mcp_endpoint', url); if (token) localStorage.setItem('flintel_mcp_token', token); } catch(e) {}
+  var st = document.getElementById('mcp-save-status');
+  st.textContent = '✓ Saved';
+  st.style.color = 'var(--green)';
+  setTimeout(function(){ st.textContent = ''; }, 3000);
+  // Update status badge
+  var badge = document.getElementById('mcp-api-status');
+  if (badge) { badge.textContent = 'CONNECTED'; badge.style.color = 'var(--green)'; }
 };
 
 window._showMcpSetup = function() {
