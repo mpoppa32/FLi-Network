@@ -3745,6 +3745,31 @@ div[aria-label*="One Tap" i]{
       </div>
     </div>
 
+    <!-- ── INTEGRATIONS PANEL — Auto-Capture + API/MCP Setup ──────────── -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--b1)">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;color:var(--gold);margin-bottom:10px">Integrations</div>
+
+      <!-- Meeting Auto-Capture stub -->
+      <div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);padding:11px 13px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <div style="font-size:12px;font-weight:600;color:var(--text)">Meeting Auto-Capture</div>
+          <span id="auto-capture-status" style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:0.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:3px;border:1px solid var(--b1)">SETUP REQUIRED</span>
+        </div>
+        <div style="font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:8px">Auto-populate meetings from Gmail, Outlook, and calendar without manual entry. Requires Firebase Blaze plan + Cloud Function for OAuth token exchange. <a href="https://firebase.google.com/pricing" target="_blank" style="color:var(--gold)">Upgrade Firebase →</a></div>
+        <button onclick="window._showAutoCaptureSetup()" style="padding:5px 12px;border:1px solid rgba(201,162,39,.4);border-radius:var(--rsm);background:transparent;color:var(--gold);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif">View Setup Steps</button>
+      </div>
+
+      <!-- API / MCP layer stub -->
+      <div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);padding:11px 13px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <div style="font-size:12px;font-weight:600;color:var(--text)">FLi Intelligence API / MCP</div>
+          <span id="mcp-api-status" style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:0.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 7px;border-radius:3px;border:1px solid var(--b1)">BACKEND REQUIRED</span>
+        </div>
+        <div style="font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:8px">Expose your entity graph to external AI tools (Claude, ChatGPT, Copilot) via MCP server. Requires hosted backend on Cloud Functions, Vercel, or Cloudflare Workers.</div>
+        <button onclick="window._showMcpSetup()" style="padding:5px 12px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif">View API Spec</button>
+      </div>
+    </div>
+
     <div style="border-top:1px solid var(--b1);padding-top:12px;display:flex;gap:7px;justify-content:space-between">
       <button class="btn btn-sm" id="signout-btn" style="color:var(--red);border-color:var(--red)">Sign Out</button>
       <div style="margin-bottom:10px;padding:10px 12px;background:var(--s2);border-radius:var(--rsm);border:1px solid var(--b1)">
@@ -8521,6 +8546,9 @@ function renderOppDetail(opp){
   h+='<select id="opp-stage-edit" onchange="updateOppStage(\''+opp.id+'\')" style="font-size:11px;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);color:var(--text)">';
   OPP_STAGES.forEach(function(s){h+='<option value="'+s.key+'"'+(s.key===opp.stage?' selected':'')+'>'+s.label+'</option>';});
   h+='</select>';
+  h+='<button onclick="window.openOppBriefing(\''+opp.id+'\')" class="export-btn" style="color:var(--gold);border-color:rgba(201,162,39,.5);background:rgba(201,162,39,.06)" title="Generate AI strategic briefing">\u25C6 Brief</button>';
+  h+='<button onclick="window.openTeamingIntel(\''+opp.id+'\')" class="export-btn" style="color:var(--green);border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.06)" title="Find named contacts at potential teaming partners">\u2295 Teaming</button>';
+  h+='<button onclick="window.openProposalEngine(\''+opp.id+'\')" class="export-btn" style="color:var(--purple);border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.06)" title="Full proposal engine — RFP to compliance matrix to drafted sections">\u25CE Proposal</button>';
   h+='<button onclick="exportOpportunity()" class="export-btn">&#8599; Export</button>';
   h+='<button onclick="deleteCurrentOpp()" style="padding:4px 8px;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:11px;cursor:pointer">Delete</button>';
   h+='</div></div>';
@@ -18603,6 +18631,7 @@ window.openEntityInspector = function(entityId) {
     if (typeof toast === 'function') toast('Entity not found in graph');
     return;
   }
+  window._currentInspectorEntity = entity;
   // Push to navigation stack for back-button
   if (window._entityInspectorStack[window._entityInspectorStack.length - 1] !== entityId) {
     window._entityInspectorStack.push(entityId);
@@ -18610,10 +18639,18 @@ window.openEntityInspector = function(entityId) {
   var content = document.getElementById('entity-inspector-content');
   var modal = document.getElementById('entity-inspector-modal');
   var backBtn = document.getElementById('entity-inspector-back-btn');
+  var corpBtn = document.getElementById('entity-inspector-corp-btn');
   if (!content || !modal) return;
   content.innerHTML = window._renderEntityInspector(entity);
   modal.style.display = 'flex';
   if (backBtn) backBtn.style.display = window._entityInspectorStack.length > 1 ? 'inline-flex' : 'none';
+  if (corpBtn) corpBtn.style.display = (entity.type === 'org') ? 'inline-flex' : 'none';
+};
+
+window._inspectorCorpIntelClick = function() {
+  if (window._currentInspectorEntity && window._currentInspectorEntity.type === 'org') {
+    window.openCorpIntel(window._currentInspectorEntity.id);
+  }
 };
 
 window._entityInspectorBack = function() {
@@ -19285,8 +19322,1299 @@ window.renderBdRhythm = function() {
   h += '</div>';
   h += '</div>';
 
+
+  // Budget Intel CTA — proactive entry point
+  h += '<div style="margin-top:18px;padding:18px 22px;border-top:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap">';
+  h += '  <div style="flex:1;min-width:240px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--purple);text-transform:uppercase;margin-bottom:4px">Pre-Solicitation Intelligence</div>';
+  h += '    <div style="font-size:13px;color:var(--text);line-height:1.5">Scan the President\'s Budget, FYDP marks, and congressional activity to find programs matching your capabilities 12-18 months before the RFP drops.</div>';
+  h += '  </div>';
+  h += '  <button onclick="window.openBudgetIntel()" style="padding:10px 18px;border:1px solid var(--purple);border-radius:var(--rsm);background:rgba(139,92,246,.1);color:var(--purple);font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:0.04em;flex-shrink:0">\u25C9 Budget Intel</button>';
+  h += '</div>';
+
+    return h;
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// OPPORTUNITY BRIEFINGS — One-click AI dossier per pursuit
+// Tier-2. Pulls everything tied to an opp via entity graph: meetings,
+// contacts, stances, commitments, risks, action items. Surfaces the
+// recommended next move.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._buildOppBriefingData = function(oppId) {
+  var opp = opportunities.find(function(o){return o.id===oppId;});
+  if (!opp) return null;
+
+  // All meetings tagged to this opp
+  var oppMtgs = meetings.filter(function(m){
+    return m.oppId === oppId || (opp.meetings||[]).indexOf(m.id) >= 0;
+  }).sort(function(a,b){
+    return new Date(b.ts).getTime() - new Date(a.ts).getTime();
+  });
+
+  // All contacts mentioned across these meetings (with stance history)
+  var contactMap = {};
+  oppMtgs.forEach(function(m) {
+    (m.intel && m.intel.keyPeople ? m.intel.keyPeople : []).forEach(function(p) {
+      if (!p.name) return;
+      var key = p.name;
+      if (!contactMap[key]) {
+        contactMap[key] = { name: p.name, role: p.role||'', org: p.org||'', stances: [], watchFor: [] };
+      }
+      if (p.stance) contactMap[key].stances.push({ stance: p.stance, date: m.meta && m.meta.date || '', mtg: m.meta && m.meta.title || 'Meeting' });
+      if (p.watchFor) contactMap[key].watchFor.push(p.watchFor);
+    });
+  });
+  var contacts = Object.values(contactMap);
+
+  // All open commitments tied to opp meetings
+  var openCmts = commitments.filter(function(c) {
+    if (!c || c.status === 'completed' || c.status === 'closed') return false;
+    return oppMtgs.some(function(m){ return c.sourceMtgId === m.id; });
+  }).sort(function(a,b){
+    var ad = new Date(a.due||0).getTime(), bd = new Date(b.due||0).getTime();
+    return ad - bd;
+  });
+
+  // All risks across opp meetings
+  var allRisks = [];
+  oppMtgs.forEach(function(m) {
+    (m.intel && m.intel.risks ? m.intel.risks : []).forEach(function(r) {
+      allRisks.push({
+        text: r.text || r.risk || '',
+        severity: r.severity || 'medium',
+        mtg: m.meta && m.meta.title || 'Meeting',
+        date: m.meta && m.meta.date || ''
+      });
+    });
+  });
+  // Sort by severity (high first)
+  var sevOrder = { high: 0, medium: 1, low: 2 };
+  allRisks.sort(function(a,b){ return (sevOrder[a.severity]||9) - (sevOrder[b.severity]||9); });
+
+  // All open action items
+  var openActions = [];
+  oppMtgs.forEach(function(m) {
+    (m.intel && m.intel.actionItems ? m.intel.actionItems : []).forEach(function(a) {
+      openActions.push({
+        text: a.text || a.task || '',
+        owner: a.owner || '',
+        deadline: a.deadline || '',
+        mtg: m.meta && m.meta.title || 'Meeting',
+        date: m.meta && m.meta.date || ''
+      });
+    });
+  });
+
+  // Last activity
+  var lastActivity = oppMtgs.length > 0 ? oppMtgs[0].ts : opp.updatedAt || opp.created;
+  var daysSinceLast = lastActivity ? Math.floor((Date.now() - new Date(lastActivity).getTime()) / 86400000) : null;
+
+  return {
+    opp: opp,
+    meetings: oppMtgs,
+    contacts: contacts,
+    commitments: openCmts,
+    risks: allRisks,
+    actions: openActions,
+    daysSinceLast: daysSinceLast,
+    lastActivity: lastActivity
+  };
+};
+
+window.openOppBriefing = async function(oppId) {
+  var data = window._buildOppBriefingData(oppId);
+  if (!data) { if (typeof toast === 'function') toast('Opportunity not found'); return; }
+
+  var modal = document.getElementById('opp-briefing-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'opp-briefing-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:920px;max-height:88vh;overflow-y:auto;padding:0">' +
+      '<div id="opp-briefing-content" style="padding:32px 36px"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+
+  // Render the briefing immediately with what we know
+  var content = document.getElementById('opp-briefing-content');
+  content.innerHTML = window._renderOppBriefing(data, null);
+  modal.style.display = 'flex';
+
+  // Then call AI for the strategic analysis layer
+  if (typeof apiKey !== 'undefined' && apiKey && typeof _callIntelClaude === 'function') {
+    try {
+      var aiInsight = await window._oppBriefingAI(data);
+      content.innerHTML = window._renderOppBriefing(data, aiInsight);
+    } catch (e) {
+      // AI failed — keep static briefing
+    }
+  }
+};
+
+window._oppBriefingAI = async function(data) {
+  var sp = 'You are a defense BD strategist. Given the briefing data for an active pursuit, produce a TIGHT strategic analysis. ' +
+    'Output exactly these sections, each 1-2 sentences max:\n' +
+    'POSITION: Where this pursuit stands right now. Be blunt about momentum.\n' +
+    'RISKS: The 1-2 risks most likely to kill this deal.\n' +
+    'NEXT MOVE: The single most important action this week. Be specific — name the contact or step.\n' +
+    'No preamble. No hedging. Defense BD operational language only.';
+
+  var lines = [];
+  lines.push('OPPORTUNITY: ' + data.opp.name);
+  lines.push('STAGE: ' + (data.opp.stage || 'unknown'));
+  if (data.opp.agency) lines.push('AGENCY: ' + data.opp.agency);
+  if (data.opp.value) lines.push('VALUE: ' + data.opp.value);
+  if (data.daysSinceLast !== null) lines.push('LAST ACTIVITY: ' + data.daysSinceLast + ' days ago');
+  lines.push('MEETINGS LOGGED: ' + data.meetings.length);
+  if (data.contacts.length) {
+    lines.push('\nKEY CONTACTS:');
+    data.contacts.slice(0,8).forEach(function(p){
+      var s = '- ' + p.name + (p.role?' ('+p.role+')':'') + (p.org?' @ '+p.org:'');
+      if (p.stances.length) s += ' — latest stance: ' + p.stances[p.stances.length-1].stance;
+      lines.push(s);
+    });
+  }
+  if (data.risks.length) {
+    lines.push('\nRISKS:');
+    data.risks.slice(0,6).forEach(function(r){
+      lines.push('- ['+(r.severity||'med').toUpperCase()+'] ' + r.text);
+    });
+  }
+  if (data.actions.length) {
+    lines.push('\nOPEN ACTIONS:');
+    data.actions.slice(0,8).forEach(function(a){
+      lines.push('- ' + a.text + (a.owner?' (owner: '+a.owner+')':'') + (a.deadline?' (due '+a.deadline+')':''));
+    });
+  }
+  if (data.commitments.length) {
+    lines.push('\nOPEN COMMITMENTS:');
+    data.commitments.slice(0,6).forEach(function(co){
+      var label = co.text || co.title || co.what || 'Commitment';
+      lines.push('- ' + label + (co.owner?' (owner: '+co.owner+')':'') + (co.due?' (due '+co.due+')':''));
+    });
+  }
+
+  var text = await _callIntelClaude(sp, lines.join('\n'), 600);
+  return text;
+};
+
+window._renderOppBriefing = function(data, aiText) {
+  var o = data.opp;
+  var stageColor = o.stage === 'submitted' ? 'var(--gold)' :
+                   o.stage === 'proposal'  ? 'var(--purple)' :
+                   o.stage === 'engaged'   ? 'var(--blue)' :
+                   o.stage === 'won'       ? 'var(--green)' :
+                   o.stage === 'lost'      ? 'var(--red)' : 'var(--t2)';
+
+  var h = '';
+
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:24px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--gold);text-transform:uppercase;margin-bottom:8px">Opportunity Briefing</div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-0.01em;margin-bottom:10px">' + _eiEsc(o.name || 'Untitled') + '</div>';
+  h += '    <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">';
+  h += '      <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:' + stageColor + ';text-transform:uppercase;letter-spacing:0.14em;background:' + stageColor.replace('var(','rgba(').replace(')',',.08)') + ';border:1px solid ' + stageColor + ';padding:4px 12px;border-radius:4px;font-weight:700">' + (o.stage||'unknown').toUpperCase() + '</span>';
+  if (o.agency) h += '      <span style="font-size:13px;color:var(--t2)">' + _eiEsc(o.agency) + '</span>';
+  if (o.value) h += '      <span style="font-size:13px;color:var(--gold);font-weight:600">' + _eiEsc(String(o.value)) + '</span>';
+  if (data.daysSinceLast !== null) {
+    var lastColor = data.daysSinceLast > 30 ? 'var(--red)' : data.daysSinceLast > 14 ? 'var(--amber)' : 'var(--t2)';
+    h += '      <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:' + lastColor + ';letter-spacing:0.06em">LAST ACTIVITY: ' + data.daysSinceLast + 'd AGO</span>';
+  }
+  h += '    </div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'opp-briefing-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u00D7</button>';
+  h += '</div>';
+
+  // KPI strip
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px">';
+  var kpis = [
+    { val: data.meetings.length, lbl: 'Meetings Logged', color: 'var(--gold)' },
+    { val: data.contacts.length, lbl: 'Stakeholders', color: 'var(--blue)' },
+    { val: data.actions.length, lbl: 'Open Actions', color: 'var(--amber)' },
+    { val: data.risks.length, lbl: 'Risks Surfaced', color: data.risks.length ? 'var(--red)' : 'var(--t3)' }
+  ];
+  kpis.forEach(function(k) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:18px 20px;position:relative;overflow:hidden">';
+    h += '<div style="position:absolute;top:0;left:0;right:0;height:2px;background:' + k.color + ';opacity:.5"></div>';
+    h += '<div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:38px;font-weight:800;color:' + k.color + ';line-height:1;letter-spacing:-0.02em">' + k.val + '</div>';
+    h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:8px">' + k.lbl + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // AI Strategic Analysis
+  if (aiText) {
+    h += '<div style="background:linear-gradient(135deg,rgba(201,162,39,.06),rgba(201,162,39,.02));border:1px solid rgba(201,162,39,.3);border-radius:var(--rlg);padding:24px 28px;margin-bottom:24px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">';
+    h += '<span style="width:5px;height:18px;background:var(--gold);border-radius:1px;box-shadow:0 0 12px rgba(201,162,39,.6)"></span>';
+    h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--gold)">Strategic Analysis</span>';
+    h += '</div>';
+    var sections = ['POSITION', 'RISKS', 'NEXT MOVE'];
+    sections.forEach(function(sec) {
+      var idx = aiText.toUpperCase().indexOf(sec);
+      if (idx === -1) return;
+      var nextIdx = -1;
+      sections.forEach(function(s2) { if (s2 !== sec) { var ni = aiText.toUpperCase().indexOf(s2, idx + sec.length); if (ni > -1 && (nextIdx === -1 || ni < nextIdx)) nextIdx = ni; } });
+      var content = aiText.slice(idx + sec.length, nextIdx > -1 ? nextIdx : undefined).replace(/^[\s:]+/, '').trim();
+      if (!content) return;
+      h += '<div style="margin-bottom:14px">';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.16em;color:var(--gold);text-transform:uppercase;margin-bottom:6px">' + sec + '</div>';
+      h += '<div style="font-size:14px;line-height:1.6;color:var(--text)">' + _eiEsc(content) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  } else {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:18px 24px;margin-bottom:24px;display:flex;align-items:center;gap:12px">';
+    h += '<span class="proc-dots"><span></span><span></span><span></span></span>';
+    h += '<span style="font-size:13px;color:var(--t2)">Generating strategic analysis...</span>';
+    h += '</div>';
+  }
+
+  // 2-column: Stakeholders + Risks
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">';
+
+  // Stakeholders
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px">';
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '<span style="width:5px;height:18px;background:var(--blue);border-radius:1px;box-shadow:0 0 10px rgba(59,130,246,.5)"></span>';
+  h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Stakeholders</span>';
+  h += '</div>';
+  if (data.contacts.length === 0) {
+    h += '<div style="font-size:13px;color:var(--t3);padding:14px 0">No stakeholders captured yet.</div>';
+  } else {
+    data.contacts.slice(0,6).forEach(function(p, i) {
+      var border = i < Math.min(data.contacts.length, 6) - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      var lastStance = p.stances.length ? p.stances[p.stances.length-1] : null;
+      h += '<div style="padding:12px 0;' + border + '">';
+      h += '<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">' + _eiEsc(p.name) + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--t3);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px">' + (p.role ? _eiEsc(p.role) : '') + (p.role && p.org ? ' \u00B7 ' : '') + (p.org ? _eiEsc(p.org) : '') + '</div>';
+      if (lastStance) {
+        h += '<div style="font-size:12px;color:var(--t2);line-height:1.5;font-style:italic">"' + _eiEsc(lastStance.stance.slice(0, 120)) + (lastStance.stance.length > 120 ? '\u2026' : '') + '"</div>';
+      }
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+
+  // Risks
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px">';
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '<span style="width:5px;height:18px;background:var(--red);border-radius:1px;box-shadow:0 0 10px rgba(239,68,68,.5)"></span>';
+  h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Risk Surface</span>';
+  h += '</div>';
+  if (data.risks.length === 0) {
+    h += '<div style="font-size:13px;color:var(--t3);padding:14px 0">No risks logged on this pursuit.</div>';
+  } else {
+    data.risks.slice(0,6).forEach(function(r, i) {
+      var border = i < Math.min(data.risks.length, 6) - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      var sevColor = r.severity === 'high' ? 'var(--red)' : r.severity === 'medium' ? 'var(--amber)' : 'var(--t2)';
+      h += '<div style="padding:12px 0;' + border + '">';
+      h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">';
+      h += '<div style="width:8px;height:8px;border-radius:50%;background:' + sevColor + ';box-shadow:0 0 8px ' + sevColor + '"></div>';
+      h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;letter-spacing:0.16em;color:' + sevColor + ';text-transform:uppercase;font-weight:700">' + (r.severity||'med') + '</span>';
+      h += '</div>';
+      h += '<div style="font-size:14px;line-height:1.5;color:var(--text)">' + _eiEsc(r.text) + '</div>';
+      if (r.mtg) h += '<div style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;letter-spacing:0.06em;margin-top:4px">FROM: ' + _eiEsc(r.mtg) + '</div>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+  h += '</div>';
+
+  // Open Actions + Commitments
+  if (data.actions.length || data.commitments.length) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+    h += '<span style="width:5px;height:18px;background:var(--amber);border-radius:1px;box-shadow:0 0 10px rgba(245,158,11,.5)"></span>';
+    h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Open Items</span>';
+    h += '</div>';
+    var allItems = data.actions.slice(0,5).map(function(a){return {type:'ACTION', text:a.text, owner:a.owner, due:a.deadline, src:a.mtg};})
+      .concat(data.commitments.slice(0,5).map(function(c){return {type:'COMMIT', text:c.text||c.title||c.what||'Commitment', owner:c.owner, due:c.due, src:''};}));
+    allItems.forEach(function(it, i) {
+      var border = i < allItems.length - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      var typeColor = it.type === 'COMMIT' ? 'var(--green)' : 'var(--amber)';
+      var isOverdue = it.due && new Date(it.due).getTime() < Date.now();
+      h += '<div style="padding:12px 0;' + border + '">';
+      h += '<div style="display:flex;align-items:flex-start;gap:14px">';
+      h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;letter-spacing:0.16em;color:' + typeColor + ';font-weight:700;flex-shrink:0;min-width:54px;padding-top:3px">' + it.type + '</span>';
+      h += '<div style="flex:1">';
+      h += '<div style="font-size:14px;line-height:1.5;color:var(--text)">' + _eiEsc(it.text) + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:' + (isOverdue?'var(--red)':'var(--t3)') + ';letter-spacing:0.06em;margin-top:4px">' + (it.owner?_eiEsc(it.owner).toUpperCase()+' \u00B7 ':'') + (it.due?(isOverdue?'OVERDUE \u00B7 ':'')+it.due:'NO DEADLINE') + '</div>';
+      h += '</div>';
+      h += '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
   return h;
 };
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// CORPORATE / ORGANIZATIONAL INTELLIGENCE
+// Tier-2/3. Track companies, not just people. Live AI-powered scan
+// surfacing M&A activity, leadership changes, FOCI exposure, supply chain.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._corpIntelCache = {};
+
+window.openCorpIntel = async function(orgId) {
+  var entity = window.getEntity(orgId);
+  if (!entity || entity.type !== 'org') {
+    if (typeof toast === 'function') toast('Organization not found');
+    return;
+  }
+  var org = entity.ref;
+
+  var modal = document.getElementById('corp-intel-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'corp-intel-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:880px;max-height:88vh;overflow-y:auto;padding:0">' +
+      '<div id="corp-intel-content" style="padding:32px 36px"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+
+  // Static structure first
+  var content = document.getElementById('corp-intel-content');
+  content.innerHTML = window._renderCorpIntel(org, null, true);
+  modal.style.display = 'flex';
+
+  // Run AI scan
+  if (typeof apiKey !== 'undefined' && apiKey && typeof _callIntelClaude === 'function') {
+    try {
+      var cached = window._corpIntelCache[orgId];
+      var cacheValid = cached && (Date.now() - cached.ts) < 4 * 60 * 60 * 1000; // 4 hours
+      var intel;
+      if (cacheValid) {
+        intel = cached.data;
+      } else {
+        intel = await window._runCorpIntelScan(org);
+        window._corpIntelCache[orgId] = { data: intel, ts: Date.now() };
+      }
+      content.innerHTML = window._renderCorpIntel(org, intel, false);
+    } catch (e) {
+      content.innerHTML = window._renderCorpIntel(org, { error: e.message }, false);
+    }
+  } else {
+    content.innerHTML = window._renderCorpIntel(org, { error: 'API key required for live intelligence scan' }, false);
+  }
+};
+
+window._runCorpIntelScan = async function(org) {
+  var sp = 'You are a defense industry corporate intelligence analyst. The user will provide an organization name. ' +
+    'Search the web and return a STRUCTURED intelligence brief with these EXACT sections:\n\n' +
+    'STATUS\nCurrent operational status. Public/private, parent company, ticker if applicable. 1-2 sentences.\n\n' +
+    'LEADERSHIP\nKey executives — CEO, CFO, defense/government affairs lead. Name + title each on its own line.\n\n' +
+    'RECENT ACTIVITY\n2-4 specific items from the last 90 days: contract awards, M&A, leadership changes, regulatory actions. Each on its own line with date + source URL.\n\n' +
+    'DEFENSE EXPOSURE\nWhat agencies they work with, what programs, what vehicles (IDIQs, OTAs). Cite specific contracts if known.\n\n' +
+    'RISKS\nFOCI exposure, CFIUS issues, supply chain concentration, cybersecurity incidents. Be specific.\n\n' +
+    'BD ANGLE\nFor a defense BD professional approaching this org: who to call, what to say, when to act. 2 sentences.\n\n' +
+    'CRITICAL: For every specific claim, include a source URL in parentheses. If you cannot verify, say "no public data" — never fabricate.';
+
+  var userMsg = 'Organization: ' + org.name;
+  if (org.govType) userMsg += '\nType: ' + org.govType;
+  if (org.notes) userMsg += '\nKnown context: ' + String(org.notes).slice(0, 400);
+  userMsg += '\n\nProduce the structured corporate intelligence brief now.';
+
+  var text = await _callIntelClaude(sp, userMsg, 1500);
+  return { text: text, scanned: Date.now() };
+};
+
+window._renderCorpIntel = function(org, intel, loading) {
+  var h = '';
+
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:24px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--blue);text-transform:uppercase;margin-bottom:8px">Corporate Intelligence</div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-0.01em;margin-bottom:10px">' + _eiEsc(org.name || 'Unknown') + '</div>';
+  if (org.govType) h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--t2);letter-spacing:0.1em;text-transform:uppercase">' + _eiEsc(org.govType) + '</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'corp-intel-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u00D7</button>';
+  h += '</div>';
+
+  if (loading) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:32px 28px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px">';
+    h += '<span class="proc-dots"><span></span><span></span><span></span></span>';
+    h += '<div style="font-size:14px;color:var(--text);font-weight:500">Running corporate intelligence scan...</div>';
+    h += '<div style="font-size:11px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;letter-spacing:0.12em">CHECKING DEFENSE EXPOSURE \u00B7 RECENT ACTIVITY \u00B7 LEADERSHIP</div>';
+    h += '</div>';
+    return h;
+  }
+
+  if (intel.error) {
+    h += '<div style="background:var(--s1);border:1px solid rgba(239,68,68,.4);border-radius:var(--rlg);padding:24px 28px;color:var(--red);font-size:14px">' + _eiEsc(intel.error) + '</div>';
+    return h;
+  }
+
+  // Parse the AI text into sections
+  var sections = [
+    { key: 'STATUS',         color: 'var(--text)',  label: 'Status' },
+    { key: 'LEADERSHIP',     color: 'var(--blue)',  label: 'Leadership' },
+    { key: 'RECENT ACTIVITY',color: 'var(--gold)',  label: 'Recent Activity' },
+    { key: 'DEFENSE EXPOSURE',color: 'var(--purple)',label: 'Defense Exposure' },
+    { key: 'RISKS',          color: 'var(--red)',   label: 'Risk Surface' },
+    { key: 'BD ANGLE',       color: 'var(--green)', label: 'BD Angle' }
+  ];
+
+  var text = intel.text || '';
+  sections.forEach(function(sec, i) {
+    var startIdx = text.toUpperCase().indexOf(sec.key);
+    if (startIdx === -1) return;
+    var nextIdx = -1;
+    for (var j = i + 1; j < sections.length; j++) {
+      var ni = text.toUpperCase().indexOf(sections[j].key, startIdx + sec.key.length);
+      if (ni > -1) { nextIdx = ni; break; }
+    }
+    var content = text.slice(startIdx + sec.key.length, nextIdx > -1 ? nextIdx : undefined).replace(/^[\s:]+/, '').trim();
+    if (!content) return;
+
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:22px 26px;margin-bottom:16px">';
+    h += '  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--b1)">';
+    h += '    <span style="width:5px;height:18px;background:' + sec.color + ';border-radius:1px;box-shadow:0 0 10px ' + sec.color + '"></span>';
+    h += '    <span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">' + sec.label + '</span>';
+    h += '  </div>';
+
+    // Format content — convert URLs to clickable links, preserve bullet structure
+    var formatted = content
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/(https?:\/\/[^\s)<]+)/g, '<a href="$1" target="_blank" style="color:var(--gold);text-decoration:none;border-bottom:1px dotted rgba(201,162,39,.4)" rel="noopener">$1</a>')
+      .replace(/^- (.*)$/gm, '<div style="display:flex;gap:10px;padding:4px 0"><span style="color:' + sec.color + ';flex-shrink:0">\u25B8</span><span style="flex:1">$1</span></div>')
+      .replace(/\n\n+/g, '</p><p style="margin:8px 0">')
+      .replace(/\n/g, '<br>');
+
+    h += '  <div style="font-size:14px;line-height:1.7;color:var(--text)">' + formatted + '</div>';
+    h += '</div>';
+  });
+
+  // Scan metadata
+  if (intel.scanned) {
+    var dt = new Date(intel.scanned);
+    h += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center">';
+    h += '  <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--t3);letter-spacing:0.12em">SCANNED: ' + dt.toLocaleString() + '</div>';
+    h += '  <button onclick="delete window._corpIntelCache[\'' + String(org.id||org.name).replace(/\'/g, '&#39;') + '\'];window.openCorpIntel(\'' + String(org.id||org.name).replace(/\'/g, '&#39;') + '\')" style="padding:5px 12px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif">\u21BB Refresh</button>';
+    h += '</div>';
+  }
+
+  return h;
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// TEAMING INTELLIGENCE v2 — Named-contact partner finder
+// Tier-2. For any opportunity, surfaces specific people at potential
+// teaming partners ranked by your relationship strength.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._buildTeamingIntelV2 = function(oppId) {
+  var opp = opportunities.find(function(o){ return o.id === oppId; });
+  if (!opp) return null;
+
+  // Identify opps competitors to exclude
+  var competitorNames = new Set();
+  opportunities.forEach(function(o) {
+    (o.competitors || '').split(',').forEach(function(s) {
+      if (s.trim()) competitorNames.add(s.trim().toLowerCase());
+    });
+  });
+
+  // Group person nodes by org, exclude competitors and government orgs
+  var orgPartners = {};
+  nodes.forEach(function(n) {
+    if (!n || n.type !== 'person' || !n.org) return;
+    var orgLow = n.org.toLowerCase();
+    if (competitorNames.has(orgLow)) return;
+    // Skip government affiliations
+    if (n.govType && ['PM','CO','COTR','Director','Budget','Tech','Legal','Congress'].indexOf(n.govType) >= 0) return;
+    if (!orgPartners[n.org]) {
+      orgPartners[n.org] = { org: n.org, contacts: [], totalScore: 0, totalMtgs: 0 };
+    }
+    orgPartners[n.org].contacts.push(n);
+  });
+
+  // Score each contact by: tier (40) + meetings logged (10/mtg) + recency (decays after 90d)
+  Object.values(orgPartners).forEach(function(group) {
+    group.contacts.forEach(function(n) {
+      var tierScore = n.priority === 1 ? 40 : n.priority === 2 ? 25 : 10;
+      var nodeMtgs = [];
+      try { nodeMtgs = (typeof getMtgsForNodeFast === 'function' ? getMtgsForNodeFast(n.id) : []) || []; } catch(e) {}
+      var mtgScore = Math.min(nodeMtgs.length * 10, 50);
+      var lastTs = 0;
+      nodeMtgs.forEach(function(m) {
+        if (m && m.ts) { var t = new Date(m.ts).getTime(); if (t > lastTs) lastTs = t; }
+      });
+      var recencyScore = 0;
+      if (lastTs > 0) {
+        var daysSince = (Date.now() - lastTs) / 86400000;
+        recencyScore = daysSince < 30 ? 30 : daysSince < 90 ? 20 : daysSince < 180 ? 10 : 0;
+      }
+      n._teamingScore = tierScore + mtgScore + recencyScore;
+      n._teamingMtgCount = nodeMtgs.length;
+      n._teamingDaysSince = lastTs ? Math.floor((Date.now() - lastTs) / 86400000) : null;
+      group.totalScore += n._teamingScore;
+      group.totalMtgs += nodeMtgs.length;
+    });
+    // Sort contacts within org by score
+    group.contacts.sort(function(a, b) { return b._teamingScore - a._teamingScore; });
+  });
+
+  // Convert to sorted array of orgs by total relationship strength
+  var partners = Object.values(orgPartners)
+    .filter(function(g) { return g.contacts.length > 0; })
+    .sort(function(a, b) { return b.totalScore - a.totalScore; });
+
+  return { opp: opp, partners: partners };
+};
+
+window.openTeamingIntel = function(oppId) {
+  var data = window._buildTeamingIntelV2(oppId);
+  if (!data) {
+    if (typeof toast === 'function') toast('Opportunity not found');
+    return;
+  }
+
+  var modal = document.getElementById('teaming-intel-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'teaming-intel-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:920px;max-height:88vh;overflow-y:auto;padding:0">' +
+      '<div id="teaming-intel-content" style="padding:32px 36px"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+
+  var content = document.getElementById('teaming-intel-content');
+  content.innerHTML = window._renderTeamingIntel(data);
+  modal.style.display = 'flex';
+};
+
+window._renderTeamingIntel = function(data) {
+  var h = '';
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:24px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--green);text-transform:uppercase;margin-bottom:8px">Teaming Intelligence</div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-0.01em;margin-bottom:10px">' + _eiEsc(data.opp.name || 'Pursuit') + '</div>';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--t2);letter-spacing:0.1em;text-transform:uppercase">Named contacts at potential teaming partners, ranked by relationship strength</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'teaming-intel-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u00D7</button>';
+  h += '</div>';
+
+  if (data.partners.length === 0) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:48px 32px;text-align:center">';
+    h += '<div style="font-size:16px;color:var(--text);font-weight:600;margin-bottom:8px">No partner contacts in your network yet</div>';
+    h += '<div style="font-size:13px;color:var(--t3);line-height:1.6;max-width:480px;margin:0 auto">As you add people from non-competing organizations and log meetings, they\'ll surface here ranked by your relationship strength.</div>';
+    h += '</div>';
+    return h;
+  }
+
+  // Top KPIs
+  var totalContacts = data.partners.reduce(function(sum, p) { return sum + p.contacts.length; }, 0);
+  var totalMtgs = data.partners.reduce(function(sum, p) { return sum + p.totalMtgs; }, 0);
+  var t1Count = data.partners.reduce(function(sum, p) {
+    return sum + p.contacts.filter(function(c){return c.priority===1;}).length;
+  }, 0);
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px">';
+  var kpis = [
+    { val: data.partners.length, lbl: 'Partner Orgs', color: 'var(--green)' },
+    { val: totalContacts, lbl: 'Named Contacts', color: 'var(--blue)' },
+    { val: t1Count, lbl: 'T1 Key Contacts', color: 'var(--gold)' },
+    { val: totalMtgs, lbl: 'Total Meetings', color: 'var(--purple)' }
+  ];
+  kpis.forEach(function(k) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:18px 20px;position:relative;overflow:hidden">';
+    h += '<div style="position:absolute;top:0;left:0;right:0;height:2px;background:' + k.color + ';opacity:.5"></div>';
+    h += '<div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:38px;font-weight:800;color:' + k.color + ';line-height:1;letter-spacing:-0.02em">' + k.val + '</div>';
+    h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:8px">' + k.lbl + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Partner cards — each org gets a card with its ranked named contacts
+  data.partners.slice(0, 12).forEach(function(p) {
+    var strengthLabel = p.totalScore >= 100 ? 'STRONG' : p.totalScore >= 60 ? 'WARM' : p.totalScore >= 30 ? 'KNOWN' : 'WEAK';
+    var strengthColor = p.totalScore >= 100 ? 'var(--green)' : p.totalScore >= 60 ? 'var(--gold)' : p.totalScore >= 30 ? 'var(--amber)' : 'var(--t2)';
+
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px;margin-bottom:14px">';
+    h += '  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+    h += '    <div style="display:flex;align-items:center;gap:14px">';
+    h += '      <div style="width:42px;height:42px;border-radius:50%;background:' + strengthColor.replace('var(','rgba(').replace(')',',.12)') + ';border:1.5px solid ' + strengthColor + ';display:flex;align-items:center;justify-content:center;font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;color:' + strengthColor + '">' + p.contacts.length + '</div>';
+    h += '      <div>';
+    h += '        <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:20px;font-weight:700;color:var(--text);letter-spacing:0.02em;line-height:1.2">' + _eiEsc(p.org) + '</div>';
+    h += '        <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--t3);text-transform:uppercase;margin-top:4px">' + p.contacts.length + ' contact' + (p.contacts.length !== 1 ? 's' : '') + ' \u00B7 ' + p.totalMtgs + ' meeting' + (p.totalMtgs !== 1 ? 's' : '') + '</div>';
+    h += '      </div>';
+    h += '    </div>';
+    h += '    <div style="text-align:right">';
+    h += '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:0.16em;color:' + strengthColor + ';text-transform:uppercase">' + strengthLabel + '</div>';
+    h += '      <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;color:' + strengthColor + ';line-height:1;margin-top:2px">' + p.totalScore + '</div>';
+    h += '    </div>';
+    h += '  </div>';
+
+    // Top 4 contacts at this org
+    p.contacts.slice(0, 4).forEach(function(n, ni) {
+      var border = ni < Math.min(p.contacts.length, 4) - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      var tierColor = n.priority === 1 ? 'var(--gold)' : n.priority === 2 ? 'var(--blue)' : 'var(--t2)';
+      var tierLabel = 'T' + (n.priority || 3);
+      var lastSeenLbl = n._teamingDaysSince === null ? 'NEVER MET' : n._teamingDaysSince + 'd AGO';
+      var lastSeenColor = n._teamingDaysSince === null ? 'var(--purple)' : n._teamingDaysSince > 90 ? 'var(--red)' : n._teamingDaysSince > 30 ? 'var(--amber)' : 'var(--green)';
+
+      h += '<div onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + String(n.id).replace(/\'/g, '&#39;') + '\')" style="display:flex;align-items:center;gap:18px;padding:14px 0;cursor:pointer;' + border + 'transition:transform .15s" onmouseover="this.style.transform=\'translateX(3px)\'" onmouseout="this.style.transform=\'translateX(0)\'">';
+      h += '  <div style="width:36px;height:36px;border-radius:50%;background:' + tierColor.replace('var(','rgba(').replace(')',',.1)') + ';border:1px solid ' + tierColor + ';display:flex;align-items:center;justify-content:center;font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:700;color:' + tierColor + ';flex-shrink:0">' + tierLabel + '</div>';
+      h += '  <div style="flex:1;min-width:0">';
+      h += '    <div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.3;margin-bottom:4px">' + _eiEsc(n.name || 'Unnamed') + '</div>';
+      h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--t3);letter-spacing:0.06em;text-transform:uppercase">' + (n.role ? _eiEsc(n.role) : 'NO ROLE') + ' \u00B7 ' + n._teamingMtgCount + ' MTG' + (n._teamingMtgCount !== 1 ? 'S' : '') + '</div>';
+      h += '  </div>';
+      h += '  <div style="text-align:right;flex-shrink:0">';
+      h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.1em;color:' + lastSeenColor + ';font-weight:700">' + lastSeenLbl + '</div>';
+      h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;color:var(--gold);line-height:1;margin-top:4px">' + n._teamingScore + '</div>';
+      h += '  </div>';
+      h += '</div>';
+    });
+
+    if (p.contacts.length > 4) {
+      h += '<div style="text-align:center;padding-top:12px;margin-top:8px;border-top:1px dashed var(--b1)">';
+      h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--t3);letter-spacing:0.16em;text-transform:uppercase">+ ' + (p.contacts.length - 4) + ' more contact' + (p.contacts.length - 4 !== 1 ? 's' : '') + ' at this org</span>';
+      h += '</div>';
+    }
+
+    h += '</div>';
+  });
+
+  return h;
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PRE-SOLICITATION BUDGET INTELLIGENCE
+// Tier-3. AI-powered scan of public defense budget data (President's
+// Budget, FYDP marks, congressional activity) to surface programs
+// matching your capabilities 12-18 months before the RFP drops.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._budgetIntelCache = {};
+
+window.openBudgetIntel = async function(presetAgency, presetCapabilities) {
+  var modal = document.getElementById('budget-intel-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'budget-intel-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:980px;max-height:90vh;overflow-y:auto;padding:0">' +
+      '<div id="budget-intel-content" style="padding:32px 36px"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+
+  var content = document.getElementById('budget-intel-content');
+  content.innerHTML = window._renderBudgetIntelForm(presetAgency || '', presetCapabilities || '');
+  modal.style.display = 'flex';
+};
+
+window._renderBudgetIntelForm = function(agency, capabilities) {
+  var h = '';
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:24px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--purple);text-transform:uppercase;margin-bottom:8px">Pre-Solicitation Budget Intelligence</div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-0.01em;margin-bottom:10px">Find programs before the RFP drops</div>';
+  h += '    <div style="font-size:13px;color:var(--t2);line-height:1.6;max-width:680px">Scans the President\'s Budget, FYDP marks, congressional activity, and program-of-record data to surface defense programs matching your capabilities 12-18 months before solicitation.</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'budget-intel-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u00D7</button>';
+  h += '</div>';
+
+  // Form
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:18px">';
+  h += '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">';
+  h += '    <div>';
+  h += '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">Target Agency / Service</div>';
+  h += '      <input type="text" id="bi-agency" value="' + _eiEsc(agency) + '" placeholder="e.g. Army, DARPA, SOCOM, MDA, Space Force" style="width:100%;padding:12px 14px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-family:Outfit,sans-serif;font-size:14px;box-sizing:border-box">';
+  h += '    </div>';
+  h += '    <div>';
+  h += '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">Fiscal Year Focus</div>';
+  h += '      <select id="bi-fy" style="width:100%;padding:12px 14px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-family:Outfit,sans-serif;font-size:14px;box-sizing:border-box">';
+  h += '        <option value="FY26">FY26 (current pres budget)</option>';
+  h += '        <option value="FY27">FY27 (out-year planning)</option>';
+  h += '        <option value="FY25">FY25 (executing)</option>';
+  h += '      </select>';
+  h += '    </div>';
+  h += '  </div>';
+  h += '  <div style="margin-bottom:18px">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">Your Capabilities</div>';
+  h += '    <textarea id="bi-capabilities" placeholder="e.g. autonomous ISR, AI-enabled C2, hypersonics, electronic warfare, cyber, space situational awareness" style="width:100%;padding:12px 14px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-family:Outfit,sans-serif;font-size:14px;box-sizing:border-box;min-height:80px;resize:vertical">' + _eiEsc(capabilities) + '</textarea>';
+  h += '  </div>';
+  h += '  <button onclick="window._runBudgetIntelScan()" id="bi-run-btn" style="padding:12px 24px;border:1px solid var(--purple);border-radius:var(--rsm);background:rgba(139,92,246,.1);color:var(--purple);font-size:13px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:0.04em">\u25C9 Run Budget Intelligence Scan</button>';
+  h += '  <span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--t3);margin-left:14px;letter-spacing:0.08em">~3-5 API calls \u00B7 60-90 seconds</span>';
+  h += '</div>';
+
+  h += '<div id="budget-intel-results"></div>';
+
+  return h;
+};
+
+window._runBudgetIntelScan = async function() {
+  if (typeof apiKey === 'undefined' || !apiKey) {
+    if (typeof toast === 'function') toast('Add API key in Settings to run budget intel');
+    return;
+  }
+  var agency = document.getElementById('bi-agency').value.trim();
+  var fy = document.getElementById('bi-fy').value;
+  var capabilities = document.getElementById('bi-capabilities').value.trim();
+  if (!agency || !capabilities) {
+    if (typeof toast === 'function') toast('Agency and capabilities are required');
+    return;
+  }
+
+  var btn = document.getElementById('bi-run-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="proc-dots"><span></span><span></span><span></span></span> Scanning'; }
+
+  var resultsEl = document.getElementById('budget-intel-results');
+  resultsEl.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:32px 28px;text-align:center">' +
+    '<div style="display:inline-flex;align-items:center;gap:12px"><span class="proc-dots"><span></span><span></span><span></span></span>' +
+    '<span style="font-size:14px;color:var(--text)">Scanning ' + _eiEsc(agency) + ' budget signals for ' + fy + '...</span></div>' +
+    '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--t3);letter-spacing:0.12em;margin-top:14px">PRESIDENT\'S BUDGET \u00B7 FYDP \u00B7 CONGRESSIONAL MARKS \u00B7 PROGRAM OF RECORD</div>' +
+    '</div>';
+
+  var sp = 'You are a defense budget intelligence analyst. Search the web and produce a structured pre-solicitation intelligence brief. ' +
+    'Use the EXACT section structure below:\n\n' +
+    'BUDGET CONTEXT\nTotal ' + agency + ' ' + fy + ' budget posture in 1-2 sentences. Cite source URL.\n\n' +
+    'PROGRAMS MATCHING CAPABILITIES\nList 4-7 specific program lines or budget activities matching the user\'s capabilities. For each: program name, dollar amount, fiscal year(s), current acquisition status (pre-solicitation / RFI / draft RFP / RFP released / awarded), and source URL. Format each as a numbered item.\n\n' +
+    'CONGRESSIONAL ACTIVITY\nRecent (last 90 days) congressional marks, hearings, NDAA provisions affecting these programs. Cite specific bills/hearings with URLs.\n\n' +
+    'PROCUREMENT TIMELINE\nFor each major program, estimated solicitation timeline based on budget cycle and historical patterns. Be specific: month/quarter ranges.\n\n' +
+    'BD ANGLE\nFor a defense BD professional with these capabilities, the 3 highest-priority programs to start engaging on now. State why each is timed right.\n\n' +
+    'CRITICAL: Every claim needs a source URL in parentheses. If not verifiable, state "no public data" rather than fabricating.';
+
+  var userMsg = 'Agency: ' + agency + '\n' +
+    'Fiscal Year: ' + fy + '\n' +
+    'Capabilities: ' + capabilities + '\n\n' +
+    'Produce the pre-solicitation budget intelligence brief now.';
+
+  try {
+    var text = await _callIntelClaude(sp, userMsg, 2200);
+    resultsEl.innerHTML = window._renderBudgetIntelResults({ agency: agency, fy: fy, capabilities: capabilities, text: text, scanned: Date.now() });
+  } catch (e) {
+    resultsEl.innerHTML = '<div style="background:var(--s1);border:1px solid rgba(239,68,68,.4);border-radius:var(--rlg);padding:24px 28px;color:var(--red);font-size:14px">Scan failed: ' + _eiEsc(e.message || 'Unknown error') + '</div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '\u25C9 Run Budget Intelligence Scan'; }
+  }
+};
+
+window._renderBudgetIntelResults = function(data) {
+  var sections = [
+    { key: 'BUDGET CONTEXT',           color: 'var(--text)',    label: 'Budget Context' },
+    { key: 'PROGRAMS MATCHING CAPABILITIES', color: 'var(--gold)', label: 'Matched Programs' },
+    { key: 'CONGRESSIONAL ACTIVITY',   color: 'var(--blue)',    label: 'Congressional Activity' },
+    { key: 'PROCUREMENT TIMELINE',     color: 'var(--purple)',  label: 'Procurement Timeline' },
+    { key: 'BD ANGLE',                 color: 'var(--green)',   label: 'BD Angle' }
+  ];
+
+  var h = '';
+  var text = data.text || '';
+
+  sections.forEach(function(sec, i) {
+    var startIdx = text.toUpperCase().indexOf(sec.key);
+    if (startIdx === -1) return;
+    var nextIdx = -1;
+    for (var j = i + 1; j < sections.length; j++) {
+      var ni = text.toUpperCase().indexOf(sections[j].key, startIdx + sec.key.length);
+      if (ni > -1) { nextIdx = ni; break; }
+    }
+    var content = text.slice(startIdx + sec.key.length, nextIdx > -1 ? nextIdx : undefined).replace(/^[\s:]+/, '').trim();
+    if (!content) return;
+
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:14px">';
+    h += '  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--b1)">';
+    h += '    <span style="width:5px;height:18px;background:' + sec.color + ';border-radius:1px;box-shadow:0 0 10px ' + sec.color + '"></span>';
+    h += '    <span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">' + sec.label + '</span>';
+    h += '  </div>';
+
+    var formatted = content
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/(https?:\/\/[^\s)<]+)/g, '<a href="$1" target="_blank" style="color:var(--gold);text-decoration:none;border-bottom:1px dotted rgba(201,162,39,.4);word-break:break-all" rel="noopener">$1</a>')
+      .replace(/^(\d+)\.\s+(.*)$/gm, '<div style="display:flex;gap:14px;padding:10px 0;border-bottom:1px solid rgba(26,48,80,.3)"><span style="font-family:\'JetBrains Mono\',monospace;color:' + sec.color + ';font-weight:700;flex-shrink:0;min-width:24px">$1.</span><span style="flex:1">$2</span></div>')
+      .replace(/^- (.*)$/gm, '<div style="display:flex;gap:10px;padding:4px 0"><span style="color:' + sec.color + ';flex-shrink:0">\u25B8</span><span style="flex:1">$1</span></div>')
+      .replace(/\n\n+/g, '</p><p style="margin:10px 0">')
+      .replace(/\n/g, '<br>');
+
+    h += '  <div style="font-size:14px;line-height:1.7;color:var(--text)">' + formatted + '</div>';
+    h += '</div>';
+  });
+
+  // Metadata footer
+  if (data.scanned) {
+    var dt = new Date(data.scanned);
+    h += '<div style="margin-top:18px;padding:14px 22px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);display:flex;justify-content:space-between;align-items:center">';
+    h += '  <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--t3);letter-spacing:0.12em">SCANNED: ' + dt.toLocaleString() + ' \u00B7 ' + _eiEsc(data.agency) + ' \u00B7 ' + _eiEsc(data.fy) + '</div>';
+    h += '  <button onclick="window._runBudgetIntelScan()" style="padding:6px 14px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:\'Outfit\',sans-serif;letter-spacing:0.04em">\u21BB Re-scan</button>';
+    h += '</div>';
+  }
+
+  return h;
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PROPOSAL ENGINE v2 — Full RFP → compliance matrix → drafted sections
+// Tier-3. Paste RFP text. AI extracts Section L (instructions) and
+// Section M (evaluation criteria), builds compliance matrix mapped to
+// your library and meeting intel, drafts each section, flags gaps.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._proposalEngineState = { rfpText: '', structure: null, matrix: null, drafts: {}, currentOppId: null };
+
+window.openProposalEngine = function(presetOppId) {
+  var modal = document.getElementById('proposal-engine-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'proposal-engine-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:1100px;max-height:92vh;overflow-y:auto;padding:0">' +
+      '<div id="proposal-engine-content" style="padding:32px 36px"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+
+  if (presetOppId) window._proposalEngineState.currentOppId = presetOppId;
+
+  var content = document.getElementById('proposal-engine-content');
+  content.innerHTML = window._renderProposalEngine();
+  modal.style.display = 'flex';
+};
+
+window._renderProposalEngine = function() {
+  var s = window._proposalEngineState;
+
+  var h = '';
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:24px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--gold);text-transform:uppercase;margin-bottom:8px">Proposal Engine</div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-0.01em;margin-bottom:10px">RFP \u2192 Compliance Matrix \u2192 Drafted Sections</div>';
+  h += '    <div style="font-size:13px;color:var(--t2);line-height:1.6;max-width:680px">Paste an RFP. AI extracts Section L instructions and Section M evaluation criteria, maps each requirement to your proposal library and meeting intel, and drafts each response section with citations.</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'proposal-engine-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u00D7</button>';
+  h += '</div>';
+
+  // Step indicator
+  h += '<div style="display:flex;gap:8px;margin-bottom:24px">';
+  var steps = [
+    { num: 1, label: 'Ingest RFP', done: !!s.rfpText, current: !s.rfpText },
+    { num: 2, label: 'Extract Structure', done: !!s.structure, current: s.rfpText && !s.structure },
+    { num: 3, label: 'Compliance Matrix', done: !!s.matrix, current: s.structure && !s.matrix },
+    { num: 4, label: 'Draft Sections', done: Object.keys(s.drafts).length > 0, current: s.matrix && Object.keys(s.drafts).length === 0 }
+  ];
+  steps.forEach(function(st) {
+    var color = st.done ? 'var(--green)' : st.current ? 'var(--gold)' : 'var(--t3)';
+    var bg = st.done ? 'rgba(34,197,94,.08)' : st.current ? 'rgba(201,162,39,.08)' : 'transparent';
+    h += '<div style="flex:1;background:' + bg + ';border:1px solid ' + color + ';border-radius:var(--rsm);padding:12px 16px">';
+    h += '<div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;color:' + color + ';line-height:1">' + st.num + '</div>';
+    h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:' + color + ';text-transform:uppercase;margin-top:4px">' + st.label + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Step 1: Paste RFP
+  if (!s.rfpText || !s.structure) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">';
+    h += '<span style="width:5px;height:18px;background:var(--gold);border-radius:1px;box-shadow:0 0 10px var(--gold)"></span>';
+    h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Step 1 — Paste RFP / Solicitation</span>';
+    h += '</div>';
+    h += '<textarea id="pe-rfp-input" placeholder="Paste the full RFP text here. Include Section L (instructions to offerors), Section M (evaluation criteria), Statement of Work, deliverables, and any attachments." style="width:100%;padding:14px 16px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-family:JetBrains Mono,monospace;font-size:12px;line-height:1.6;box-sizing:border-box;min-height:280px;resize:vertical">' + _eiEsc(s.rfpText || '') + '</textarea>';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">';
+    h += '  <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--t3);letter-spacing:0.08em">~3 API calls \u00B7 90-120 sec total</div>';
+    h += '  <button onclick="window._proposalEngineExtract()" id="pe-extract-btn" style="padding:12px 24px;border:1px solid var(--gold);border-radius:var(--rsm);background:rgba(201,162,39,.1);color:var(--gold);font-size:13px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:0.04em">\u25C9 Extract Structure</button>';
+    h += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  // Step 2 done: Show structure
+  if (s.structure) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--b1)">';
+    h += '<span style="width:5px;height:18px;background:var(--green);border-radius:1px;box-shadow:0 0 10px var(--green)"></span>';
+    h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Extracted Structure</span>';
+    h += '<button onclick="window._proposalEngineState.rfpText=\'\';window._proposalEngineState.structure=null;window._proposalEngineState.matrix=null;window._proposalEngineState.drafts={};document.getElementById(\'proposal-engine-content\').innerHTML=window._renderProposalEngine()" style="margin-left:auto;padding:5px 12px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:11px;cursor:pointer">Reset</button>';
+    h += '</div>';
+    h += '<div style="font-size:14px;line-height:1.65;color:var(--text);white-space:pre-wrap">' + _eiEsc(s.structure) + '</div>';
+    h += '</div>';
+  }
+
+  // Step 3: Build compliance matrix
+  if (s.structure && !s.matrix) {
+    h += '<div style="text-align:center;padding:24px 0">';
+    h += '<button onclick="window._proposalEngineMatrix()" id="pe-matrix-btn" style="padding:14px 28px;border:1px solid var(--gold);border-radius:var(--rsm);background:rgba(201,162,39,.1);color:var(--gold);font-size:14px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:0.04em">\u25C9 Build Compliance Matrix</button>';
+    h += '</div>';
+    return h;
+  }
+
+  // Step 3 done: Show matrix
+  if (s.matrix) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--b1)">';
+    h += '<span style="width:5px;height:18px;background:var(--blue);border-radius:1px;box-shadow:0 0 10px var(--blue)"></span>';
+    h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Compliance Matrix</span>';
+    h += '</div>';
+    h += '<div style="font-size:14px;line-height:1.7;color:var(--text);white-space:pre-wrap">' + _eiEsc(s.matrix) + '</div>';
+    h += '</div>';
+  }
+
+  // Step 4: Draft sections
+  if (s.matrix && Object.keys(s.drafts).length === 0) {
+    h += '<div style="text-align:center;padding:24px 0">';
+    h += '<button onclick="window._proposalEngineDraft()" id="pe-draft-btn" style="padding:14px 28px;border:1px solid var(--gold);border-radius:var(--rsm);background:rgba(201,162,39,.1);color:var(--gold);font-size:14px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:0.04em">\u25C9 Draft All Sections</button>';
+    h += '</div>';
+  }
+
+  if (Object.keys(s.drafts).length > 0) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--b1)">';
+    h += '<span style="width:5px;height:18px;background:var(--green);border-radius:1px;box-shadow:0 0 10px var(--green)"></span>';
+    h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Drafted Sections</span>';
+    h += '<button onclick="window._proposalEngineExportAll()" style="margin-left:auto;padding:6px 14px;border:1px solid var(--gold);border-radius:var(--rsm);background:rgba(201,162,39,.1);color:var(--gold);font-size:11px;cursor:pointer;font-family:Outfit,sans-serif">\u25BC Export All</button>';
+    h += '</div>';
+    Object.keys(s.drafts).forEach(function(secKey) {
+      h += '<div style="border-bottom:1px solid var(--b1);padding:18px 0">';
+      h += '<div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:16px;font-weight:700;color:var(--gold);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.04em">' + _eiEsc(secKey) + '</div>';
+      h += '<div style="font-size:14px;line-height:1.7;color:var(--text);white-space:pre-wrap;background:var(--s2);padding:18px 22px;border-radius:var(--rsm);border:1px solid var(--b1)">' + _eiEsc(s.drafts[secKey]) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  return h;
+};
+
+window._proposalEngineExtract = async function() {
+  if (typeof apiKey === 'undefined' || !apiKey) {
+    if (typeof toast === 'function') toast('Add API key in Settings');
+    return;
+  }
+  var rfpText = document.getElementById('pe-rfp-input').value.trim();
+  if (!rfpText) { if (typeof toast === 'function') toast('Paste the RFP first'); return; }
+  if (rfpText.length > 60000) rfpText = rfpText.slice(0, 60000);
+
+  window._proposalEngineState.rfpText = rfpText;
+
+  var btn = document.getElementById('pe-extract-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="proc-dots"><span></span><span></span><span></span></span> Extracting'; }
+
+  var sp = 'You are a defense proposal capture analyst. The user will paste an RFP. Produce a STRUCTURED extraction with these EXACT sections:\n\n' +
+    'SOLICITATION META\nSolicitation number, agency, contract type (FFP/CPFF/T&M/IDIQ/OTA), period of performance, estimated value if stated. Each on own line.\n\n' +
+    'KEY DATES\nProposal due date, questions deadline, anticipated award. Each on own line.\n\n' +
+    'SECTION L INSTRUCTIONS\nList every numbered/lettered Section L requirement. Format: "L.N: requirement text". Be exhaustive.\n\n' +
+    'SECTION M EVALUATION FACTORS\nList every evaluation factor and subfactor with relative importance. Format: "M.N: factor (importance)". Be exhaustive.\n\n' +
+    'STATEMENT OF WORK / OBJECTIVES\nKey deliverables, technical requirements, and performance objectives. Numbered list.\n\n' +
+    'COMPLIANCE NOTES\nAny page limits, font requirements, format constraints, classification handling, or special clauses (FAR, DFARS, OTAs).\n\n' +
+    'No preamble. No commentary. Just structured extraction.';
+
+  try {
+    var text = await _callIntelClaude(sp, rfpText, 3000);
+    window._proposalEngineState.structure = text;
+    document.getElementById('proposal-engine-content').innerHTML = window._renderProposalEngine();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Extraction failed: ' + (e.message || 'Error'));
+    if (btn) { btn.disabled = false; btn.innerHTML = '\u25C9 Extract Structure'; }
+  }
+};
+
+window._proposalEngineMatrix = async function() {
+  if (typeof apiKey === 'undefined' || !apiKey) return;
+  var s = window._proposalEngineState;
+  if (!s.structure) return;
+
+  var btn = document.getElementById('pe-matrix-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="proc-dots"><span></span><span></span><span></span></span> Building'; }
+
+  // Pull in any library sections + meeting intel for context
+  var libraryContext = '';
+  try {
+    if (typeof librarySections !== 'undefined' && librarySections && librarySections.length) {
+      libraryContext = 'PROPOSAL LIBRARY (existing reusable sections):\n';
+      librarySections.slice(0, 12).forEach(function(sec) {
+        libraryContext += '- ' + (sec.title || 'Untitled') + ' [' + (sec.category || 'Other') + ']: ' + (sec.content||'').slice(0, 200) + '\n';
+      });
+    }
+  } catch (e) {}
+
+  // Pull recent meeting intel relevant to opp if linked
+  var oppContext = '';
+  if (s.currentOppId) {
+    try {
+      var oppData = window._buildOppBriefingData(s.currentOppId);
+      if (oppData) {
+        oppContext = '\nMEETING INTEL FROM RELATED PURSUIT:\n';
+        oppData.contacts.slice(0, 5).forEach(function(p) {
+          oppContext += '- ' + p.name + (p.role?' ('+p.role+')':'') + ': ' + (p.stances.length ? p.stances[p.stances.length-1].stance : '');
+          oppContext += '\n';
+        });
+      }
+    } catch (e) {}
+  }
+
+  var sp = 'You are a defense proposal compliance analyst. Given an extracted RFP structure, build a compliance matrix in MARKDOWN TABLE format.\n\n' +
+    'Structure each row: | Section L Req | Section M Factor | Required Content | Maps to Library | Maps to Meeting Intel | Status |\n\n' +
+    'For each Section L item: identify the corresponding Section M evaluation factor, summarize what we must include in our response, note which library section is closest match, note any meeting intel that should inform the response, and mark status as: COMPLETE (library matches well), PARTIAL (need to extend library), or GAP (must write from scratch).\n\n' +
+    'Be specific. Be honest about gaps. This is operational, not aspirational.';
+
+  var userMsg = 'EXTRACTED RFP STRUCTURE:\n' + s.structure + '\n\n' + libraryContext + oppContext;
+
+  try {
+    var text = await _callIntelClaude(sp, userMsg, 3000);
+    window._proposalEngineState.matrix = text;
+    document.getElementById('proposal-engine-content').innerHTML = window._renderProposalEngine();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Matrix build failed: ' + (e.message || 'Error'));
+    if (btn) { btn.disabled = false; btn.innerHTML = '\u25C9 Build Compliance Matrix'; }
+  }
+};
+
+window._proposalEngineDraft = async function() {
+  if (typeof apiKey === 'undefined' || !apiKey) return;
+  var s = window._proposalEngineState;
+  if (!s.matrix) return;
+
+  var btn = document.getElementById('pe-draft-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="proc-dots"><span></span><span></span><span></span></span> Drafting'; }
+
+  // Standard defense proposal sections
+  var sectionsToWrite = [
+    { key: 'Executive Summary', desc: 'Concise summary of approach, value proposition, key differentiators. 1 page equivalent.' },
+    { key: 'Technical Approach', desc: 'How we will execute the technical requirements. Address specific Section M factors.' },
+    { key: 'Management Approach', desc: 'Team structure, key personnel approach, risk management, communication.' },
+    { key: 'Past Performance', desc: 'Most relevant past performance citations with quantified outcomes.' }
+  ];
+
+  var libraryContext = '';
+  try {
+    if (typeof librarySections !== 'undefined' && librarySections && librarySections.length) {
+      libraryContext = 'PROPOSAL LIBRARY:\n' + librarySections.slice(0, 8).map(function(sec){
+        return '[' + (sec.category||'Other') + '] ' + (sec.title||'') + '\n' + (sec.content||'').slice(0, 600);
+      }).join('\n\n');
+    }
+  } catch (e) {}
+
+  var drafts = {};
+  for (var i = 0; i < sectionsToWrite.length; i++) {
+    var sec = sectionsToWrite[i];
+    if (btn) btn.innerHTML = '<span class="proc-dots"><span></span><span></span><span></span></span> Drafting ' + sec.key + ' (' + (i+1) + '/' + sectionsToWrite.length + ')';
+
+    var sp = 'You are a defense proposal writer. Draft the "' + sec.key + '" section of a proposal response. ' + sec.desc + '\n\n' +
+      'Reference specific Section L instructions and Section M evaluation factors from the RFP. ' +
+      'Where the proposal library has relevant content, adapt it. Where there are gaps, mark them clearly with [GAP: brief description of what we need to add].\n\n' +
+      'Tone: professional, defense-grade, specific. No fluff. No marketing language. Cite past performance with quantified outcomes where possible.';
+
+    var userMsg = 'RFP STRUCTURE:\n' + s.structure.slice(0, 5000) + '\n\n' +
+      'COMPLIANCE MATRIX:\n' + s.matrix + '\n\n' +
+      libraryContext + '\n\n' +
+      'Now draft the ' + sec.key + ' section.';
+
+    try {
+      var text = await _callIntelClaude(sp, userMsg, 2500);
+      drafts[sec.key] = text;
+      window._proposalEngineState.drafts = drafts;
+      document.getElementById('proposal-engine-content').innerHTML = window._renderProposalEngine();
+    } catch (e) {
+      drafts[sec.key] = '[ERROR: ' + (e.message || 'draft failed') + ']';
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '\u25C9 Draft All Sections'; }
+};
+
+window._proposalEngineExportAll = function() {
+  var s = window._proposalEngineState;
+  var content = '';
+  content += '=== PROPOSAL DRAFT — ' + new Date().toLocaleDateString() + ' ===\n\n';
+  content += '=== EXTRACTED RFP STRUCTURE ===\n' + (s.structure || '') + '\n\n';
+  content += '=== COMPLIANCE MATRIX ===\n' + (s.matrix || '') + '\n\n';
+  Object.keys(s.drafts).forEach(function(k) {
+    content += '\n=== ' + k.toUpperCase() + ' ===\n' + s.drafts[k] + '\n';
+  });
+
+  var blob = new Blob([content], { type: 'text/plain' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'proposal-draft-' + new Date().toISOString().slice(0,10) + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// INTEGRATION SETUP HELPERS — Auto-Capture + MCP API
+// Tier-3 stubs. UI is ready; backend stand-up is the user's next step.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._showAutoCaptureSetup = function() {
+  var modal = document.getElementById('auto-capture-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'auto-capture-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:780px;max-height:88vh;overflow-y:auto;padding:0">' +
+      '<div style="padding:32px 36px">' + window._renderAutoCaptureSetup() + '</div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+};
+
+window._renderAutoCaptureSetup = function() {
+  var h = '';
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:24px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--gold);text-transform:uppercase;margin-bottom:8px">Meeting Auto-Capture Setup</div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:28px;font-weight:700;color:var(--text);line-height:1.15;letter-spacing:-0.01em;margin-bottom:8px">Capture every meeting without lifting a finger</div>';
+  h += '    <div style="font-size:13px;color:var(--t2);line-height:1.6">Once configured, FLiIntel polls your Gmail, Outlook, and calendar in the background and creates meeting records automatically — attendees, dates, agendas, follow-ups. Manual entry becomes optional.</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'auto-capture-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u00D7</button>';
+  h += '</div>';
+
+  h += '<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.3);border-radius:var(--rlg);padding:18px 22px;margin-bottom:24px;display:flex;align-items:center;gap:14px">';
+  h += '  <span style="font-size:24px">\u26A0</span>';
+  h += '  <div><div style="font-size:13px;font-weight:700;color:var(--amber);margin-bottom:3px">Backend infrastructure required</div>';
+  h += '    <div style="font-size:12px;color:var(--t2);line-height:1.55">This integration cannot run in a browser-only architecture. OAuth tokens must be exchanged server-side. The setup steps below stand up the minimum required backend.</div>';
+  h += '  </div>';
+  h += '</div>';
+
+  var steps = [
+    { num: '01', title: 'Upgrade Firebase to Blaze', desc: 'Pay-as-you-go plan (~$5-25/mo at typical usage). Required for Cloud Functions. Free Spark plan blocks server-side code.', link: 'https://console.firebase.google.com/project/_/usage/details', linkText: 'Open Firebase Console' },
+    { num: '02', title: 'Create Google Cloud OAuth Client', desc: 'In Google Cloud Console, create OAuth 2.0 credentials with scopes: gmail.readonly, calendar.readonly. Add redirect URI: https://<your-project>.cloudfunctions.net/oauthCallback', link: 'https://console.cloud.google.com/apis/credentials', linkText: 'Open GCP Credentials' },
+    { num: '03', title: 'Deploy Cloud Function for OAuth Exchange', desc: 'Deploy the FLiIntel sync function to Firebase. It exchanges OAuth codes for refresh tokens, polls Gmail/Calendar every 15 minutes, parses meeting metadata, and writes to the meetings node in your Firebase RTDB.', link: '', linkText: '' },
+    { num: '04', title: 'Configure Microsoft Graph (optional)', desc: 'For Outlook coverage, register an Azure AD app with Mail.Read and Calendars.Read scopes. Same Cloud Function pattern with MS Graph endpoint.', link: 'https://entra.microsoft.com', linkText: 'Open Microsoft Entra' },
+    { num: '05', title: 'Connect Account from FLiIntel', desc: 'Once backend is live, this Settings panel will show "Connect Gmail" / "Connect Outlook" buttons. Click to authorize. Meetings start flowing within 15 minutes of the first email.', link: '', linkText: '' }
+  ];
+
+  steps.forEach(function(step, i) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:20px 24px;margin-bottom:12px;display:flex;gap:18px">';
+    h += '  <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:32px;font-weight:800;color:var(--gold);line-height:1;flex-shrink:0;letter-spacing:-0.02em">' + step.num + '</div>';
+    h += '  <div style="flex:1">';
+    h += '    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">' + step.title + '</div>';
+    h += '    <div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:' + (step.link ? '10px' : '0') + '">' + step.desc + '</div>';
+    if (step.link) {
+      h += '    <a href="' + step.link + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border:1px solid var(--gold);border-radius:var(--rsm);background:rgba(201,162,39,.08);color:var(--gold);font-size:11px;font-weight:600;text-decoration:none;font-family:\'Outfit\',sans-serif">' + step.linkText + ' \u2192</a>';
+    }
+    h += '  </div>';
+    h += '</div>';
+  });
+
+  h += '<div style="margin-top:20px;padding:18px 22px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.3);border-radius:var(--rlg)">';
+  h += '  <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--green);text-transform:uppercase;margin-bottom:8px">Estimated Cost</div>';
+  h += '  <div style="font-size:13px;color:var(--text);line-height:1.6">Firebase Blaze: $5-25/mo at typical usage \u00B7 Google Cloud OAuth: free \u00B7 Cloud Function compute: $0-5/mo. Total: ~$10-30/mo to run auto-capture.</div>';
+  h += '</div>';
+
+  return h;
+};
+
+window._showMcpSetup = function() {
+  var modal = document.getElementById('mcp-api-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'mcp-api-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:880px;max-height:90vh;overflow-y:auto;padding:0">' +
+      '<div style="padding:32px 36px">' + window._renderMcpSetup() + '</div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+};
+
+window._renderMcpSetup = function() {
+  var h = '';
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:24px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--purple);text-transform:uppercase;margin-bottom:8px">FLi Intelligence API \u00B7 MCP Server</div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:28px;font-weight:700;color:var(--text);line-height:1.15;letter-spacing:-0.01em;margin-bottom:8px">Make FLiIntel queryable from any AI</div>';
+  h += '    <div style="font-size:13px;color:var(--t2);line-height:1.6">Expose your entity graph as a Model Context Protocol (MCP) server. Once deployed, Claude Desktop, ChatGPT, and Microsoft Copilot can query your relationships, meetings, opportunities, and commitments directly. The platform becomes a data source, not a silo.</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'mcp-api-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">\u00D7</button>';
+  h += '</div>';
+
+  // Endpoint specification
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:14px">';
+  h += '  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '    <span style="width:5px;height:18px;background:var(--purple);border-radius:1px;box-shadow:0 0 10px var(--purple)"></span>';
+  h += '    <span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">MCP Tool Specification</span>';
+  h += '  </div>';
+
+  var tools = [
+    { name: 'get_entity', desc: 'Lookup any entity (person, org, meeting, opp, commitment) by ID. Returns full record + relationships.' },
+    { name: 'search_entities', desc: 'Free-text search across all entities. Returns ranked matches with type and ID.' },
+    { name: 'traverse_graph', desc: 'Traverse the entity graph from a starting entity to depth N. Returns subgraph.' },
+    { name: 'list_active_opps', desc: 'List active opportunities with stage, value, agency, days-since-last-touch.' },
+    { name: 'list_cooling_contacts', desc: 'Surface T1/T2 contacts with no recent meeting. Configurable threshold.' },
+    { name: 'query_meetings', desc: 'Filter meetings by date range, attendee, opp, agency, keyword. Returns full intel records.' },
+    { name: 'get_briefing', desc: 'Generate a structured briefing for any opportunity or contact. Returns markdown brief.' }
+  ];
+  tools.forEach(function(t) {
+    h += '<div style="padding:14px 0;border-bottom:1px solid rgba(26,48,80,.4);display:flex;gap:18px">';
+    h += '<code style="font-family:\'JetBrains Mono\',monospace;font-size:13px;color:var(--purple);font-weight:600;background:rgba(139,92,246,.1);padding:4px 10px;border-radius:4px;flex-shrink:0;align-self:flex-start;border:1px solid rgba(139,92,246,.25)">' + t.name + '</code>';
+    h += '<div style="font-size:13px;color:var(--text);line-height:1.6;flex:1">' + t.desc + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Deployment options
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 28px;margin-bottom:14px">';
+  h += '  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '    <span style="width:5px;height:18px;background:var(--blue);border-radius:1px;box-shadow:0 0 10px var(--blue)"></span>';
+  h += '    <span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Deployment Options</span>';
+  h += '  </div>';
+
+  var options = [
+    { name: 'Cloudflare Workers', cost: '$0-5/mo', desc: 'Best price/performance. Zero cold start. Free tier covers most usage. Native MCP support via @modelcontextprotocol/sdk.' },
+    { name: 'Vercel Serverless', cost: '$0-20/mo', desc: 'Easiest deployment. Hobby tier free for personal use. Pro tier ($20/mo) needed for production usage at scale.' },
+    { name: 'Firebase Cloud Functions', cost: '$0-15/mo', desc: 'Same backend as your existing Firebase. Stays in one ecosystem. Slight cold start latency on first request after idle.' }
+  ];
+  options.forEach(function(opt) {
+    h += '<div style="padding:14px 0;border-bottom:1px solid rgba(26,48,80,.4)">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    h += '<div style="font-size:14px;font-weight:600;color:var(--text)">' + opt.name + '</div>';
+    h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--green);font-weight:700;letter-spacing:0.06em">' + opt.cost + '</div>';
+    h += '</div>';
+    h += '<div style="font-size:12px;color:var(--t2);line-height:1.6">' + opt.desc + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Authentication
+  h += '<div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.3);border-radius:var(--rlg);padding:18px 22px">';
+  h += '  <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--green);text-transform:uppercase;margin-bottom:8px">Auth Model</div>';
+  h += '  <div style="font-size:13px;color:var(--text);line-height:1.6">API access uses Firebase Auth tokens. Each external AI session authenticates as a workspace member with the same row-level access controls. Workspaces remain isolated. Read-only by default; write tools require explicit role assignment.</div>';
+  h += '</div>';
+
+  return h;
+};
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -20737,6 +22065,7 @@ function _updateTicker() {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div class="modal-title" style="margin-bottom:0">Entity Inspector</div>
       <div style="display:flex;gap:7px;align-items:center">
+        <button class="btn btn-sm" id="entity-inspector-corp-btn" onclick="window._inspectorCorpIntelClick()" style="display:none;color:var(--blue);border-color:rgba(59,130,246,.4);font-size:10px;background:rgba(59,130,246,.06)" title="Run corporate intelligence scan">&#9678; Corp Intel</button>
         <button class="btn btn-sm" id="entity-inspector-back-btn" onclick="window._entityInspectorBack()" style="display:none;font-size:10px">&larr; Back</button>
         <button class="btn btn-sm" onclick="closeModal('entity-inspector-modal')" style="font-size:10px">Close</button>
       </div>
