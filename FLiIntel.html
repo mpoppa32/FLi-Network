@@ -3731,6 +3731,15 @@ div[aria-label*="One Tap" i]{
       </div>
     </div>
 
+    <!-- SAM.GOV API KEY -->
+    <div style="margin-bottom:12px;padding:11px 13px;background:var(--s2);border:1px solid rgba(52,211,153,.3);border-radius:var(--r)">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--green);margin-bottom:4px">SAM.GOV API KEY</div>
+      <div style="font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:8px">Powers the SBIR/STTR opportunity scanner. Free at sam.gov.</div>
+      <input id="samgov-key-input" type="password" placeholder="SAM.gov API key..." style="width:100%;padding:7px 10px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--rsm);color:var(--text);font-size:11px;box-sizing:border-box;font-family:'JetBrains Mono',monospace;margin-bottom:7px" />
+      <button onclick="window._saveSamGovKey()" style="padding:6px 14px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);border-radius:var(--rsm);color:var(--green);font-size:11px;cursor:pointer;font-family:'Outfit',sans-serif;width:100%">Save SAM.gov Key</button>
+      <div id="samgov-save-status" style="font-size:10px;color:var(--green);margin-top:4px;text-align:center"></div>
+    </div>
+
     <!-- DEEPGRAM KEY: enhanced transcription -->
     <div style="margin-bottom:12px;padding:11px 13px;background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.2);border-radius:var(--r)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
@@ -7807,6 +7816,9 @@ function wireListeners(){
   try {
     var savedEp = localStorage.getItem('flintel_mcp_endpoint') || '';
     var savedTk = localStorage.getItem('flintel_mcp_token') || '';
+    var sgEl=document.getElementById('samgov-key-input');
+    var sgKey=localStorage.getItem('flintel_samgov_key')||'';
+    if(sgEl&&sgKey)sgEl.value=sgKey;
     var epEl = document.getElementById('mcp-endpoint-input');
     var tkEl = document.getElementById('mcp-token-input');
     if (epEl && savedEp) epEl.value = savedEp;
@@ -20561,6 +20573,15 @@ window._renderAutoCaptureSetup = function() {
   h += '</div>';
 
   return h;
+};
+
+window._saveSamGovKey = function() {
+  var key = (document.getElementById('samgov-key-input').value||'').trim();
+  if (!key) { document.getElementById('samgov-save-status').textContent='Enter your key'; return; }
+  try { localStorage.setItem('flintel_samgov_key', key); } catch(e) {}
+  if (typeof fbSet==='function'&&currentWsId) fbSet(wsPath('settings/samGovKey'), key);
+  var st=document.getElementById('samgov-save-status');
+  st.textContent='✓ Saved'; setTimeout(function(){st.textContent='';},3000);
 };
 
 window._saveMcpConfig = function() {
