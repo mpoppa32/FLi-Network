@@ -2566,6 +2566,64 @@ div[aria-label*="One Tap" i]{
   top:-9999px !important;
   left:-9999px !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOARD READABILITY — Bigger text, more space for premium feel
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Board content: minimum readable font sizes inside cards */
+#board-body{
+  padding:8px 0
+}
+#board-body .card{
+  padding:16px 18px !important;
+  margin-bottom:12px !important
+}
+#board-body .ctitle{
+  font-size:12px !important;
+  letter-spacing:0.14em !important;
+  margin-bottom:12px !important
+}
+/* Inside-card content — bump font sizes */
+#board-body .card div[style*="font-size:11px"]:not(.cmd-section-meta){
+  font-size:12px !important
+}
+#board-body .card div[style*="font-size:10px"]:not([class*="meta"]){
+  font-size:11px !important
+}
+#board-body .card div[style*="font-size:9px"]:not([class*="meta"]):not([class*="font-family"]){
+  font-size:10px !important
+}
+/* Section titles — bigger, more prominent */
+#board-body .cmd-section-title{
+  font-size:16px !important;
+  margin:24px 0 14px !important;
+  padding:0 4px
+}
+#board-body .cmd-section-title::before{
+  width:5px !important;
+  height:18px !important
+}
+#board-body .cmd-section-meta{
+  font-size:10px !important;
+  letter-spacing:0.16em !important
+}
+
+/* irow data rows — better breathing */
+#board-body .irow{
+  padding:10px 0 !important;
+  font-size:13px !important;
+  line-height:1.5 !important
+}
+#board-body .irow + .irow{
+  border-top:1px solid rgba(26,48,80,.3)
+}
+
+/* Force minimum padding on g2/g4 grids inside Board */
+#board-body .g2,
+#board-body .g4{
+  gap:14px !important
+}
 </style>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -5083,7 +5141,7 @@ async function _callPersonBriefClaude(d,ctx){
 
   var sp='You are a defense BD intelligence analyst generating a TACTICAL CONTACT BRIEF on '+d.name+'. This brief is for someone about to interact with this person — they need to walk in knowing exactly who they are, where they stand, and what to do.'+govTypeContext+'\n\n'    +'Output EXACTLY this structure with these exact section headers (all caps, on their own line):\n\n'    +'WHO THEY ARE\n'    +'3-4 sentences: their actual role in the ecosystem, their decision authority, what they control or influence, how long they have been in this network. Be specific — not generic.\n\n'    +'STANCE TRAJECTORY\n'    +'How has their position evolved? Show the arc — where they started, what shifted it, where they are now. Quote their actual stance language if available. One sentence on whether the trend is improving or declining.\n\n'    +'WHAT DRIVES THEM\n'    +'Based on what they say and what they ask about: their actual priorities, concerns, and motivations. What do they consistently push on? What do they avoid? What do they need from this relationship?\n\n'    +'WATCH OUT FOR\n'    +'Specific landmines: what topics have derailed conversations, what commitments they made and did not keep, what signals of discomfort or disengagement to watch for. Be specific — no generic warnings.\n\n'    +'WHAT HAS CHANGED\n'    +'Since last contact: what has happened in the broader context that affects this relationship? New risks, new opportunities, shifts in their org or the programs they are tied to. If nothing significant has changed, say so directly.\n\n'    +'RECOMMENDED NEXT MOVE\n'    +'One specific action. Not a category — an actual move: who to contact, what to say, what to ask for, what to bring to the conversation. Based entirely on the intelligence available.\n\n'    +'Keep the entire brief under 400 words. Direct. Specific. No fluff. If data is thin (few meetings), be honest about the limits of the intelligence and focus on what is known.';
 
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:900,system:sp,messages:[{role:'user',content:ctx.text}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:900,system:sp,messages:[{role:'user',content:ctx.text}]});
   var d2=await res.json();
   return(d2.content||[]).map(function(b){return b.text||'';}).join('');
 }
@@ -6063,7 +6121,7 @@ async function _callIntelClaude(systemPrompt, userMessage, maxTokens) {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5-20250929',
         max_tokens: maxTokens,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         system: systemPrompt,
@@ -9245,7 +9303,7 @@ async function _callMemoryClaude(query,context){
     +'- End with a brief "Key takeaway:" one-liner if there is a clear one';
 
   var res=await _apiFetch(apiKey,{
-      model:'claude-sonnet-4-6',
+      model:'claude-sonnet-4-5-20250929',
       max_tokens:600,
       system:systemPrompt,
       messages:[{role:'user',content:context}]
@@ -9646,7 +9704,7 @@ async function callClaudeTranscript(notes,meta){
     +' Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';
 
   var res=await _apiFetch(apiKey,{
-      model:'claude-sonnet-4-6',
+      model:'claude-sonnet-4-5-20250929',
       max_tokens:4000, // higher — transcripts yield more data
       system:sp,
       messages:[{role:'user',content:'Date: '+meta.date+'\nType: '+meta.type+'\nAttendees: '+(meta.att||'see transcript')+'\n\nIMPORTANT: Every speaker in the transcript must appear in keyPeople. Attribute all findings to named speakers.\n\nVERBATIM TRANSCRIPT:\n'+notes}]
@@ -9694,7 +9752,7 @@ async function callClaude(notes,meta){
     if(knownCos.length)canonicalNote+=' Companies: '+knownCos.join(', ')+'.';
   }
   var sp='You are a meeting intelligence analyst for a defense technology company. Extract maximum actionable value. Use speaker labels for attribution. CRITICAL: Every person listed in the Attendees field MUST appear in keyPeople. Every company or organization mentioned anywhere MUST appear in companies. Return ONLY valid JSON, no markdown.'+canonicalNote+' Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:3000,system:sp,messages:[{role:'user',content:'Date:'+meta.date+' Type:'+meta.type+' Attendees:'+(meta.att||'?')+'\n\nIMPORTANT: All attendees must appear in keyPeople.\n\nTRANSCRIPT:\n'+notes}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:3000,system:sp,messages:[{role:'user',content:'Date:'+meta.date+' Type:'+meta.type+' Attendees:'+(meta.att||'?')+'\n\nIMPORTANT: All attendees must appear in keyPeople.\n\nTRANSCRIPT:\n'+notes}]});
   var d=await res.json();var txt=(d.content||[]).map(function(b){return b.text||'';}).join('');var clean=txt.replace(/```json|```/g,'').trim();var fi=clean.indexOf('{'),la=clean.lastIndexOf('}');if(fi===-1||la===-1)throw new Error('No JSON in response');var js=clean.slice(fi,la+1);try{return JSON.parse(js);}catch(e){var fixed=js;var eo=(fixed.match(/\[/g)||[]).length-(fixed.match(/\]/g)||[]).length;var ec=(fixed.match(/\{/g)||[]).length-(fixed.match(/\}/g)||[]).length;for(var i=0;i<eo;i++)fixed+=']';for(var j=0;j<ec;j++)fixed+='}';return JSON.parse(fixed);}
 }
 
@@ -9886,7 +9944,7 @@ async function _callPrepClaude(title,atts,context){
   var systemPrompt='You are preparing a defense BD operator for a meeting. Your brief is tactical, specific, and based entirely on actual meeting history provided. Never fabricate. Never hedge.\n\nOutput EXACTLY this structure with these exact headers (all caps, on their own line):\n\nSITUATION READ\n[2-3 sentences: where things stand before walking in, the stakes]\n\n[ATTENDEE NAME IN CAPS] — INTELLIGENCE\n[For each attendee: their role, current stance, what drives them, what they want]\n\nYOUR OBJECTIVES\n[What must be accomplished in this meeting. Be specific.]\n\nPUSH ON THIS\n[3-5 specific asks or pivots to make. Concrete and actionable.]\n\nDO NOT BRING UP\n[Landmines, failed topics, sensitive history, things that will derail this meeting. Be honest.]\n\nWHAT HAS CHANGED\n[Delta since last contact: new risks, new information, shifts in position or context]\n\nEXPECT FROM THEM\n[What they will likely ask, push back on, or want from you]\n\nWALK IN KNOWING\n[One sentence. The single most important thing about this meeting.]\n\nTotal length: 350-500 words. No bullet points in prose sections. Direct. Specific. No hedging.';
 
   var res=await _apiFetch(apiKey,{
-      model:'claude-sonnet-4-6',
+      model:'claude-sonnet-4-5-20250929',
       max_tokens:900,
       system:systemPrompt,
       messages:[{role:'user',content:context._text||String(context)}]
@@ -10190,7 +10248,7 @@ Numbered list of 5 specific actions ranked by strategic importance. Be directive
 Keep the entire brief under 500 words. No fluff. No hedging. This person is busy and needs to act.`;
 
   try{
-    var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:1200,system:sp,messages:[{role:'user',content:context+(externalIntelSection||'')}]});
+    var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:1200,system:sp,messages:[{role:'user',content:context+(externalIntelSection||'')}]});
     var d=await res.json();
     var text=(d.content||[]).map(function(b){return b.text||'';}).join('');
 
@@ -10507,7 +10565,7 @@ YOUR FIRST WEEK
 
 Keep the brief under 900 words. Write with authority and specificity. This is not a summary — it is a briefing.`;
 
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:1800,system:sp,messages:[{role:'user',content:context}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:1800,system:sp,messages:[{role:'user',content:context}]});
   var d=await res.json();
   return(d.content||[]).map(function(b){return b.text||'';}).join('');
 }
@@ -11425,7 +11483,7 @@ if(openCommits.length){
   h+=renderCommitmentsSection();
   h+='</div>';
 }
-if(allIns.length){h+='<div class="cmd-section-title"><span>Strategic Insights</span><span class="cmd-section-meta">Learning Bank</span></div>';h+='<div class="card"><div class="ctitle">Learning Bank -- '+allIns.length+' insights</div><div style="columns:2;column-gap:14px">';allIns.slice(0,16).forEach(function(ins,i){h+='<div style="break-inside:avoid;margin-bottom:6px;display:flex;gap:6px"><span style="font-size:9px;font-family:\'JetBrains Mono\',monospace;color:var(--t3);flex-shrink:0;padding-top:2px">'+String(i+1).padStart(2,'0')+'</span><span style="font-size:12px;line-height:1.5">'+ins+'</span></div>';});h+='</div></div>';}
+if(allIns.length){h+='<div class="cmd-section-title" style="margin-top:32px"><span>Strategic Insights</span><span class="cmd-section-meta">Learning Bank \u00B7 '+allIns.length+' Insights</span></div>';h+='<div style="background:linear-gradient(180deg,rgba(13,24,40,.6),rgba(8,15,26,.6));border:1px solid var(--b1);border-radius:var(--rlg);padding:28px 32px;margin-bottom:14px">';h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px 32px">';allIns.slice(0,12).forEach(function(ins,i){var num=String(i+1).padStart(2,'0');h+='<div style="display:flex;gap:18px;padding:16px 0;border-bottom:1px solid rgba(26,48,80,.35)">';h+='<div style="width:34px;height:34px;border-radius:50%;background:rgba(201,162,39,.08);border:1px solid rgba(201,162,39,.35);color:var(--gold);font-family:Barlow Condensed,Outfit,sans-serif;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;letter-spacing:0.02em">'+num+'</div>';h+='<div style="font-size:14px;line-height:1.65;color:var(--text);flex:1;font-weight:400">'+ins+'</div>';h+='</div>';});if(allIns.length>12){h+='<div style="grid-column:1/-1;text-align:center;padding-top:18px;margin-top:8px;border-top:1px dashed var(--b1)"><span style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--t3);letter-spacing:0.16em;text-transform:uppercase">+ '+(allIns.length-12)+' more insights in archive</span></div>';}h+='</div>';h+='</div>';}
 
 // ── INTRODUCTION RECOMMENDATIONS ──────────────────────────────
 // Proactive: "This week, seek these intros." Uses active opportunities +
@@ -12259,7 +12317,7 @@ async function _callNarrativeClaude(d,meetings){
     +'Paragraph 3: Where it stands now. Current disposition, what they need from us, what we need from them, the single most important thing to know about this relationship going forward.\n\n'
     +'Be specific. Reference actual dates and meeting names. Never fabricate. Under 300 words total.';
 
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:600,system:sp,messages:[{role:'user',content:ctx}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:600,system:sp,messages:[{role:'user',content:ctx}]});
   var d2=await res.json();
   return(d2.content||[]).map(function(b){return b.text||'';}).join('');
 }
@@ -18754,71 +18812,110 @@ window._buildCopData = function() {
 
 window.renderCopSection = function() {
   var d = window._buildCopData();
-  var h = '<div class="cmd-section-title"><span>Live Intelligence</span><span class="cmd-section-meta">What\'s Changing</span></div>';
 
-  // 4-cell COP status strip
-  h += '<div class="cmd-kpi-strip stagger-in" style="margin-bottom:10px">';
-  h += '  <div class="board-kpi"><div class="board-kpi-val" style="color:' + (d.recentMtgsCount > 0 ? 'var(--green)' : 'var(--t3)') + '">' + d.recentMtgsCount + '</div><div class="board-kpi-lbl">Meetings (7d)</div></div>';
-  h += '  <div class="board-kpi"><div class="board-kpi-val" style="color:' + (d.dueSoonCount > 0 ? 'var(--amber)' : 'var(--t3)') + '">' + d.dueSoonCount + '</div><div class="board-kpi-lbl">Due Soon (7d)</div></div>';
-  h += '  <div class="board-kpi"><div class="board-kpi-val" style="color:' + (d.overdueCount > 0 ? 'var(--red)' : 'var(--t3)') + '">' + d.overdueCount + '</div><div class="board-kpi-lbl">Overdue</div></div>';
-  h += '  <div class="board-kpi"><div class="board-kpi-val" style="color:' + (d.staleCount > 0 ? 'var(--purple)' : 'var(--t3)') + '">' + d.staleCount + '</div><div class="board-kpi-lbl">Stale Contacts</div></div>';
+  var h = '';
+  // Section header — proper magazine-style hierarchy
+  h += '<div style="margin:32px 0 18px 0;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--b1);padding-bottom:12px">';
+  h += '  <div style="display:flex;align-items:baseline;gap:14px">';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;letter-spacing:0.02em;color:var(--text);line-height:1">Live Intelligence</div>';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--t3);text-transform:uppercase">What\'s Changing</div>';
+  h += '  </div>';
+  h += '  <div style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease-in-out infinite"></span><span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--green);text-transform:uppercase">Live</span></div>';
   h += '</div>';
 
-  // Two-column grid: stale contacts + due soon
-  h += '<div class="g2" style="gap:10px">';
+  // KPI row — 4 large display cards with breathing room
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">';
+  var kpis = [
+    { val: d.recentMtgsCount, lbl: 'Meetings This Week', color: d.recentMtgsCount > 0 ? 'var(--green)' : 'var(--t3)', sub: 'Last 7 days' },
+    { val: d.dueSoonCount, lbl: 'Due Soon', color: d.dueSoonCount > 0 ? 'var(--amber)' : 'var(--t3)', sub: 'Next 7 days' },
+    { val: d.overdueCount, lbl: 'Overdue', color: d.overdueCount > 0 ? 'var(--red)' : 'var(--t3)', sub: 'Past deadline' },
+    { val: d.staleCount, lbl: 'Cooling Contacts', color: d.staleCount > 0 ? 'var(--purple)' : 'var(--t3)', sub: 'No touch 30d+' }
+  ];
+  kpis.forEach(function(k) {
+    h += '<div style="background:linear-gradient(180deg,rgba(13,24,40,.6),rgba(8,15,26,.6));border:1px solid var(--b1);border-radius:var(--rlg);padding:20px 22px;position:relative;overflow:hidden">';
+    h += '  <div style="position:absolute;top:0;left:0;right:0;height:2px;background:' + k.color + ';opacity:.5"></div>';
+    h += '  <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:48px;font-weight:800;color:' + k.color + ';line-height:1;letter-spacing:-0.02em;text-shadow:0 0 24px ' + k.color + '40">' + k.val + '</div>';
+    h += '  <div style="font-size:13px;font-weight:600;color:var(--text);margin-top:10px;line-height:1.3">' + k.lbl + '</div>';
+    h += '  <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:4px">' + k.sub + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
 
-  // Stale contacts card
-  h += '<div class="card"><div class="ctitle">Cooling Relationships</div>';
+  // 2-column detail panels — generous padding
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px">';
+
+  // ── COOLING RELATIONSHIPS ──
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '<div style="display:flex;align-items:center;gap:12px">';
+  h += '<span style="width:5px;height:22px;background:var(--purple);border-radius:1px;box-shadow:0 0 12px rgba(139,92,246,.6)"></span>';
+  h += '<div><div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Cooling Relationships</div>';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:2px">Priority contacts going dark</div></div>';
+  h += '</div>';
+  h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:700;color:var(--purple);letter-spacing:0.1em">' + d.staleCount + ' / ' + d.staleCount + '</span>';
+  h += '</div>';
+
   if (d.stale.length === 0) {
-    h += '<div style="font-size:11px;color:var(--t3);padding:8px 0">All key contacts are warm. Nice work.</div>';
+    h += '<div style="font-size:14px;color:var(--t2);padding:24px 0;line-height:1.6;text-align:center">All key contacts are warm.<br><span style="font-size:11px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;letter-spacing:0.1em;text-transform:uppercase;margin-top:6px;display:inline-block">Strong cadence</span></div>';
   } else {
-    d.stale.forEach(function(item) {
+    d.stale.forEach(function(item, i) {
       var n = item.node;
-      var daysLbl = item.daysSince >= 999 ? 'never' : (item.daysSince + 'd');
-      var color = item.daysSince > 60 ? 'var(--red)' : item.daysSince > 30 ? 'var(--amber)' : 'var(--t2)';
-      h += '<div class="irow" onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + String(n.id).replace(/'/g,'&#39;') + '\')" style="cursor:pointer">';
-      h += '  <div class="dot" style="background:' + color + '"></div>';
-      h += '  <div style="flex:1;min-width:0">';
-      h += '    <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _eiEsc(n.name || '') + '</div>';
-      h += '    <div style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">' + (n.priority === 1 ? 'T1' : 'T2') + (n.org ? ' \u2022 ' + _eiEsc(n.org) : '') + '</div>';
-      h += '  </div>';
-      h += '  <div style="font-size:10px;color:' + color + ';font-family:\'JetBrains Mono\',monospace;font-weight:600">' + daysLbl + '</div>';
+      var daysLbl = item.daysSince >= 999 ? 'NEVER' : item.daysSince + 'd';
+      var color = item.daysSince > 60 ? 'var(--red)' : item.daysSince > 30 ? 'var(--amber)' : 'var(--purple)';
+      var sevLbl = item.daysSince > 60 ? 'CRITICAL' : item.daysSince > 30 ? 'WARNING' : 'WATCH';
+      var border = i < d.stale.length - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      h += '<div onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + String(n.id).replace(/\'/g,'&#39;') + '\')" style="display:flex;align-items:center;gap:16px;padding:16px 0;cursor:pointer;' + border + 'transition:all .15s" onmouseover="this.style.transform=\'translateX(3px)\'" onmouseout="this.style.transform=\'translateX(0)\'">';
+      h += '<div style="width:10px;height:10px;border-radius:50%;background:' + color + ';box-shadow:0 0 10px ' + color + ';flex-shrink:0"></div>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.3;margin-bottom:5px">' + _eiEsc(n.name || '') + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.06em;color:var(--t3);text-transform:uppercase">' + (n.priority === 1 ? 'T1 KEY' : 'T2 ACTIVE') + (n.org ? ' \u00B7 ' + _eiEsc(n.org) : '') + '</div>';
+      h += '</div>';
+      h += '<div style="text-align:right;flex-shrink:0">';
+      h += '<div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:22px;font-weight:700;color:' + color + ';line-height:1;letter-spacing:-0.02em">' + daysLbl + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:0.16em;color:' + color + ';text-transform:uppercase;margin-top:4px">' + sevLbl + '</div>';
+      h += '</div>';
       h += '</div>';
     });
   }
   h += '</div>';
 
-  // Due Soon card
-  h += '<div class="card"><div class="ctitle">Due This Week</div>';
+  // ── DUE THIS WEEK ──
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '<div style="display:flex;align-items:center;gap:12px">';
+  h += '<span style="width:5px;height:22px;background:var(--amber);border-radius:1px;box-shadow:0 0 12px rgba(245,158,11,.6)"></span>';
+  h += '<div><div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Due This Week</div>';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:2px">Commitments and deadlines</div></div>';
+  h += '</div>';
+  h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:0.1em">' + (d.overdueCount + d.dueSoonCount) + ' ITEMS</span>';
+  h += '</div>';
+
   if (d.dueSoon.length === 0 && d.overdue.length === 0) {
-    h += '<div style="font-size:11px;color:var(--t3);padding:8px 0">No commitments due in the next 7 days.</div>';
+    h += '<div style="font-size:14px;color:var(--t2);padding:24px 0;line-height:1.6;text-align:center">No commitments due in the next 7 days.<br><span style="font-size:11px;color:var(--t3);font-family:\'JetBrains Mono\',monospace;letter-spacing:0.1em;text-transform:uppercase;margin-top:6px;display:inline-block">Inbox clear</span></div>';
   } else {
-    d.overdue.forEach(function(c) {
-      var label = c.text || c.title || c.what || 'Commitment';
-      h += '<div class="irow" style="border-left:2px solid var(--red);padding-left:6px">';
-      h += '  <div style="flex:1;min-width:0">';
-      h += '    <div style="font-size:12px;font-weight:500">' + _eiEsc(label) + '</div>';
-      h += '    <div style="font-size:10px;color:var(--red);font-family:\'JetBrains Mono\',monospace">OVERDUE \u2022 ' + (c.owner ? _eiEsc(c.owner) : '') + '</div>';
-      h += '  </div>';
+    var allItems = d.overdue.map(function(c){ return {c:c, overdue:true}; })
+                   .concat(d.dueSoon.map(function(c){ return {c:c, overdue:false}; }));
+    allItems.forEach(function(it, i) {
+      var ci = it.c;
+      var label = ci.text || ci.title || ci.what || 'Commitment';
+      var border = i < allItems.length - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      var color = it.overdue ? 'var(--red)' : 'var(--amber)';
+      var sevLbl = it.overdue ? 'OVERDUE' : 'DUE';
+      var dt = new Date(ci.due);
+      var dateStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      h += '<div style="display:flex;align-items:flex-start;gap:16px;padding:16px 0;' + border + '">';
+      h += '<div style="width:10px;height:10px;border-radius:50%;background:' + color + ';box-shadow:0 0 10px ' + color + ';flex-shrink:0;margin-top:5px"></div>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:5px">' + _eiEsc(label) + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.06em;color:var(--t3);text-transform:uppercase">' + (ci.owner ? _eiEsc(ci.owner) + ' \u00B7 ' : '') + dateStr + '</div>';
       h += '</div>';
-    });
-    d.dueSoon.forEach(function(c) {
-      var label = c.text || c.title || c.what || 'Commitment';
-      var dt = new Date(c.due);
-      var dayLbl = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      h += '<div class="irow">';
-      h += '  <div class="dot" style="background:var(--amber)"></div>';
-      h += '  <div style="flex:1;min-width:0">';
-      h += '    <div style="font-size:12px;font-weight:500">' + _eiEsc(label) + '</div>';
-      h += '    <div style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">' + dayLbl + (c.owner ? ' \u2022 ' + _eiEsc(c.owner) : '') + '</div>';
-      h += '  </div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;color:' + color + ';letter-spacing:0.16em;flex-shrink:0;padding-top:3px">' + sevLbl + '</div>';
       h += '</div>';
     });
   }
   h += '</div>';
 
-  h += '</div>'; // close g2
-
+  h += '</div>';
   return h;
 };
 
@@ -18945,30 +19042,50 @@ window._buildAgenticActions = function() {
 window.renderAgenticActions = function() {
   var actions = window._buildAgenticActions();
 
-  var h = '<div class="cmd-section-title"><span>Suggested Actions</span><span class="cmd-section-meta">Agentic Loop</span></div>';
+  var h = '';
+  // Section header
+  h += '<div style="margin:32px 0 18px 0;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--b1);padding-bottom:12px">';
+  h += '  <div style="display:flex;align-items:baseline;gap:14px">';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;letter-spacing:0.02em;color:var(--text);line-height:1">Suggested Actions</div>';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--t3);text-transform:uppercase">Sense \u2192 Decide \u2192 Act</div>';
+  h += '  </div>';
+  h += '  <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--gold);text-transform:uppercase;background:rgba(201,162,39,.08);border:1px solid rgba(201,162,39,.3);padding:5px 12px;border-radius:4px">' + actions.length + ' Surfaced</div>';
+  h += '</div>';
 
   if (actions.length === 0) {
-    h += '<div class="card"><div style="text-align:center;padding:20px 0;color:var(--t3);font-size:12px">No actions surfaced. Your relationships and commitments are current.</div></div>';
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:48px 32px;text-align:center;margin-bottom:14px">';
+    h += '<div style="font-size:16px;color:var(--text);font-weight:600;margin-bottom:8px">No actions surfaced</div>';
+    h += '<div style="font-size:13px;color:var(--t3);line-height:1.6;max-width:420px;margin:0 auto">Your relationships and commitments are current. The platform will surface actions as patterns emerge.</div>';
+    h += '</div>';
     return h;
   }
 
-  h += '<div class="card" style="padding:0;overflow:hidden">';
+  // Premium action cards — full width, generous padding
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);overflow:hidden;margin-bottom:14px">';
   actions.forEach(function(a, i) {
     var prioColor = a.priority === 'urgent' ? 'var(--red)' :
                     a.priority === 'high'   ? 'var(--amber)' :
                     a.priority === 'medium' ? 'var(--blue)' : 'var(--t2)';
+    var prioBg = a.priority === 'urgent' ? 'rgba(239,68,68,.04)' :
+                 a.priority === 'high'   ? 'rgba(245,158,11,.04)' :
+                 a.priority === 'medium' ? 'rgba(59,130,246,.04)' : 'transparent';
     var prioLabel = (a.priority || 'medium').toUpperCase();
     var safeId = String(a.entityId || '').replace(/'/g, '&#39;');
     var border = i < actions.length - 1 ? 'border-bottom:1px solid var(--b1);' : '';
-    h += '<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;' + border + '">';
-    h += '  <div style="width:3px;align-self:stretch;background:' + prioColor + ';border-radius:2px;flex-shrink:0;box-shadow:0 0 6px ' + prioColor + '"></div>';
-    h += '  <div style="flex:1;min-width:0">';
-    h += '    <div style="font-size:9px;font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.14em;color:' + prioColor + ';font-weight:700;margin-bottom:2px">' + prioLabel + '</div>';
-    h += '    <div style="font-size:13px;font-weight:500;color:var(--text);line-height:1.3">' + _eiEsc(a.title) + '</div>';
-    h += '    <div style="font-size:10px;color:var(--t3);margin-top:2px">' + _eiEsc(a.subtitle) + '</div>';
+    h += '<div style="display:flex;align-items:center;gap:24px;padding:24px 28px;' + border + 'background:' + prioBg + ';transition:background .15s" onmouseover="this.style.background=\'rgba(255,255,255,.02)\'" onmouseout="this.style.background=\'' + prioBg + '\'">';
+    // Priority indicator — taller, more prominent
+    h += '  <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;min-width:56px">';
+    h += '    <div style="width:5px;height:48px;background:' + prioColor + ';border-radius:2px;box-shadow:0 0 14px ' + prioColor + '"></div>';
+    h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:0.18em;color:' + prioColor + ';text-align:center">' + prioLabel + '</div>';
     h += '  </div>';
+    // Content
+    h += '  <div style="flex:1;min-width:0">';
+    h += '    <div style="font-size:17px;font-weight:600;color:var(--text);line-height:1.35;margin-bottom:6px">' + _eiEsc(a.title) + '</div>';
+    h += '    <div style="font-size:13px;color:var(--t2);line-height:1.5">' + _eiEsc(a.subtitle) + '</div>';
+    h += '  </div>';
+    // Action button — bigger
     if (a.entityId && a.actionFn) {
-      h += '  <button onclick="(' + a.actionFn + ')(\'' + safeId + '\')" style="padding:6px 12px;border:1px solid ' + prioColor + ';border-radius:var(--rsm);background:transparent;color:' + prioColor + ';font-size:11px;font-weight:600;cursor:pointer;font-family:\'Outfit\',sans-serif;flex-shrink:0">' + _eiEsc(a.actionLabel || 'Open') + ' \u2192</button>';
+      h += '  <button onclick="(' + a.actionFn + ')(\'' + safeId + '\')" style="padding:11px 22px;border:1px solid ' + prioColor + ';border-radius:var(--rsm);background:transparent;color:' + prioColor + ';font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif;flex-shrink:0;letter-spacing:0.06em;transition:all .15s" onmouseover="this.style.background=\'' + prioColor + '\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'transparent\';this.style.color=\'' + prioColor + '\'">' + _eiEsc(a.actionLabel || 'Open').toUpperCase() + ' \u2192</button>';
     }
     h += '</div>';
   });
@@ -19056,81 +19173,117 @@ window._buildBdRhythm = function() {
 window.renderBdRhythm = function() {
   var r = window._buildBdRhythm();
 
-  var h = '<div class="cmd-section-title"><span>BD Rhythm Brief</span><span class="cmd-section-meta">Week of ' + r.weekOf + '</span></div>';
-
-  h += '<div class="card">';
-  h += '  <div style="display:flex;align-items:center;gap:14px;padding:6px 0 12px;border-bottom:1px solid var(--b1);margin-bottom:12px">';
-  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:32px;font-weight:800;color:var(--gold);letter-spacing:-0.02em;line-height:1">FY' + String(r.fiscalYear).slice(2) + ' Q' + r.fiscalQ + '</div>';
-  h += '    <div style="flex:1">';
-  h += '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.16em;color:var(--t3);margin-bottom:3px">Quarter Snapshot</div>';
-  h += '      <div style="font-size:13px;color:var(--text)"><strong style="color:var(--gold)">' + r.quarterMtgsCount + '</strong> meeting' + (r.quarterMtgsCount !== 1 ? 's' : '') + ' logged \u2022 <strong style="color:var(--gold)">' + r.priorityContacts.length + '</strong> priority contact' + (r.priorityContacts.length !== 1 ? 's' : '') + ' \u2022 <strong style="color:var(--gold)">' + r.weekCommits.length + '</strong> commitment' + (r.weekCommits.length !== 1 ? 's' : '') + ' this week</div>';
-  h += '    </div>';
+  var h = '';
+  // Section header
+  h += '<div style="margin:32px 0 18px 0;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--b1);padding-bottom:12px">';
+  h += '  <div style="display:flex;align-items:baseline;gap:14px">';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;letter-spacing:0.02em;color:var(--text);line-height:1">BD Rhythm Brief</div>';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--t3);text-transform:uppercase">Week of ' + r.weekOf + '</div>';
   h += '  </div>';
+  h += '</div>';
 
-  // 3-column rhythm: Contact Cadence | Pipeline Focus | Week's Deliverables
-  h += '  <div class="g2" style="grid-template-columns:1fr 1fr 1fr;gap:14px">';
+  h += '<div style="background:linear-gradient(180deg,rgba(13,24,40,.6),rgba(8,15,26,.6));border:1px solid var(--b1);border-radius:var(--rlg);padding:32px 36px;margin-bottom:14px">';
+
+  // Quarter snapshot — large display
+  h += '<div style="display:flex;align-items:center;gap:32px;padding-bottom:28px;margin-bottom:28px;border-bottom:1px solid var(--b1)">';
+  h += '  <div>';
+  h += '    <div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:56px;font-weight:800;color:var(--gold);letter-spacing:-0.02em;line-height:1;text-shadow:0 0 24px rgba(201,162,39,.3)">FY' + String(r.fiscalYear).slice(2) + ' Q' + r.fiscalQ + '</div>';
+  h += '    <div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--t3);text-transform:uppercase;margin-top:8px">Current Quarter</div>';
+  h += '  </div>';
+  h += '  <div style="flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:20px;border-left:1px solid var(--b1);padding-left:32px">';
+  var stats = [
+    { val: r.quarterMtgsCount, lbl: 'Meetings Logged', sub: 'This quarter' },
+    { val: r.priorityContacts.length, lbl: 'Priority Contacts', sub: 'Identified' },
+    { val: r.weekCommits.length, lbl: 'Commitments', sub: 'This week' }
+  ];
+  stats.forEach(function(s) {
+    h += '<div>';
+    h += '<div style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:38px;font-weight:700;color:var(--text);line-height:1;letter-spacing:-0.02em">' + s.val + '</div>';
+    h += '<div style="font-size:13px;color:var(--text);font-weight:500;margin-top:8px">' + s.lbl + '</div>';
+    h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:3px">' + s.sub + '</div>';
+    h += '</div>';
+  });
+  h += '  </div>';
+  h += '</div>';
+
+  // Three-column rhythm
+  function colHeader(label, sub, color) {
+    return '<div style="margin-bottom:18px">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+      '<span style="width:4px;height:18px;background:' + color + ';border-radius:1px;box-shadow:0 0 10px ' + color + '"></span>' +
+      '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">' + label + '</span>' +
+      '</div>' +
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--t3);text-transform:uppercase;padding-left:14px">' + sub + '</div>' +
+      '</div>';
+  }
+
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px">';
 
   // Contact Cadence
-  h += '    <div>';
-  h += '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.14em;color:var(--gold);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid rgba(201,162,39,.2)">Contact Cadence</div>';
+  h += '<div>';
+  h += colHeader('Contact Cadence', 'Touch these people this week', 'var(--gold)');
   if (r.priorityContacts.length === 0) {
-    h += '      <div style="font-size:11px;color:var(--t3)">No priority contacts identified.</div>';
+    h += '<div style="font-size:13px;color:var(--t3);line-height:1.6;padding:14px 0">No priority contacts identified.</div>';
   } else {
-    r.priorityContacts.forEach(function(item) {
+    r.priorityContacts.forEach(function(item, i) {
       var n = item.node;
       var safeId = String(n.id).replace(/'/g, '&#39;');
       var lblColor = item.daysSince >= 999 ? 'var(--purple)' : item.daysSince > 30 ? 'var(--red)' : item.daysSince > 14 ? 'var(--amber)' : 'var(--green)';
-      var daysLbl = item.daysSince >= 999 ? 'never' : item.daysSince + 'd ago';
-      h += '<div onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + safeId + '\')" style="padding:7px 0;cursor:pointer;display:flex;align-items:center;gap:7px;border-bottom:1px solid rgba(26,48,80,.3)">';
-      h += '<div class="dot" style="background:' + lblColor + '"></div>';
+      var daysLbl = item.daysSince >= 999 ? 'NO TOUCH' : item.daysSince + 'd AGO';
+      var border = i < r.priorityContacts.length - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      h += '<div onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + safeId + '\')" style="padding:14px 0;cursor:pointer;display:flex;align-items:center;gap:14px;' + border + 'transition:transform .15s" onmouseover="this.style.transform=\'translateX(3px)\'" onmouseout="this.style.transform=\'translateX(0)\'">';
+      h += '<div style="width:10px;height:10px;border-radius:50%;background:' + lblColor + ';box-shadow:0 0 10px ' + lblColor + ';flex-shrink:0"></div>';
       h += '<div style="flex:1;min-width:0">';
-      h += '<div style="font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _eiEsc(n.name || '') + '</div>';
-      h += '<div style="font-size:10px;color:var(--t3);font-family:\'JetBrains Mono\',monospace">' + (n.priority === 1 ? 'T1' : 'T2') + ' \u2022 ' + daysLbl + '</div>';
+      h += '<div style="font-size:15px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;margin-bottom:5px">' + _eiEsc(n.name || '') + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:' + lblColor + ';letter-spacing:0.08em">' + (n.priority === 1 ? 'T1' : 'T2') + ' \u00B7 ' + daysLbl + '</div>';
       h += '</div>';
       h += '</div>';
     });
   }
-  h += '    </div>';
+  h += '</div>';
 
   // Pipeline Focus
-  h += '    <div>';
-  h += '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.14em;color:var(--purple);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid rgba(139,92,246,.2)">Pipeline Focus</div>';
+  h += '<div>';
+  h += colHeader('Pipeline Focus', 'Active mid-stage opportunities', 'var(--purple)');
   if (r.pipelineFocus.length === 0) {
-    h += '      <div style="font-size:11px;color:var(--t3)">No active mid-stage opportunities.</div>';
+    h += '<div style="font-size:13px;color:var(--t3);line-height:1.6;padding:14px 0">No active mid-stage opportunities.</div>';
   } else {
-    r.pipelineFocus.forEach(function(o) {
+    r.pipelineFocus.forEach(function(o, i) {
       var safeId = String('opp:' + o.id).replace(/'/g, '&#39;');
       var stageColor = o.stage === 'submitted' ? 'var(--gold)' : o.stage === 'proposal' ? 'var(--purple)' : 'var(--blue)';
-      h += '<div onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + safeId + '\')" style="padding:7px 0;cursor:pointer;border-bottom:1px solid rgba(26,48,80,.3)">';
-      h += '<div style="font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _eiEsc(o.name || '') + '</div>';
-      h += '<div style="font-size:10px;color:' + stageColor + ';font-family:\'JetBrains Mono\',monospace;text-transform:uppercase;letter-spacing:0.06em;margin-top:2px">' + (o.stage || 'unknown') + (o.value ? ' \u2022 ' + _eiEsc(String(o.value)) : '') + '</div>';
+      var border = i < r.pipelineFocus.length - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      h += '<div onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + safeId + '\')" style="padding:14px 0;cursor:pointer;' + border + 'transition:transform .15s" onmouseover="this.style.transform=\'translateX(3px)\'" onmouseout="this.style.transform=\'translateX(0)\'">';
+      h += '<div style="font-size:15px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;margin-bottom:6px">' + _eiEsc(o.name || '') + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:' + stageColor + ';text-transform:uppercase;letter-spacing:0.1em">' + (o.stage || 'unknown') + (o.value ? ' \u00B7 ' + _eiEsc(String(o.value)) : '') + '</div>';
       h += '</div>';
     });
   }
-  h += '    </div>';
+  h += '</div>';
 
   // Week's Deliverables
-  h += '    <div>';
-  h += '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.14em;color:var(--green);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid rgba(34,197,94,.2)">Week\'s Deliverables</div>';
+  h += '<div>';
+  h += colHeader("Week\'s Deliverables", 'Commitments this week', 'var(--green)');
   if (r.weekCommits.length === 0) {
-    h += '      <div style="font-size:11px;color:var(--t3)">No commitments this week.</div>';
+    h += '<div style="font-size:13px;color:var(--t3);line-height:1.6;padding:14px 0">No commitments this week.</div>';
   } else {
-    r.weekCommits.slice(0, 4).forEach(function(c) {
-      var label = c.text || c.title || c.what || 'Commitment';
-      var dt = new Date(c.due);
+    var arr = r.weekCommits.slice(0, 5);
+    arr.forEach(function(co, i) {
+      var label = co.text || co.title || co.what || 'Commitment';
+      var dt = new Date(co.due);
       var dayLbl = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       var isOverdue = dt.getTime() < Date.now();
       var color = isOverdue ? 'var(--red)' : 'var(--green)';
-      h += '<div style="padding:7px 0;border-bottom:1px solid rgba(26,48,80,.3)">';
-      h += '<div style="font-size:12px;font-weight:500;color:var(--text)">' + _eiEsc(label) + '</div>';
-      h += '<div style="font-size:10px;color:' + color + ';font-family:\'JetBrains Mono\',monospace;margin-top:2px">' + (isOverdue ? 'OVERDUE \u2022 ' : '') + dayLbl + (c.owner ? ' \u2022 ' + _eiEsc(c.owner) : '') + '</div>';
+      var border = i < arr.length - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+      h += '<div style="padding:14px 0;' + border + '">';
+      h += '<div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.35;margin-bottom:6px">' + _eiEsc(label) + '</div>';
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:' + color + ';letter-spacing:0.1em;text-transform:uppercase">' + (isOverdue ? 'OVERDUE \u00B7 ' : '') + dayLbl + (co.owner ? ' \u00B7 ' + _eiEsc(co.owner) : '') + '</div>';
       h += '</div>';
     });
   }
-  h += '    </div>';
+  h += '</div>';
 
-  h += '  </div>'; // close 3-col grid
-  h += '</div>'; // close card
+  h += '</div>';
+  h += '</div>';
 
   return h;
 };
