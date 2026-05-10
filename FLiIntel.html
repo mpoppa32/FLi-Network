@@ -4403,15 +4403,15 @@ onAuthStateChanged(auth,function(user){
     // Firebase fires null first even for signed-in users.
     // Keep loader up — wait to see if a user comes through.
     setTimeout(function(){
-      if(!currentUser){
-        // Still no user after delay — they need to sign in
+      if(!_authResolved){
+        // Firebase truly didn't return a user — show sign-in
         var pl=document.getElementById('page-loader');
         if(pl)pl.style.display='none';
         document.getElementById('auth-screen').style.display='flex';
         document.getElementById('ws-screen').style.display='none';
         document.getElementById('main-app').style.display='none';
       }
-    },800);
+    },3000);
   }
 });
 // Safety net for slow Firebase auth resolution
@@ -13263,18 +13263,24 @@ window.closeNetPanel=closeNetPanel;
 // pointerdown fires before D3's zoom processes pointer events.
 // Capture phase (true) fires before any descendant listener.
 // This is the only timing that reliably beats D3 zoom.
-document.addEventListener('pointerdown',function(ev){
+// Panel close — click capture phase
+// Fires before D3's svg.on('click') handler. D3 does NOT use
+// pointer capture on click, so this wins the timing race cleanly.
+document.addEventListener('click',function(ev){
   if(!selectedNode)return;
   if(activeView!=='network')return;
   var panel=document.getElementById('net-panel');
   if(!panel||!panel.classList.contains('open'))return;
   var t=ev.target;
-  if(!t||!t.closest)return;
-  // Don't close if pointerdown is inside the panel itself
+  if(!t)return;
+  // Keep panel open if click is INSIDE the panel
   if(panel.contains(t))return;
-  // Don't close if on a node, link, modal, or other interactive control
-  if(t.closest('.node-g, .link-g, .overlay, .modal, .att-suggest, .search-results, .tooltip, .net-toolbar, #layout-panel, #path-panel, #dedup-panel, #pg-picker-panel, #tv-picker-panel, .net-cal, #cooling-strip, .add-menu-wrap, #add-menu, #org-legend, .edge-legend, .tier-legend'))return;
-  // Survived all guards — close the panel
+  // Keep panel open if clicking an interactive overlay or node
+  if(t.closest&&t.closest('.node-g,.link-g,.overlay,.modal,'+
+    '.att-suggest,.search-results,.tooltip,.net-toolbar,'+
+    '#layout-panel,#path-panel,#dedup-panel,#pg-picker-panel,'+
+    '#tv-picker-panel,.net-cal,#cooling-strip,'+
+    '.add-menu-wrap,#add-menu,#org-legend,.edge-legend,.tier-legend'))return;
   closeNetPanel();
 },true);
 
@@ -19342,14 +19348,22 @@ window.renderBdRhythm = function() {
 // ══════════════════════════════════════════════════════════════════════════
 
 window._buildOppBriefingData = function(oppId) {
+  try {
   var opp = opportunities.find(function(o){return o.id===oppId;});
   if (!opp) return null;
 
   // All meetings tagged to this opp
+  // opp.meetings may be a Firebase object — convert safely
+  var oppMeetingIds = [];
+  if (opp.meetings) {
+    if (Array.isArray(opp.meetings)) oppMeetingIds = opp.meetings;
+    else oppMeetingIds = Object.values(opp.meetings);
+  }
   var oppMtgs = meetings.filter(function(m){
-    return m.oppId === oppId || (opp.meetings||[]).indexOf(m.id) >= 0;
+    return m.oppId === oppId || oppMeetingIds.indexOf(m.id) >= 0;
   }).sort(function(a,b){
-    return new Date(b.ts).getTime() - new Date(a.ts).getTime();
+    // meetings have .ts from Firebase orderByChild('ts')
+    return (b.ts || 0) - (a.ts || 0);
   });
 
   // All contacts mentioned across these meetings (with stance history)
@@ -19420,6 +19434,11 @@ window._buildOppBriefingData = function(oppId) {
     daysSinceLast: daysSinceLast,
     lastActivity: lastActivity
   };
+  } catch(e) {
+    if (typeof toast === 'function') toast('Briefing build error: ' + (e.message||'unknown'));
+    console.error('_buildOppBriefingData error', e);
+    return null;
+  }
 };
 
 window.openOppBriefing = async function(oppId) {
@@ -19531,11 +19550,12 @@ window._renderOppBriefing = function(data, aiText) {
 
   // KPI strip
   h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px">';
+  var _m = data.meetings||[], _co = data.contacts||[], _ac = data.actions||[], _ri = data.risks||[];
   var kpis = [
-    { val: data.meetings.length, lbl: 'Meetings Logged', color: 'var(--gold)' },
-    { val: data.contacts.length, lbl: 'Stakeholders', color: 'var(--blue)' },
-    { val: data.actions.length, lbl: 'Open Actions', color: 'var(--amber)' },
-    { val: data.risks.length, lbl: 'Risks Surfaced', color: data.risks.length ? 'var(--red)' : 'var(--t3)' }
+    { val: _m.length, lbl: 'Meetings Logged', color: 'var(--gold)' },
+    { val: _co.length, lbl: 'Stakeholders', color: 'var(--blue)' },
+    { val: _ac.length, lbl: 'Open Actions', color: 'var(--amber)' },
+    { val: _ri.length, lbl: 'Risks Surfaced', color: _ri.length ? 'var(--red)' : 'var(--t3)' }
   ];
   kpis.forEach(function(k) {
     h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:18px 20px;position:relative;overflow:hidden">';
@@ -19583,17 +19603,17 @@ window._renderOppBriefing = function(data, aiText) {
   h += '<span style="width:5px;height:18px;background:var(--blue);border-radius:1px;box-shadow:0 0 10px rgba(59,130,246,.5)"></span>';
   h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Stakeholders</span>';
   h += '</div>';
-  if (data.contacts.length === 0) {
+  if (_co.length === 0) {
     h += '<div style="font-size:13px;color:var(--t3);padding:14px 0">No stakeholders captured yet.</div>';
   } else {
-    data.contacts.slice(0,6).forEach(function(p, i) {
-      var border = i < Math.min(data.contacts.length, 6) - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+    _co.slice(0,6).forEach(function(p, i) {
+      var border = i < Math.min(_co.length, 6) - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
       var lastStance = p.stances.length ? p.stances[p.stances.length-1] : null;
       h += '<div style="padding:12px 0;' + border + '">';
       h += '<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">' + _eiEsc(p.name) + '</div>';
       h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:var(--t3);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px">' + (p.role ? _eiEsc(p.role) : '') + (p.role && p.org ? ' \u00B7 ' : '') + (p.org ? _eiEsc(p.org) : '') + '</div>';
       if (lastStance) {
-        h += '<div style="font-size:12px;color:var(--t2);line-height:1.5;font-style:italic">"' + _eiEsc(lastStance.stance.slice(0, 120)) + (lastStance.stance.length > 120 ? '\u2026' : '') + '"</div>';
+        h += '<div style="font-size:12px;color:var(--t2);line-height:1.5;font-style:italic">"' + _eiEsc((lastStance.stance||'').slice(0, 120)) + ((lastStance.stance||'').length > 120 ? '\u2026' : '') + '"</div>';
       }
       h += '</div>';
     });
@@ -19606,11 +19626,11 @@ window._renderOppBriefing = function(data, aiText) {
   h += '<span style="width:5px;height:18px;background:var(--red);border-radius:1px;box-shadow:0 0 10px rgba(239,68,68,.5)"></span>';
   h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Risk Surface</span>';
   h += '</div>';
-  if (data.risks.length === 0) {
+  if (_ri.length === 0) {
     h += '<div style="font-size:13px;color:var(--t3);padding:14px 0">No risks logged on this pursuit.</div>';
   } else {
-    data.risks.slice(0,6).forEach(function(r, i) {
-      var border = i < Math.min(data.risks.length, 6) - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
+    _ri.slice(0,6).forEach(function(r, i) {
+      var border = i < Math.min(_ri.length, 6) - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
       var sevColor = r.severity === 'high' ? 'var(--red)' : r.severity === 'medium' ? 'var(--amber)' : 'var(--t2)';
       h += '<div style="padding:12px 0;' + border + '">';
       h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">';
@@ -19626,13 +19646,13 @@ window._renderOppBriefing = function(data, aiText) {
   h += '</div>';
 
   // Open Actions + Commitments
-  if (data.actions.length || data.commitments.length) {
+  if (_ac.length || (data.commitments||[]).length) {
     h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px;margin-bottom:14px">';
     h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
     h += '<span style="width:5px;height:18px;background:var(--amber);border-radius:1px;box-shadow:0 0 10px rgba(245,158,11,.5)"></span>';
     h += '<span style="font-family:\'Barlow Condensed\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Open Items</span>';
     h += '</div>';
-    var allItems = data.actions.slice(0,5).map(function(a){return {type:'ACTION', text:a.text, owner:a.owner, due:a.deadline, src:a.mtg};})
+    var allItems = _ac.slice(0,5).map(function(a){return {type:'ACTION', text:a.text, owner:a.owner, due:a.deadline, src:a.mtg};})
       .concat(data.commitments.slice(0,5).map(function(c){return {type:'COMMIT', text:c.text||c.title||c.what||'Commitment', owner:c.owner, due:c.due, src:''};}));
     allItems.forEach(function(it, i) {
       var border = i < allItems.length - 1 ? 'border-bottom:1px solid rgba(26,48,80,.4);' : '';
