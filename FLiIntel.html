@@ -4639,18 +4639,75 @@ var db = getDatabase(fbApp);
 // Repeatedly cancels Chrome's injected sign-in prompt.
 function _killGoogleOneTap(){
   try{
+    // 1. Cancel GIS API
     if(window.google&&window.google.accounts&&window.google.accounts.id){
-      window.google.accounts.id.cancel();
-      window.google.accounts.id.disableAutoSelect();
+      try{window.google.accounts.id.cancel();}catch(e){}
+      try{window.google.accounts.id.disableAutoSelect();}catch(e){}
     }
-    // Also remove any iframes that snuck through
-    document.querySelectorAll('iframe[src*="accounts.google.com/gsi"]').forEach(function(f){f.remove();});
-    document.querySelectorAll('[id^="credential_picker"]').forEach(function(d){d.remove();});
+    // 2. Remove iframes from accounts.google.com
+    document.querySelectorAll('iframe').forEach(function(f){
+      var src=(f.getAttribute('src')||'')+(f.src||'');
+      if(src.indexOf('accounts.google.com')>=0||src.indexOf('gsi/client')>=0||src.indexOf('credential')>=0){
+        try{f.remove();}catch(e){f.style.display='none';}
+      }
+    });
+    // 3. Remove containers by ID prefix
+    ['credential_picker','g_id_','gsi_','google_'].forEach(function(prefix){
+      document.querySelectorAll('[id^="'+prefix+'"]').forEach(function(d){
+        try{d.remove();}catch(e){d.style.display='none';}
+      });
+    });
+    // 4. Remove divs with Google aria labels (outside our auth-card)
+    document.querySelectorAll('div[aria-label],div[aria-labelledby]').forEach(function(d){
+      if(d.closest&&d.closest('.auth-card'))return; // protect our own auth screen
+      var lbl=((d.getAttribute('aria-label')||'')+' '+(d.getAttribute('aria-labelledby')||'')).toLowerCase();
+      if(lbl.indexOf('sign in with google')>=0||lbl.indexOf('one tap')>=0||lbl.indexOf('onetap')>=0||lbl.indexOf('credential')>=0){
+        try{d.remove();}catch(e){d.style.display='none';}
+      }
+    });
+    // 5. Prevent FedCM silent access (browser-level — limited effect)
+    if(navigator.credentials&&navigator.credentials.preventSilentAccess){
+      try{navigator.credentials.preventSilentAccess();}catch(e){}
+    }
   }catch(e){}
 }
-// Run repeatedly during first 15 seconds — GIS may load late
-var _gOneTapInt=setInterval(_killGoogleOneTap,400);
-setTimeout(function(){clearInterval(_gOneTapInt);},15000);
+// Run repeatedly: aggressive first 15s, then every 2s indefinitely
+var _gOneTapInt=setInterval(_killGoogleOneTap,200);
+setTimeout(function(){clearInterval(_gOneTapInt);setInterval(_killGoogleOneTap,2000);},15000);
+
+// MutationObserver — catch Google injections as they appear (the surgical answer)
+try{
+  var _googleObs=new MutationObserver(function(mutations){
+    for(var i=0;i<mutations.length;i++){
+      var added=mutations[i].addedNodes;
+      for(var j=0;j<added.length;j++){
+        var n=added[j];
+        if(n.nodeType!==1)continue;
+        var id=n.id||'';
+        var aria=(n.getAttribute&&((n.getAttribute('aria-label')||'')+' '+(n.getAttribute('aria-labelledby')||'')))||'';
+        if(id.indexOf('credential_picker')===0||id.indexOf('g_id_')===0||
+           aria.toLowerCase().indexOf('sign in with google')>=0||
+           aria.toLowerCase().indexOf('one tap')>=0){
+          try{n.remove();}catch(e){}
+        }
+        // Also catch iframes from Google
+        if(n.tagName==='IFRAME'){
+          var src=(n.getAttribute('src')||'')+(n.src||'');
+          if(src.indexOf('accounts.google.com')>=0||src.indexOf('gsi/client')>=0){
+            try{n.remove();}catch(e){}
+          }
+        }
+      }
+    }
+  });
+  if(document.body){
+    _googleObs.observe(document.body,{childList:true,subtree:true});
+  }else{
+    document.addEventListener('DOMContentLoaded',function(){
+      _googleObs.observe(document.body,{childList:true,subtree:true});
+    });
+  }
+}catch(e){console.warn('MutationObserver failed:',e);}
 
 
 // ── EMAILJS CONFIG ─────────────────────────────────────────────────────────
