@@ -13692,7 +13692,7 @@ sim=d3.forceSimulation()
   // Collision: prevent overlap with generous buffer
   .force('collision',d3.forceCollide(function(d){return nr(d)+28;}).strength(0.85))
   // Center gravity: keeps graph from drifting — gentle pull toward canvas center
-  .force('center',d3.forceCenter(W/2,H/2).strength(0.04))
+  .force('center',d3.forceCenter(W/2,H/2).strength(0.12))
   // Radial org clustering: orgs placed on a ring, people pulled toward their org's sector
   // _orgAngleMap is recomputed in renderNetwork() before each restart
   .force('orgX',d3.forceX(function(d){
@@ -25247,6 +25247,7 @@ window._mondayRunSync=async function(){
     _mondayApiKey=apiKey;
     var sum='Sync done: '+(stats.dealsNew+stats.dealsUpd)+' deals, '+(stats.orgsNew+stats.orgsUpd+stats.invNew+stats.invUpd)+' orgs/investors synced.';
     _mondaySetStatus(sum);toast('Monday.com sync complete');
+    setTimeout(async function(){var lc=await _mondayAutoLinkContacts();if(lc>0)_mondaySetStatus(sum+' '+lc+' contact links created.');},800);
     var elA=document.getElementById('monday-last-sync-modal'),elB=document.getElementById('monday-last-sync'),txt='Last synced: '+new Date(now).toLocaleString();
     if(elA)elA.textContent=txt;if(elB)elB.textContent=txt;
   }catch(e){_mondaySetStatus('Error: '+e.message);toast('Sync error: '+e.message);console.error('Monday sync:',e);}
@@ -25307,6 +25308,61 @@ async function _mondaySyncInvestors(items,stats){
     }
   }
 }
+// Auto-link existing contacts to their Monday-imported orgs
+// Called after sync — finds person nodes whose .org matches a newly imported company
+async function _mondayAutoLinkContacts() {
+  var newLinks = [];
+  var linkCount = 0;
+  nodes.forEach(function(person) {
+    if (person.type !== 'person' || !person.org) return;
+    var orgLow = person.org.toLowerCase().trim();
+    // Find matching company node
+    var orgNode = nodes.find(function(n) {
+      return (n.type === 'company') && n.name && n.name.toLowerCase().trim() === orgLow;
+    });
+    if (!orgNode) return;
+    // Check if Works-at link already exists
+    var exists = links.some(function(l) {
+      var s = l.source && l.source.id ? l.source.id : l.source;
+      var t = l.target && l.target.id ? l.target.id : l.target;
+      return String(s) === String(person.id) && String(t) === String(orgNode.id) && l.label === 'Works at';
+    });
+    if (exists) return;
+    // Create the link
+    var nl = {
+      id: 'lnk-mon-' + person.id + '-' + orgNode.id,
+      source: person.id,
+      target: orgNode.id,
+      label: 'Works at',
+      dir: 'to',
+      notes: 'Auto-linked from Monday.com sync'
+    };
+    newLinks.push(nl);
+    linkCount++;
+  });
+
+  if (!newLinks.length) return 0;
+
+  // Write links to Firebase
+  for (var i = 0; i < newLinks.length; i++) {
+    var nl = newLinks[i];
+    links.push(nl);
+    linkMap.set(nl.id, nl);
+    saveLink(nl);
+  }
+  if (window._invalidateEntityGraph) window._invalidateEntityGraph();
+  // Restart simulation with new links so clusters merge
+  if (sim && nodes.length) {
+    computeOrgAngles();
+    sim.nodes(nodes);
+    sim.force('link').links(links);
+    sim.alpha(0.5).restart();
+    setTimeout(function(){ if(nodes.length) fitGraph(); }, 1500);
+  }
+  return linkCount;
+}
+window._mondayAutoLinkContacts = _mondayAutoLinkContacts;
+
 </script>
 
 <!-- ENTITY INSPECTOR MODAL — Unified entity dossier view -->
