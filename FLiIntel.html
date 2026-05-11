@@ -25196,13 +25196,13 @@ function _updateTicker() {
 var _MONDAY_GQL_URL='https://api.monday.com/v2';
 var _MONDAY_BOARD_DEALS=5027298426,_MONDAY_BOARD_ACCOUNTS=5027298423,_MONDAY_BOARD_INVESTORS=5027298420;
 var _mondayApiKey='',_mondaySyncing=false;
-async function _mondayLoadKey(){if(!currentWsId||!db)return'';try{var snap=await get(ref(db,wsPath('settings/mondayApiKey')));if(snap.val()){_mondayApiKey=snap.val();return _mondayApiKey;}}catch(e){}return'';}
+async function _mondayLoadKey(){if(!currentUser||!db)return'';try{var snap=await get(ref(db,'users/'+currentUser.uid+'/mondayApiKey'));if(snap.val()){_mondayApiKey=snap.val();return _mondayApiKey;}}catch(e){}return'';}
 async function _mondayGQL(key,q){var r=await fetch(_MONDAY_GQL_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':key,'API-Version':'2024-01'},body:JSON.stringify({query:q})});if(!r.ok){var t=await r.text().catch(function(){return'';});throw new Error('Monday API '+r.status+': '+t.slice(0,200));}var d=await r.json();if(d.errors&&d.errors.length)throw new Error(d.errors[0].message||'Monday API error');return d.data;}
 function _mondayColText(item,kw){var cv=item.column_values&&item.column_values.find(function(v){return v.column&&v.column.title&&v.column.title.toLowerCase().indexOf(kw.toLowerCase())>=0;});return cv?(cv.text||''):'';}
 function _mondayMapStage(raw){var s=(raw||'').toLowerCase();if(s.indexOf('negotiat')>=0)return'negotiation';if(s.indexOf('proposal')>=0||s.indexOf('propose')>=0)return'proposal';if(s.indexOf('rfp')>=0)return'rfp';if(s.indexOf('won')>=0||s.indexOf('award')>=0)return'won';if(s.indexOf('lost')>=0)return'lost';return'tracking';}
 function _mondaySetStatus(msg){var el=document.getElementById('monday-sync-status');if(el)el.textContent=msg;}
 window._mondayTestConn=async function(){var key=((document.getElementById('monday-key-inp')||{}).value||'').trim();if(!key){_mondaySetStatus('Enter your API key first.');return;}_mondaySetStatus('Testing...');try{var d=await _mondayGQL(key,'{ me { name email } }');_mondaySetStatus('Connected as '+(d.me.name||d.me.email)+'. Ready to sync.');toast('Monday.com connected: '+(d.me.name||d.me.email));}catch(e){_mondaySetStatus('Connection failed: '+e.message);toast('Monday error: '+e.message);}};
-window.openMondaySync=async function(){var savedKey=await _mondayLoadKey();var inp=document.getElementById('monday-key-inp');if(inp&&savedKey)inp.value=savedKey;try{var snap=await get(ref(db,wsPath('settings/lastMondaySync')));var ts=snap.val();var txt=ts?'Last synced: '+new Date(ts).toLocaleString():'Never synced.';var a=document.getElementById('monday-last-sync-modal');var b=document.getElementById('monday-last-sync');if(a)a.textContent=txt;if(b)b.textContent=txt;}catch(e){}openModal('monday-sync-modal');};
+window.openMondaySync=async function(){var savedKey=await _mondayLoadKey();var inp=document.getElementById('monday-key-inp');if(inp&&savedKey)inp.value=savedKey;try{var snap=await get(ref(db,'users/'+(currentUser?currentUser.uid:'_')+'/lastMondaySync/'+(currentWsId||'_')));var ts=snap.val();var txt=ts?'Last synced: '+new Date(ts).toLocaleString():'Never synced.';var a=document.getElementById('monday-last-sync-modal');var b=document.getElementById('monday-last-sync');if(a)a.textContent=txt;if(b)b.textContent=txt;}catch(e){}openModal('monday-sync-modal');};
 window._mondayRunSync=async function(){
   if(_mondaySyncing){toast('Sync already running');return;}
   var apiKey=((document.getElementById('monday-key-inp')||{}).value||_mondayApiKey).trim();
@@ -25225,8 +25225,8 @@ window._mondayRunSync=async function(){
       else if(String(board.id)===String(_MONDAY_BOARD_INVESTORS)){_mondaySetStatus('Syncing '+items.length+' investors...');await _mondaySyncInvestors(items,stats);}
     }
     var now=new Date().toISOString();
-    await fbSet(wsPath('settings/mondayApiKey'),apiKey);
-    await fbSet(wsPath('settings/lastMondaySync'),now);
+    await fbSet('users/'+currentUser.uid+'/mondayApiKey',apiKey);
+    await fbSet('users/'+currentUser.uid+'/lastMondaySync/'+(currentWsId||'x'),now);
     _mondayApiKey=apiKey;
     var sum='Sync done: '+(stats.dealsNew+stats.dealsUpd)+' deals, '+(stats.orgsNew+stats.orgsUpd+stats.invNew+stats.invUpd)+' orgs/investors synced.';
     _mondaySetStatus(sum);toast('Monday.com sync complete');
