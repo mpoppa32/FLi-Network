@@ -2884,6 +2884,7 @@ body.app-active #auth-screen{
     <input type="file" id="nav-import-file" accept=".json" style="display:none">
     <button class="nav-btn" id="nav-members-btn">&#128100; Members</button>
     <button class="nav-btn" id="nav-alerts-btn" onclick="toggleAlertsPanel()" title="Relationship alerts" style="position:relative">🔔</button>
+    <button class="nav-btn" id="nav-reeng-btn" onclick="window.openReengagementPanel()" title="Contacts to re-engage" style="color:var(--amber);border-color:rgba(245,158,11,.35)">◎ Re-engage</button>
     <button class="nav-btn" id="nav-brief-btn" style="position:relative;background:linear-gradient(135deg,rgba(201,162,39,.15),rgba(139,92,246,.1));border-color:rgba(201,162,39,.4);color:var(--gold)" onclick="openOnboardingBrief()">&#9889; Brief Me</button>
     <div class="user-chip" id="user-chip-btn" onclick="if(typeof openModal==='function')openModal('user-modal')" style="cursor:pointer" title="Settings"><img id="user-chip-img" src="" alt=""></div>
     <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()"><svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="currentColor"/><rect y="5" width="16" height="2" rx="1" fill="currentColor"/><rect y="10" width="16" height="2" rx="1" fill="currentColor"/></svg></button>
@@ -3305,6 +3306,7 @@ body.app-active #auth-screen{
       <button class="nb" id="tv-view-btn" onclick="toggleTvPicker()" style="color:var(--blue);border-color:rgba(59,130,246,.4)" title="Territory View — see your full coverage of an organization">⬡ Territory</button>
       <button class="nb" id="dedup-btn" onclick="toggleDedupPanel()" style="color:var(--amber);border-color:rgba(245,158,11,.4)" title="Find and merge duplicate nodes">⊕ Deduplicate</button>
       <button class="nb" id="retro-link-btn" onclick="retroLinkAll()" style="color:var(--green);border-color:rgba(34,197,94,.4)" title="Connect existing unlinked nodes using meeting history">🔗 Link All</button>
+      <button class="nb" id="relink-contacts-btn" onclick="window._relinkAllContacts()" style="color:var(--cyan);border-color:rgba(6,182,212,.4)" title="Re-link people to their org nodes (fixes split clusters)">⊕ Re-link</button>
       <span style="font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;flex-shrink:0" id="node-count"></span>
     </div>
     <!-- LAYOUT PANEL -->
@@ -5159,7 +5161,7 @@ document.getElementById('ws-new-btn').addEventListener('click',function(){docume
 document.getElementById('ws-cancel-btn').addEventListener('click',function(){closeModal('create-ws-modal');document.getElementById('ws-screen').style.display='flex';});
 document.getElementById('ws-create-btn').addEventListener('click',async function(){var name=document.getElementById('ws-name-inp').value.trim();var role=document.getElementById('ws-role-inp').value.trim()||'Member';if(!name){toast('Enter a workspace name');return;}if(!currentUser){toast('Not signed in');return;}var btn=document.getElementById('ws-create-btn');btn.disabled=true;btn.textContent='Creating...';try{var wsId=Date.now().toString();var color=WS_COLORS[Math.floor(Math.random()*WS_COLORS.length)];var ws={id:wsId,name:name,color:color,createdBy:currentUser.uid,created:new Date().toISOString()};var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,photo:currentUser.photoURL||'',role:role,joined:new Date().toISOString()};await set(ref(db,'workspaces/'+wsId+'/info'),ws);await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{id:wsId,name:name,color:color,role:role});userWorkspaces.push({id:wsId,name:name,color:color,role:role});closeModal('create-ws-modal');selectWorkspace(wsId);}catch(e){toast('Failed: '+(e.message||'Try again'));btn.disabled=false;btn.textContent='Create Workspace';}});
 
-async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.body.classList.add('app-active');document.getElementById('auth-screen').style.display='none';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(_mondayInit,6000);}catch(e){toast('Failed to open workspace: '+(e.message||'Try again'));}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.body.classList.add('app-active');document.getElementById('auth-screen').style.display='none';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){toast('Failed to open workspace: '+(e.message||'Try again'));}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
@@ -5862,7 +5864,7 @@ async function _callPersonBriefClaude(d,ctx){
 
   var sp='You are a defense BD intelligence analyst generating a TACTICAL CONTACT BRIEF on '+d.name+'. This brief is for someone about to interact with this person — they need to walk in knowing exactly who they are, where they stand, and what to do.'+govTypeContext+'\n\n'    +'Output EXACTLY this structure with these exact section headers (all caps, on their own line):\n\n'    +'WHO THEY ARE\n'    +'3-4 sentences: their actual role in the ecosystem, their decision authority, what they control or influence, how long they have been in this network. Be specific — not generic.\n\n'    +'STANCE TRAJECTORY\n'    +'How has their position evolved? Show the arc — where they started, what shifted it, where they are now. Quote their actual stance language if available. One sentence on whether the trend is improving or declining.\n\n'    +'WHAT DRIVES THEM\n'    +'Based on what they say and what they ask about: their actual priorities, concerns, and motivations. What do they consistently push on? What do they avoid? What do they need from this relationship?\n\n'    +'WATCH OUT FOR\n'    +'Specific landmines: what topics have derailed conversations, what commitments they made and did not keep, what signals of discomfort or disengagement to watch for. Be specific — no generic warnings.\n\n'    +'WHAT HAS CHANGED\n'    +'Since last contact: what has happened in the broader context that affects this relationship? New risks, new opportunities, shifts in their org or the programs they are tied to. If nothing significant has changed, say so directly.\n\n'    +'RECOMMENDED NEXT MOVE\n'    +'One specific action. Not a category — an actual move: who to contact, what to say, what to ask for, what to bring to the conversation. Based entirely on the intelligence available.\n\n'    +'Keep the entire brief under 400 words. Direct. Specific. No fluff. If data is thin (few meetings), be honest about the limits of the intelligence and focus on what is known.';
 
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:900,system:sp,messages:[{role:'user',content:ctx.text}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:900,system:sp,messages:[{role:'user',content:ctx.text}]});
   var d2=await res.json();
   return(d2.content||[]).map(function(b){return b.text||'';}).join('');
 }
@@ -6842,7 +6844,7 @@ async function _callIntelClaude(systemPrompt, userMessage, maxTokens) {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250929',
+        model: 'claude-sonnet-4-6',
         max_tokens: maxTokens,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         system: systemPrompt,
@@ -8024,7 +8026,7 @@ window._handleRfpFile = async function(input, oppId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2000,
         system: 'You are a defense BD expert analyzing a government solicitation. Be precise and cite specific sections.',
         messages: [{
@@ -10061,7 +10063,7 @@ async function _callMemoryClaude(query,context){
     +'- End with a brief "Key takeaway:" one-liner if there is a clear one';
 
   var res=await _apiFetch(apiKey,{
-      model:'claude-sonnet-4-5-20250929',
+      model:'claude-sonnet-4-6',
       max_tokens:600,
       system:systemPrompt,
       messages:[{role:'user',content:context}]
@@ -10462,7 +10464,7 @@ async function callClaudeTranscript(notes,meta){
     +' Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';
 
   var res=await _apiFetch(apiKey,{
-      model:'claude-sonnet-4-5-20250929',
+      model:'claude-sonnet-4-6',
       max_tokens:4000, // higher — transcripts yield more data
       system:sp,
       messages:[{role:'user',content:'Date: '+meta.date+'\nType: '+meta.type+'\nAttendees: '+(meta.att||'see transcript')+'\n\nIMPORTANT: Every speaker in the transcript must appear in keyPeople. Attribute all findings to named speakers.\n\nVERBATIM TRANSCRIPT:\n'+notes}]
@@ -10510,7 +10512,7 @@ async function callClaude(notes,meta){
     if(knownCos.length)canonicalNote+=' Companies: '+knownCos.join(', ')+'.';
   }
   var sp='You are a meeting intelligence analyst for a defense technology company. Extract maximum actionable value. Use speaker labels for attribution. CRITICAL: Every person listed in the Attendees field MUST appear in keyPeople. Every company or organization mentioned anywhere MUST appear in companies. Return ONLY valid JSON, no markdown.'+canonicalNote+' Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:3000,system:sp,messages:[{role:'user',content:'Date:'+meta.date+' Type:'+meta.type+' Attendees:'+(meta.att||'?')+'\n\nIMPORTANT: All attendees must appear in keyPeople.\n\nTRANSCRIPT:\n'+notes}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:3000,system:sp,messages:[{role:'user',content:'Date:'+meta.date+' Type:'+meta.type+' Attendees:'+(meta.att||'?')+'\n\nIMPORTANT: All attendees must appear in keyPeople.\n\nTRANSCRIPT:\n'+notes}]});
   var d=await res.json();var txt=(d.content||[]).map(function(b){return b.text||'';}).join('');var clean=txt.replace(/```json|```/g,'').trim();var fi=clean.indexOf('{'),la=clean.lastIndexOf('}');if(fi===-1||la===-1)throw new Error('No JSON in response');var js=clean.slice(fi,la+1);try{return JSON.parse(js);}catch(e){var fixed=js;var eo=(fixed.match(/\[/g)||[]).length-(fixed.match(/\]/g)||[]).length;var ec=(fixed.match(/\{/g)||[]).length-(fixed.match(/\}/g)||[]).length;for(var i=0;i<eo;i++)fixed+=']';for(var j=0;j<ec;j++)fixed+='}';return JSON.parse(fixed);}
 }
 
@@ -10702,7 +10704,7 @@ async function _callPrepClaude(title,atts,context){
   var systemPrompt='You are preparing a defense BD operator for a meeting. Your brief is tactical, specific, and based entirely on actual meeting history provided. Never fabricate. Never hedge.\n\nOutput EXACTLY this structure with these exact headers (all caps, on their own line):\n\nSITUATION READ\n[2-3 sentences: where things stand before walking in, the stakes]\n\n[ATTENDEE NAME IN CAPS] — INTELLIGENCE\n[For each attendee: their role, current stance, what drives them, what they want]\n\nYOUR OBJECTIVES\n[What must be accomplished in this meeting. Be specific.]\n\nPUSH ON THIS\n[3-5 specific asks or pivots to make. Concrete and actionable.]\n\nDO NOT BRING UP\n[Landmines, failed topics, sensitive history, things that will derail this meeting. Be honest.]\n\nWHAT HAS CHANGED\n[Delta since last contact: new risks, new information, shifts in position or context]\n\nEXPECT FROM THEM\n[What they will likely ask, push back on, or want from you]\n\nWALK IN KNOWING\n[One sentence. The single most important thing about this meeting.]\n\nTotal length: 350-500 words. No bullet points in prose sections. Direct. Specific. No hedging.';
 
   var res=await _apiFetch(apiKey,{
-      model:'claude-sonnet-4-5-20250929',
+      model:'claude-sonnet-4-6',
       max_tokens:900,
       system:systemPrompt,
       messages:[{role:'user',content:context._text||String(context)}]
@@ -11006,7 +11008,7 @@ Numbered list of 5 specific actions ranked by strategic importance. Be directive
 Keep the entire brief under 500 words. No fluff. No hedging. This person is busy and needs to act.`;
 
   try{
-    var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:1200,system:sp,messages:[{role:'user',content:context+(externalIntelSection||'')}]});
+    var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:1200,system:sp,messages:[{role:'user',content:context+(externalIntelSection||'')}]});
     var d=await res.json();
     var text=(d.content||[]).map(function(b){return b.text||'';}).join('');
 
@@ -11323,7 +11325,7 @@ YOUR FIRST WEEK
 
 Keep the brief under 900 words. Write with authority and specificity. This is not a summary — it is a briefing.`;
 
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:1800,system:sp,messages:[{role:'user',content:context}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:1800,system:sp,messages:[{role:'user',content:context}]});
   var d=await res.json();
   return(d.content||[]).map(function(b){return b.text||'';}).join('');
 }
@@ -13074,7 +13076,7 @@ async function _callNarrativeClaude(d,meetings){
     +'Paragraph 3: Where it stands now. Current disposition, what they need from us, what we need from them, the single most important thing to know about this relationship going forward.\n\n'
     +'Be specific. Reference actual dates and meeting names. Never fabricate. Under 300 words total.';
 
-  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-5-20250929',max_tokens:600,system:sp,messages:[{role:'user',content:ctx}]});
+  var res=await _apiFetch(apiKey,{model:'claude-sonnet-4-6',max_tokens:600,system:sp,messages:[{role:'user',content:ctx}]});
   var d2=await res.json();
   return(d2.content||[]).map(function(b){return b.text||'';}).join('');
 }
@@ -18001,7 +18003,22 @@ function renderBdPerfView() {
   var mDeltaTxt=(mDelta>0?'+':'')+mDelta+' vs prior 30d';
   var mDeltaColor=mDelta>0?'var(--green)':mDelta<0?'var(--red)':'var(--t3)';
   var iPct=meetings.length>0?Math.round(100*intelMtgs/meetings.length):0;
-  if(opportunities.length){if(window._renderPipelineWaterfall)window._renderPipelineWaterfall(main);return;}
+  if(opportunities.length){
+    var bdStats=typeof _computeBdStats==='function'?_computeBdStats():null;
+    if(bdStats&&window._renderPipelineWaterfall){
+      var wfHtml=window._renderPipelineWaterfall(bdStats);
+      var covHtml=typeof _renderMeetingCoverageMatrix==='function'?_renderMeetingCoverageMatrix(bdStats):'';
+      var velHtml=typeof _renderVelocityBars==='function'?_renderVelocityBars(bdStats):'';
+      main.innerHTML='<div style="max-width:1080px;margin:0 auto;padding:20px 24px 40px">'
+        +wfHtml+covHtml
+        +(velHtml?'<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px;margin-bottom:14px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:14px">Stage Velocity — Avg Days in Stage</div>'+velHtml+'</div>':'')
+        +'</div>';
+    } else {
+      main.innerHTML='<div style="padding:48px;text-align:center;color:var(--t3);font-size:13px">Loading BD stats...</div>';
+      setTimeout(renderBdPerfView,600);
+    }
+    return;
+  }
   var h='<div style="max-width:900px;margin:0 auto;padding:20px 24px 40px">';
   h+='<div style="border-bottom:1px solid rgba(26,48,80,.5);padding-bottom:14px;margin-bottom:20px;display:flex;align-items:flex-end;justify-content:space-between">';
   h+='<div><div style="font-family:&apos;JetBrains Mono&apos;,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:#fb923c;text-transform:uppercase;margin-bottom:6px">BD PERFORMANCE INTELLIGENCE</div>';
@@ -18045,6 +18062,7 @@ function renderBdPerfView() {
   h+='</div></div></div>';
   main.innerHTML=h;
 }
+window.renderBdPerfView = renderBdPerfView;
 
 function _fmtVal(v) {
   if (!v || isNaN(v)) return '\u2014';
@@ -25321,29 +25339,54 @@ async function _mondaySyncInvestors(items,stats){
 async function _mondayAutoLinkContacts() {
   var newLinks = [];
   var linkCount = 0;
-  nodes.forEach(function(person) {
-    if (person.type !== 'person' || !person.org) return;
-    var orgLow = person.org.toLowerCase().trim();
-    // Find matching company node
-    var orgNode = nodes.find(function(n) {
-      return (n.type === 'company') && n.name && n.name.toLowerCase().trim() === orgLow;
+
+  // Build org lookup: match company OR government nodes
+  // Supports exact match and common abbreviation (e.g. "DARPA" vs "Defense Advanced Research Projects Agency")
+  function _findOrgNode(orgStr) {
+    if (!orgStr) return null;
+    var orgLow = orgStr.toLowerCase().trim();
+    // Exact match first (company or government)
+    var exact = nodes.find(function(n) {
+      return (n.type === 'company' || n.type === 'government') && n.name && n.name.toLowerCase().trim() === orgLow;
     });
+    if (exact) return exact;
+    // Partial/token match: all words in orgStr appear in node name or vice versa
+    var tokens = orgLow.split(/[\s,\/\-]+/).filter(function(t){return t.length > 2;});
+    if (!tokens.length) return null;
+    return nodes.find(function(n) {
+      if (n.type !== 'company' && n.type !== 'government') return false;
+      var nLow = (n.name || '').toLowerCase();
+      // Every token from the person's org appears in the node name
+      return tokens.every(function(t){ return nLow.indexOf(t) !== -1; }) ||
+        // Or every token from the node name appears in person's org string
+        nLow.split(/[\s,\/\-]+/).filter(function(t){return t.length>2;}).every(function(t){ return orgLow.indexOf(t) !== -1; });
+    }) || null;
+  }
+
+  nodes.forEach(function(person) {
+    if (person.type !== 'person') return;
+    // Try person.org, then person.govOrg, then person.organization
+    var orgStr = person.org || person.govOrg || person.organization || '';
+    if (!orgStr) return;
+    var orgNode = _findOrgNode(orgStr);
     if (!orgNode) return;
-    // Check if Works-at link already exists
+    // Check if Works-at link already exists (either direction)
     var exists = links.some(function(l) {
       var s = l.source && l.source.id ? l.source.id : l.source;
       var t = l.target && l.target.id ? l.target.id : l.target;
-      return String(s) === String(person.id) && String(t) === String(orgNode.id) && l.label === 'Works at';
+      return l.label === 'Works at' && (
+        (String(s) === String(person.id) && String(t) === String(orgNode.id)) ||
+        (String(t) === String(person.id) && String(s) === String(orgNode.id))
+      );
     });
     if (exists) return;
-    // Create the link
     var nl = {
-      id: 'lnk-mon-' + person.id + '-' + orgNode.id,
+      id: 'lnk-al-' + person.id + '-' + orgNode.id,
       source: person.id,
       target: orgNode.id,
       label: 'Works at',
       dir: 'to',
-      notes: 'Auto-linked from Monday.com sync'
+      notes: 'Auto-linked'
     };
     newLinks.push(nl);
     linkCount++;
@@ -25351,7 +25394,6 @@ async function _mondayAutoLinkContacts() {
 
   if (!newLinks.length) return 0;
 
-  // Write links to Firebase
   for (var i = 0; i < newLinks.length; i++) {
     var nl = newLinks[i];
     links.push(nl);
@@ -25359,17 +25401,755 @@ async function _mondayAutoLinkContacts() {
     saveLink(nl);
   }
   if (window._invalidateEntityGraph) window._invalidateEntityGraph();
-  // Restart simulation with new links so clusters merge
+  // Restart simulation so clusters merge visually
   if (sim && nodes.length) {
     computeOrgAngles();
     sim.nodes(nodes);
     sim.force('link').links(links);
-    sim.alpha(0.5).restart();
-    setTimeout(function(){ if(nodes.length) fitGraph(); }, 1500);
+    sim.alpha(0.6).restart();
+    setTimeout(function(){ if(typeof fitGraph==='function'&&nodes.length) fitGraph(); }, 1800);
   }
+  if (typeof renderNetwork === 'function') setTimeout(renderNetwork, 200);
   return linkCount;
 }
 window._mondayAutoLinkContacts = _mondayAutoLinkContacts;
+
+// ── Global re-link utility — callable from Network Map toolbar ────────────
+window._relinkAllContacts = async function() {
+  if (typeof toast === 'function') toast('Re-linking contacts to organizations...');
+  var count = await _mondayAutoLinkContacts();
+  if (typeof toast === 'function') toast(count > 0 ? count + ' contact link' + (count>1?'s':'') + ' created — clusters updated' : 'All contacts already linked');
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// FEATURE 1: MEETING PREP BRIEF
+// One-click pre-meeting dossier for any upcoming calendar event or manual
+// attendee list. Pulls from: network node history, opportunity linkages,
+// open commitments, stance trajectory, and live intel (if API key present).
+// Entry points:
+//   • window.openMeetingPrepBrief(dateStr, title, attendeeStr, oppId)
+//   • "Prep Brief" button added to the Intel log header
+// ══════════════════════════════════════════════════════════════════════════
+
+window.openMeetingPrepBrief = async function(dateStr, title, attendeeStr, oppId) {
+  // Show modal immediately with loading state
+  var modal = document.getElementById('meeting-prep-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'meeting-prep-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = [
+      '<div class="modal" style="max-width:740px;max-height:90vh;overflow-y:auto">',
+      '  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">',
+      '    <div>',
+      '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase;margin-bottom:4px">⬡ Meeting Intelligence</div>',
+      '      <div id="mprep-title" style="font-family:\'Barlow Condensed\',sans-serif;font-size:24px;font-weight:700;color:var(--text);line-height:1.1"></div>',
+      '      <div id="mprep-meta" style="font-size:11px;color:var(--t2);margin-top:3px"></div>',
+      '    </div>',
+      '    <div style="display:flex;gap:7px;align-items:center">',
+      '      <button class="btn btn-sm" id="mprep-ai-btn" style="color:var(--gold);border-color:rgba(201,162,39,.4);font-size:10px;background:rgba(201,162,39,.06)">⬡ AI Prep</button>',
+      '      <button class="btn btn-sm" onclick="closeModal(\'meeting-prep-modal\')" style="font-size:10px">Close</button>',
+      '    </div>',
+      '  </div>',
+      '  <div id="mprep-body"></div>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(modal);
+  }
+
+  modal.style.display = 'flex';
+  document.getElementById('mprep-title').textContent = title || 'Meeting Prep';
+  document.getElementById('mprep-meta').textContent = (dateStr || '') + (attendeeStr ? '  ·  ' + attendeeStr : '');
+  document.getElementById('mprep-body').innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--t3)"><span class="proc-dots"><span></span><span></span><span></span></span><div style="margin-top:8px;font-size:12px">Building brief…</div></div>';
+
+  // Parse attendees
+  var nameList = (attendeeStr || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+
+  // Find matching nodes for each attendee
+  var contactData = [];
+  nameList.forEach(function(name) {
+    if (!name) return;
+    var node = nodes.find(function(n) {
+      return n.type === 'person' && (
+        n.name.toLowerCase() === name.toLowerCase() ||
+        nameSimilarity(n.name, name) >= 0.75
+      );
+    });
+    if (!node) {
+      // Try company/gov match
+      node = nodes.find(function(n) {
+        return nameSimilarity(n.name, name) >= 0.7;
+      });
+    }
+    var mtgs = node ? getMtgsForNode(node.id) : [];
+    var health = (node && mtgs.length) ? computeRelHealth(node.id) : null;
+    var sorted = mtgs.slice().sort(function(a,b){ return b.meta.date.localeCompare(a.meta.date); });
+    var lastStance = null;
+    var lastMtgTitle = null;
+    var allStances = [];
+    sorted.forEach(function(m) {
+      var kp = (m.intel && m.intel.keyPeople || []).find(function(p){
+        return p.name && nameSimilarity(p.name, name) >= 0.75;
+      });
+      if (kp && kp.stance && !lastStance) { lastStance = kp.stance; lastMtgTitle = m.meta.title; }
+      if (kp && kp.stance) allStances.push(kp.stance);
+    });
+
+    // Open commitments from/to this contact
+    var openCmts = commitments.filter(function(c) {
+      return c.status === 'open' &&
+        ((c.owner || '').toLowerCase().indexOf(name.toLowerCase()) !== -1 ||
+         (c.task || '').toLowerCase().indexOf(name.toLowerCase()) !== -1);
+    });
+
+    // Action items mentioning this person
+    var openActions = [];
+    sorted.slice(0, 5).forEach(function(m) {
+      (m.intel && m.intel.actionItems || []).forEach(function(a) {
+        if (!a.done && a.owner && nameSimilarity(a.owner, name) >= 0.7) {
+          openActions.push({ text: a.text || a.task || '', mtg: m.meta.title, deadline: a.deadline || '' });
+        }
+      });
+    });
+
+    contactData.push({
+      name: name, node: node, mtgs: sorted, health: health,
+      lastStance: lastStance, lastMtgTitle: lastMtgTitle, allStances: allStances,
+      openCmts: openCmts, openActions: openActions,
+      daysAgo: sorted.length ? Math.floor((Date.now() - new Date(sorted[0].meta.date)) / 86400000) : null
+    });
+  });
+
+  // Find linked opportunity
+  var opp = null;
+  if (oppId) {
+    opp = opportunities.find(function(o){ return o.id === oppId; });
+  }
+  // Auto-detect opportunity from title match if not explicit
+  if (!opp && title) {
+    opp = opportunities.find(function(o) {
+      return o.stage !== 'won' && o.stage !== 'lost' &&
+        (title.toLowerCase().indexOf((o.name || '').toLowerCase()) !== -1 ||
+         (o.name || '').toLowerCase().indexOf(title.toLowerCase().slice(0,15)) !== -1);
+    });
+  }
+
+  // Shared context across all attendees
+  var sharedMtgIds = new Set();
+  if (contactData.length >= 2) {
+    var firstIds = new Set(contactData[0].mtgs.map(function(m){ return m.id; }));
+    contactData.slice(1).forEach(function(cd) {
+      cd.mtgs.forEach(function(m){ if (firstIds.has(m.id)) sharedMtgIds.add(m.id); });
+    });
+  }
+
+  // Render static section
+  var h = '';
+
+  // ── Opportunity context strip ──────────────────────────
+  if (opp) {
+    var oppStage = opp.stage || 'tracking';
+    var stageCol = { awareness:'#64748b', engaged:'#3b82f6', proposal:'#8b5cf6', submitted:'#c9a227', award:'#f59e0b', won:'#22c55e', lost:'#ef4444' }[oppStage] || 'var(--t3)';
+    h += '<div style="background:rgba(26,48,80,.3);border:1px solid rgba(26,48,80,.5);border-left:3px solid ' + stageCol + ';border-radius:8px;padding:12px 14px;margin-bottom:16px;display:flex;align-items:center;gap:14px">';
+    h += '<div style="flex:1"><div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:3px">Linked Opportunity</div>';
+    h += '<div style="font-size:14px;font-weight:700;color:var(--text)">' + (opp.name || '') + '</div>';
+    h += '<div style="font-size:11px;color:var(--t2);margin-top:2px">' + (opp.agency || '') + (opp.value ? '  ·  ' + opp.value : '') + '</div></div>';
+    h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;padding:4px 10px;background:' + stageCol + '22;color:' + stageCol + ';border:1px solid ' + stageCol + '44;border-radius:4px">' + oppStage.toUpperCase() + '</span>';
+    h += '</div>';
+  }
+
+  // ── Contact cards ──────────────────────────────────────
+  if (!contactData.length) {
+    h += '<div style="text-align:center;padding:32px 0;color:var(--t3);font-size:12px">Add attendees to generate intel cards.</div>';
+  } else {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-bottom:16px">';
+    contactData.forEach(function(cd) {
+      var healthColor = cd.health === null ? 'var(--t3)' : cd.health >= 7 ? 'var(--green)' : cd.health >= 4 ? 'var(--amber)' : 'var(--red)';
+      var nodeTypeColor = !cd.node ? 'var(--t3)' : cd.node.type === 'government' ? '#60a5fa' : 'var(--blue)';
+      h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:14px 15px">';
+
+      // Header row
+      h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">';
+      h += '<div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px">' + cd.name + '</div>';
+      if (cd.node) {
+        h += '<div style="font-size:10px;color:' + nodeTypeColor + '">' + (cd.node.role || '') + (cd.node.org ? '  ·  ' + cd.node.org : '') + '</div>';
+      } else {
+        h += '<div style="font-size:10px;color:var(--t3)">Not in network</div>';
+      }
+      h += '</div>';
+      if (cd.health !== null) {
+        h += '<div style="text-align:center;flex-shrink:0"><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:26px;font-weight:700;color:' + healthColor + ';line-height:1">' + cd.health.toFixed(1) + '</div><div style="font-size:8px;font-family:\'JetBrains Mono\',monospace;color:var(--t3)">REL HEALTH</div></div>';
+      }
+      h += '</div>';
+
+      // Last contact
+      if (cd.daysAgo !== null) {
+        var recencyColor = cd.daysAgo <= 14 ? 'var(--green)' : cd.daysAgo <= 45 ? 'var(--amber)' : 'var(--red)';
+        h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
+        h += '<span style="font-size:9px;font-family:\'JetBrains Mono\',monospace;color:' + recencyColor + '">' + (cd.daysAgo === 0 ? 'today' : cd.daysAgo + 'd ago') + '</span>';
+        h += '<span style="font-size:9px;color:var(--t3)">last contact</span>';
+        if (cd.mtgs.length) h += '<span style="font-size:9px;color:var(--t3)">·  ' + cd.mtgs.length + ' meeting' + (cd.mtgs.length !== 1 ? 's' : '') + '</span>';
+        h += '</div>';
+      }
+
+      // Current stance
+      if (cd.lastStance) {
+        var sLow = cd.lastStance.toLowerCase();
+        var stanceColor = sLow.match(/positive|engaged|committed|champion|enthusiastic|supportive/) ? 'var(--green)' :
+                          sLow.match(/cautious|hesitant|concerned|skeptical/) ? 'var(--amber)' :
+                          sLow.match(/negative|opposed|cold|hostile|blocking/) ? 'var(--red)' : 'var(--t2)';
+        h += '<div style="background:rgba(26,48,80,.3);border-radius:5px;padding:7px 10px;margin-bottom:8px">';
+        h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:3px">Current Stance</div>';
+        h += '<div style="font-size:11px;color:' + stanceColor + ';font-weight:600">' + cd.lastStance + '</div>';
+        if (cd.lastMtgTitle) h += '<div style="font-size:9px;color:var(--t3);margin-top:2px">from: ' + cd.lastMtgTitle + '</div>';
+        h += '</div>';
+      }
+
+      // Open commitments / action items
+      var allOpen = cd.openActions.slice(0, 3).concat(cd.openCmts.slice(0, 2).map(function(c){ return { text: c.task || c.what || '', mtg: c.sourceMtgTitle || '', deadline: c.deadline || '' }; }));
+      if (allOpen.length) {
+        h += '<div style="margin-bottom:4px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);margin-bottom:5px">⚠ Open Items</div>';
+        allOpen.slice(0, 4).forEach(function(item) {
+          h += '<div style="font-size:10px;color:var(--text);padding:3px 0;border-bottom:1px solid rgba(26,48,80,.3);line-height:1.4">';
+          h += '· ' + (item.text || '').slice(0, 80);
+          if (item.deadline) h += ' <span style="color:var(--amber);font-size:9px">due ' + item.deadline + '</span>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+
+      // No network data state
+      if (!cd.node && !cd.lastStance) {
+        h += '<div style="font-size:10px;color:var(--t3);line-height:1.5;margin-top:4px">No prior meeting history found. Process a past meeting with this contact to build intelligence.</div>';
+      }
+
+      h += '</div>'; // card close
+    });
+    h += '</div>'; // grid close
+  }
+
+  // ── Shared meetings strip ──────────────────────────────
+  if (sharedMtgIds.size > 0) {
+    var sharedMtgs = Array.from(sharedMtgIds).map(function(id){ return meetingMap.get(id); }).filter(Boolean)
+      .sort(function(a,b){ return b.meta.date.localeCompare(a.meta.date); }).slice(0,4);
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:14px 15px;margin-bottom:16px">';
+    h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:10px">Shared Meeting History</div>';
+    sharedMtgs.forEach(function(m) {
+      var pc = m.intel && m.intel.companyPulse;
+      var pulseColor = pc === 'Positive' ? 'var(--green)' : pc === 'Negative' ? 'var(--red)' : 'var(--t3)';
+      h += '<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid rgba(26,48,80,.3)">';
+      h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);flex-shrink:0">' + m.meta.date + '</span>';
+      h += '<span style="font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + m.meta.title + '</span>';
+      if (pc) h += '<span style="font-size:9px;color:' + pulseColor + ';flex-shrink:0">' + pc + '</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  // ── AI prep section placeholder ────────────────────────
+  h += '<div id="mprep-ai-section" style="background:rgba(201,162,39,.04);border:1px solid rgba(201,162,39,.2);border-radius:8px;padding:14px 15px">';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);margin-bottom:6px">⬡ AI Tactical Brief</div>';
+  if (typeof apiKey !== 'undefined' && apiKey) {
+    h += '<div style="font-size:11px;color:var(--t2)">Click "AI Prep" to generate a tactical brief with specific talking points, questions to ask, and things to avoid.</div>';
+  } else {
+    h += '<div style="font-size:11px;color:var(--t3)">Add an API key in Settings to generate an AI tactical brief for this meeting.</div>';
+  }
+  h += '</div>';
+
+  document.getElementById('mprep-body').innerHTML = h;
+
+  // Wire AI Prep button
+  var aiBtn = document.getElementById('mprep-ai-btn');
+  if (aiBtn) {
+    aiBtn.onclick = function() { window._runMeetingPrepAI(title, contactData, opp, dateStr); };
+    aiBtn.style.display = (typeof apiKey !== 'undefined' && apiKey) ? 'inline-flex' : 'none';
+  }
+};
+
+// AI deep-dive for meeting prep
+window._runMeetingPrepAI = async function(title, contactData, opp, dateStr) {
+  var aiSection = document.getElementById('mprep-ai-section');
+  if (!aiSection) return;
+  aiSection.innerHTML = '<div style="text-align:center;padding:20px 0;color:var(--t3)"><span class="proc-dots"><span></span><span></span><span></span></span><div style="margin-top:8px;font-size:12px">Generating tactical brief…</div></div>';
+
+  // Build context
+  var ctx = 'MEETING: ' + (title || 'Upcoming meeting') + '\n';
+  ctx += 'DATE: ' + (dateStr || new Date().toISOString().slice(0,10)) + '\n\n';
+  if (opp) ctx += 'OPPORTUNITY: ' + opp.name + ' | Stage: ' + (opp.stage||'') + ' | Agency: ' + (opp.agency||'') + ' | Value: ' + (opp.value||'TBD') + '\n\n';
+
+  ctx += 'ATTENDEES:\n';
+  contactData.forEach(function(cd) {
+    ctx += '- ' + cd.name;
+    if (cd.node && cd.node.role) ctx += ', ' + cd.node.role;
+    if (cd.node && cd.node.org) ctx += ' at ' + cd.node.org;
+    ctx += '\n';
+    if (cd.lastStance) ctx += '  Current stance: ' + cd.lastStance + '\n';
+    if (cd.daysAgo !== null) ctx += '  Last contact: ' + cd.daysAgo + ' days ago\n';
+    if (cd.health !== null) ctx += '  Relationship health: ' + cd.health.toFixed(1) + '/10\n';
+    if (cd.openActions.length) {
+      ctx += '  Open action items: ' + cd.openActions.map(function(a){ return a.text; }).join('; ') + '\n';
+    }
+    if (cd.allStances.length > 1) ctx += '  Stance trajectory: ' + cd.allStances.slice(0,3).join(' → ') + '\n';
+    if (cd.mtgs.length) {
+      ctx += '  Meeting history (' + cd.mtgs.length + ' total). Most recent: ' + cd.mtgs[0].meta.title + ' (' + cd.mtgs[0].meta.date + ')';
+      var kp0 = (cd.mtgs[0].intel && cd.mtgs[0].intel.keyPeople || []).find(function(p){ return nameSimilarity(p.name, cd.name) >= 0.7; });
+      if (kp0 && kp0.stance) ctx += '. Last stance: ' + kp0.stance;
+      ctx += '\n';
+    }
+  });
+
+  var sp = 'You are a defense BD intelligence analyst preparing an operator for a high-stakes meeting. Be direct, specific, and tactical. No generic advice.';
+  var prompt = ctx + '\nGenerate a TACTICAL MEETING BRIEF with these exact sections:\n\n'
+    + 'SITUATION READ\n2-3 sentences: what is the real state of this relationship/pursuit going into this meeting.\n\n'
+    + 'PUSH ON THIS\n3-4 specific asks, pivots, or probes — not categories, actual language to use.\n\n'
+    + 'DO NOT BRING UP\n2-3 specific landmines based on the history above — topics or commitments that will derail this meeting.\n\n'
+    + 'WHAT THEY WANT FROM YOU\nBased on their stance and history, what will they push on or ask about.\n\n'
+    + 'WALK IN KNOWING\nOne sentence. The single most critical thing.\n\n'
+    + 'Keep the entire brief under 350 words. Direct and specific.';
+
+  try {
+    var text = await _callIntelClaude(sp, prompt, 1000);
+    // Render sectioned output
+    var sections = ['SITUATION READ','PUSH ON THIS','DO NOT BRING UP','WHAT THEY WANT FROM YOU','WALK IN KNOWING'];
+    var sectionColors = { 'SITUATION READ':'var(--blue)','PUSH ON THIS':'var(--gold)','DO NOT BRING UP':'var(--red)','WHAT THEY WANT FROM YOU':'var(--purple)','WALK IN KNOWING':'var(--green)' };
+    var rendered = '';
+    sections.forEach(function(sec) {
+      var idx = text.toUpperCase().indexOf(sec);
+      if (idx === -1) return;
+      var start = idx + sec.length;
+      var nextIdx = -1;
+      sections.forEach(function(s2) {
+        if (s2 === sec) return;
+        var ni = text.toUpperCase().indexOf(s2, start);
+        if (ni > -1 && (nextIdx === -1 || ni < nextIdx)) nextIdx = ni;
+      });
+      var content = (nextIdx > -1 ? text.slice(start, nextIdx) : text.slice(start)).trim();
+      var col = sectionColors[sec] || 'var(--t2)';
+      rendered += '<div style="margin-bottom:14px">';
+      rendered += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:' + col + ';margin-bottom:5px">' + sec + '</div>';
+      rendered += '<div style="font-size:12px;color:var(--text);line-height:1.6;white-space:pre-wrap">' + content + '</div>';
+      rendered += '</div>';
+    });
+    aiSection.innerHTML = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);margin-bottom:12px">⬡ AI Tactical Brief</div>' + rendered
+      + '<div style="font-size:9px;color:var(--t3);margin-top:10px;text-align:right">' + new Date().toLocaleDateString() + ' · claude-sonnet-4-6</div>';
+  } catch(e) {
+    aiSection.innerHTML = '<div style="font-size:11px;color:var(--red)">Brief failed: ' + (e.message || 'Error') + '</div>';
+  }
+};
+
+// Add "Prep Brief" button to Intel log header area (wires on switchView)
+(function() {
+  var _origOnViewSwitch = window._onViewSwitch;
+  window._onViewSwitch = function(v) {
+    if (_origOnViewSwitch) _origOnViewSwitch(v);
+    if (v !== 'intel') return;
+    // Inject Prep Brief button near the Process button if not already present
+    setTimeout(function() {
+      if (document.getElementById('prep-brief-fab')) return;
+      var fab = document.createElement('button');
+      fab.id = 'prep-brief-fab';
+      fab.title = 'Generate a meeting prep brief from current form data';
+      fab.style.cssText = 'position:fixed;bottom:80px;right:16px;z-index:200;padding:9px 14px;background:rgba(201,162,39,.15);border:1px solid rgba(201,162,39,.5);border-radius:7px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.04em;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;gap:6px';
+      fab.innerHTML = '⬡ Prep Brief';
+      fab.onclick = function() {
+        var dateVal = (document.getElementById('m-date') || {}).value || new Date().toISOString().slice(0,10);
+        var titleVal = (document.getElementById('m-title') || {}).value || 'Meeting';
+        var attVal = (document.getElementById('m-att') || {}).value || '';
+        var oppSel = document.getElementById('m-opp-sel');
+        var oppId = oppSel ? oppSel.value : '';
+        window.openMeetingPrepBrief(dateVal, titleVal, attVal, oppId);
+      };
+      document.body.appendChild(fab);
+    }, 400);
+  };
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// FEATURE 2: CONTACT RE-ENGAGEMENT ENGINE
+// Surfaces T1/T2 contacts quiet for 45+ days with a specific, data-driven
+// outreach angle. Extends _computeAlerts with richer re-engagement context.
+// New entry: window.openReengagementPanel()
+// Also wires into the existing alert system.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._buildReengagementList = function() {
+  var now = new Date();
+  var list = [];
+
+  nodes.forEach(function(n) {
+    if (n.type !== 'person' || (n.priority || 3) > 2) return; // T1 and T2 only
+    var mtgs = getMtgsForNode(n.id);
+    if (!mtgs.length) return;
+    var sorted = mtgs.slice().sort(function(a,b){ return b.meta.date.localeCompare(a.meta.date); });
+    var daysAgo = Math.floor((now - new Date(sorted[0].meta.date)) / 86400000);
+    if (daysAgo < 45) return; // only cooling contacts
+
+    var health = computeRelHealth(n.id);
+    var lastMtg = sorted[0];
+    var lastStance = null;
+    var lastKp = (lastMtg.intel && lastMtg.intel.keyPeople || []).find(function(p){
+      return p.name && nameSimilarity(p.name, n.name) >= 0.75;
+    });
+    if (lastKp) lastStance = lastKp.stance;
+
+    // What shared opportunities does this person link to?
+    var linkedOpps = opportunities.filter(function(o) {
+      return o.stage !== 'won' && o.stage !== 'lost' &&
+        (o.contacts || []).indexOf(n.id) !== -1 ||
+        mtgs.some(function(m){ return m.oppId === o.id; });
+    }).slice(0, 2);
+
+    // Build a suggested outreach angle from data
+    var angle = '';
+    if (linkedOpps.length) {
+      angle = 'Check in on ' + linkedOpps[0].name;
+      if (linkedOpps[0].stage === 'proposal') angle = 'Proposal update for ' + linkedOpps[0].name;
+    } else if (lastMtg.intel && lastMtg.intel.actionItems && lastMtg.intel.actionItems.length) {
+      var open = lastMtg.intel.actionItems.filter(function(a){ return !a.done; });
+      if (open.length) angle = 'Follow up on: ' + (open[0].text || 'open action items').slice(0, 60);
+    } else if (lastStance && lastStance.toLowerCase().match(/interested|positive|engaged/)) {
+      angle = 'Keep the momentum — ' + n.name + ' was engaged last contact';
+    } else if (n.org) {
+      angle = 'Check in — see what\'s changed at ' + n.org;
+    } else {
+      angle = 'Re-establish contact';
+    }
+
+    // Intel signals: any recent mentions in daily feed?
+    var feedSignal = null;
+    if (window._dailyFeedData && window._dailyFeedData.length) {
+      var nLow = n.name.toLowerCase();
+      var orgLow = (n.org || '').toLowerCase();
+      var match = window._dailyFeedData.find(function(s) {
+        var hl = (s.headline || '').toLowerCase() + ' ' + (s.detail || '').toLowerCase();
+        return (nLow && hl.indexOf(nLow) !== -1) || (orgLow && orgLow.length > 3 && hl.indexOf(orgLow) !== -1);
+      });
+      if (match) feedSignal = match.headline;
+    }
+
+    list.push({
+      node: n, daysAgo: daysAgo, health: health,
+      lastMtg: lastMtg, lastStance: lastStance,
+      linkedOpps: linkedOpps, angle: angle, feedSignal: feedSignal
+    });
+  });
+
+  // Sort: T1 first, then by days quiet descending
+  list.sort(function(a, b) {
+    var pa = a.node.priority || 3, pb = b.node.priority || 3;
+    if (pa !== pb) return pa - pb;
+    return b.daysAgo - a.daysAgo;
+  });
+
+  return list;
+};
+
+window.openReengagementPanel = function() {
+  var panel = document.getElementById('reengagement-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'reengagement-panel';
+    panel.className = 'overlay';
+    panel.style.display = 'none';
+    panel.innerHTML = [
+      '<div class="modal" style="max-width:700px;max-height:90vh;overflow-y:auto">',
+      '  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">',
+      '    <div>',
+      '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.16em;color:var(--amber);text-transform:uppercase;margin-bottom:4px">◎ Relationship Maintenance</div>',
+      '      <div style="font-family:\'Barlow Condensed\',sans-serif;font-size:22px;font-weight:700;color:var(--text)">Contacts to Re-engage</div>',
+      '    </div>',
+      '    <button class="btn btn-sm" onclick="closeModal(\'reengagement-panel\')" style="font-size:10px">Close</button>',
+      '  </div>',
+      '  <div id="reengagement-body"></div>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(panel);
+  }
+
+  panel.style.display = 'flex';
+  var list = window._buildReengagementList();
+  var body = document.getElementById('reengagement-body');
+
+  if (!list.length) {
+    body.innerHTML = '<div style="text-align:center;padding:40px 0"><div style="font-size:28px;margin-bottom:8px">✓</div><div style="font-size:14px;font-weight:600;color:var(--green)">All T1/T2 contacts touched within 45 days</div><div style="font-size:11px;color:var(--t2);margin-top:6px">Keep up the momentum.</div></div>';
+    return;
+  }
+
+  var h = '<div style="font-size:11px;color:var(--t2);margin-bottom:14px">' + list.length + ' contact' + (list.length !== 1 ? 's' : '') + ' need attention — sorted by priority, then days quiet</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:10px">';
+
+  list.forEach(function(item) {
+    var n = item.node;
+    var healthColor = item.health >= 7 ? 'var(--green)' : item.health >= 4 ? 'var(--amber)' : 'var(--red)';
+    var urgency = item.daysAgo > 90 ? 'var(--red)' : item.daysAgo > 60 ? 'var(--amber)' : 'var(--t2)';
+    var tierBadge = n.priority === 1 ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;font-weight:700;padding:2px 6px;background:rgba(201,162,39,.15);color:var(--gold);border:1px solid rgba(201,162,39,.4);border-radius:3px">T1</span>' :
+                                        '<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;font-weight:700;padding:2px 6px;background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.3);border-radius:3px">T2</span>';
+
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:14px 15px">';
+    h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
+    h += tierBadge;
+    h += '<span style="font-size:14px;font-weight:700;color:var(--text)">' + n.name + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:10px;color:var(--t2)">' + (n.role || '') + (n.org ? (n.role ? '  ·  ' : '') + n.org : '') + '</div>';
+    h += '</div>';
+    h += '<div style="text-align:right;flex-shrink:0">';
+    h += '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:26px;font-weight:700;color:' + urgency + ';line-height:1">' + item.daysAgo + 'd</div>';
+    h += '<div style="font-size:8px;font-family:\'JetBrains Mono\',monospace;color:var(--t3)">QUIET</div>';
+    h += '</div></div>';
+
+    // Stance
+    if (item.lastStance) {
+      h += '<div style="font-size:10px;color:var(--t3);margin-bottom:6px">Last stance: <span style="color:var(--text)">' + item.lastStance + '</span> — ' + item.lastMtg.meta.title + '</div>';
+    }
+
+    // Suggested angle
+    h += '<div style="background:rgba(201,162,39,.06);border:1px solid rgba(201,162,39,.2);border-radius:5px;padding:8px 10px;margin-bottom:8px">';
+    h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-bottom:3px">Suggested Angle</div>';
+    h += '<div style="font-size:11px;color:var(--text)">' + item.angle + '</div>';
+    h += '</div>';
+
+    // Feed signal
+    if (item.feedSignal) {
+      h += '<div style="font-size:10px;color:var(--cyan);margin-bottom:8px">📡 Intel signal: ' + item.feedSignal.slice(0, 100) + '</div>';
+    }
+
+    // Linked opps
+    if (item.linkedOpps.length) {
+      h += '<div style="font-size:10px;color:var(--t3);margin-bottom:8px">Linked: ' + item.linkedOpps.map(function(o){ return '<span style="color:var(--text)">' + o.name + '</span>'; }).join(', ') + '</div>';
+    }
+
+    // Action buttons
+    h += '<div style="display:flex;gap:7px">';
+    h += '<button onclick="closeModal(\'reengagement-panel\');switchView(\'network\');setTimeout(function(){window._panelFocusNode&&window._panelFocusNode(\'' + n.id + '\')},300)" style="padding:5px 12px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--text);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">View Dossier →</button>';
+    h += '<button onclick="closeModal(\'reengagement-panel\');window.openMeetingPrepBrief(\'\',\'Re-engagement: ' + n.name.replace(/'/g,"\\'") + '\',\'' + n.name.replace(/'/g,"\\'") + '\')" style="padding:5px 12px;border:1px solid rgba(201,162,39,.4);border-radius:var(--rsm);background:rgba(201,162,39,.08);color:var(--gold);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">⬡ Prep Outreach</button>';
+    h += '</div>';
+    h += '</div>'; // card
+  });
+
+  h += '</div>';
+  body.innerHTML = h;
+};
+
+// Wire re-engagement into alert panel (add a "View All" link)
+(function() {
+  var _origRenderAlerts = window._renderAlertsPanel || function(){};
+  // Patch to add re-engagement entry point at bottom of alert panel
+  var _patchApplied = false;
+  var _origRunAlert = window.toggleAlertsPanel;
+  window.toggleAlertsPanel = function() {
+    if (_origRunAlert) _origRunAlert();
+    if (!_patchApplied) {
+      _patchApplied = true;
+      setTimeout(function() {
+        var panel = document.getElementById('alerts-panel');
+        if (!panel) return;
+        var footer = document.createElement('div');
+        footer.style.cssText = 'padding:10px 14px;border-top:1px solid rgba(26,48,80,.4);display:flex;justify-content:space-between;align-items:center';
+        footer.innerHTML = '<span style="font-size:10px;color:var(--t3)">Re-engagement engine</span>'
+          + '<button onclick="window.openReengagementPanel()" style="padding:4px 10px;border:1px solid rgba(245,158,11,.4);border-radius:var(--rsm);background:rgba(245,158,11,.08);color:var(--amber);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">◎ Who to Re-engage →</button>';
+        panel.appendChild(footer);
+      }, 200);
+    }
+  };
+})();
+
+// Also surface re-engagement from Team tab — add a button
+(function() {
+  var _origTeam = window.renderTeamView || function(){};
+  // After team renders, append the reengagement CTA
+  window._appendReengagementCTA = function() {
+    var main = document.getElementById('team-main');
+    if (!main) return;
+    var reengCount = window._buildReengagementList().length;
+    if (!reengCount) return;
+    var cta = document.createElement('div');
+    cta.id = 'reeng-cta';
+    cta.style.cssText = 'background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:14px 16px;margin-top:14px;display:flex;align-items:center;justify-content:space-between';
+    cta.innerHTML = '<div><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--amber);margin-bottom:4px">◎ Relationship Maintenance</div>'
+      + '<div style="font-size:13px;color:var(--text)">' + reengCount + ' T1/T2 contact' + (reengCount !== 1 ? 's' : '') + ' quiet for 45+ days</div></div>'
+      + '<button onclick="window.openReengagementPanel()" style="padding:8px 16px;border:1px solid rgba(245,158,11,.4);border-radius:6px;background:rgba(245,158,11,.12);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.04em">Review →</button>';
+    main.appendChild(cta);
+  };
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// FEATURE 3: OPPORTUNITY HEALTH DIGEST
+// A persistent health banner in the Opportunities view showing:
+//   - Stalled deals (no activity 21+ days) with action prompts
+//   - Q4/EOFY warnings for deals with upcoming award dates
+//   - Key contacts going cold on active pursuits
+// Injected above the opportunity list in renderOppSidebar().
+// ══════════════════════════════════════════════════════════════════════════
+
+window._renderOppHealthDigest = function() {
+  var banner = document.getElementById('opp-health-digest');
+  if (!banner) return;
+
+  var now = new Date(); now.setHours(0,0,0,0);
+  var DAY = 86400000;
+  var issues = [];
+
+  // Build meeting lookup per opp
+  var mtgByOpp = {};
+  meetings.forEach(function(m) {
+    if (!m.oppId) return;
+    if (!mtgByOpp[m.oppId]) mtgByOpp[m.oppId] = { count: 0, lastDate: '', lastTs: 0 };
+    mtgByOpp[m.oppId].count++;
+    var mt = new Date(m.meta.date || 0).getTime();
+    if (mt > mtgByOpp[m.oppId].lastTs) {
+      mtgByOpp[m.oppId].lastTs = mt;
+      mtgByOpp[m.oppId].lastDate = m.meta.date || '';
+    }
+  });
+
+  opportunities.filter(function(o){ return o.stage !== 'won' && o.stage !== 'lost'; })
+    .forEach(function(o) {
+      var daysSince = Math.floor((now - new Date(o.updatedAt || o.created)) / DAY);
+      var mtgData = mtgByOpp[o.id] || { count: 0, lastTs: 0 };
+      var daysSinceMtg = mtgData.lastTs ? Math.floor((now.getTime() - mtgData.lastTs) / DAY) : 999;
+
+      // EOFY / Q4 urgency
+      if (o.awardDate) {
+        var awardD = new Date(o.awardDate);
+        var daysToAward = Math.floor((awardD - now) / DAY);
+        var fy = typeof getFYInfo === 'function' ? getFYInfo(o.awardDate) : null;
+        var isQ4 = fy && fy.fq === 4;
+        if (daysToAward > 0 && daysToAward <= 90 && isQ4) {
+          issues.push({ sev: 'high', icon: '⚡', color: 'var(--amber)',
+            text: o.name + ' — ' + daysToAward + 'd to award · Q4 EOFY window',
+            action: function(oid){ return function(){ selectOpp(oid); }; }(o.id),
+            label: 'View Deal' });
+        } else if (daysToAward > 0 && daysToAward <= 30) {
+          issues.push({ sev: 'high', icon: '◷', color: 'var(--red)',
+            text: o.name + ' — award decision in ' + daysToAward + ' days',
+            action: function(oid){ return function(){ selectOpp(oid); }; }(o.id),
+            label: 'View Deal' });
+        }
+      }
+
+      // Stalled deal
+      if (daysSince >= 21 && daysSinceMtg >= 21) {
+        issues.push({ sev: daysSince >= 45 ? 'high' : 'med', icon: '◎', color: daysSince >= 45 ? 'var(--red)' : 'var(--amber)',
+          text: o.name + ' — stalled ' + daysSince + 'd at ' + (o.stage || 'tracking') + (mtgData.count ? ' · last meeting ' + daysSinceMtg + 'd ago' : ' · no meetings logged'),
+          action: function(oid){ return function(){ selectOpp(oid); }; }(o.id),
+          label: 'Review' });
+      }
+
+      // Key contacts going cold on this opp
+      var oppContacts = (o.contacts || []);
+      oppContacts.forEach(function(nodeId) {
+        var n = nodeMap.get(nodeId);
+        if (!n || n.priority > 1) return; // T1 only for opp-linked alert
+        var nodeMtgs = getMtgsForNode(nodeId);
+        if (!nodeMtgs.length) return;
+        var lastNodeMtg = nodeMtgs.slice().sort(function(a,b){ return b.meta.date.localeCompare(a.meta.date); })[0];
+        var nodeQuit = Math.floor((now.getTime() - new Date(lastNodeMtg.meta.date)) / DAY);
+        if (nodeQuit >= 30) {
+          issues.push({ sev: 'med', icon: '❄', color: 'var(--blue)',
+            text: n.name + ' (' + (n.role || n.org || 'contact') + ') quiet ' + nodeQuit + 'd — linked to ' + o.name,
+            action: function(nid){ return function(){ switchView('network'); setTimeout(function(){ window._panelFocusNode && window._panelFocusNode(nid); }, 300); }; }(nodeId),
+            label: 'View Contact' });
+        }
+      });
+    });
+
+  // De-dup and cap
+  issues = issues.slice(0, 6);
+
+  if (!issues.length) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  // Sort: high severity first
+  issues.sort(function(a, b) { return (a.sev === 'high' ? 0 : 1) - (b.sev === 'high' ? 0 : 1); });
+
+  banner.style.display = 'block';
+  var h = '<div style="padding:10px 12px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--amber)">Pipeline Health — ' + issues.length + ' Issue' + (issues.length !== 1 ? 's' : '') + '</div>';
+  h += '<button onclick="document.getElementById(\'opp-health-digest\').style.display=\'none\'" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:12px;line-height:1;padding:0">×</button>';
+  h += '</div>';
+
+  // Store action callbacks
+  window._digestActions = issues.map(function(iss){ return iss.action; });
+
+  issues.forEach(function(iss, i) {
+    h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(26,48,80,.3)">';
+    h += '<span style="color:' + iss.color + ';flex-shrink:0;font-size:13px">' + iss.icon + '</span>';
+    h += '<span style="flex:1;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + iss.text + '</span>';
+    h += '<button onclick="window._digestActions[' + i + ']()" style="flex-shrink:0;padding:3px 8px;border:1px solid ' + iss.color + '44;border-radius:3px;background:transparent;color:' + iss.color + ';font-size:9px;cursor:pointer;font-family:Outfit,sans-serif;white-space:nowrap">' + iss.label + '</button>';
+    h += '</div>';
+  });
+
+  h += '</div>';
+  banner.innerHTML = h;
+};
+
+// Patch renderOppSidebar to inject the digest banner
+(function() {
+  var _origRenderOppSidebar = window.renderOppSidebar;
+  // We can't easily patch a declared function, so instead we wire it into
+  // switchView and the onValue listener path via a MutationObserver on the sidebar
+  var _injected = false;
+  function _injectDigestBanner() {
+    if (_injected) return;
+    var sidebar = document.getElementById('opp-sidebar');
+    if (!sidebar) return;
+    var existing = document.getElementById('opp-health-digest');
+    if (existing) { _injected = true; return; }
+    var banner = document.createElement('div');
+    banner.id = 'opp-health-digest';
+    banner.style.cssText = 'background:rgba(245,158,11,.05);border-bottom:1px solid rgba(245,158,11,.2);display:none';
+    sidebar.parentNode.insertBefore(banner, sidebar);
+    _injected = true;
+  }
+
+  // Run on view switch to opps
+  var _origOnViewSwitch2 = window._onViewSwitch;
+  window._onViewSwitch = function(v) {
+    if (_origOnViewSwitch2) _origOnViewSwitch2(v);
+    if (v === 'opps') {
+      setTimeout(function() {
+        _injectDigestBanner();
+        window._renderOppHealthDigest();
+      }, 300);
+    }
+  };
+
+  // Run on data load (meetings/opps change)
+  var _digestTimer = null;
+  function _scheduleDigest() {
+    clearTimeout(_digestTimer);
+    _digestTimer = setTimeout(function() {
+      _injectDigestBanner();
+      if (activeView === 'opps') window._renderOppHealthDigest();
+    }, 1500);
+  }
+
+  // Hook into existing Firebase listeners via the opportunity save/load paths
+  var _origSaveOpp2 = window.saveOpp;
+  if (_origSaveOpp2) {
+    window.saveOpp = function(opp) {
+      var r = _origSaveOpp2(opp);
+      _scheduleDigest();
+      return r;
+    };
+  }
+})();
+
+// ── Expose Re-engagement button in Team tab after render ─────────
+var _origRenderTeamView = window.renderTeamView || function(){};
+window.renderTeamView = async function() {
+  await _origRenderTeamView.apply(this, arguments);
+  setTimeout(window._appendReengagementCTA, 300);
+};
+
 
 </script>
 
