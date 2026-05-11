@@ -8746,7 +8746,7 @@ async function recordOutcome(opp,outcome){
     }
   });
   record.factors.stanceNet=pos-neg;
-  record.factors.hiRisks=allRisks.filter(function(r){return r.severity==='high';}).length;
+  record.factors.hiRisks=(Array.isArray(allRisks)?allRisks:[]).filter(function(r){return r.severity==='high';}).length;
   record.factors.redFlags=taggedMtgs.reduce(function(acc,m){return acc+(m.intel.redFlags||[]).length;},0);
   record.factors.stage=opp.stage;
 
@@ -8872,7 +8872,7 @@ function computeWinProb(opp,taggedMtgs,allPeople,allRisks){
   }
 
   // Factor 3: Risk load (weighted)
-  var hiRisks=allRisks.filter(function(r){return r.severity==='high';}).length;
+  var hiRisks=(Array.isArray(allRisks)?allRisks:[]).filter(function(r){return r.severity==='high';}).length;
   var riskBase=hiRisks===0?5:hiRisks===1?0:hiRisks<=3?-8:-14;
   score+=riskBase*w.risks;
   if(allRisks.length>0){
@@ -9363,7 +9363,7 @@ function renderOppDetail(opp){
 
   // KPIs
   h+='<div class="g4" style="margin-bottom:14px">';
-  [{v:taggedMtgs.length,l:'Meetings',c:'var(--gold)'},{v:Object.keys(allPeople).length,l:'People',c:'var(--blue)'},{v:allActions.filter(function(a){return a.priority==='high';}).length,l:'High Actions',c:'var(--amber)'},{v:allRisks.filter(function(r){return r.severity==='high';}).length,l:'High Risks',c:'var(--red)'}].forEach(function(k){
+  [{v:taggedMtgs.length,l:'Meetings',c:'var(--gold)'},{v:Object.keys(allPeople).length,l:'People',c:'var(--blue)'},{v:(Array.isArray(allActions)?allActions:[]).filter(function(a){return a.priority==='high';}).length,l:'High Actions',c:'var(--amber)'},{v:(Array.isArray(allRisks)?allRisks:[]).filter(function(r){return r.severity==='high';}).length,l:'High Risks',c:'var(--red)'}].forEach(function(k){
     h+='<div class="board-kpi"><div class="board-kpi-val" style="color:'+k.c+'">'+k.v+'</div><div class="board-kpi-lbl">'+k.l+'</div></div>';
   });
   h+='</div>';
@@ -9398,7 +9398,7 @@ function renderOppDetail(opp){
   }
 
   // Open actions
-  var hiA=allActions.filter(function(a){return a.priority==='high';});
+  var hiA=(Array.isArray(allActions)?allActions:[]).filter(function(a){return a.priority==='high';});
   if(hiA.length){
     h+='<div class="card card-warn" style="margin-bottom:10px"><div class="opp-detail-hdr">High-Priority Actions ('+hiA.length+')</div>';
     hiA.slice(0,5).forEach(function(a){h+='<div class="irow"><div class="dot" style="background:var(--amber)"></div><div><div style="font-size:12px">'+a.task+'</div><div style="font-size:10px;color:var(--t3)">'+(a.owner||'No owner')+(a.deadline?' · Due '+a.deadline:'')+'</div></div></div>';});
@@ -11226,7 +11226,7 @@ function _buildBriefContext(){
       return Object.assign({},a,{mtg:m.meta.title,date:m.meta.date});
     });
   });
-  var hiActions=allActions.filter(function(a){return a.priority==='high';}).slice(0,12);
+  var hiActions=(Array.isArray(allActions)?allActions:[]).filter(function(a){return a.priority==='high';}).slice(0,12);
 
   // ── All high risks ───────────────────────────────────────────
   var allRisks=meetings.slice(0,30).flatMap(function(m){
@@ -12664,7 +12664,7 @@ function _oppExportHTML(opp){
   // Header KPIs
   body+='<div class="kpi-grid">';
   [{v:taggedMtgs.length,l:'Meetings',c:'#c9a227'},{v:pList.length,l:'Stakeholders',c:'#3b82f6'},
-   {v:allRisks.filter(function(r){return r.severity==='high';}).length,l:'High Risks',c:'#ef4444'},
+   {v:(Array.isArray(allRisks)?allRisks:[]).filter(function(r){return r.severity==='high';}).length,l:'High Risks',c:'#ef4444'},
    {v:winProb.score+'%',l:'Win Probability',c:winProb.score>=65?'#16a34a':winProb.score>=35?'#d97706':'#dc2626'}].forEach(function(k){
     body+='<div class="kpi"><div class="kpi-val" style="color:'+k.c+'">'+k.v+'</div><div class="kpi-lbl">'+k.l+'</div></div>';
   });
@@ -12721,7 +12721,7 @@ function _oppExportHTML(opp){
 
   // Risks
   if(allRisks.length){
-    var hiR=allRisks.filter(function(r){return r.severity==='high';});
+    var hiR=(Array.isArray(allRisks)?allRisks:[]).filter(function(r){return r.severity==='high';});
     var rest=allRisks.filter(function(r){return r.severity!=='high';});
     body+='<div class="section"><div class="section-title">Risks ('+allRisks.length+')</div>';
     hiR.concat(rest).slice(0,8).forEach(function(r){
@@ -25232,9 +25232,9 @@ window._mondayRunSync=async function(){
     _mondaySetStatus(sum);toast('Monday.com sync complete');
     var elA=document.getElementById('monday-last-sync-modal'),elB=document.getElementById('monday-last-sync'),txt='Last synced: '+new Date(now).toLocaleString();
     if(elA)elA.textContent=txt;if(elB)elB.textContent=txt;
-    renderOppSidebar();if(activeView==='bdperf')renderBdPerfView();
-    if(window._invalidateEntityGraph)window._invalidateEntityGraph();
   }catch(e){_mondaySetStatus('Error: '+e.message);toast('Sync error: '+e.message);console.error('Monday sync:',e);}
+  // Firebase onValue listeners auto-refresh UI when data arrives — no manual render needed
+  try{if(window._invalidateEntityGraph)window._invalidateEntityGraph();}catch(e){}
   _mondaySyncing=false;if(btn){btn.disabled=false;btn.textContent=String.fromCharCode(8644)+' Run Sync Now';}
 };
 async function _mondaySyncDeals(items,stats){
