@@ -650,7 +650,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   background:linear-gradient(180deg,rgba(10,18,30,.98),rgba(8,15,26,.99));
   box-shadow:4px 0 12px rgba(0,0,0,.25)
 }
-.opp-main{flex:1;min-height:0;overflow:visible;display:flex;flex-direction:column;position:relative}
+.opp-main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;position:relative}
 .opp-stage-group{margin-bottom:14px}
 .opp-stage-lbl{
   font-family:'JetBrains Mono',monospace;
@@ -2726,6 +2726,21 @@ div[jscontroller][jsaction*="credential"],
 #nav-import-trigger,
 #nav-members-btn,
 #nav-brief-btn{display:none !important}
+
+/* ═══════════════════════════════════════════════════════════════
+   AUTH-SCREEN BLEED FIX — when main-app or ws-screen is shown,
+   auth-screen MUST be hidden. Some code paths set display:none
+   on auth-screen but the subtitle still leaks through because
+   of stacking context. This is a hard override.
+   ═══════════════════════════════════════════════════════════════ */
+body:has(#main-app[style*="display: flex"]) #auth-screen,
+body:has(#main-app[style*="display:flex"]) #auth-screen,
+body:has(#ws-screen[style*="display: flex"]) #auth-screen,
+body:has(#ws-screen[style*="display:flex"]) #auth-screen{
+  display:none !important;
+  visibility:hidden !important;
+  pointer-events:none !important;
+}
 </style>
   <!-- GIS/One-Tap removed: signInWithPopup works without it, GIS caused FedCM auto-prompt -->
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -3650,8 +3665,8 @@ div[jscontroller][jsaction*="credential"],
       <div style="font-size:13px;color:var(--t2);margin-top:6px"><span id="capture-count-label">0 items</span> · Gmail and Calendar meetings pending review</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button onclick="window._approveAllCaptures()" style="padding:9px 16px;border:1px solid rgba(52,211,153,.4);border-radius:6px;background:rgba(52,211,153,.12);color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.06em;text-transform:uppercase">✓ Approve All</button>
-      <button onclick="window._discardAllCaptures()" style="padding:9px 16px;border:1px solid rgba(239,68,68,.3);border-radius:6px;background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.06em;text-transform:uppercase">✗ Discard All</button>
+      <button onclick="window._approveAllCapture()" style="padding:9px 16px;border:1px solid rgba(52,211,153,.4);border-radius:6px;background:rgba(52,211,153,.12);color:var(--green);font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.06em;text-transform:uppercase">✓ Approve All</button>
+      <button onclick="window._discardAllCapture()" style="padding:9px 16px;border:1px solid rgba(239,68,68,.3);border-radius:6px;background:transparent;color:var(--red);font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.06em;text-transform:uppercase">✗ Discard All</button>
       <button onclick="window._showAutoCaptureSetup&&window._showAutoCaptureSetup()" style="padding:9px 16px;border:1px solid rgba(245,158,11,.4);border-radius:6px;background:rgba(245,158,11,.08);color:#f59e0b;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.06em;text-transform:uppercase">⚙ Setup</button>
     </div>
   </div>
@@ -8427,7 +8442,7 @@ function _renderProposalKickstart(text, container, opp) {
 // ── Auto-load cached RFP analysis when opp detail opens ───────────────
 // Hooked into the existing G2 Firebase cache loading pattern
 
-function wireListeners(){
+async function wireListeners(){
   document.querySelector('.intel-tabs').addEventListener('click',function(e){var tab=e.target.dataset.itab;if(tab)switchIntelTab(tab);});
   document.getElementById('ws-switcher').addEventListener('click',function(){document.getElementById('ws-screen').style.display='flex';document.getElementById('main-app').style.display='none';renderWsList();});
   document.getElementById('proc-btn').addEventListener('click',processNotes);
