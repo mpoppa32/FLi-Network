@@ -241,33 +241,231 @@ html,body{
 .ws-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:0 0 6px currentColor}
 
 .view-tabs{
-  display:flex;gap:1px;
+  display:flex;gap:2px;
   background:rgba(10,18,30,.6);
   border-radius:var(--rsm);padding:3px;
   border:1px solid rgba(26,48,80,.6);
-  overflow-x:auto;scrollbar-width:none;
-  max-width:calc(100vw - 480px);flex-shrink:1
+  flex-shrink:0;position:relative
 }
-.view-tabs::-webkit-scrollbar{display:none}
+.view-tab-tools-wrap{position:relative}
 
 .view-tab{
-  padding:5px 13px;
+  padding:7px 16px;
   border-radius:4px;
-  font-size:11px;font-weight:500;
+  font-size:12px;font-weight:600;
   cursor:pointer;border:none;
   background:transparent;
-  color:var(--t3);
+  color:var(--text-dim);
   font-family:'Outfit',sans-serif;
   transition:all .15s;white-space:nowrap;
-  letter-spacing:0.01em
+  letter-spacing:0.02em
 }
 .view-tab.active{
-  background:rgba(201,162,39,.12);
+  background:rgba(201,162,39,.14);
   color:var(--gold);
-  box-shadow:inset 0 0 12px rgba(201,162,39,.08),0 1px 0 rgba(201,162,39,.2);
-  text-shadow:0 0 10px rgba(201,162,39,.4)
+  box-shadow:inset 0 0 14px rgba(201,162,39,.1),0 1px 0 rgba(201,162,39,.25);
+  text-shadow:0 0 10px rgba(201,162,39,.4);
+  font-weight:700
 }
-.view-tab:not(.active):hover{background:rgba(255,255,255,.04);color:var(--text-dim)}
+.view-tab:not(.active):hover{background:rgba(255,255,255,.05);color:var(--text)}
+
+/* Tools menu dropdown */
+.tools-menu-item{
+  display:flex;align-items:center;gap:10px;
+  width:100%;padding:8px 12px;
+  background:transparent;border:none;
+  color:var(--text);cursor:pointer;
+  font-family:'Outfit',sans-serif;
+  font-size:12px;font-weight:500;
+  text-align:left;letter-spacing:.01em;
+  border-radius:5px;transition:background .12s;
+  white-space:nowrap
+}
+.tools-menu-item:hover{background:rgba(201,162,39,.08)}
+.tools-menu-item .tm-meta{
+  margin-left:auto;
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;color:var(--t3);
+  letter-spacing:.06em;text-transform:uppercase;
+  font-weight:400
+}
+
+/* Daily Strip — persistent "what to do today" */
+.daily-strip{
+  display:flex;align-items:stretch;gap:1px;
+  background:rgba(8,15,26,.7);
+  border-bottom:1px solid rgba(26,48,80,.6);
+  padding:0;overflow-x:auto;scrollbar-width:none;
+  flex-shrink:0
+}
+.daily-strip::-webkit-scrollbar{display:none}
+.daily-strip-eyebrow{
+  flex-shrink:0;display:flex;align-items:center;gap:8px;
+  padding:9px 14px;
+  background:rgba(13,24,40,.6);
+  border-right:1px solid rgba(26,48,80,.5);
+  font-family:'JetBrains Mono',monospace;
+  font-size:9px;font-weight:700;
+  letter-spacing:.14em;color:var(--gold);
+  text-transform:uppercase
+}
+.daily-strip-eyebrow::before{
+  content:'';width:6px;height:6px;border-radius:50%;
+  background:var(--gold);
+  box-shadow:0 0 8px var(--gold);
+  animation:pulse-dot 2s ease-in-out infinite
+}
+@keyframes pulse-dot{0%,100%{opacity:.6}50%{opacity:1}}
+.daily-strip-item{
+  flex:1;min-width:280px;
+  display:flex;align-items:center;gap:10px;
+  padding:9px 14px;
+  border-right:1px solid rgba(26,48,80,.4);
+  cursor:pointer;transition:background .12s;
+  font-family:'Outfit',sans-serif
+}
+.daily-strip-item:hover{background:rgba(201,162,39,.05)}
+.daily-strip-item:last-child{border-right:none}
+.daily-strip-item-icon{
+  font-size:14px;flex-shrink:0
+}
+.daily-strip-item-body{flex:1;min-width:0}
+.daily-strip-item-title{
+  font-size:12px;font-weight:600;color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  line-height:1.3
+}
+.daily-strip-item-sub{
+  font-size:10px;color:var(--t2);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  line-height:1.3
+}
+.daily-strip-item-arrow{
+  font-size:11px;color:var(--t3);flex-shrink:0;
+  opacity:.5;transition:opacity .12s
+}
+.daily-strip-item:hover .daily-strip-item-arrow{opacity:1;color:var(--gold)}
+.daily-strip-empty{
+  flex:1;padding:9px 14px;text-align:center;
+  font-size:11px;color:var(--t3);
+  font-family:'Outfit',sans-serif;
+  display:flex;align-items:center;justify-content:center;gap:8px
+}
+
+/* Activation flow */
+.activate-overlay{
+  position:fixed;inset:0;z-index:9000;
+  background:rgba(8,15,26,.85);backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;
+  padding:40px 20px
+}
+.activate-card{
+  width:100%;max-width:580px;
+  background:linear-gradient(180deg,rgba(17,31,48,.98),rgba(11,20,34,.98));
+  border:1px solid rgba(201,162,39,.3);
+  border-radius:14px;
+  box-shadow:0 32px 80px rgba(0,0,0,.7),0 0 60px rgba(201,162,39,.08);
+  padding:36px 40px;
+  max-height:calc(100vh - 80px);overflow-y:auto
+}
+.activate-eyebrow{
+  font-family:'JetBrains Mono',monospace;
+  font-size:10px;font-weight:700;
+  letter-spacing:.18em;color:var(--gold);
+  text-transform:uppercase;margin-bottom:8px
+}
+.activate-title{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:32px;font-weight:700;
+  color:var(--text);line-height:1.05;
+  letter-spacing:-.01em;margin-bottom:8px
+}
+.activate-sub{
+  font-size:14px;color:var(--text-dim);
+  line-height:1.55;margin-bottom:24px
+}
+.activate-step-list{
+  display:flex;flex-direction:column;gap:10px;margin-bottom:28px
+}
+.activate-step{
+  display:flex;align-items:flex-start;gap:14px;
+  padding:14px 16px;
+  background:rgba(8,15,26,.5);
+  border:1px solid rgba(26,48,80,.5);
+  border-radius:9px;
+  transition:all .15s;cursor:pointer
+}
+.activate-step:hover{
+  border-color:rgba(201,162,39,.4);
+  background:rgba(201,162,39,.04)
+}
+.activate-step.done{
+  border-color:rgba(34,197,94,.35);
+  background:rgba(34,197,94,.04)
+}
+.activate-step.done .activate-step-num{
+  background:rgba(34,197,94,.15);
+  color:var(--green);
+  border-color:rgba(34,197,94,.4)
+}
+.activate-step-num{
+  width:32px;height:32px;border-radius:50%;
+  background:rgba(201,162,39,.1);
+  border:1px solid rgba(201,162,39,.3);
+  color:var(--gold);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:16px;font-weight:700;flex-shrink:0
+}
+.activate-step-body{flex:1;min-width:0}
+.activate-step-title{
+  font-size:14px;font-weight:700;color:var(--text);
+  margin-bottom:3px;line-height:1.3
+}
+.activate-step-sub{
+  font-size:11px;color:var(--t2);
+  line-height:1.5
+}
+.activate-step-cta{
+  flex-shrink:0;padding:7px 14px;
+  background:rgba(201,162,39,.15);
+  border:1px solid rgba(201,162,39,.4);
+  border-radius:6px;
+  color:var(--gold);
+  font-family:'Outfit',sans-serif;
+  font-size:11px;font-weight:700;
+  letter-spacing:.06em;
+  cursor:pointer;text-transform:uppercase;
+  transition:all .12s;align-self:center
+}
+.activate-step-cta:hover{
+  background:var(--gold);color:#0b0d11
+}
+.activate-step.done .activate-step-cta{
+  background:rgba(34,197,94,.1);
+  border-color:rgba(34,197,94,.3);
+  color:var(--green)
+}
+.activate-progress{
+  height:3px;background:rgba(26,48,80,.5);
+  border-radius:2px;overflow:hidden;margin-bottom:8px
+}
+.activate-progress-bar{
+  height:100%;background:linear-gradient(90deg,var(--gold),#f59e0b);
+  border-radius:2px;
+  box-shadow:0 0 8px rgba(201,162,39,.5);
+  transition:width .4s ease
+}
+.activate-skip{
+  text-align:center;margin-top:8px
+}
+.activate-skip button{
+  background:transparent;border:none;
+  color:var(--t3);font-size:11px;
+  cursor:pointer;font-family:'Outfit',sans-serif;
+  text-decoration:underline;opacity:.7
+}
+.activate-skip button:hover{color:var(--t2);opacity:1}
 
 .nav-spacer{flex:1}
 .sync-pill{
@@ -2856,20 +3054,32 @@ body.app-active #auth-screen{
       <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--gold);letter-spacing:.1em;opacity:.7;margin-left:4px">SWITCH</span>
     </div>
     <div class="view-tabs">
-      <button class="view-tab active" id="vtab-intel" onclick="switchView('intel')">Intel Station</button>
-      <button class="view-tab" id="vtab-opps" onclick="switchView('opps')">Opportunities</button>
-      <button class="view-tab" id="vtab-network" onclick="switchView('network')">Network Map</button>
+      <button class="view-tab active" id="vtab-intel" onclick="switchView('intel')">Mission Board</button>
+      <button class="view-tab" id="vtab-opps" onclick="switchView('opps')">Pursuits</button>
+      <button class="view-tab" id="vtab-network" onclick="switchView('network')">Network</button>
       <button class="view-tab" id="vtab-timeline" onclick="switchView('timeline')">Timeline</button>
-      <button class="view-tab" id="vtab-pulse" onclick="switchView('pulse')" style="color:var(--green);letter-spacing:0.01em">📡 Intel Center</button>
-      <button class="view-tab" id="vtab-askfli" onclick="switchView('askfli')" style="color:var(--purple);letter-spacing:0.01em">⚡ Ask Fli</button>
-      <button class="view-tab" id="vtab-team" onclick="switchView('team')" style="color:#38bdf8">👥 Team</button>
-      <button class="view-tab" id="vtab-bdperf" onclick="switchView('bdperf')" style="color:#fb923c">📊 BD Stats</button>
-      <button class="view-tab" id="vtab-capture" onclick="switchView('capture')" style="color:#f59e0b;position:relative">⚡ Capture<span id="capture-badge" style="display:none;position:absolute;top:2px;right:2px;min-width:16px;height:16px;background:var(--red);color:#fff;border-radius:8px;font-size:9px;font-weight:700;line-height:16px;text-align:center;padding:0 4px"></span></button>
-      <button class="view-tab" id="vtab-sbir" onclick="switchView('sbir')" style="color:#a78bfa">🚀 SBIR</button>
-      <button class="view-tab" id="vtab-rfi" onclick="switchView('rfi')" style="color:#34d399">📝 RFI</button>
-      <button class="view-tab" id="vtab-comp" onclick="switchView('comp')" style="color:#ef4444">⚔ Competitive</button>
-      <button class="view-tab" id="vtab-teaming" onclick="switchView('teaming')" style="color:#22c55e">🤝 Teaming</button>
-      <button class="view-tab" id="vtab-library" onclick="switchView('library')" style="color:#c9a227">📚 Library</button>
+      <div class="view-tab-tools-wrap" style="position:relative;display:inline-block">
+        <button class="view-tab" id="vtab-tools-menu" onclick="window._toggleToolsMenu()" style="color:var(--t2);display:flex;align-items:center;gap:5px">
+          <span>Tools</span>
+          <span style="font-size:9px;opacity:.7">▾</span>
+        </button>
+        <div id="tools-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:220px;background:linear-gradient(180deg,rgba(13,24,40,.99),rgba(8,15,26,.98));border:1px solid rgba(26,48,80,.6);border-radius:8px;padding:6px;z-index:120;box-shadow:0 16px 48px rgba(0,0,0,.6)">
+          <button class="tools-menu-item" data-view="pulse" onclick="window._toolsMenuSelect('pulse')"><span style="color:var(--green);width:18px;display:inline-block">📡</span><span>Intel Center</span><span class="tm-meta">live web intel</span></button>
+          <button class="tools-menu-item" data-view="askfli" onclick="window._toolsMenuSelect('askfli')"><span style="color:var(--purple);width:18px;display:inline-block">⚡</span><span>Ask FLi</span><span class="tm-meta">deep query</span></button>
+          <button class="tools-menu-item" data-view="bdperf" onclick="window._toolsMenuSelect('bdperf')"><span style="color:#fb923c;width:18px;display:inline-block">📊</span><span>BD Stats</span><span class="tm-meta">pipeline analytics</span></button>
+          <button class="tools-menu-item" data-view="team" onclick="window._toolsMenuSelect('team')"><span style="color:#38bdf8;width:18px;display:inline-block">👥</span><span>Team</span><span class="tm-meta">workspace activity</span></button>
+          <button class="tools-menu-item" data-view="capture" onclick="window._toolsMenuSelect('capture')"><span style="color:#f59e0b;width:18px;display:inline-block;position:relative">⚡<span id="tools-capture-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;background:var(--red);color:#fff;border-radius:7px;font-size:8px;font-weight:700;line-height:14px;text-align:center;padding:0 3px"></span></span><span>Auto-Capture</span><span class="tm-meta">pending review</span></button>
+          <div style="height:1px;background:rgba(26,48,80,.5);margin:5px 4px"></div>
+          <div style="padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Procurement</div>
+          <button class="tools-menu-item" data-view="sbir" onclick="window._toolsMenuSelect('sbir')"><span style="color:#a78bfa;width:18px;display:inline-block">🚀</span><span>SBIR Tracker</span><span class="tm-meta">SAM.gov solicitations</span></button>
+          <button class="tools-menu-item" data-view="rfi" onclick="window._toolsMenuSelect('rfi')"><span style="color:#34d399;width:18px;display:inline-block">📝</span><span>RFI Engine</span><span class="tm-meta">auto-response</span></button>
+          <button class="tools-menu-item" data-view="library" onclick="window._toolsMenuSelect('library')"><span style="color:#c9a227;width:18px;display:inline-block">📚</span><span>Proposal Library</span><span class="tm-meta">reusable sections</span></button>
+          <div style="height:1px;background:rgba(26,48,80,.5);margin:5px 4px"></div>
+          <div style="padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Intelligence</div>
+          <button class="tools-menu-item" data-view="comp" onclick="window._toolsMenuSelect('comp')"><span style="color:#ef4444;width:18px;display:inline-block">⚔</span><span>Competitive</span><span class="tm-meta">competitor profiles</span></button>
+          <button class="tools-menu-item" data-view="teaming" onclick="window._toolsMenuSelect('teaming')"><span style="color:#22c55e;width:18px;display:inline-block">🤝</span><span>Teaming</span><span class="tm-meta">partner finder</span></button>
+        </div>
+      </div>
     </div>
     <div class="nav-spacer"></div>
     <button onclick="window._toggleHelp()" id="help-nav-btn" style="width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin:0 6px;transition:all .15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.color='var(--t2)'" title="Field Guide / Help">?</button>
@@ -2902,6 +3112,13 @@ body.app-active #auth-screen{
     <div class="intel-ticker-sep">//</div>
     <div class="intel-ticker-item" id="ticker-contacts">&nbsp;</div>
   </div>
+
+  <!-- DAILY STRIP — "What to do today" persistent action surface -->
+  <div class="daily-strip" id="daily-strip" style="display:none">
+    <div class="daily-strip-eyebrow">Today</div>
+    <div id="daily-strip-items" style="display:flex;flex:1;overflow-x:auto;scrollbar-width:none"></div>
+  </div>
+
   <!-- INTEL VIEW -->
   <div class="intel-view" id="intel-view">
     <div class="intel-sidebar">
@@ -2968,6 +3185,7 @@ body.app-active #auth-screen{
             <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--cyan);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">◉ Attendees</div>
             <input type="text" id="m-att" placeholder="Col. Martinez (PM), Jane Wu (CO)..." autocomplete="off" style="width:100%;padding:6px 9px;background:var(--s2);border:1px solid rgba(6,182,212,.2);border-radius:var(--rsm);color:var(--text);font-size:12px;box-sizing:border-box">
             <div id="m-att-suggest" class="att-suggest" style="display:none"></div>
+            <div id="m-att-recents" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px"></div>
           </div>
         </div>
         <!-- Notes / Recording section -->
@@ -3453,6 +3671,7 @@ body.app-active #auth-screen{
         <div id="panel-quick-actions" style="display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap">
           <button id="panel-log-mtg-btn" onclick="window._quickLogMeeting()" style="flex:1;padding:6px 8px;background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3);border-radius:var(--rsm);color:var(--green);font-size:10px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.04em;white-space:nowrap">+ LOG MEETING</button>
           <button id="panel-timeline-btn" onclick="window._openContactTimeline(selectedNode)" style="display:none;flex:1;padding:6px 8px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3);border-radius:var(--rsm);color:var(--blue);font-size:10px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.04em;white-space:nowrap">⟳ TIMELINE</button>
+          <button id="panel-prep-btn" onclick="if(selectedNode)window.openMeetingPrepBrief('',('Re-engagement: '+(selectedNode.name||'')),selectedNode.name||'')" style="display:none;flex:1;padding:6px 8px;background:rgba(201,162,39,.08);border:1px solid rgba(201,162,39,.35);border-radius:var(--rsm);color:var(--gold);font-size:10px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;letter-spacing:.04em;white-space:nowrap">⬡ PREP</button>
         </div>
         <!-- Tabs -->
         <div class="panel-tabs">
@@ -4901,6 +5120,7 @@ function rebuildMeetingsArray(){
   _healthCache.clear(); // invalidate health scores — meeting data changed
   if(window._invalidateEntityGraph)window._invalidateEntityGraph();
   if(window._invalidateMeetingsByEntity)window._invalidateMeetingsByEntity();
+  if(window._refreshRecentAttendees)setTimeout(window._refreshRecentAttendees,200);
 }
 function rebuildNodesArray(){
   nodes=Array.from(nodeMap.values());
@@ -7834,17 +8054,47 @@ window._loadHistoryFeed = async function(dateStr) {
 window._tagSignalToOpp = async function(signalJson) {
   try {
     var signal = JSON.parse(signalJson);
-    // Use existing opp picker pattern
-    var opp = await _showOppPickerModal('Tag "' + signal.headline.slice(0,60) + '..." to:');
+    var activeOpps = opportunities.filter(function(o){ return o.stage !== 'won' && o.stage !== 'lost'; });
+    if (!activeOpps.length) { toast('No active opportunities to tag'); return; }
+
+    // Simple opp picker overlay (signal-compatible, no meeting context needed)
+    var opp = await new Promise(function(resolve) {
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+      var headline = (signal.headline || '').slice(0, 70) + (signal.headline && signal.headline.length > 70 ? '…' : '');
+      var inner = '<div style="background:var(--s1);border:1px solid var(--b2);border-radius:var(--r);padding:20px 22px;max-width:420px;width:90%;max-height:80vh;overflow-y:auto">';
+      inner += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-bottom:4px">📌 Tag Signal to Deal</div>';
+      inner += '<div style="font-size:11px;color:var(--t2);margin-bottom:14px;font-style:italic;line-height:1.4">"' + headline + '"</div>';
+      activeOpps.slice(0, 12).forEach(function(o) {
+        var sc = typeof oppStageConfig === 'function' ? oppStageConfig(o.stage) : { color: 'var(--t3)', label: o.stage };
+        inner += '<div data-oid="' + o.id + '" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--b2);border-radius:var(--rsm);margin-bottom:6px;cursor:pointer;transition:border-color .1s" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b2)\'">'
+          + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + o.name + '</div>'
+          + '<div style="font-size:10px;color:' + sc.color + ';margin-top:2px">' + sc.label + (o.agency ? ' · ' + o.agency : '') + '</div></div>'
+          + '</div>';
+      });
+      inner += '<button id="sig-tag-cancel" style="width:100%;margin-top:8px;padding:7px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:Outfit,sans-serif">Cancel</button>';
+      inner += '</div>';
+      overlay.innerHTML = inner;
+      overlay.querySelectorAll('[data-oid]').forEach(function(el) {
+        el.addEventListener('click', function() {
+          var o = activeOpps.find(function(x){ return String(x.id) === el.dataset.oid; });
+          overlay.remove(); resolve(o);
+        });
+      });
+      overlay.querySelector('#sig-tag-cancel').addEventListener('click', function(){ overlay.remove(); resolve(null); });
+      overlay.addEventListener('click', function(e){ if (e.target === overlay){ overlay.remove(); resolve(null); } });
+      document.body.appendChild(overlay);
+    });
+
     if (!opp) return;
-    var ts = new Date().toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-    var appendText = '\n\n── Intel Signal (' + ts + ') ──\n[' + signal.severity + '] ' + signal.category.toUpperCase() + '\n' + signal.headline;
+    var ts = new Date().toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    var appendText = '\n\n── Intel Signal (' + ts + ') ──\n[' + (signal.severity||'MED') + '] ' + (signal.category||'').toUpperCase() + '\n' + signal.headline;
     if (signal.detail) appendText += '\n' + signal.detail;
     if (signal.url) appendText += '\nSource: ' + signal.url;
     var newNotes = (opp.notes || '') + appendText;
     opp.notes = newNotes;
     await fbSet(wsPath('opportunities/' + opp.id + '/notes'), newNotes);
-    toast('Saved to ' + opp.name);
+    toast('Signal saved to ' + opp.name);
   } catch(e) { toast('Could not tag signal: ' + (e.message || 'Error')); }
 };
 
@@ -8574,6 +8824,42 @@ async function wireListeners(){
   // Attendee autocomplete for both log form and prep form
   initAttendeeAutocomplete('m-att');
   initAttendeeAutocomplete('prep-att');
+  // Populate recent attendees chips (updates whenever meetings change)
+  window._refreshRecentAttendees = function() {
+    var container = document.getElementById('m-att-recents');
+    if (!container) return;
+    var freq = {};
+    meetings.slice(0, 20).forEach(function(m) {
+      var att = m.meta.att || m.meta.attendees || '';
+      if (typeof att === 'string') {
+        att.split(',').map(function(s){ return s.trim().split('(')[0].trim(); })
+          .filter(function(s){ return s.length > 1; })
+          .forEach(function(name){ freq[name] = (freq[name] || 0) + 1; });
+      }
+    });
+    var names = Object.keys(freq).sort(function(a,b){ return freq[b]-freq[a]; }).slice(0,6);
+    if (!names.length) { container.style.display='none'; return; }
+    container.style.display='flex';
+    container.innerHTML = '';
+    names.forEach(function(name) {
+      var chip = document.createElement('button');
+      chip.textContent = name;
+      chip.style.cssText = 'padding:2px 8px;border:1px solid rgba(6,182,212,.2);border-radius:10px;background:rgba(6,182,212,.06);color:var(--t2);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif;white-space:nowrap;transition:all .1s';
+      chip.onmouseover = function(){ this.style.borderColor='rgba(6,182,212,.5)'; this.style.color='var(--cyan)'; };
+      chip.onmouseout  = function(){ this.style.borderColor='rgba(6,182,212,.2)'; this.style.color='var(--t2)'; };
+      chip.onclick = function() {
+        var inp = document.getElementById('m-att');
+        if (!inp) return;
+        var cur = (inp.value || '').trim();
+        // Don't add if already present
+        if (cur.toLowerCase().indexOf(name.toLowerCase()) !== -1) return;
+        inp.value = cur ? cur + ', ' + name : name;
+        inp.focus();
+      };
+      container.appendChild(chip);
+    });
+  };
+  setTimeout(window._refreshRecentAttendees, 1200);
   // Online / offline feedback
   window.addEventListener('offline',function(){setSS('offline');toast('No connection — writes will retry when back online');});
   window.addEventListener('online',function(){setSS('live');toast('Back online');});
@@ -8585,20 +8871,19 @@ async function wireListeners(){
 function switchView(v){
   // Ask Fli: shortcut to Intel Station → Ask Fli tab
   if(v==='askfli'){
-    var asBtn=document.getElementById('vtab-askfli');
     document.querySelectorAll('.view-tab').forEach(function(t){t.classList.remove('active');});
-    if(asBtn)asBtn.classList.add('active');
+    var intelBtn=document.getElementById('vtab-intel');
+    if(intelBtn)intelBtn.classList.add('active');
     activeView='intel';
     ['intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture'].forEach(function(x){var el=document.getElementById(x+'-view');if(el)el.style.display=x==='intel'?'flex':'none';});
     switchIntelTab('memory');
     setTimeout(function(){var q=document.getElementById('memory-query');if(q){q.focus();}},80);
+    if(window._onViewSwitch)window._onViewSwitch('intel');
     return;
   }
   // Pause simulation when leaving network view to save CPU
   if(activeView==='network'&&v!=='network'){if(sim)sim.stop();closeNetPanel();}
   activeView=v;['intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture'].forEach(function(x){var el=document.getElementById(x+'-view');if(el)el.style.display=x===v?'flex':'none';var tb=document.getElementById('vtab-'+x);if(tb)tb.classList.toggle('active',x===v);});
-  // Clear Ask Fli active state when switching to any other view
-  var asBtn2=document.getElementById('vtab-askfli');if(asBtn2)asBtn2.classList.remove('active');
   if(v==='network'){if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);}if(v==='intel'&&activeIntelTab==='board')renderBoard();if(v==='timeline')renderTimeline();if(v==='opps')renderOppSidebar();if(v==='pulse'&&_dailyFeedData&&_dailyFeedData.length)_renderDailyFeed(_dailyFeedData);if(v==='team')renderTeamView();if(v==='bdperf')renderBdPerfView();if(v==='sbir')renderSbirView();if(v==='capture')renderCaptureView();if(window._onViewSwitch)window._onViewSwitch(v);if(v==='rfi')renderRfiView();if(v==='comp')renderCompView();if(v==='teaming')renderTeamingView();if(v==='library')renderLibraryView();if(v==='vehicles')renderVehiclesPanel();}
 
 // ── OPPORTUNITY STAGE CONFIG ─────────────────────────────────
@@ -8674,24 +8959,55 @@ function _renderOppList(q){
   var grouped={};
   OPP_STAGES.forEach(function(s){grouped[s.key]=[];});
   filtered.forEach(function(o){if(grouped[o.stage])grouped[o.stage].push(o);else grouped['awareness'].push(o);});
-  var h='';
+  var now = new Date(); now.setHours(0,0,0,0);
+  var DAY = 86400000;
+  // Build last-meeting lookup per opp for health dots
+  var lastMtgByOpp = {};
+  meetings.forEach(function(m) {
+    if (!m.oppId || !m.meta || !m.meta.date) return;
+    var ts = new Date(m.meta.date).getTime();
+    if (!lastMtgByOpp[m.oppId] || ts > lastMtgByOpp[m.oppId]) lastMtgByOpp[m.oppId] = ts;
+  });
+  var h = '';
+  var totalPipelineValue = 0;
+  var activeCount = 0;
   OPP_STAGES.forEach(function(s){
     var items=grouped[s.key];
     if(!items.length)return;
-    h+='<div class="opp-stage-group"><div class="opp-stage-lbl"><div class="opp-stage-dot" style="background:'+s.color+'"></div><span style="color:'+s.color+'">'+s.label+'</span><span style="margin-left:auto;font-size:10px;color:var(--t3)">'+items.length+'</span></div>';
+    var stageVal = 0;
+    items.forEach(function(o) {
+      var v = typeof _parseVal === 'function' ? _parseVal(o.value) : 0;
+      if (s.key !== 'won' && s.key !== 'lost') { totalPipelineValue += v; activeCount++; }
+      stageVal += v;
+    });
+    var stageValTxt = stageVal > 0 && typeof _fmtVal === 'function' ? ' · $' + _fmtVal(stageVal) : '';
+    h+='<div class="opp-stage-group"><div class="opp-stage-lbl"><div class="opp-stage-dot" style="background:'+s.color+'"></div><span style="color:'+s.color+'">'+s.label+'</span><span style="margin-left:auto;font-size:10px;color:var(--t3)">'+items.length+stageValTxt+'</span></div>';
     items.sort(function(a,b){return(a.name||'').localeCompare(b.name||'');}).forEach(function(o){
       var isActive=currentOpp&&currentOpp.id===o.id;
       var mtgCount=(o.meetings||[]).length;
+      var lastTs = lastMtgByOpp[o.id] || 0;
+      var daysSince = lastTs ? Math.floor((now.getTime() - lastTs) / DAY) : 999;
+      var hDot = (s.key === 'won' || s.key === 'lost') ? '' :
+        '<span title="' + (lastTs ? daysSince + 'd since last meeting' : 'No meetings') + '" style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:' +
+        (daysSince <= 21 ? 'var(--green)' : daysSince <= 45 ? 'var(--amber)' : 'var(--red)') +
+        ';opacity:.85;margin-top:2px"></span>';
       h+='<div class="opp-card'+(isActive?' active':'')+'" onclick="selectOpp(\''+o.id+'\')">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">'
+        +hDot
         +'<div class="opp-card-name" style="flex:1;min-width:0">'+o.name+'</div>'
-        +(function(){var wp=computeWinProb(o,meetings.filter(function(m){return m.oppId===o.id||(o.meetings||[]).includes(m.id);}),{},{score:0});var col=wp.score>=65?'var(--green)':wp.score>=35?'var(--amber)':'var(--red)';return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+col+'22;color:'+col+';font-family:JetBrains Mono,monospace;font-weight:700;flex-shrink:0">'+wp.score+'%</span>';})() 
+        +(function(){var wp=computeWinProb(o,meetings.filter(function(m){return m.oppId===o.id||(o.meetings||[]).includes(m.id);}),{},{score:0});var col=wp.score>=65?'var(--green)':wp.score>=35?'var(--amber)':'var(--red)';return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+col+'22;color:'+col+';font-family:JetBrains Mono,monospace;font-weight:700;flex-shrink:0">'+wp.score+'%</span>';}())
         +'</div>'
-        +'<div class="opp-card-meta">'+(o.agency||'')+(o.value?' · '+o.value:'')+(mtgCount?' · '+mtgCount+' mtg':'')+'</div>'
+        +'<div class="opp-card-meta">'+(o.agency||'')+(o.value?' · '+o.value:'')+(mtgCount?' · '+mtgCount+'m':'')+(daysSince < 999 ? ' · '+(daysSince===0?'today':daysSince+'d') : '')+'</div>'
         +'</div>';
     });
     h+='</div>';
   });
+  if (totalPipelineValue > 0 && typeof _fmtVal === 'function') {
+    h += '<div style="padding:8px 10px;border-top:1px solid rgba(26,48,80,.4);display:flex;justify-content:space-between;align-items:center">'
+      + '<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3)">' + activeCount + ' active</span>'
+      + '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;color:var(--gold)">$' + _fmtVal(totalPipelineValue) + ' pipeline</span>'
+      + '</div>';
+  }
   list.innerHTML=h;
   renderCalibrationStrip();
 }
@@ -9278,6 +9594,7 @@ function renderOppDetail(opp){
   h+='<select id="opp-stage-edit" onchange="updateOppStage(\''+opp.id+'\')" style="font-size:11px;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);color:var(--text)">';
   OPP_STAGES.forEach(function(s){h+='<option value="'+s.key+'"'+(s.key===opp.stage?' selected':'')+'>'+s.label+'</option>';});
   h+='</select>';
+  h+='<button onclick="window.openMeetingPrepBrief(\'\',\''+opp.name.replace(/\'/g,"\\\'")+'\'\',\'\',\''+opp.id+'\')" class="export-btn" style="color:var(--cyan);border-color:rgba(6,182,212,.5);background:rgba(6,182,212,.06)" title="Generate meeting prep brief for this opportunity">&#10569; Prep</button>';
   h+='<button onclick="window.openOppBriefing(\''+opp.id+'\')" class="export-btn" style="color:var(--gold);border-color:rgba(201,162,39,.5);background:rgba(201,162,39,.06)" title="Generate AI strategic briefing">\u25C6 Brief</button>';
   h+='<button onclick="window.openTeamingIntel(\''+opp.id+'\')" class="export-btn" style="color:var(--green);border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.06)" title="Find named contacts at potential teaming partners">\u2295 Teaming</button>';
   h+='<button onclick="window.openProposalEngine(\''+opp.id+'\')" class="export-btn" style="color:var(--purple);border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.06)" title="Full proposal engine — RFP to compliance matrix to drafted sections">\u25CE Proposal</button>';
@@ -9286,6 +9603,51 @@ function renderOppDetail(opp){
   h+='</div></div>';
 
   h+=pipelineH;
+
+  // ── CONTACT HEALTH STRIP — key people on this deal + their relationship status ──
+  var stripPeople = Object.values(allPeople).slice(0, 6);
+  if (stripPeople.length) {
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:rgba(8,15,26,.5);border:1px solid rgba(26,48,80,.4);border-radius:8px">';
+    h += '<div style="width:100%;font-family:\'JetBrains Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:6px">Key Contacts on This Pursuit</div>';
+    stripPeople.forEach(function(p) {
+      var node = nodes.find(function(n){ return n.type==='person' && nameSimilarity(n.name, p.name) >= 0.75; });
+      var health = (node && getMtgsForNode(node.id).length) ? computeRelHealth(node.id) : null;
+      var lastStance = p.stances.length ? p.stances[p.stances.length-1].stance : null;
+      var hColor = health === null ? 'var(--t3)' : health >= 7 ? 'var(--green)' : health >= 4 ? 'var(--amber)' : 'var(--red)';
+      var sColor = !lastStance ? 'var(--t3)' :
+        lastStance.toLowerCase().match(/positive|champion|engaged|committed|enthusiastic/) ? 'var(--green)' :
+        lastStance.toLowerCase().match(/cautious|hesitant|concerned|skeptical/) ? 'var(--amber)' :
+        lastStance.toLowerCase().match(/negative|cold|opposed|blocking/) ? 'var(--red)' : 'var(--t2)';
+      var daysAgo = null;
+      if (node) {
+        var nm = getMtgsForNode(node.id);
+        if (nm.length) {
+          var latest = nm.slice().sort(function(a,b){ return b.meta.date.localeCompare(a.meta.date); })[0];
+          daysAgo = Math.floor((Date.now() - new Date(latest.meta.date)) / 86400000);
+        }
+      }
+      var clickAction = node ? 'switchView(\'network\');setTimeout(function(){window._panelFocusNode&&window._panelFocusNode(\'' + node.id + '\')},300)' : '';
+      h += '<div onclick="' + (clickAction || 'void(0)') + '" style="flex:1;min-width:120px;max-width:200px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px' + (clickAction ? ';cursor:pointer' : '') + '">';
+      h += '<div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">' + p.name + '</div>';
+      h += '<div style="font-size:9px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:5px">' + (p.role || '') + '</div>';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
+      if (health !== null) {
+        h += '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;color:' + hColor + '">' + health.toFixed(1) + '</span>';
+      } else {
+        h += '<span style="font-size:9px;color:var(--t3)">new</span>';
+      }
+      if (daysAgo !== null) {
+        var dColor = daysAgo <= 14 ? 'var(--green)' : daysAgo <= 45 ? 'var(--amber)' : 'var(--red)';
+        h += '<span style="font-size:9px;color:' + dColor + '">' + daysAgo + 'd ago</span>';
+      }
+      h += '</div>';
+      if (lastStance) {
+        h += '<div style="font-size:9px;color:' + sColor + ';margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + lastStance + '">' + lastStance.slice(0,30) + '</div>';
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+  }
 
   // ── WIN PROBABILITY ─────────────────────────────────────────
   var winProb=computeWinProb(opp,taggedMtgs,allPeople,allRisks);
@@ -10499,7 +10861,7 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
     await saveMeeting(m);
     // Link to opportunity if tagged
     if(m.oppId){var opp=opportunities.find(function(o){return o.id===m.oppId;});if(opp){if(!opp.meetings)opp.meetings=[];if(opp.meetings.indexOf(m.id)===-1){opp.meetings.push(m.id);opp.updatedAt=new Date().toISOString();await saveOpp(opp);}}}
-    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);pendingEnts=[];var parts=[];if(r.added)parts.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts.push(r.updated+' updated');if(rl.added)parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');if(rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');var msg='Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':'');if(rl.added>0){var toastEl=document.getElementById('toast');toastEl.innerHTML=msg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl.classList.remove('show');},6000);}else{toast(msg);}if(window._showAutoPrompt){setTimeout(function(){window._showAutoPrompt(m);},1500);}}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
+    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;window._lastProcessedSummary={mtgId:m.id,addedNodes:0,updatedNodes:0,addedLinks:0,enrichedLinks:0,actionItems:(intel.actionItems||[]).length,risks:(intel.risks||[]).length,keyPeople:(intel.keyPeople||[]).length,companies:(intel.companies||[]).length,commitments:(intel.commitments||[]).length};renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);pendingEnts=[];if(window._lastProcessedSummary){window._lastProcessedSummary.addedNodes=r.added||0;window._lastProcessedSummary.updatedNodes=r.updated||0;window._lastProcessedSummary.addedLinks=rl.added||0;window._lastProcessedSummary.enrichedLinks=rl.enriched||0;if(window._renderProcessExtractionBanner)window._renderProcessExtractionBanner(m);}var parts=[];if(r.added)parts.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts.push(r.updated+' updated');if(rl.added)parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');if(rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');var msg='Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':'');if(rl.added>0){var toastEl=document.getElementById('toast');toastEl.innerHTML=msg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl.classList.remove('show');},6000);}else{toast(msg);}if(window._showAutoPrompt){setTimeout(function(){window._showAutoPrompt(m);},1500);}}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
 
 async function callClaude(notes,meta){
   // Build canonical names list so Claude normalises to existing spellings
@@ -13987,7 +14349,7 @@ function nodeLeave(){document.getElementById('tooltip').classList.remove('show')
 function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});if(el)el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===tab?'block':'none';});var exportBtn=document.getElementById('panel-export-btn');if(exportBtn)exportBtn.style.display=(tab==='dossier'||tab==='timeline360')?'block':'none';if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
 window.switchNetTab=switchNetTab;
 
-function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-panel');if(_np){_np.style.visibility='';_np.style.pointerEvents='';}var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>'+(d.govType?'&nbsp;&nbsp;'+_govTypeBadge(d.govType):'');var briefBtn=document.getElementById('panel-brief-btn');if(briefBtn)briefBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var tlBtn=document.getElementById('panel-timeline-btn');if(tlBtn)tlBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';
+function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-panel');if(_np){_np.style.visibility='';_np.style.pointerEvents='';}var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>'+(d.govType?'&nbsp;&nbsp;'+_govTypeBadge(d.govType):'');var briefBtn=document.getElementById('panel-brief-btn');if(briefBtn)briefBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var tlBtn=document.getElementById('panel-timeline-btn');if(tlBtn)tlBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var prepBtn=document.getElementById('panel-prep-btn');if(prepBtn)prepBtn.style.display=(d.type==='person'||d.type==='government')?'flex':'none';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';
   var gtFld=document.getElementById('panel-govtype-fld');
   var gtSel=document.getElementById('panel-govtype');
   var showGovType=(d.type==='person'||d.type==='government');
@@ -15007,6 +15369,62 @@ function setNetStatus(m){var e=document.getElementById('net-status');if(e){e.tex
 function clearNetStatus(){var e=document.getElementById('net-status');if(e)e.classList.remove('show');}
 function showProcErr(m){var e=document.getElementById('proc-err');e.textContent=m;e.style.display='inline';}
 function clearProcErr(){document.getElementById('proc-err').style.display='none';}
+
+// ── Cal Prep injection: adds ⬡ Prep buttons to today/upcoming entries ─────
+// Runs after renderCalendar — reads cal data directly from calEntries + pullIntelDates
+window._injectCalPrepButtons = function() {
+  var scroll = document.getElementById('cal-scroll');
+  if (!scroll || typeof window.openMeetingPrepBrief !== 'function') return;
+  var now = new Date(); now.setHours(0,0,0,0);
+  var in7 = new Date(now.getTime() + 7 * 86400000);
+  // Gather relevant entries: today and next 7 days only
+  var relevant = [].concat(
+    typeof calEntries !== 'undefined' ? calEntries : [],
+    typeof pullIntelDates === 'function' ? pullIntelDates() : []
+  ).filter(function(e) {
+    if (!e.date) return false;
+    var d = new Date(e.date + 'T00:00:00');
+    return d >= now && d <= in7;
+  });
+  if (!relevant.length) return;
+
+  // For each date-sec, find items matching relevant entries and inject buttons
+  // We match by label text since we can't easily attach data-* to the existing render
+  relevant.forEach(function(e) {
+    var labelText = e.label || '';
+    if (!labelText) return;
+    var items = scroll.querySelectorAll('.date-item');
+    items.forEach(function(item) {
+      var lbl = item.querySelector('.date-lbl');
+      if (!lbl || lbl.textContent.trim() !== labelText.trim()) return;
+      if (item.querySelector('.cal-prep-btn')) return; // already injected
+      var btn = document.createElement('button');
+      btn.className = 'cal-prep-btn';
+      btn.title = 'Open meeting prep brief for this event';
+      btn.style.cssText = 'margin-top:4px;padding:2px 8px;border:1px solid rgba(201,162,39,.4);border-radius:3px;background:rgba(201,162,39,.08);color:var(--gold);font-size:9px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.04em;display:inline-block';
+      btn.textContent = '⬡ Prep';
+      var dateVal = e.date;
+      var titleVal = labelText;
+      var attVal = e.attendees || '';
+      btn.onclick = function(ev) {
+        ev.stopPropagation();
+        window.openMeetingPrepBrief(dateVal, titleVal, attVal, '');
+      };
+      var inner = item.querySelector('div[style]') || item.children[1] || item;
+      inner.appendChild(btn);
+    });
+  });
+};
+
+// Patch renderCalendar to call the injector after render
+(function() {
+  var _origRC = renderCalendar;
+  renderCalendar = function() {
+    _origRC.apply(this, arguments);
+    setTimeout(window._injectCalPrepButtons, 50);
+  };
+  window.renderCalendar = renderCalendar;
+})();
 function closeModal(id){var el=document.getElementById(id);if(el)el.style.display='none';}
 window.closeModal=closeModal;
 function openModal(id){var el=document.getElementById(id);if(el)el.style.display='flex';}
@@ -16167,18 +16585,38 @@ function _updateAlertBadge(){
   var totalCount=_alerts.length;
   if(totalCount===0){
     if(badge)badge.style.display='none';
-    return;
+  } else {
+    if(!badge){
+      badge=document.createElement('span');
+      badge.id='alert-badge';
+      badge.style.cssText='position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;font-family:\'JetBrains Mono\',monospace;pointer-events:none';
+      btn.style.position='relative';
+      btn.appendChild(badge);
+    }
+    badge.textContent=totalCount;
+    badge.style.background=highCount>0?'var(--red)':'var(--amber)';
+    badge.style.display='flex';
   }
-  if(!badge){
-    badge=document.createElement('span');
-    badge.id='alert-badge';
-    badge.style.cssText='position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;font-family:\'JetBrains Mono\',monospace;pointer-events:none';
-    btn.style.position='relative';
-    btn.appendChild(badge);
-  }
-  badge.textContent=totalCount;
-  badge.style.background=highCount>0?'var(--red)':'var(--amber)';
-  badge.style.display='flex';
+  // Update Re-engage nav button with cooling contact count
+  setTimeout(function(){
+    var reBtn=document.getElementById('nav-reeng-btn');
+    if(!reBtn||typeof window._buildReengagementList!=='function')return;
+    var reCount=window._buildReengagementList().length;
+    var reBadge=document.getElementById('reeng-badge');
+    if(reCount>0){
+      if(!reBadge){
+        reBadge=document.createElement('span');
+        reBadge.id='reeng-badge';
+        reBadge.style.cssText='position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--amber);color:#000;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px;font-family:\'JetBrains Mono\',monospace;pointer-events:none';
+        reBtn.style.position='relative';
+        reBtn.appendChild(reBadge);
+      }
+      reBadge.textContent=reCount;
+      reBadge.style.display='flex';
+    } else {
+      if(reBadge)reBadge.style.display='none';
+    }
+  },200);
 }
 
 window.toggleAlertsPanel=function(){
@@ -16228,6 +16666,11 @@ function _renderAlertsPanel(){
   });
   // Store action callbacks (functions can't be in innerHTML)
   window._alertActions=_alerts.map(function(a){return a.action;});
+  // Append re-engagement footer
+  h += '<div style="padding:10px 14px;border-top:1px solid rgba(26,48,80,.4);display:flex;justify-content:space-between;align-items:center">'
+    + '<span style="font-size:10px;color:var(--t3)">Re-engagement engine</span>'
+    + '<button onclick="window.openReengagementPanel()" style="padding:4px 10px;border:1px solid rgba(245,158,11,.4);border-radius:var(--rsm);background:rgba(245,158,11,.08);color:var(--amber);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">◎ Who to Re-engage →</button>'
+    + '</div>';
   panel.innerHTML=h;
 }
 
@@ -23481,16 +23924,33 @@ window._quickLogMeeting = function() {
 };
 
 function _updateCaptureBadge() {
-  var badge = document.getElementById('capture-badge');
+  // Capture badge now lives inside the Tools menu (Auto-Capture entry)
+  var badge = document.getElementById('tools-capture-badge');
   var n = pendingCapture.length;
-  if (!badge) return;
-  if (n > 0) {
-    badge.style.display = 'inline-block';
-    badge.textContent = n > 99 ? '99+' : String(n);
-  } else {
-    badge.style.display = 'none';
+  if (badge) {
+    if (n > 0) {
+      badge.style.display = 'inline-block';
+      badge.textContent = n > 99 ? '99+' : String(n);
+    } else {
+      badge.style.display = 'none';
+    }
   }
-  // Also update count label if view is open
+  // Mirror the count on the Tools tab itself when there are pending items
+  var toolsBtn = document.getElementById('vtab-tools-menu');
+  if (toolsBtn) {
+    var existing = toolsBtn.querySelector('.tools-pending-dot');
+    if (n > 0) {
+      if (!existing) {
+        var dot = document.createElement('span');
+        dot.className = 'tools-pending-dot';
+        dot.style.cssText = 'display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red);margin-left:4px';
+        toolsBtn.appendChild(dot);
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  }
+  // Update count label if view is open
   var lbl = document.getElementById('capture-count-label');
   if (lbl) lbl.textContent = n + ' item' + (n !== 1 ? 's' : '') + ' awaiting review';
 }
@@ -25739,30 +26199,43 @@ window._runMeetingPrepAI = async function(title, contactData, opp, dateStr) {
   }
 };
 
-// Add "Prep Brief" button to Intel log header area (wires on switchView)
+// Add "Prep Brief" button to Intel log — inject next to Process button, show/hide per view
 (function() {
   var _origOnViewSwitch = window._onViewSwitch;
   window._onViewSwitch = function(v) {
     if (_origOnViewSwitch) _origOnViewSwitch(v);
+    // Show/hide the fab with view
+    var fab = document.getElementById('prep-brief-fab');
+    if (fab) fab.style.display = (v === 'intel') ? 'flex' : 'none';
     if (v !== 'intel') return;
-    // Inject Prep Brief button near the Process button if not already present
+    // Inject once
+    if (document.getElementById('prep-brief-fab')) return;
     setTimeout(function() {
       if (document.getElementById('prep-brief-fab')) return;
+      // Try to inject inline next to the Process button
+      var procBtn = document.getElementById('proc-btn');
       var fab = document.createElement('button');
       fab.id = 'prep-brief-fab';
-      fab.title = 'Generate a meeting prep brief from current form data';
-      fab.style.cssText = 'position:fixed;bottom:80px;right:16px;z-index:200;padding:9px 14px;background:rgba(201,162,39,.15);border:1px solid rgba(201,162,39,.5);border-radius:7px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.04em;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;gap:6px';
-      fab.innerHTML = '⬡ Prep Brief';
+      fab.title = 'Generate a tactical meeting prep brief from the current form';
+      fab.innerHTML = '⬡ Prep';
+      if (procBtn && procBtn.parentNode) {
+        fab.className = procBtn.className;
+        fab.style.cssText = 'padding:11px 18px!important;font-size:13px!important;font-weight:700!important;letter-spacing:.04em!important;background:rgba(201,162,39,.15)!important;border-color:rgba(201,162,39,.5)!important;color:var(--gold)!important;';
+        procBtn.parentNode.insertBefore(fab, procBtn.nextSibling);
+      } else {
+        // Fallback: floating button
+        fab.style.cssText = 'position:fixed;bottom:80px;right:16px;z-index:200;padding:9px 14px;background:rgba(201,162,39,.15);border:1px solid rgba(201,162,39,.5);border-radius:7px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.04em;box-shadow:0 4px 16px rgba(0,0,0,.4);display:flex;align-items:center;gap:6px';
+        document.body.appendChild(fab);
+      }
       fab.onclick = function() {
-        var dateVal = (document.getElementById('m-date') || {}).value || new Date().toISOString().slice(0,10);
+        var dateVal  = (document.getElementById('m-date')  || {}).value || new Date().toISOString().slice(0,10);
         var titleVal = (document.getElementById('m-title') || {}).value || 'Meeting';
-        var attVal = (document.getElementById('m-att') || {}).value || '';
-        var oppSel = document.getElementById('m-opp-sel');
-        var oppId = oppSel ? oppSel.value : '';
+        var attVal   = (document.getElementById('m-att')   || {}).value || '';
+        var oppSel   = document.getElementById('m-opp');   // correct selector ID
+        var oppId    = oppSel ? oppSel.value : '';
         window.openMeetingPrepBrief(dateVal, titleVal, attVal, oppId);
       };
-      document.body.appendChild(fab);
-    }, 400);
+    }, 500);
   };
 })();
 
@@ -25934,43 +26407,25 @@ window.openReengagementPanel = function() {
   body.innerHTML = h;
 };
 
-// Wire re-engagement into alert panel (add a "View All" link)
+// Surface re-engagement from Team tab — add a CTA after render
 (function() {
-  var _origRenderAlerts = window._renderAlertsPanel || function(){};
-  // Patch to add re-engagement entry point at bottom of alert panel
-  var _patchApplied = false;
-  var _origRunAlert = window.toggleAlertsPanel;
-  window.toggleAlertsPanel = function() {
-    if (_origRunAlert) _origRunAlert();
-    if (!_patchApplied) {
-      _patchApplied = true;
-      setTimeout(function() {
-        var panel = document.getElementById('alerts-panel');
-        if (!panel) return;
-        var footer = document.createElement('div');
-        footer.style.cssText = 'padding:10px 14px;border-top:1px solid rgba(26,48,80,.4);display:flex;justify-content:space-between;align-items:center';
-        footer.innerHTML = '<span style="font-size:10px;color:var(--t3)">Re-engagement engine</span>'
-          + '<button onclick="window.openReengagementPanel()" style="padding:4px 10px;border:1px solid rgba(245,158,11,.4);border-radius:var(--rsm);background:rgba(245,158,11,.08);color:var(--amber);font-size:10px;cursor:pointer;font-family:Outfit,sans-serif">◎ Who to Re-engage →</button>';
-        panel.appendChild(footer);
-      }, 200);
-    }
-  };
-})();
-
-// Also surface re-engagement from Team tab — add a button
-(function() {
-  var _origTeam = window.renderTeamView || function(){};
   // After team renders, append the reengagement CTA
   window._appendReengagementCTA = function() {
     var main = document.getElementById('team-main');
     if (!main) return;
+    // Remove stale CTA before re-inserting (prevents duplicates on re-render)
+    var old = document.getElementById('reeng-cta');
+    if (old) old.remove();
     var reengCount = window._buildReengagementList().length;
     if (!reengCount) return;
     var cta = document.createElement('div');
     cta.id = 'reeng-cta';
     cta.style.cssText = 'background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:14px 16px;margin-top:14px;display:flex;align-items:center;justify-content:space-between';
-    cta.innerHTML = '<div><div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--amber);margin-bottom:4px">◎ Relationship Maintenance</div>'
-      + '<div style="font-size:13px;color:var(--text)">' + reengCount + ' T1/T2 contact' + (reengCount !== 1 ? 's' : '') + ' quiet for 45+ days</div></div>'
+    cta.innerHTML = '<div>'
+      + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--amber);margin-bottom:4px">◎ Relationship Maintenance</div>'
+      + '<div style="font-size:13px;color:var(--text)">' + reengCount + ' T1/T2 contact' + (reengCount !== 1 ? 's' : '') + ' quiet for 45+ days</div>'
+      + '<div style="font-size:10px;color:var(--t3);margin-top:3px">Suggested outreach angles available for each</div>'
+      + '</div>'
       + '<button onclick="window.openReengagementPanel()" style="padding:8px 16px;border:1px solid rgba(245,158,11,.4);border-radius:6px;background:rgba(245,158,11,.12);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.04em">Review →</button>';
     main.appendChild(cta);
   };
@@ -26091,64 +26546,921 @@ window._renderOppHealthDigest = function() {
   banner.innerHTML = h;
 };
 
-// Patch renderOppSidebar to inject the digest banner
+// ── Patch renderOppSidebar (declared fn) to inject + refresh health digest ──
 (function() {
-  var _origRenderOppSidebar = window.renderOppSidebar;
-  // We can't easily patch a declared function, so instead we wire it into
-  // switchView and the onValue listener path via a MutationObserver on the sidebar
-  var _injected = false;
-  function _injectDigestBanner() {
-    if (_injected) return;
-    var sidebar = document.getElementById('opp-sidebar');
-    if (!sidebar) return;
-    var existing = document.getElementById('opp-health-digest');
-    if (existing) { _injected = true; return; }
-    var banner = document.createElement('div');
-    banner.id = 'opp-health-digest';
-    banner.style.cssText = 'background:rgba(245,158,11,.05);border-bottom:1px solid rgba(245,158,11,.2);display:none';
-    sidebar.parentNode.insertBefore(banner, sidebar);
-    _injected = true;
-  }
-
-  // Run on view switch to opps
-  var _origOnViewSwitch2 = window._onViewSwitch;
-  window._onViewSwitch = function(v) {
-    if (_origOnViewSwitch2) _origOnViewSwitch2(v);
-    if (v === 'opps') {
-      setTimeout(function() {
-        _injectDigestBanner();
-        window._renderOppHealthDigest();
-      }, 300);
+  var _origROS = renderOppSidebar;
+  renderOppSidebar = function() {
+    _origROS.apply(this, arguments);
+    var main = document.getElementById('opp-main');
+    if (main && !document.getElementById('opp-health-digest')) {
+      var banner = document.createElement('div');
+      banner.id = 'opp-health-digest';
+      banner.style.cssText = 'background:rgba(245,158,11,.05);border-bottom:1px solid rgba(245,158,11,.2);display:none;font-size:11px';
+      main.insertBefore(banner, main.firstChild);
     }
+    setTimeout(function() { if (typeof window._renderOppHealthDigest === 'function') window._renderOppHealthDigest(); }, 150);
   };
+  window.renderOppSidebar = renderOppSidebar;
+})();
 
-  // Run on data load (meetings/opps change)
-  var _digestTimer = null;
-  function _scheduleDigest() {
-    clearTimeout(_digestTimer);
-    _digestTimer = setTimeout(function() {
-      _injectDigestBanner();
-      if (activeView === 'opps') window._renderOppHealthDigest();
-    }, 1500);
+// ── Patch renderTeamView (async declared fn) — append reengagement CTA ──
+(function() {
+  var _origTV = renderTeamView;
+  window.renderTeamView = async function() {
+    await _origTV.apply(this, arguments);
+    setTimeout(function() { if (typeof window._appendReengagementCTA === 'function') window._appendReengagementCTA(); }, 300);
+  };
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// NAV CONSOLIDATION — TOOLS DROPDOWN MENU
+// 4 core tabs always visible (Mission Board, Pursuits, Network, Timeline).
+// Everything else (Intel Center, Ask FLi, Team, BD Stats, SBIR, RFI,
+// Competitive, Teaming, Library, Capture) lives behind "Tools ▾".
+// ══════════════════════════════════════════════════════════════════════════
+
+window._toggleToolsMenu = function() {
+  var dd = document.getElementById('tools-menu-dropdown');
+  if (!dd) return;
+  var btn = document.getElementById('vtab-tools-menu');
+  var isOpen = dd.style.display !== 'none';
+  if (isOpen) {
+    dd.style.display = 'none';
+    if (btn) btn.style.background = '';
+  } else {
+    dd.style.display = 'block';
+    if (btn) btn.style.background = 'rgba(255,255,255,.04)';
+    // Close on outside click
+    setTimeout(function() {
+      var handler = function(e) {
+        if (!dd.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+          dd.style.display = 'none';
+          if (btn) btn.style.background = '';
+          document.removeEventListener('click', handler);
+        }
+      };
+      document.addEventListener('click', handler);
+    }, 50);
+  }
+};
+
+window._toolsMenuSelect = function(view) {
+  var dd = document.getElementById('tools-menu-dropdown');
+  if (dd) dd.style.display = 'none';
+  var btn = document.getElementById('vtab-tools-menu');
+  if (btn) btn.style.background = '';
+  switchView(view);
+};
+
+// Keep Tools tab highlighted when a tools-menu view is active
+(function() {
+  var TOOL_VIEWS = ['pulse', 'askfli', 'bdperf', 'team', 'capture', 'sbir', 'rfi', 'comp', 'teaming', 'library'];
+  var _origOnViewSwitch_nav = window._onViewSwitch || function() {};
+  window._onViewSwitch = function(v) {
+    _origOnViewSwitch_nav(v);
+    var toolsBtn = document.getElementById('vtab-tools-menu');
+    if (toolsBtn) {
+      if (TOOL_VIEWS.indexOf(v) !== -1) {
+        toolsBtn.classList.add('active');
+      } else {
+        toolsBtn.classList.remove('active');
+      }
+    }
+    // Render daily strip on any view switch (it auto-hides on no items)
+    setTimeout(window._renderDailyStrip, 80);
+  };
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// DAILY STRIP — "What to do today"
+// Persistent strip below the nav. Shows up to 3 live action items pulled
+// from: alerts, cooling T1 contacts, stalled opps, overdue commitments.
+// Computed from existing data — no new state, no new storage.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._buildDailyStripItems = function() {
+  var items = [];
+  var now = new Date(); now.setHours(0, 0, 0, 0);
+  var DAY = 86400000;
+  if (typeof nodes === 'undefined' || !nodes) return items;
+
+  // 1. Overdue commitments (HIGHEST priority)
+  if (typeof commitments !== 'undefined' && commitments) {
+    var overdue = commitments.filter(function(c) {
+      if (c.status !== 'open' || !c.deadline) return false;
+      return new Date(c.deadline + 'T00:00:00') < now;
+    });
+    if (overdue.length) {
+      var c = overdue[0];
+      var daysLate = Math.floor((now - new Date(c.deadline + 'T00:00:00')) / DAY);
+      items.push({
+        icon: '⚠',
+        color: 'var(--red)',
+        title: (c.task || 'Commitment').slice(0, 60),
+        sub: daysLate + 'd overdue' + (c.owner ? ' · ' + c.owner : '') + (overdue.length > 1 ? ' · +' + (overdue.length - 1) + ' more' : ''),
+        action: function() { switchView('timeline'); }
+      });
+    }
   }
 
-  // Hook into existing Firebase listeners via the opportunity save/load paths
-  var _origSaveOpp2 = window.saveOpp;
-  if (_origSaveOpp2) {
-    window.saveOpp = function(opp) {
-      var r = _origSaveOpp2(opp);
-      _scheduleDigest();
+  // 2. Cooling T1 contact (most urgent)
+  var coldT1 = nodes.filter(function(n) {
+    if (n.type !== 'person' || n.priority !== 1) return false;
+    var mtgs = (typeof getMtgsForNode === 'function') ? getMtgsForNode(n.id) : [];
+    if (!mtgs.length) return false;
+    var sorted = mtgs.slice().sort(function(a, b) { return b.meta.date.localeCompare(a.meta.date); });
+    n._daysAgo = Math.floor((Date.now() - new Date(sorted[0].meta.date)) / DAY);
+    return n._daysAgo >= 30;
+  }).sort(function(a, b) { return b._daysAgo - a._daysAgo; });
+
+  if (coldT1.length) {
+    var ct = coldT1[0];
+    items.push({
+      icon: '❄',
+      color: 'var(--blue)',
+      title: ct.name + ' (T1) — ' + ct._daysAgo + 'd quiet',
+      sub: (ct.role || ct.org || 'Key contact') + ' · suggested outreach available',
+      action: function() {
+        if (typeof window.openReengagementPanel === 'function') {
+          window.openReengagementPanel();
+        } else {
+          switchView('network');
+          setTimeout(function() { if (window._panelFocusNode) window._panelFocusNode(ct.id); }, 300);
+        }
+      }
+    });
+  }
+
+  // 3. Stalled / EOFY-urgent opportunity
+  if (typeof opportunities !== 'undefined' && opportunities) {
+    var mtgByOpp = {};
+    if (typeof meetings !== 'undefined' && meetings) {
+      meetings.forEach(function(m) {
+        if (!m.oppId) return;
+        var mt = new Date((m.meta && m.meta.date) || 0).getTime();
+        if (!mtgByOpp[m.oppId] || mt > mtgByOpp[m.oppId]) mtgByOpp[m.oppId] = mt;
+      });
+    }
+    var oppCandidates = [];
+    opportunities.forEach(function(o) {
+      if (o.stage === 'won' || o.stage === 'lost') return;
+      var daysSince = Math.floor((now - new Date(o.updatedAt || o.created || now)) / DAY);
+      var lastMtg = mtgByOpp[o.id] || 0;
+      var daysSinceMtg = lastMtg ? Math.floor((Date.now() - lastMtg) / DAY) : 999;
+      // EOFY Q4 urgency
+      if (o.awardDate) {
+        var awardD = new Date(o.awardDate);
+        var daysToAward = Math.floor((awardD - now) / DAY);
+        if (daysToAward > 0 && daysToAward <= 60) {
+          oppCandidates.push({
+            priority: 0, // highest
+            opp: o,
+            icon: '⚡',
+            color: 'var(--amber)',
+            title: o.name + ' — ' + daysToAward + 'd to award',
+            sub: (o.agency || 'Pursuit') + ' at ' + (o.stage || 'tracking') + (o.value ? ' · ' + o.value : '')
+          });
+          return;
+        }
+      }
+      if (daysSince >= 21 && daysSinceMtg >= 21) {
+        oppCandidates.push({
+          priority: daysSince >= 45 ? 1 : 2,
+          opp: o,
+          icon: '◎',
+          color: daysSince >= 45 ? 'var(--red)' : 'var(--amber)',
+          title: o.name + ' — stalled ' + daysSince + 'd',
+          sub: 'At ' + (o.stage || 'tracking') + (mtgByOpp[o.id] ? ' · last meeting ' + daysSinceMtg + 'd ago' : ' · no meetings logged')
+        });
+      }
+    });
+    oppCandidates.sort(function(a, b) { return a.priority - b.priority; });
+    if (oppCandidates.length) {
+      var oc = oppCandidates[0];
+      items.push({
+        icon: oc.icon,
+        color: oc.color,
+        title: oc.title,
+        sub: oc.sub,
+        action: (function(oid) {
+          return function() {
+            switchView('opps');
+            setTimeout(function() { if (typeof selectOpp === 'function') selectOpp(oid); }, 100);
+          };
+        })(oc.opp.id)
+      });
+    }
+  }
+
+  return items.slice(0, 3);
+};
+
+window._renderDailyStrip = function() {
+  var strip = document.getElementById('daily-strip');
+  var container = document.getElementById('daily-strip-items');
+  if (!strip || !container) return;
+  // Only show on app views, not during auth/onboarding
+  var app = document.getElementById('main-app');
+  if (!app || app.style.display === 'none') {
+    strip.style.display = 'none';
+    return;
+  }
+  var items = window._buildDailyStripItems();
+  if (!items.length) {
+    // Show "all clear" state instead of hiding
+    if (typeof meetings === 'undefined' || !meetings || meetings.length === 0) {
+      strip.style.display = 'none';
+      return;
+    }
+    strip.style.display = 'flex';
+    container.innerHTML = '<div class="daily-strip-empty"><span style="color:var(--green);font-size:13px">✓</span><span>All clear — no urgent actions. Stay sharp.</span></div>';
+    return;
+  }
+
+  strip.style.display = 'flex';
+  // Store actions globally so onclick can reach them
+  window._dailyStripActions = items.map(function(i) { return i.action; });
+  var html = '';
+  items.forEach(function(it, idx) {
+    html += '<div class="daily-strip-item" onclick="window._dailyStripActions[' + idx + ']()">';
+    html += '<span class="daily-strip-item-icon" style="color:' + it.color + '">' + it.icon + '</span>';
+    html += '<div class="daily-strip-item-body">';
+    html += '<div class="daily-strip-item-title">' + it.title + '</div>';
+    html += '<div class="daily-strip-item-sub">' + it.sub + '</div>';
+    html += '</div>';
+    html += '<span class="daily-strip-item-arrow">→</span>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+};
+
+// Auto-refresh strip every 3 minutes + on data changes
+(function() {
+  var _stripTimer = null;
+  function _scheduleStripRender() {
+    clearTimeout(_stripTimer);
+    _stripTimer = setTimeout(window._renderDailyStrip, 800);
+  }
+  // Initial render after workspace load
+  if (typeof selectWorkspace === 'function') {
+    var _origSW = selectWorkspace;
+    selectWorkspace = async function(wsId) {
+      var r = await _origSW.apply(this, arguments);
+      setTimeout(window._renderDailyStrip, 3000);
+      return r;
+    };
+    window.selectWorkspace = selectWorkspace;
+  }
+  // Periodic refresh
+  setInterval(function() {
+    var app = document.getElementById('main-app');
+    if (app && app.style.display !== 'none') window._renderDailyStrip();
+  }, 180000);
+  // After meeting save
+  if (typeof window.saveMeeting === 'function') {
+    var _origSM = window.saveMeeting;
+    window.saveMeeting = async function(m) {
+      var r = await _origSM.apply(this, arguments);
+      _scheduleStripRender();
       return r;
     };
   }
 })();
 
-// ── Expose Re-engagement button in Team tab after render ─────────
-var _origRenderTeamView = window.renderTeamView || function(){};
-window.renderTeamView = async function() {
-  await _origRenderTeamView.apply(this, arguments);
-  setTimeout(window._appendReengagementCTA, 300);
+
+// ══════════════════════════════════════════════════════════════════════════
+// FIRST-USE ACTIVATION FLOW
+// Replaces the empty-state with a 3-step guided onboarding that ends with
+// the platform populated with real data. Triggered when a workspace has:
+//   - 0 meetings AND 0 opportunities AND no T1 contacts
+// Stores completion state in Firebase per-workspace so it doesn't re-show.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._checkActivationFlow = async function() {
+  if (!currentWsId || !currentUser) return;
+  // Skip for demo workspace
+  if (currentWs && (currentWs.isDemo || (currentWs.name || '').toLowerCase().indexOf('demo') !== -1)) return;
+  // Skip if already completed
+  try {
+    var snap = await get(ref(db, wsPath('activation/completed')));
+    if (snap.val()) return;
+  } catch(e) {}
+  // Check empty state
+  var hasMtgs = typeof meetings !== 'undefined' && meetings && meetings.length > 0;
+  var hasOpps = typeof opportunities !== 'undefined' && opportunities && opportunities.length > 0;
+  var hasT1 = typeof nodes !== 'undefined' && nodes && nodes.some(function(n) { return n.type === 'person' && n.priority === 1; });
+  if (hasMtgs || hasOpps || hasT1) {
+    // User has data — mark as completed automatically
+    try { await fbSet(wsPath('activation/completed'), new Date().toISOString()); } catch(e) {}
+    return;
+  }
+  // Show the flow
+  setTimeout(window._showActivationFlow, 1000);
 };
+
+window._showActivationFlow = function() {
+  if (document.getElementById('activate-overlay')) return; // already showing
+  var overlay = document.createElement('div');
+  overlay.className = 'activate-overlay';
+  overlay.id = 'activate-overlay';
+  document.body.appendChild(overlay);
+  window._renderActivationFlow();
+};
+
+window._renderActivationFlow = function() {
+  var overlay = document.getElementById('activate-overlay');
+  if (!overlay) return;
+
+  // Check current state
+  var hasOpps = typeof opportunities !== 'undefined' && opportunities && opportunities.length > 0;
+  var hasMtgs = typeof meetings !== 'undefined' && meetings && meetings.length > 0;
+  var hasT1 = typeof nodes !== 'undefined' && nodes && nodes.some(function(n) { return n.type === 'person' && n.priority === 1; });
+
+  var completed = (hasOpps ? 1 : 0) + (hasMtgs ? 1 : 0) + (hasT1 ? 1 : 0);
+  var progressPct = Math.round((completed / 3) * 100);
+
+  var wsName = (currentWs && currentWs.name) || 'your workspace';
+
+  var h = '<div class="activate-card">';
+  h += '<div class="activate-eyebrow">⬡ Welcome to FLiIntel · ' + wsName + '</div>';
+  if (completed === 0) {
+    h += '<div class="activate-title">Let\'s get you operational in 3 steps.</div>';
+    h += '<div class="activate-sub">FLiIntel turns your meetings, contacts, and pursuits into a connected intelligence graph. Complete these three steps and the platform will be live with your real data — no demo needed.</div>';
+  } else if (completed < 3) {
+    h += '<div class="activate-title">' + completed + ' of 3 complete. Keep going.</div>';
+    h += '<div class="activate-sub">You\'re building the foundation. Each step activates more of the intelligence layer.</div>';
+  } else {
+    h += '<div class="activate-title">You\'re operational.</div>';
+    h += '<div class="activate-sub">All three steps complete. The Daily Strip will now surface what needs your attention. The Mission Board will show your live intel.</div>';
+  }
+
+  h += '<div class="activate-progress"><div class="activate-progress-bar" style="width:' + progressPct + '%"></div></div>';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:18px">' + completed + ' / 3 complete</div>';
+
+  h += '<div class="activate-step-list">';
+
+  // Step 1: Add first pursuit
+  h += '<div class="activate-step' + (hasOpps ? ' done' : '') + '">';
+  h += '<div class="activate-step-num">' + (hasOpps ? '✓' : '1') + '</div>';
+  h += '<div class="activate-step-body">';
+  h += '<div class="activate-step-title">Add your first pursuit</div>';
+  h += '<div class="activate-step-sub">A pursuit is any contract, program, or BAA you\'re tracking. Everything you log will connect to it — meetings, contacts, commitments, intel signals.</div>';
+  h += '</div>';
+  if (hasOpps) {
+    h += '<div class="activate-step-cta">Done</div>';
+  } else {
+    h += '<button class="activate-step-cta" onclick="window._activateStep1()">Add</button>';
+  }
+  h += '</div>';
+
+  // Step 2: Log a meeting
+  h += '<div class="activate-step' + (hasMtgs ? ' done' : '') + '">';
+  h += '<div class="activate-step-num">' + (hasMtgs ? '✓' : '2') + '</div>';
+  h += '<div class="activate-step-body">';
+  h += '<div class="activate-step-title">Log your last real meeting</div>';
+  h += '<div class="activate-step-sub">Paste notes or a transcript. FLiIntel extracts every person, their role and stance, action items, risks, and links them to your network — automatically. This is where the platform earns its keep.</div>';
+  h += '</div>';
+  if (hasMtgs) {
+    h += '<div class="activate-step-cta">Done</div>';
+  } else {
+    h += '<button class="activate-step-cta" onclick="window._activateStep2()">Log</button>';
+  }
+  h += '</div>';
+
+  // Step 3: Tier your T1s
+  h += '<div class="activate-step' + (hasT1 ? ' done' : '') + '">';
+  h += '<div class="activate-step-num">' + (hasT1 ? '✓' : '3') + '</div>';
+  h += '<div class="activate-step-body">';
+  h += '<div class="activate-step-title">Mark your top contacts as T1</div>';
+  h += '<div class="activate-step-sub">Tier-1 contacts are the relationships that matter most — program managers, contracting officers, key champions. FLiIntel watches them closely and alerts you when they go cold.</div>';
+  h += '</div>';
+  if (hasT1) {
+    h += '<div class="activate-step-cta">Done</div>';
+  } else {
+    h += '<button class="activate-step-cta" onclick="window._activateStep3()">Set T1</button>';
+  }
+  h += '</div>';
+
+  h += '</div>'; // step-list
+
+  // Footer
+  if (completed === 3) {
+    h += '<button onclick="window._completeActivation()" style="width:100%;padding:13px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);border-radius:8px;color:var(--green);font-family:\'Outfit\',sans-serif;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.04em;text-transform:uppercase">Enter Mission Board →</button>';
+  } else {
+    h += '<div class="activate-skip"><button onclick="window._completeActivation()">Skip — I\'ll explore on my own</button></div>';
+  }
+
+  h += '</div>'; // activate-card
+  overlay.innerHTML = h;
+};
+
+window._activateStep1 = function() {
+  // Close overlay, open new opp modal, re-show overlay after
+  var overlay = document.getElementById('activate-overlay');
+  if (overlay) overlay.style.display = 'none';
+  switchView('opps');
+  setTimeout(function() {
+    if (typeof openNewOppModal === 'function') openNewOppModal();
+  }, 200);
+  // Watch for the modal closing
+  var _checkInt = setInterval(function() {
+    var oppModal = document.getElementById('new-opp-modal');
+    if (oppModal && oppModal.style.display === 'none') {
+      clearInterval(_checkInt);
+      setTimeout(function() {
+        if (overlay) {
+          overlay.style.display = 'flex';
+          window._renderActivationFlow();
+        }
+      }, 600);
+    }
+  }, 500);
+  // Safety timeout — re-show after 90s no matter what
+  setTimeout(function() {
+    clearInterval(_checkInt);
+    if (overlay && overlay.style.display === 'none') {
+      overlay.style.display = 'flex';
+      window._renderActivationFlow();
+    }
+  }, 90000);
+};
+
+window._activateStep2 = function() {
+  var overlay = document.getElementById('activate-overlay');
+  if (overlay) overlay.style.display = 'none';
+  switchView('intel');
+  setTimeout(function() {
+    if (typeof switchIntelTab === 'function') switchIntelTab('log');
+    var titleInp = document.getElementById('m-title');
+    if (titleInp) titleInp.focus();
+  }, 200);
+  // Re-show overlay when a meeting is processed
+  var startCount = (typeof meetings !== 'undefined' && meetings) ? meetings.length : 0;
+  var _checkInt = setInterval(function() {
+    var currentCount = (typeof meetings !== 'undefined' && meetings) ? meetings.length : 0;
+    if (currentCount > startCount) {
+      clearInterval(_checkInt);
+      setTimeout(function() {
+        if (overlay) {
+          overlay.style.display = 'flex';
+          window._renderActivationFlow();
+        }
+      }, 1500);
+    }
+  }, 1000);
+  setTimeout(function() {
+    clearInterval(_checkInt);
+  }, 600000); // 10 minutes max
+};
+
+window._activateStep3 = function() {
+  var overlay = document.getElementById('activate-overlay');
+  if (overlay) overlay.style.display = 'none';
+  switchView('network');
+  if (typeof toast === 'function') {
+    toast('Click any person, then set their tier to T1 in the side panel');
+  }
+  // Re-show when a T1 person exists
+  var _checkInt = setInterval(function() {
+    var hasT1 = typeof nodes !== 'undefined' && nodes && nodes.some(function(n) { return n.type === 'person' && n.priority === 1; });
+    if (hasT1) {
+      clearInterval(_checkInt);
+      setTimeout(function() {
+        if (overlay) {
+          overlay.style.display = 'flex';
+          window._renderActivationFlow();
+        }
+      }, 1500);
+    }
+  }, 1000);
+  setTimeout(function() {
+    clearInterval(_checkInt);
+  }, 600000);
+};
+
+window._completeActivation = async function() {
+  var overlay = document.getElementById('activate-overlay');
+  if (overlay) overlay.remove();
+  try {
+    await fbSet(wsPath('activation/completed'), new Date().toISOString());
+  } catch(e) {}
+  // Trigger first daily strip render
+  setTimeout(window._renderDailyStrip, 500);
+};
+
+// Re-open activation later via a help link (always available)
+window._reopenActivationFlow = function() {
+  window._showActivationFlow();
+};
+
+// Hook into workspace selection — check activation status after data loads
+(function() {
+  if (typeof selectWorkspace === 'function') {
+    var _origSWForActivation = selectWorkspace;
+    selectWorkspace = async function(wsId) {
+      var r = await _origSWForActivation.apply(this, arguments);
+      // Wait for Firebase listeners to load data before checking
+      setTimeout(function() {
+        if (typeof window._checkActivationFlow === 'function') window._checkActivationFlow();
+      }, 4500);
+      return r;
+    };
+    window.selectWorkspace = selectWorkspace;
+  }
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// POST-PROCESS EXTRACTION BANNER
+// Appears at the top of the rendered intel after a meeting is processed.
+// Shows EXACTLY what FLiIntel extracted — making the magic visible.
+// Counts come from window._lastProcessedSummary, set during processNotes.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._renderProcessExtractionBanner = function(m) {
+  var summary = window._lastProcessedSummary;
+  if (!summary || summary.mtgId !== m.id) return;
+  var intelBody = document.getElementById('intel-body');
+  if (!intelBody) return;
+  // Remove any existing banner
+  var existing = document.getElementById('proc-extraction-banner');
+  if (existing) existing.remove();
+
+  var totalSignals = summary.actionItems + summary.risks + summary.keyPeople + summary.companies + (summary.commitments || 0);
+  if (totalSignals === 0 && summary.addedNodes === 0 && summary.addedLinks === 0) return;
+
+  var banner = document.createElement('div');
+  banner.id = 'proc-extraction-banner';
+  banner.style.cssText = 'background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(201,162,39,.06));border:1px solid rgba(34,197,94,.3);border-left:3px solid var(--green);border-radius:9px;padding:14px 16px;margin-bottom:16px;animation:procBannerIn .4s ease';
+
+  // Inject keyframe if not already added
+  if (!document.getElementById('proc-banner-style')) {
+    var st = document.createElement('style');
+    st.id = 'proc-banner-style';
+    st.textContent = '@keyframes procBannerIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}';
+    document.head.appendChild(st);
+  }
+
+  // Build the visual chip strip
+  var chips = [];
+
+  if (summary.keyPeople > 0) {
+    chips.push({
+      icon: '◉',
+      color: 'var(--blue)',
+      bigNum: summary.keyPeople,
+      label: 'People extracted',
+      sub: (summary.addedNodes > 0 ? summary.addedNodes + ' new to network' : 'all known'),
+      onclick: "switchView('network');setTimeout(function(){if(typeof fitGraph==='function'&&nodes.length)fitGraph()},300)"
+    });
+  }
+  if (summary.companies > 0) {
+    chips.push({
+      icon: '◆',
+      color: 'var(--gold)',
+      bigNum: summary.companies,
+      label: 'Organizations',
+      sub: 'companies and agencies',
+      onclick: "switchView('network')"
+    });
+  }
+  if (summary.actionItems > 0) {
+    chips.push({
+      icon: '✓',
+      color: 'var(--amber)',
+      bigNum: summary.actionItems,
+      label: 'Action items',
+      sub: 'tracked in Timeline',
+      onclick: "switchView('timeline')"
+    });
+  }
+  if ((summary.commitments || 0) > 0) {
+    chips.push({
+      icon: '→',
+      color: 'var(--green)',
+      bigNum: summary.commitments,
+      label: 'Commitments',
+      sub: 'who promised what',
+      onclick: "switchView('timeline')"
+    });
+  }
+  if (summary.risks > 0) {
+    chips.push({
+      icon: '⚠',
+      color: 'var(--red)',
+      bigNum: summary.risks,
+      label: 'Risks flagged',
+      sub: 'review on Mission Board',
+      onclick: "switchIntelTab('board')"
+    });
+  }
+  if (summary.addedLinks > 0) {
+    chips.push({
+      icon: '⊕',
+      color: 'var(--cyan)',
+      bigNum: summary.addedLinks,
+      label: 'Relationships mapped',
+      sub: 'new edges in network',
+      onclick: "switchView('network')"
+    });
+  }
+
+  var h = '';
+  // Header
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  h += '<div style="display:flex;align-items:center;gap:10px">';
+  h += '<span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:rgba(34,197,94,.18);color:var(--green);font-size:14px;flex-shrink:0">✓</span>';
+  h += '<div>';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:var(--green);text-transform:uppercase;margin-bottom:1px">Intelligence Extracted</div>';
+  h += '<div style="font-size:13px;font-weight:600;color:var(--text)">FLiIntel parsed this meeting and updated your graph</div>';
+  h += '</div></div>';
+  h += '<button onclick="document.getElementById(\'proc-extraction-banner\').remove()" style="background:none;border:none;color:var(--t3);font-size:14px;cursor:pointer;line-height:1;padding:4px 6px">×</button>';
+  h += '</div>';
+
+  // Chip grid
+  if (chips.length) {
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">';
+    chips.forEach(function(c) {
+      h += '<div onclick="' + c.onclick + '" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(8,15,26,.5);border:1px solid rgba(26,48,80,.45);border-radius:7px;cursor:pointer;transition:all .12s" onmouseover="this.style.borderColor=\'' + c.color + '66\';this.style.background=\'rgba(8,15,26,.7)\'" onmouseout="this.style.borderColor=\'rgba(26,48,80,.45)\';this.style.background=\'rgba(8,15,26,.5)\'">';
+      h += '<span style="color:' + c.color + ';font-size:18px;flex-shrink:0">' + c.icon + '</span>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="display:flex;align-items:baseline;gap:5px"><span style="font-family:\'Barlow Condensed\',sans-serif;font-size:22px;font-weight:700;color:' + c.color + ';line-height:1">' + c.bigNum + '</span></div>';
+      h += '<div style="font-size:10px;font-weight:600;color:var(--text);margin-top:1px">' + c.label + '</div>';
+      h += '<div style="font-size:9px;color:var(--t3);margin-top:1px">' + c.sub + '</div>';
+      h += '</div>';
+      h += '<span style="color:var(--t3);font-size:11px;flex-shrink:0;opacity:.5">→</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  banner.innerHTML = h;
+  intelBody.insertBefore(banner, intelBody.firstChild);
+
+  // Clear the summary so it doesn't re-fire on re-render
+  setTimeout(function() {
+    if (window._lastProcessedSummary && window._lastProcessedSummary.mtgId === m.id) {
+      window._lastProcessedSummary = null;
+    }
+  }, 100);
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// IMPROVED NETWORK EMPTY STATE
+// Replaces the sparse "No nodes yet" with editorial-grade guidance.
+// Triggered automatically when Network view renders with 0 nodes.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._enhanceNetworkEmptyState = function() {
+  var el = document.getElementById('net-empty');
+  if (!el) return;
+  // If already enhanced (has our marker), skip
+  if (el.dataset.enhanced === '1') return;
+  el.dataset.enhanced = '1';
+  el.style.pointerEvents = 'auto';
+  el.style.left = '50%';
+  el.style.top = '50%';
+  el.style.maxWidth = '540px';
+  el.style.width = 'calc(100vw - 280px)';
+  el.style.transform = 'translate(-50%,-50%)';
+  el.innerHTML = '<div style="text-align:center;padding:24px 28px;background:linear-gradient(180deg,rgba(13,24,40,.92),rgba(8,15,26,.88));border:1px solid rgba(26,48,80,.6);border-radius:12px;box-shadow:0 24px 64px rgba(0,0,0,.5)">'
+    + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--purple);text-transform:uppercase;margin-bottom:12px">Relationship Intelligence Graph</div>'
+    + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.05;margin-bottom:10px;letter-spacing:-.01em">Every contact, every relationship, every conversation — connected.</div>'
+    + '<div style="font-size:13px;color:var(--t2);line-height:1.6;max-width:440px;margin:0 auto 22px">Your network builds itself as you log meetings. People, agencies, primes, and the relationships between them get extracted automatically and placed on this canvas.</div>'
+    + '<div style="display:flex;gap:8px;justify-content:center;margin-bottom:20px;flex-wrap:wrap">'
+    +   '<button onclick="switchView(\'intel\');setTimeout(function(){switchIntelTab(\'log\');var t=document.getElementById(\'m-title\');if(t)t.focus();},100)" style="padding:11px 22px;border:1px solid var(--gold);border-radius:7px;background:rgba(201,162,39,.15);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.06em;text-transform:uppercase">Log a Meeting →</button>'
+    +   '<button onclick="if(window.openAddModal)window.openAddModal(\'person\')" style="padding:11px 22px;border:1px solid var(--b2);border-radius:7px;background:transparent;color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:Outfit,sans-serif;letter-spacing:.06em;text-transform:uppercase">Or Add Manually</button>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:left">'
+    +   '<div style="background:rgba(26,48,80,.25);border:1px solid rgba(26,48,80,.4);border-left:2px solid var(--gold);border-radius:5px;padding:9px 11px">'
+    +     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--gold);letter-spacing:.1em;margin-bottom:3px">OUTER RING</div>'
+    +     '<div style="font-size:10px;color:var(--t2);line-height:1.4">Government targets — PMs, COs, COTRs you\'re pursuing</div>'
+    +   '</div>'
+    +   '<div style="background:rgba(26,48,80,.25);border:1px solid rgba(26,48,80,.4);border-left:2px solid var(--green);border-radius:5px;padding:9px 11px">'
+    +     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--green);letter-spacing:.1em;margin-bottom:3px">MIDDLE RING</div>'
+    +     '<div style="font-size:10px;color:var(--t2);line-height:1.4">Investors and capital partners in your network</div>'
+    +   '</div>'
+    +   '<div style="background:rgba(26,48,80,.25);border:1px solid rgba(26,48,80,.4);border-left:2px solid var(--cyan);border-radius:5px;padding:9px 11px">'
+    +     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--cyan);letter-spacing:.1em;margin-bottom:3px">INNER RING</div>'
+    +     '<div style="font-size:10px;color:var(--t2);line-height:1.4">Your accounts, teaming partners, primes</div>'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+};
+
+// Hook into view switch to enhance empty state
+(function() {
+  var _origOnViewSwitch_emptyState = window._onViewSwitch || function() {};
+  window._onViewSwitch = function(v) {
+    _origOnViewSwitch_emptyState(v);
+    if (v === 'network') {
+      setTimeout(function() {
+        if (typeof nodes !== 'undefined' && (!nodes || nodes.length === 0)) {
+          window._enhanceNetworkEmptyState();
+        }
+      }, 200);
+    }
+  };
+})();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// FIELD GUIDE — "Where does this go?" reference
+// Accessible from the help (?) button. Shows the canonical FLiIntel mental
+// model: what information goes where, what each view is for, the daily
+// rhythm, and key terminology.
+// ══════════════════════════════════════════════════════════════════════════
+
+window.openFieldGuide = function() {
+  var overlay = document.getElementById('field-guide-overlay');
+  if (overlay) { overlay.style.display = 'flex'; return; }
+  overlay = document.createElement('div');
+  overlay.id = 'field-guide-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9100;background:rgba(8,15,26,.88);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:32px 20px;animation:fgFadeIn .25s ease';
+
+  if (!document.getElementById('fg-style')) {
+    var st = document.createElement('style');
+    st.id = 'fg-style';
+    st.textContent = [
+      '@keyframes fgFadeIn{from{opacity:0}to{opacity:1}}',
+      '.fg-card{width:100%;max-width:920px;max-height:calc(100vh - 64px);background:linear-gradient(180deg,rgba(17,31,48,.99),rgba(11,20,34,.98));border:1px solid rgba(201,162,39,.25);border-radius:14px;box-shadow:0 32px 80px rgba(0,0,0,.7);overflow-y:auto}',
+      '.fg-hdr{position:sticky;top:0;background:linear-gradient(180deg,rgba(17,31,48,.99),rgba(17,31,48,.95));padding:24px 32px 18px;border-bottom:1px solid rgba(26,48,80,.5);z-index:5}',
+      '.fg-body{padding:24px 32px 32px}',
+      '.fg-section{margin-bottom:28px}',
+      '.fg-section-eyebrow{font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px}',
+      '.fg-section-eyebrow::before{content:\'\';width:24px;height:1px;background:rgba(201,162,39,.5)}',
+      '.fg-section-title{font-family:\'Barlow Condensed\',sans-serif;font-size:24px;font-weight:700;color:var(--text);line-height:1.1;margin-bottom:6px;letter-spacing:-.01em}',
+      '.fg-section-sub{font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:18px;max-width:640px}',
+      '.fg-table{width:100%;border-collapse:collapse}',
+      '.fg-table th{font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;text-align:left;padding:8px 12px;border-bottom:1px solid rgba(26,48,80,.6)}',
+      '.fg-table td{padding:12px;border-bottom:1px solid rgba(26,48,80,.3);font-size:13px;color:var(--text);line-height:1.55;vertical-align:top}',
+      '.fg-table tr:last-child td{border-bottom:none}',
+      '.fg-table .fg-where{color:var(--gold);font-weight:600;font-size:12px;white-space:nowrap}',
+      '.fg-table .fg-what{color:var(--t2);font-size:12px;font-style:italic}',
+      '.fg-rhythm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}',
+      '.fg-rhythm-card{background:rgba(8,15,26,.5);border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:14px 16px}',
+      '.fg-rhythm-card .fg-cadence{font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--cyan);text-transform:uppercase;margin-bottom:5px}',
+      '.fg-rhythm-card .fg-action{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px;line-height:1.35}',
+      '.fg-rhythm-card .fg-detail{font-size:11px;color:var(--t3);line-height:1.5}',
+      '.fg-glossary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}',
+      '.fg-term{background:rgba(26,48,80,.2);border:1px solid rgba(26,48,80,.4);border-radius:6px;padding:10px 12px}',
+      '.fg-term .fg-term-name{font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}',
+      '.fg-term .fg-term-def{font-size:11px;color:var(--t2);line-height:1.5}',
+    ].join('\n');
+    document.head.appendChild(st);
+  }
+
+  overlay.innerHTML = [
+    '<div class="fg-card">',
+    '  <div class="fg-hdr">',
+    '    <div style="display:flex;align-items:center;justify-content:space-between">',
+    '      <div>',
+    '        <div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase;margin-bottom:6px">⬡ FLiIntel Field Guide</div>',
+    '        <div style="font-family:\'Barlow Condensed\',sans-serif;font-size:28px;font-weight:700;color:var(--text);line-height:1.05">The operator\'s manual.</div>',
+    '        <div style="font-size:12px;color:var(--t2);margin-top:6px">Where information goes, what each view does, and how to use FLiIntel every day.</div>',
+    '      </div>',
+    '      <button onclick="document.getElementById(\'field-guide-overlay\').remove()" style="background:none;border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:11px;cursor:pointer;padding:7px 14px;font-family:Outfit,sans-serif;letter-spacing:.04em">Close ✕</button>',
+    '    </div>',
+    '  </div>',
+    '  <div class="fg-body">',
+
+    // SECTION 1: Where does information go?
+    '    <div class="fg-section">',
+    '      <div class="fg-section-eyebrow">01 — The Mental Model</div>',
+    '      <div class="fg-section-title">Where does information go?</div>',
+    '      <div class="fg-section-sub">The most important question for a new user. Every piece of BD information has one canonical home in FLiIntel. Find what you have on the left, see where it lives, see what the platform does with it.</div>',
+    '      <table class="fg-table">',
+    '        <thead><tr><th style="width:30%">What you have</th><th style="width:25%">Where it goes</th><th style="width:45%">What FLiIntel does with it</th></tr></thead>',
+    '        <tbody>',
+    '          <tr><td>Meeting notes, transcript, or call recording</td><td class="fg-where">Mission Board → Log → Process</td><td>Extracts people, stances, action items, risks, commitments, key decisions — automatically. This is the single most important workflow.</td></tr>',
+    '          <tr><td>A person you met or want to track</td><td class="fg-where">Network → + Person (manually)</td><td>Or comes out of meeting processing automatically. Tier them T1/T2/T3 to control cadence rules.</td></tr>',
+    '          <tr><td>A contract, BAA, or program you\'re pursuing</td><td class="fg-where">Pursuits → + New Opportunity</td><td>Becomes the anchor for all related meetings, contacts, commitments, and intel signals.</td></tr>',
+    '          <tr><td>Something someone committed to (theirs or yours)</td><td class="fg-where">Auto-extracted from meeting</td><td>Or Timeline → + Commitment. FLiIntel tracks deadlines, surfaces overdue items, alerts on slips.</td></tr>',
+    '          <tr><td>Industry news, SAM.gov drops, policy signals</td><td class="fg-where">Tools → Intel Center → Run Brief</td><td>Pulls live web intelligence, ranks it against your pipeline, lets you tag any signal to an active pursuit.</td></tr>',
+    '          <tr><td>Upcoming meeting that needs prep</td><td class="fg-where">Mission Board → Brief tab</td><td>Or the ⬡ Prep Brief button. Generates a tactical dossier from your actual meeting history with the attendees.</td></tr>',
+    '          <tr><td>A competitor you\'ve heard about</td><td class="fg-where">Tools → Competitive (or tag on opp)</td><td>Auto-detected from meeting intel + manual tagging. Tracks mention velocity and network overlap.</td></tr>',
+    '          <tr><td>An incoming RFI you need to respond to</td><td class="fg-where">Tools → RFI Engine</td><td>Paste the full RFI text, get an AI-drafted response built from your past meeting intelligence.</td></tr>',
+    '        </tbody>',
+    '      </table>',
+    '    </div>',
+
+    // SECTION 2: The 4 core views
+    '    <div class="fg-section">',
+    '      <div class="fg-section-eyebrow">02 — The Core Loop</div>',
+    '      <div class="fg-section-title">The four views that matter most.</div>',
+    '      <div class="fg-section-sub">FLiIntel has many tools, but day-to-day BD work happens in these four. Everything else is power features behind the Tools menu.</div>',
+    '      <div class="fg-rhythm-grid">',
+    '        <div class="fg-rhythm-card" style="border-left:3px solid var(--gold)">',
+    '          <div class="fg-cadence" style="color:var(--gold)">Mission Board</div>',
+    '          <div class="fg-action">Your daily start</div>',
+    '          <div class="fg-detail">What\'s urgent. Today\'s items, overdue actions, recent intel, cooling contacts. The Log tab is where you process meetings — the platform\'s heartbeat.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card" style="border-left:3px solid var(--cyan)">',
+    '          <div class="fg-cadence" style="color:var(--cyan)">Pursuits</div>',
+    '          <div class="fg-action">Your pipeline</div>',
+    '          <div class="fg-detail">Every active deal. Each one connects to its meetings, contacts, commitments, signals, and competitors. The complete deal record.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card" style="border-left:3px solid var(--purple)">',
+    '          <div class="fg-cadence" style="color:var(--purple)">Network</div>',
+    '          <div class="fg-action">Your relationship graph</div>',
+    '          <div class="fg-detail">3-ring map: government targets (outer), investors (mid), accounts (inner). Click any node for full dossier and meeting history.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card" style="border-left:3px solid var(--amber)">',
+    '          <div class="fg-cadence" style="color:var(--amber)">Timeline</div>',
+    '          <div class="fg-action">Your commitments</div>',
+    '          <div class="fg-detail">Every promised deliverable — yours and theirs. Auto-extracted from meetings, sorted by urgency. The reliability ledger.</div>',
+    '        </div>',
+    '      </div>',
+    '    </div>',
+
+    // SECTION 3: The daily rhythm
+    '    <div class="fg-section">',
+    '      <div class="fg-section-eyebrow">03 — The Operational Rhythm</div>',
+    '      <div class="fg-section-title">How to use FLiIntel every day.</div>',
+    '      <div class="fg-section-sub">The platform earns its keep when you build it into a rhythm. Here\'s the cadence that wins.</div>',
+    '      <div class="fg-rhythm-grid">',
+    '        <div class="fg-rhythm-card">',
+    '          <div class="fg-cadence">Morning · 5 min</div>',
+    '          <div class="fg-action">Scan the Daily Strip</div>',
+    '          <div class="fg-detail">The strip below the nav shows up to 3 live action items — overdue commitments, cooling T1s, stalled pursuits. One click each to act.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card">',
+    '          <div class="fg-cadence">After every meeting · 2 min</div>',
+    '          <div class="fg-action">Log it, hit Process</div>',
+    '          <div class="fg-detail">Paste your notes or transcript. FLiIntel extracts everything and updates your graph. This is non-negotiable — the rhythm dies without it.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card">',
+    '          <div class="fg-cadence">Before high-stakes call · 3 min</div>',
+    '          <div class="fg-action">⬡ Prep Brief</div>',
+    '          <div class="fg-detail">From Intel tab or any opportunity. Pulls tactical brief: what to push on, what to avoid, current stances, open commitments per attendee.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card">',
+    '          <div class="fg-cadence">Weekly · 10 min</div>',
+    '          <div class="fg-action">Re-engagement check</div>',
+    '          <div class="fg-detail">Hit the ◎ Re-engage button. Surfaces every T1/T2 quiet 45+ days with a specific outreach angle drawn from their history.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card">',
+    '          <div class="fg-cadence">Weekly · 15 min</div>',
+    '          <div class="fg-action">Run Intel Brief</div>',
+    '          <div class="fg-detail">Tools → Intel Center. Live web scan across agencies and programs you track. Tag relevant signals to active pursuits.</div>',
+    '        </div>',
+    '        <div class="fg-rhythm-card">',
+    '          <div class="fg-cadence">Anytime · 30 sec</div>',
+    '          <div class="fg-action">⌘K Ask FLi</div>',
+    '          <div class="fg-detail">Cmd+K from anywhere. Natural-language query across your full intel — "What did Atlas say about hypersonics?" or "Who do I know at DARPA?"</div>',
+    '        </div>',
+    '      </div>',
+    '    </div>',
+
+    // SECTION 4: The defense-native vocabulary
+    '    <div class="fg-section">',
+    '      <div class="fg-section-eyebrow">04 — The Language</div>',
+    '      <div class="fg-section-title">FLiIntel speaks defense BD.</div>',
+    '      <div class="fg-section-sub">Not SaaS. Not commercial sales. The vocabulary matches how acquisition actually works.</div>',
+    '      <div class="fg-glossary-grid">',
+    '        <div class="fg-term"><div class="fg-term-name">Tier 1 / T1 Contact</div><div class="fg-term-def">A relationship you actively manage. Program managers, contracting officers, champions. Larger node on the canvas; surfaces first in the cooling strip.</div></div>',
+    '        <div class="fg-term"><div class="fg-term-name">Pursuit / Opportunity</div><div class="fg-term-def">A named program, BAA, vehicle, or contract you\'re chasing. Anchors every meeting, contact, and signal related to it.</div></div>',
+    '        <div class="fg-term"><div class="fg-term-name">Stance</div><div class="fg-term-def">A contact\'s current posture toward you, your tech, or the pursuit. Tracked over time so you see trajectory, not just snapshots.</div></div>',
+    '        <div class="fg-term"><div class="fg-term-name">EOFY</div><div class="fg-term-def">End of Fiscal Year. DoD FY runs Oct 1 → Sep 30. Q4 (Jul–Sep) is the obligation rush window — FLiIntel flags pursuits in this window automatically.</div></div>',
+    '        <div class="fg-term"><div class="fg-term-name">Commitment</div><div class="fg-term-def">A specific deliverable someone agreed to. Auto-extracted from meetings, tracked on the Timeline with status and deadline.</div></div>',
+    '        <div class="fg-term"><div class="fg-term-name">Acquisition Chain</div><div class="fg-term-def">The full set of roles in a procurement: PM, CO, COTR, Tech Director, Budget Authority. Coverage gaps flag automatically.</div></div>',
+    '        <div class="fg-term"><div class="fg-term-name">Workspace</div><div class="fg-term-def">An isolated intelligence environment (Firebase term). One workspace per company, client engagement, or program. Data does not cross workspaces.</div></div>',
+    '        <div class="fg-term"><div class="fg-term-name">Daily Strip</div><div class="fg-term-def">The persistent action bar below the nav. Up to 3 live items. Replaces hunting across tabs for what needs your attention today.</div></div>',
+    '      </div>',
+    '    </div>',
+
+    // Footer CTA
+    '    <div style="background:rgba(201,162,39,.05);border:1px solid rgba(201,162,39,.2);border-radius:9px;padding:16px 20px;text-align:center">',
+    '      <div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:6px">⬡ Mission Briefing</div>',
+    '      <div style="font-size:14px;color:var(--text);margin-bottom:10px;font-weight:600">New here? Run the 3-step activation flow to populate FLiIntel with your real data.</div>',
+    '      <button onclick="document.getElementById(\'field-guide-overlay\').remove();if(window._reopenActivationFlow)window._reopenActivationFlow()" style="padding:10px 22px;background:rgba(201,162,39,.18);border:1px solid var(--gold);border-radius:7px;color:var(--gold);font-family:Outfit,sans-serif;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.06em;text-transform:uppercase">Open Activation Flow →</button>',
+    '    </div>',
+
+    '  </div>',
+    '</div>'
+  ].join('\n');
+
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+};
+
+// Repurpose the help (?) button to open the Field Guide instead of the side drawer.
+// The side drawer help is still available via the context-aware mechanism — but
+// the Field Guide is now the primary user-facing reference.
+(function() {
+  var helpBtn = document.getElementById('help-nav-btn');
+  if (helpBtn) {
+    helpBtn.setAttribute('onclick', 'window.openFieldGuide()');
+    helpBtn.setAttribute('title', 'Field Guide — operator\'s manual');
+    // Add a small "FG" hint
+    helpBtn.style.fontWeight = '700';
+  }
+})();
 
 
 </script>
