@@ -8594,7 +8594,7 @@ function switchView(v){
     return;
   }
   // Pause simulation when leaving network view to save CPU
-  if(activeView==='network'&&v!=='network'&&sim){sim.stop();}
+  if(activeView==='network'&&v!=='network'){if(sim)sim.stop();closeNetPanel();}
   activeView=v;['intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture'].forEach(function(x){var el=document.getElementById(x+'-view');if(el)el.style.display=x===v?'flex':'none';var tb=document.getElementById('vtab-'+x);if(tb)tb.classList.toggle('active',x===v);});
   // Clear Ask Fli active state when switching to any other view
   var asBtn2=document.getElementById('vtab-askfli');if(asBtn2)asBtn2.classList.remove('active');
@@ -13984,7 +13984,7 @@ function nodeLeave(){document.getElementById('tooltip').classList.remove('show')
 function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});if(el)el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===tab?'block':'none';});var exportBtn=document.getElementById('panel-export-btn');if(exportBtn)exportBtn.style.display=(tab==='dossier'||tab==='timeline360')?'block':'none';if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
 window.switchNetTab=switchNetTab;
 
-function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>'+(d.govType?'&nbsp;&nbsp;'+_govTypeBadge(d.govType):'');var briefBtn=document.getElementById('panel-brief-btn');if(briefBtn)briefBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var tlBtn=document.getElementById('panel-timeline-btn');if(tlBtn)tlBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';
+function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-panel');if(_np){_np.style.visibility='';_np.style.pointerEvents='';}var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>'+(d.govType?'&nbsp;&nbsp;'+_govTypeBadge(d.govType):'');var briefBtn=document.getElementById('panel-brief-btn');if(briefBtn)briefBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var tlBtn=document.getElementById('panel-timeline-btn');if(tlBtn)tlBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';
   var gtFld=document.getElementById('panel-govtype-fld');
   var gtSel=document.getElementById('panel-govtype');
   var showGovType=(d.type==='person'||d.type==='government');
@@ -14001,9 +14001,16 @@ function openNetPanel(d){selectedNode=d;var c=nc(d);document.getElementById('pan
   if(defaultTab==='dossier')renderDossier(d);
   var exportBtn=document.getElementById('panel-export-btn');
   if(exportBtn)exportBtn.style.display=(defaultTab==='dossier'||defaultTab==='timeline360')?'block':'none';
-  document.getElementById('net-panel').classList.add('open');document.getElementById('org-legend').classList.add('panel-open');}
-function closeNetPanel(){document.getElementById('net-panel').classList.remove('open');document.getElementById('org-legend').classList.remove('panel-open');selectedNode=null;}
+  openNetPanel();document.getElementById('org-legend').classList.add('panel-open');}
+function closeNetPanel(){
+  var p=document.getElementById('net-panel');
+  if(p){p.classList.remove('open');p.style.visibility='hidden';p.style.pointerEvents='none';}
+  var ol=document.getElementById('org-legend');
+  if(ol)ol.classList.remove('panel-open');
+  selectedNode=null;
+}
 window.closeNetPanel=closeNetPanel;
+window.openNetPanel=openNetPanel;
 
 // ── PANEL CLOSE: pointerdown on document, capture phase ─────────────
 // pointerdown fires before D3's zoom processes pointer events.
