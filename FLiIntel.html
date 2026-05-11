@@ -22496,107 +22496,124 @@ window._DEMO_DATA.commitments = [
 // ═══════════════════════════════════════════════════════════════
 
 window._loadDemoWorkspace = async function() {
-  if (!currentUser) { toast('Sign in required'); return; }
+  if (!currentUser) { toast('Sign in first'); return; }
 
-  // Show loading state
-  var loaderId = 'demo-loader';
-  var loader = document.getElementById(loaderId);
-  if (!loader) {
-    loader = document.createElement('div');
-    loader.id = loaderId;
-    loader.style.cssText = 'position:fixed;inset:0;background:rgba(8,15,26,.95);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(8px)';
-    loader.innerHTML = '<div style="text-align:center;max-width:520px;padding:40px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase;margin-bottom:12px">Loading Demo Workspace</div><div style="font-family:\'Barlow Condensed\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.1;margin-bottom:16px">Building your sandbox intelligence workspace</div><div id="demo-loader-status" style="font-size:13px;color:var(--t2);margin-bottom:24px;line-height:1.6">Provisioning workspace...</div><div style="height:4px;background:rgba(26,48,80,.5);border-radius:2px;overflow:hidden"><div id="demo-loader-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold),#fbbf24);transition:width .3s;box-shadow:0 0 16px var(--gold)"></div></div></div>';
-    document.body.appendChild(loader);
-  }
-  var statusEl = document.getElementById('demo-loader-status');
-  var barEl = document.getElementById('demo-loader-bar');
-  function _step(pct, msg) { if (barEl) barEl.style.width = pct + '%'; if (statusEl) statusEl.textContent = msg; }
+  // Prevent double-click
+  var demoBtn = document.getElementById('ws-demo-btn');
+  if (demoBtn) demoBtn.style.pointerEvents = 'none';
+
+  // Build loader overlay — z-index 99999 stays on top of everything
+  var loader = document.createElement('div');
+  loader.id = 'demo-loader-overlay';
+  loader.style.cssText = 'position:fixed;inset:0;background:rgba(8,15,26,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(8px)';
+  loader.innerHTML = '<div style="text-align:center;max-width:520px;padding:40px">'
+    + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase;margin-bottom:12px">FLi Intelligence Workspace</div>'
+    + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:32px;font-weight:700;color:var(--text);line-height:1.1;margin-bottom:16px">Loading demo data...</div>'
+    + '<div id="dlo-status" style="font-size:13px;color:var(--t2);margin-bottom:24px;line-height:1.6">Provisioning workspace...</div>'
+    + '<div style="height:4px;background:rgba(26,48,80,.5);border-radius:2px;overflow:hidden"><div id="dlo-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold),#fbbf24);transition:width .4s;box-shadow:0 0 16px var(--gold)"></div></div>'
+    + '</div>';
+  document.body.appendChild(loader);
+  var _st = function(pct, msg) {
+    var b = document.getElementById('dlo-bar');
+    var s = document.getElementById('dlo-status');
+    if (b) b.style.width = pct + '%';
+    if (s) s.textContent = msg;
+  };
+
+  var _cleanup = function(err) {
+    loader.remove();
+    if (demoBtn) demoBtn.style.pointerEvents = '';
+    if (err) toast('Demo failed: ' + (err.message || String(err)));
+  };
 
   try {
-    _step(5, 'Provisioning workspace...');
+    _st(5, 'Creating workspace structure...');
 
-    // 1. Create workspace
-    var wsId = 'dw' + Date.now();  // matches numeric-prefix format of existing workspace creation
+    // ── Step 1: Create workspace — IDENTICAL to existing ws-create-btn handler
+    var wsId = Date.now().toString();  // pure numeric string, exactly matching existing creation
     var color = '#c9a227';
-    var ws = { id: wsId, name: window._DEMO_DATA.meta.name, color: color, createdBy: currentUser.uid, created: new Date().toISOString(), isDemo: true };
-    var member = { uid: currentUser.uid, name: currentUser.displayName || 'You', email: currentUser.email || '', photo: currentUser.photoURL || '', role: 'Admin', joined: new Date().toISOString() };
+    var wsName = window._DEMO_DATA.meta.name;
+    var ws     = { id: wsId, name: wsName, color: color, createdBy: currentUser.uid, created: new Date().toISOString(), isDemo: true };
+    var member = { uid: currentUser.uid, name: currentUser.displayName || 'Demo User', email: currentUser.email || '', photo: currentUser.photoURL || '', role: 'Admin', joined: new Date().toISOString() };
+
     await set(ref(db, 'workspaces/' + wsId + '/info'), ws);
     await set(ref(db, 'workspaces/' + wsId + '/members/' + currentUser.uid), member);
-    await set(ref(db, 'users/' + currentUser.uid + '/workspaces/' + wsId), { id: wsId, name: ws.name, color: color, role: 'Admin', isDemo: true });
-    userWorkspaces.push({ id: wsId, name: ws.name, color: color, role: 'Admin', isDemo: true });
+    await set(ref(db, 'users/' + currentUser.uid + '/workspaces/' + wsId), { id: wsId, name: wsName, color: color, role: 'Admin', isDemo: true });
 
-    _step(15, 'Loading contacts and organizations (27 nodes)...');
+    _st(12, 'Entering workspace...');
 
-    // 2. Nodes
-    for (var i = 0; i < window._DEMO_DATA.nodes.length; i++) {
-      var n = window._DEMO_DATA.nodes[i];
-      await set(ref(db, 'workspaces/' + wsId + '/nodes/' + n.id), n);
+    // ── Step 2: Enter workspace — sets currentWsId, connects Firebase listeners
+    // Overlay stays on top (z-index 99999). Main app renders underneath.
+    userWorkspaces.push({ id: wsId, name: wsName, color: color, role: 'Admin', isDemo: true });
+    await selectWorkspace(wsId);
+
+    // Wait for Firebase listeners to fully connect before writing data
+    await new Promise(function(res) { setTimeout(res, 600); });
+
+    _st(20, 'Writing contacts and organizations...');
+
+    // ── Step 3: Write all data through wsPath() — currentWsId is now set
+    // This is EXACTLY how the rest of the app writes data. Same path. Same rules.
+    var D = window._DEMO_DATA;
+
+    for (var i = 0; i < D.nodes.length; i++) {
+      await set(ref(db, wsPath('nodes/' + D.nodes[i].id)), D.nodes[i]);
     }
+    _st(35, 'Mapping relationships...');
 
-    _step(35, 'Mapping relationships (19 typed links)...');
-
-    // 3. Links
-    for (var i = 0; i < window._DEMO_DATA.links.length; i++) {
-      var l = window._DEMO_DATA.links[i];
-      await set(ref(db, 'workspaces/' + wsId + '/links/' + l.id), l);
+    for (var i = 0; i < D.links.length; i++) {
+      await set(ref(db, wsPath('links/' + D.links[i].id)), D.links[i]);
     }
+    _st(50, 'Loading meeting intelligence...');
 
-    _step(55, 'Loading meeting intelligence (12 meetings)...');
-
-    // 4. Meetings
-    for (var i = 0; i < window._DEMO_DATA.meetings.length; i++) {
-      var m = window._DEMO_DATA.meetings[i];
-      await set(ref(db, 'workspaces/' + wsId + '/meetings/' + m.id), m);
+    for (var i = 0; i < D.meetings.length; i++) {
+      await set(ref(db, wsPath('meetings/' + D.meetings[i].id)), D.meetings[i]);
     }
+    _st(68, 'Loading active pursuits...');
 
-    _step(75, 'Loading active pursuits (5 opportunities)...');
-
-    // 5. Opportunities
-    for (var i = 0; i < window._DEMO_DATA.opportunities.length; i++) {
-      var o = window._DEMO_DATA.opportunities[i];
-      await set(ref(db, 'workspaces/' + wsId + '/opportunities/' + o.id), o);
+    for (var i = 0; i < D.opportunities.length; i++) {
+      await set(ref(db, wsPath('opportunities/' + D.opportunities[i].id)), D.opportunities[i]);
     }
+    _st(82, 'Loading commitments and milestones...');
 
-    _step(90, 'Loading commitments and milestones (8 items)...');
-
-    // 6. Commitments — normalize field names so all renderers (some use 'due', some 'deadline'; some 'text', some 'task') see them
-    for (var i = 0; i < window._DEMO_DATA.commitments.length; i++) {
-      var cm = window._DEMO_DATA.commitments[i];
-      // Build a canonical commitment with EVERY field name the codebase uses
-      var normalized = Object.assign({}, cm, {
-        // Date field: support both 'due' and 'deadline'
-        due:      cm.due || cm.deadline || '',
+    for (var i = 0; i < D.commitments.length; i++) {
+      var cm = D.commitments[i];
+      var norm = Object.assign({}, cm, {
+        due: cm.due || cm.deadline || '',
         deadline: cm.deadline || cm.due || '',
-        // Task/text field: support all three
-        task:     cm.task || cm.text || cm.title || '',
-        text:     cm.text || cm.task || cm.title || '',
-        title:    cm.title || cm.text || cm.task || '',
-        // Status default
-        status:   cm.status || 'open'
+        task: cm.task || cm.text || cm.title || '',
+        text: cm.text || cm.task || cm.title || '',
+        title: cm.title || cm.text || cm.task || '',
+        status: cm.status || 'open'
       });
-      await set(ref(db, 'workspaces/' + wsId + '/commitments/' + cm.id), normalized);
-      // Also write to tl_commitments for timeline (normalized form)
-      await set(ref(db, 'workspaces/' + wsId + '/tl_commitments/' + cm.id), normalized);
+      await set(ref(db, wsPath('commitments/' + cm.id)), norm);
+      await set(ref(db, wsPath('tl_commitments/' + cm.id)), norm);
     }
 
-    _step(100, 'Demo workspace ready — switching now');
+    _st(100, 'Intelligence workspace ready');
 
-    // Skip onboarding for demo
+    // Skip onboarding
     try { localStorage.setItem('flintel_onboarding_done', '1'); } catch(e) {}
 
     setTimeout(function() {
-      if (loader) loader.remove();
-      selectWorkspace(wsId);
+      _cleanup(null);
+      // Refresh the board now that data is written
+      if (typeof renderBoard === 'function') renderBoard();
+      if (typeof renderOppSidebar === 'function') renderOppSidebar();
       setTimeout(function() {
-        if (typeof toast === 'function') toast('Demo workspace loaded — explore the Intel Station first');
-      }, 1000);
-    }, 800);
+        if (typeof toast === 'function') toast('Demo workspace loaded — start with Intel Station');
+      }, 400);
+    }, 700);
 
   } catch (e) {
-    console.error('Demo load failed:', e);
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">Failed: ' + (e.message || 'Try again') + '</span>';
-    setTimeout(function() { if (loader) loader.remove(); }, 3000);
-    toast('Demo load failed: ' + (e.message || 'Try again'));
+    console.error('[Demo] Failed at step:', e);
+    _cleanup(e);
+    // Return to workspace picker so user isn't stranded
+    try {
+      document.getElementById('ws-screen').style.display = 'flex';
+      document.getElementById('main-app').style.display = 'none';
+      renderWsList();
+    } catch(e2) {}
   }
 };
 
