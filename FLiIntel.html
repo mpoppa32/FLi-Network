@@ -7516,7 +7516,7 @@ async function _fetchFeedCategory(cat, catConfig, pipelineCtx) {
     'Focus on signals relevant to: ' +
     (cat === 'competitive' ? _getNetworkOrgList() : 'the active pipeline above') + '.';
 
-  var text = await _callIntelClaude(sp, msg, 1200);
+  var text = await _callIntelClaude(sp, msg, 4000);
   return _parseFeedText(text, cat);
 }
 
@@ -13562,7 +13562,7 @@ function tlPC(num,label,color,icon){
     +'<div class="tl-pulse-lbl" style="color:'+(hasVal?'var(--t2)':'var(--t3)')+'">'+label+'</div></div>';
 }
 
-function renderTLCard(item,now){var typeIcon=item.type==='milestone'?'◈':item.type==='action'?'✦':'◉';var typeColor=item.type==='milestone'?'#8b5cf6':item.type==='action'?'#f59e0b':'#3b82f6';var prioColor=DS[item.priority]||'#888';var statusColor=DS[item.status]||'#888';var done=item.status==='completed';var daysText='',diff=null;if(item.deadline){var d=new Date(item.deadline+'T00:00:00');diff=Math.round((d-now)/(1000*60*60*24));if(diff<0)daysText=Math.abs(diff)+'d overdue';else if(diff===0)daysText='Today';else if(diff===1)daysText='Tomorrow';else daysText='in '+diff+'d';}var h='<div class="tl-card'+(done?' completed':'')+'" onclick="openTLCardModal(\''+item.id+'\')">';h+='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;padding-top:2px">';h+='<div class="tl-card-icon" style="background:'+typeColor+'22;color:'+typeColor+'">'+typeIcon+'</div>';h+='<div class="tl-check'+(done?' done':'')+'" onclick="event.stopPropagation();toggleTLComplete(\''+item.id+'\')">'+(done?'<svg width="10" height="10" viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')+'</div>';h+='</div>';h+='<div class="tl-card-body">';h+='<div class="tl-card-title"'+(done?' style="text-decoration:line-through;opacity:.6"':'')+'>'+item.title+'</div>';h+='<div class="tl-card-meta">';if(item.deadline)h+='<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:'+(diff<0?'var(--red)':diff<=3?'var(--amber)':'var(--t2)')+'">'+item.deadline+'</span>';if(daysText)h+='<span style="font-size:10px;color:'+(diff<0?'var(--red)':diff===0?'var(--amber)':'var(--t3)')+'">'+daysText+'</span>';if(item.owner)h+='<span style="font-size:11px;color:var(--t2)">'+item.owner+'</span>';h+='<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:'+statusColor+'22;color:'+statusColor+'">'+item.status+'</span>';h+='</div>';if(item.source)h+='<div class="tl-card-source">'+item.source+(item.sourceDate?' &middot; '+item.sourceDate:'')+'</div>';if(item.notes)h+='<div class="tl-card-notes">'+item.notes+'</div>';h+='</div>';h+='<div style="flex-shrink:0"><div class="tl-prio-dot" style="background:'+prioColor+'" title="'+item.priority+'"></div></div>';h+='</div>';return h;}
+function renderTLCard(item,now){var typeIcon=item.type==='milestone'?'◈':item.type==='action'?'✦':'◉';var typeColor=item.type==='milestone'?'#8b5cf6':item.type==='action'?'#f59e0b':'#3b82f6';var prioColor=DS[item.priority]||'#888';var statusColor=DS[item.status]||'#888';var done=item.status==='completed';var daysText='',diff=null;if(item.deadline){var d=new Date(item.deadline+'T00:00:00');diff=Math.round((d-now)/(1000*60*60*24));if(diff<0)daysText=Math.abs(diff)+'d overdue';else if(diff===0)daysText='Today';else if(diff===1)daysText='Tomorrow';else daysText='in '+diff+'d';}var _safeId=item.id.replace(/&/g,'&amp;').replace(/"/g,'&quot;');h='<div class="tl-card'+(done?' completed':'')+'" data-tlid="'+_safeId+'" onclick="openTLCardModal(this.getAttribute(\'+\'data-tlid\'+\'))">'; h+='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;padding-top:2px">';h+='<div class="tl-card-icon" style="background:'+typeColor+'22;color:'+typeColor+'">'+typeIcon+'</div>';h+='<div class="tl-check'+(done?' done':'')+'" data-chkid="'+_safeId+'" onclick="event.stopPropagation();toggleTLComplete(this.getAttribute(\'+\'data-chkid\'+\'))">'; h+=(done?'<svg width="10" height="10" viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')+'</div>';h+='</div>';h+='<div class="tl-card-body">';h+='<div class="tl-card-title"'+(done?' style="text-decoration:line-through;opacity:.6"':'')+'>'+item.title+'</div>';h+='<div class="tl-card-meta">';if(item.deadline)h+='<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:'+(diff<0?'var(--red)':diff<=3?'var(--amber)':'var(--t2)')+'">'+item.deadline+'</span>';if(daysText)h+='<span style="font-size:10px;color:'+(diff<0?'var(--red)':diff===0?'var(--amber)':'var(--t3)')+'">'+daysText+'</span>';if(item.owner)h+='<span style="font-size:11px;color:var(--t2)">'+item.owner+'</span>';h+='<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:'+statusColor+'22;color:'+statusColor+'">'+item.status+'</span>';h+='</div>';if(item.source)h+='<div class="tl-card-source">'+item.source+(item.sourceDate?' &middot; '+item.sourceDate:'')+'</div>';if(item.notes)h+='<div class="tl-card-notes">'+item.notes+'</div>';h+='</div>';h+='<div style="flex-shrink:0"><div class="tl-prio-dot" style="background:'+prioColor+'" title="'+item.priority+'"></div></div>';h+='</div>';return h;}
 
 function toggleTLSection(id){var body=document.getElementById(id),key=id.replace('tls-',''),chev=document.getElementById('tlc-'+key);if(body)body.classList.toggle('open');if(chev)chev.classList.toggle('open');}
 window.toggleTLSection=toggleTLSection;
@@ -17497,8 +17497,8 @@ async function renderTeamView() {
   var membSnap = await get(ref(db, 'workspaces/' + currentWsId + '/members'));
   var members = membSnap.val() ? Object.values(membSnap.val()) : [];
   if (!members.length) {
-    main.innerHTML = '<div style="text-align:center;padding:48px 0;color:var(--t3)"><div style="font-size:32px;margin-bottom:10px">\uD83D\uDC65</div><div>No team members found</div></div>';
-    return;
+    var _me=currentUser?{uid:currentUser.uid,name:currentUser.displayName||'You',photo:currentUser.photoURL||''}:{uid:'',name:'You',photo:''};
+    members=[_me];
   }
 
   var memberMap = {};
@@ -17940,106 +17940,73 @@ function _renderMeetingCoverageMatrix(stats) {
 function renderBdPerfView() {
   var main = document.getElementById('bdperf-main');
   if (!main) return;
-  if (!opportunities.length) {
-    main.innerHTML = '<div style="max-width:780px;margin:0 auto;padding:20px 0">'
-      + '<div style="text-align:center;padding:32px 0 36px;border-bottom:1px solid rgba(26,48,80,.4);margin-bottom:32px">'
-      +   '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:#fb923c;text-transform:uppercase;margin-bottom:12px">Pipeline Performance Intelligence</div>'
-      +   '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:38px;font-weight:700;color:var(--text);line-height:1;margin-bottom:14px;letter-spacing:-.01em">Measure what wins. Cut what doesn\'t.</div>'
-      +   '<div style="font-size:14px;color:var(--t2);line-height:1.6;max-width:600px;margin:0 auto">FLi tracks every pursuit\'s velocity through the stages, surfaces what slipped and what advanced, and benchmarks your BD effort against win-rate outcomes by agency, vehicle, and capability area.</div>'
-      +   '<button onclick="switchView(\'opps\');setTimeout(openNewOppModal,200)" style="margin-top:24px;padding:13px 28px;border:1px solid #fb923c;border-radius:7px;background:rgba(251,146,60,.15);color:#fb923c;font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 0 24px rgba(251,146,60,.15)">+ Create First Opportunity</button>'
-      + '</div>'
-      + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:14px">What this view measures</div>'
-      + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">'
-      +   '<div style="background:rgba(17,31,48,.6);border:1px solid rgba(26,48,80,.5);border-radius:7px;padding:16px 18px;border-left:3px solid #fb923c">'
-      +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:32px;font-weight:700;color:#fb923c;line-height:1;margin-bottom:6px">96%</div>'
-      +     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.1em;margin-bottom:6px">FORECAST ACCURACY TARGET</div>'
-      +     '<div style="font-size:11px;color:var(--t2);line-height:1.5">Stage-by-stage waterfall analytics show exactly which pursuits will move and which will slip — Clari-level discipline.</div>'
-      +   '</div>'
-      +   '<div style="background:rgba(17,31,48,.6);border:1px solid rgba(26,48,80,.5);border-radius:7px;padding:16px 18px;border-left:3px solid var(--green)">'
-      +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:32px;font-weight:700;color:var(--green);line-height:1;margin-bottom:6px">60d</div>'
-      +     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.1em;margin-bottom:6px">STAGE-VELOCITY ALERT</div>'
-      +     '<div style="font-size:11px;color:var(--t2);line-height:1.5">Pursuits stuck in one stage for 60+ days are flagged. Move them or kill them.</div>'
-      +   '</div>'
-      +   '<div style="background:rgba(17,31,48,.6);border:1px solid rgba(26,48,80,.5);border-radius:7px;padding:16px 18px;border-left:3px solid var(--blue)">'
-      +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:32px;font-weight:700;color:var(--blue);line-height:1;margin-bottom:6px">∑</div>'
-      +     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.1em;margin-bottom:6px">MEETING-TO-COMMITMENT</div>'
-      +     '<div style="font-size:11px;color:var(--t2);line-height:1.5">Conversion rate from logged meetings to logged commitments. The real BD productivity metric.</div>'
-      +   '</div>'
-      +   '<div style="background:rgba(17,31,48,.6);border:1px solid rgba(26,48,80,.5);border-radius:7px;padding:16px 18px;border-left:3px solid var(--purple)">'
-      +     '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:32px;font-weight:700;color:var(--purple);line-height:1;margin-bottom:6px">⬡</div>'
-      +     '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.1em;margin-bottom:6px">WATERFALL DELTA</div>'
-      +     '<div style="font-size:11px;color:var(--t2);line-height:1.5">Pursuits that moved, slipped, pulled in, or were lost — week over week, quarter over quarter.</div>'
-      +   '</div>'
-      + '</div>'
-    + '</div>';
-    return;
-  }
-
-  var stats = _computeBdStats();
-  var h = '';
-
-  // ── KPI ROW — platform-standard 42px display numerals ───────
-  var cycleText = stats.avgDaysInPipeline ? stats.avgDaysInPipeline + 'd' : '\u2014';
-  h += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:22px">';
-  [{ v: stats.activeOpps, l: 'Active Pursuits', c: 'var(--blue)', eye: 'PIPELINE' },
-   { v: '$' + _fmtVal(stats.pipelineValue), l: 'Total Value', c: 'var(--gold)', eye: 'AT STAKE' },
-   { v: stats.winRate + '%', l: 'Win Rate', c: stats.winRate >= 50 ? 'var(--green)' : stats.winRate >= 25 ? 'var(--amber)' : 'var(--red)', eye: 'CLOSED' },
-   { v: stats.avgMtgPerOpp, l: 'Avg Meetings/Opp', c: Number(stats.avgMtgPerOpp) >= 3 ? 'var(--green)' : Number(stats.avgMtgPerOpp) >= 1 ? 'var(--amber)' : 'var(--red)', eye: 'COVERAGE' },
-   { v: stats.stalledTotal || 0, l: 'Stalled Pursuits', c: stats.stalledTotal > 0 ? 'var(--red)' : 'var(--green)', eye: 'AT RISK' }
-  ].forEach(function(k) {
-    h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.85),rgba(11,20,34,.95));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:20px 16px;text-align:center;position:relative;overflow:hidden">'
-      + '<div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,' + k.c + ',transparent);opacity:.5"></div>'
-      + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">' + k.eye + '</div>'
-      + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:42px;font-weight:700;color:' + k.c + ';line-height:1;text-shadow:0 0 24px ' + k.c + '40;letter-spacing:-.01em">' + k.v + '</div>'
-      + '<div style="font-size:11px;color:var(--t2);margin-top:6px;font-weight:600">' + k.l + '</div>'
-      + '</div>';
+  var now = new Date(); now.setHours(0,0,0,0);
+  var d30=new Date(now.getTime()-30*24*60*60*1000), d60=new Date(now.getTime()-60*24*60*60*1000), d7=new Date(now.getTime()-7*24*60*60*1000);
+  var last30=meetings.filter(function(m){return new Date(m.meta.date)>=d30;});
+  var prev30=meetings.filter(function(m){var d=new Date(m.meta.date);return d>=d60&&d<d30;});
+  var last7=meetings.filter(function(m){return new Date(m.meta.date)>=d7;});
+  var allContacts=new Set(),allOrgs=new Set(),orgMap={},typeMap={},intelMtgs=0,totalActions=0,totalMilestones=0;
+  meetings.forEach(function(m){
+    var kp=(m.intel&&m.intel.keyPeople)||[];
+    if(kp.length||((m.intel&&m.intel.actionItems)||[]).length) intelMtgs++;
+    totalActions+=((m.intel&&m.intel.actionItems)||[]).length;
+    totalMilestones+=((m.intel&&m.intel.milestones)||[]).length;
+    kp.forEach(function(p){ if(p.name)allContacts.add(p.name); if(p.organization){allOrgs.add(p.organization);orgMap[p.organization]=(orgMap[p.organization]||0)+1;} });
+    var t=(m.meta&&m.meta.type)||'Other'; typeMap[t]=(typeMap[t]||0)+1;
   });
-  h += '</div>';
-
-  // ── PIPELINE WATERFALL — the core visualization ──────────────
-  h += _renderPipelineWaterfall(stats);
-
-  // ── TWO-COLUMN: Velocity chart + Stage Breakdown ─────────────
-  h += '<div style="display:grid;grid-template-columns:3fr 2fr;gap:14px;margin-bottom:14px">';
-  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
-  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:14px">Stage Velocity — Avg Days in Pipeline</div>';
-  h += _renderVelocityBars(stats);
-  h += '</div>';
-  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
-  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:14px">Stage Breakdown</div>';
-  h += _renderStageTable(stats);
-  h += '</div></div>';
-
-  // ── MEETING COVERAGE MATRIX ───────────────────────────────────
-  h += _renderMeetingCoverageMatrix(stats);
-
-  // ── TWO-COLUMN: Agency coverage + Pwin accuracy ───────────────
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">';
-  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
-  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:14px">Win Rate by Agency</div>';
-  h += '<svg id="bdp-agency-svg" width="100%" height="220"></svg></div>';
-  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
-  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:4px">Pwin Accuracy</div>';
-  var pwData = _getPwinAccuracyData();
-  if (!pwData.length) {
-    h += '<div style="font-size:12px;color:var(--t2);padding:20px 0;line-height:1.6">Record outcomes on won/lost opportunities to calibrate your Pwin model over time. Available in each opportunity detail.</div>';
-  } else {
-    h += '<svg id="bdp-pwin-svg" width="100%" height="200"></svg>';
-    var totalPred = pwData.reduce(function(sum, d) { return sum + d.avgPred; }, 0);
-    var totalAct = pwData.reduce(function(sum, d) { return sum + d.actualRate; }, 0);
-    var avgDelta = Math.round((totalPred - totalAct) / pwData.length);
-    h += '<div style="display:flex;gap:14px;margin-top:10px;font-size:11px;font-family:\'JetBrains Mono\',monospace;color:var(--t3)">';
-    h += '<span>Qtrs: <strong style="color:var(--text)">' + pwData.length + '</strong></span>';
-    h += '<span>Pwin bias: <strong style="color:' + (avgDelta > 10 ? 'var(--amber)' : avgDelta < -10 ? 'var(--red)' : 'var(--green)') + '">' + (avgDelta >= 0 ? '+' : '') + avgDelta + '%</strong></span>';
-    h += '</div>';
-  }
-  h += '</div></div>';
-
-  main.innerHTML = h;
-  setTimeout(function() {
-    _drawAgencyWinRateChart('bdp-agency-svg', stats);
-    if (pwData && pwData.length) _drawPwinAccuracyChart('bdp-pwin-svg', pwData);
-  }, 50);
+  var weeks=[];
+  for(var w=7;w>=0;w--){var ws=new Date(now.getTime()-(w+1)*7*24*60*60*1000),we=new Date(now.getTime()-w*7*24*60*60*1000);weeks.push(meetings.filter(function(m){var d=new Date(m.meta.date);return d>=ws&&d<we;}).length);}
+  var maxW=Math.max.apply(null,weeks.concat([1]));
+  var topOrgs=Object.keys(orgMap).sort(function(a,b){return orgMap[b]-orgMap[a];}).slice(0,7);
+  var maxOrg=orgMap[topOrgs[0]]||1;
+  var topTypes=Object.keys(typeMap).sort(function(a,b){return typeMap[b]-typeMap[a];}).slice(0,5);
+  var mDelta=last30.length-prev30.length;
+  var mDeltaTxt=(mDelta>0?'+':'')+mDelta+' vs prior 30d';
+  var mDeltaColor=mDelta>0?'var(--green)':mDelta<0?'var(--red)':'var(--t3)';
+  var iPct=meetings.length>0?Math.round(100*intelMtgs/meetings.length):0;
+  if(opportunities.length){if(window._renderPipelineWaterfall)window._renderPipelineWaterfall(main);return;}
+  var h='<div style="max-width:900px;margin:0 auto;padding:20px 24px 40px">';
+  h+='<div style="border-bottom:1px solid rgba(26,48,80,.5);padding-bottom:14px;margin-bottom:20px;display:flex;align-items:flex-end;justify-content:space-between">';
+  h+='<div><div style="font-family:&apos;JetBrains Mono&apos;,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:#fb923c;text-transform:uppercase;margin-bottom:6px">BD PERFORMANCE INTELLIGENCE</div>';
+  h+='<div style="font-family:&apos;Barlow Condensed&apos;,sans-serif;font-size:28px;font-weight:700;color:var(--text);letter-spacing:-.01em">Relationship Activity</div></div>';
+  h+='<div style="text-align:right"><div style="font-size:11px;color:var(--t2)">'+meetings.length+' meetings &middot; '+allContacts.size+' contacts &middot; '+allOrgs.size+' orgs</div></div></div>';
+  var kpis=[{v:meetings.length,l:'Total Meetings',c:'var(--gold)',sub:'all time'},{v:last30.length,l:'Last 30 Days',c:'var(--green)',sub:mDeltaTxt,sc:mDeltaColor},{v:allContacts.size,l:'Contacts Tracked',c:'var(--blue)',sub:allOrgs.size+' orgs'},{v:iPct+'%',l:'Intel Extracted',c:'var(--purple)',sub:intelMtgs+' of '+meetings.length},{v:totalActions,l:'Action Items',c:'var(--amber)',sub:totalMilestones+' milestones'}];
+  h+='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px">';
+  kpis.forEach(function(k){
+    h+='<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 12px">';
+    h+='<div style="font-family:&apos;Barlow Condensed&apos;,sans-serif;font-size:36px;font-weight:700;color:'+k.c+';line-height:1;text-shadow:0 0 20px '+k.c+'55">'+k.v+'</div>';
+    h+='<div style="font-family:&apos;JetBrains Mono&apos;,monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-top:4px">'+k.l+'</div>';
+    if(k.sub)h+='<div style="font-size:10px;color:'+(k.sc||'var(--t3)')+';margin-top:3px">'+k.sub+'</div>';
+    h+='</div>';
+  });
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">';
+  h+='<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:16px">';
+  h+='<div style="font-family:&apos;JetBrains Mono&apos;,monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:12px">MEETING VELOCITY &middot; 8 WEEKS</div>';
+  h+='<div style="display:flex;align-items:flex-end;gap:4px;height:64px">';
+  weeks.forEach(function(cnt,idx){
+    var pct=maxW>0?cnt/maxW:0,isLast=idx===weeks.length-1;
+    h+='<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px"><div style="font-size:9px;color:var(--t2);line-height:1">'+( cnt||'')+'</div><div style="width:100%;background:'+(isLast?'var(--gold)':'rgba(59,130,246,.55)')+';border-radius:2px 2px 0 0;height:'+Math.max(4,Math.round(pct*44))+'px"></div></div>';
+  });
+  h+='</div><div style="display:flex;justify-content:space-between;margin-top:6px"><span style="font-size:9px;color:var(--t3)">8 weeks ago</span><span style="font-size:9px;color:var(--gold)">this week: '+last7.length+'</span></div></div>';
+  h+='<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:16px">';
+  h+='<div style="font-family:&apos;JetBrains Mono&apos;,monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:12px">TOP ORGANIZATIONS</div>';
+  if(topOrgs.length){topOrgs.forEach(function(org){var pct=orgMap[org]/maxOrg;h+='<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><div style="font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:78%">'+org+'</div><div style="font-size:10px;color:var(--t3);">'+orgMap[org]+'</div></div><div style="height:3px;background:rgba(26,48,80,.4);border-radius:2px"><div style="height:100%;width:'+Math.round(pct*100)+'%;background:var(--blue);border-radius:2px"></div></div></div>';});}
+  else h+='<div style="font-size:11px;color:var(--t3)">Log meetings with org contacts to see coverage.</div>';
+  h+='</div></div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">';
+  h+='<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:16px">';
+  h+='<div style="font-family:&apos;JetBrains Mono&apos;,monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:12px">MEETING TYPES</div>';
+  var tC=['var(--gold)','var(--blue)','var(--green)','var(--purple)','var(--amber)'];
+  topTypes.forEach(function(t,i){h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;padding:6px 8px;background:rgba(26,48,80,.2);border-radius:4px;border-left:3px solid '+tC[i%5]+'"><div style="font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:78%">'+t+'</div><div style="font-size:12px;font-weight:700;color:'+tC[i%5]+';flex-shrink:0">'+typeMap[t]+'</div></div>';});
+  if(!topTypes.length)h+='<div style="font-size:11px;color:var(--t3)">No types.</div>';
+  h+='</div>';
+  h+='<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:16px">';
+  h+='<div style="font-family:&apos;JetBrains Mono&apos;,monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:12px">RECENT MEETINGS &middot; LAST 30 DAYS</div>';
+  if(last30.length){last30.slice().sort(function(a,b){return b.meta.date.localeCompare(a.meta.date);}).slice(0,8).forEach(function(m){var kp=(m.intel&&m.intel.keyPeople)||[];h+='<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(26,48,80,.3)"><div style="font-size:9px;font-family:&apos;JetBrains Mono&apos;,monospace;color:var(--t3);flex-shrink:0;min-width:48px">'+m.meta.date.slice(5)+'</div><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.meta.title+'</div>'+(kp.length?'<div style="font-size:10px;color:var(--t3);margin-top:1px">'+kp.slice(0,2).map(function(p){return p.name||'';}).filter(Boolean).join(' &middot; ')+(kp.length>2?' +more':'')+'</div>':'')+ '</div><div style="font-size:10px;color:var(--t3);flex-shrink:0">'+kp.length+' contacts</div></div>';});}
+  else h+='<div style="font-size:11px;color:var(--t3)">No meetings in last 30 days.</div>';
+  h+='</div></div></div>';
+  main.innerHTML=h;
 }
 
 function _fmtVal(v) {
