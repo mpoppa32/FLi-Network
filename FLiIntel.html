@@ -2631,6 +2631,7 @@ select{
    ═══════════════════════════════════════════════════════════════════════════ */
 iframe[src*="accounts.google.com/gsi"],
 iframe[src*="accounts.google.com/o/oauth2"],
+iframe[src*="accounts.google.com"],
 #credential_picker_container,
 #credential_picker_iframe,
 [id^="credential_picker"],
@@ -2639,7 +2640,11 @@ iframe[src*="accounts.google.com/o/oauth2"],
 div[aria-labelledby*="onetap" i],
 div[role="dialog"][aria-label*="Sign in with Google" i],
 div[aria-label*="Sign in with Google" i]:not(.auth-card *),
-div[aria-label*="One Tap" i]{
+div[aria-label*="One Tap" i],
+div[data-gapiscan],
+div[jscontroller][jsaction*="credential"],
+#gaia_loginform,
+[id="credential_picker_iframe"] {
   display:none !important;
   visibility:hidden !important;
   pointer-events:none !important;
@@ -2811,7 +2816,7 @@ div[aria-label*="One Tap" i]{
         <span style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--t3);letter-spacing:0.2em;text-transform:uppercase">BD Intelligence</span>
       </div>
     </div>
-    <div class="ws-badge" id="ws-switcher" title="Click to switch workspaces" style="border:1px solid rgba(201,162,39,.4);box-shadow:0 0 0 1px rgba(201,162,39,.15)">
+    <div class="ws-badge" id="ws-switcher" title="Click to switch workspaces" style="border:1px solid rgba(201,162,39,.4);box-shadow:0 0 0 1px rgba(201,162,39,.15)" onclick="document.getElementById('auth-screen').style.display='none';document.getElementById('ws-screen').style.display='flex';document.getElementById('main-app').style.display='none';if(typeof renderWsList==='function')renderWsList()">
       <div class="ws-dot" id="ws-color-dot"></div>
       <span id="ws-name-display"></span>
       <span id="user-role-badge" style="display:none;font-size:8px;font-family:'JetBrains Mono',monospace;padding:1px 5px;border-radius:2px;border:1px solid;margin-left:4px"></span>
@@ -2848,7 +2853,7 @@ div[aria-label*="One Tap" i]{
     <button class="nav-btn" id="nav-members-btn">&#128100; Members</button>
     <button class="nav-btn" id="nav-alerts-btn" onclick="toggleAlertsPanel()" title="Relationship alerts" style="position:relative">🔔</button>
     <button class="nav-btn" id="nav-brief-btn" style="position:relative;background:linear-gradient(135deg,rgba(201,162,39,.15),rgba(139,92,246,.1));border-color:rgba(201,162,39,.4);color:var(--gold)" onclick="openOnboardingBrief()">&#9889; Brief Me</button>
-    <div class="user-chip" id="user-chip-btn"><img id="user-chip-img" src="" alt=""></div>
+    <div class="user-chip" id="user-chip-btn" onclick="if(typeof openModal==='function')openModal('user-modal')" style="cursor:pointer" title="Settings"><img id="user-chip-img" src="" alt=""></div>
     <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()"><svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="currentColor"/><rect y="5" width="16" height="2" rx="1" fill="currentColor"/><rect y="10" width="16" height="2" rx="1" fill="currentColor"/></svg></button>
   </div>
 
@@ -4964,6 +4969,8 @@ onAuthStateChanged(auth,function(user){
     if(pl)pl.style.display='none';
     // Aggressively cancel Google FedCM / One-Tap (Chrome injects automatically)
     _killGoogleOneTap();
+    // Prevent browser FedCM bar from re-appearing after sign-in
+    try{if(navigator.credentials&&navigator.credentials.preventSilentAccess)navigator.credentials.preventSilentAccess();}catch(e){}
     currentUser=user;refreshApiKey();loadUserWorkspaces(user);
   } else {
     // Firebase fires null first even for signed-in users.
@@ -5037,7 +5044,7 @@ document.getElementById('ws-new-btn').addEventListener('click',function(){docume
 document.getElementById('ws-cancel-btn').addEventListener('click',function(){closeModal('create-ws-modal');document.getElementById('ws-screen').style.display='flex';});
 document.getElementById('ws-create-btn').addEventListener('click',async function(){var name=document.getElementById('ws-name-inp').value.trim();var role=document.getElementById('ws-role-inp').value.trim()||'Member';if(!name){toast('Enter a workspace name');return;}if(!currentUser){toast('Not signed in');return;}var btn=document.getElementById('ws-create-btn');btn.disabled=true;btn.textContent='Creating...';try{var wsId=Date.now().toString();var color=WS_COLORS[Math.floor(Math.random()*WS_COLORS.length)];var ws={id:wsId,name:name,color:color,createdBy:currentUser.uid,created:new Date().toISOString()};var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,photo:currentUser.photoURL||'',role:role,joined:new Date().toISOString()};await set(ref(db,'workspaces/'+wsId+'/info'),ws);await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{id:wsId,name:name,color:color,role:role});userWorkspaces.push({id:wsId,name:name,color:color,role:role});closeModal('create-ws-modal');selectWorkspace(wsId);}catch(e){toast('Failed: '+(e.message||'Try again'));btn.disabled=false;btn.textContent='Create Workspace';}});
 
-async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);}catch(e){toast('Failed to open workspace: '+(e.message||'Try again'));}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.getElementById('auth-screen').style.display='none';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='flex';document.getElementById('ws-name-display').textContent=ws.name||'Workspace';document.getElementById('ws-color-dot').style.background=ws.color||'var(--gold)';if(currentUser&&currentUser.photoURL)document.getElementById('user-chip-img').src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();document.getElementById('m-date').value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);}catch(e){toast('Failed to open workspace: '+(e.message||'Try again'));}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
