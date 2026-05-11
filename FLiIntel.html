@@ -17635,6 +17635,186 @@ window._ackMovement = async function(nodeId) {
 // CONQUEST 2: BD PERFORMANCE ANALYTICS DASHBOARD
 // ══════════════════════════════════════════════════════════════════════════
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// BD STATS HELPER: Pipeline Waterfall
+// Shows every active pursuit grouped by stage, with health color coding
+// ══════════════════════════════════════════════════════════════════════════
+
+function _renderPipelineWaterfall(stats) {
+  var stages = ['awareness','engaged','proposal','submitted','award'];
+  var stageLabels = { awareness:'Awareness', engaged:'Engaged', proposal:'Proposal', submitted:'Submitted', award:'Award Decision' };
+  var stageColors = { awareness:'#64748b', engaged:'#3b82f6', proposal:'#8b5cf6', submitted:'#c9a227', award:'#f59e0b' };
+
+  var h = '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px;margin-bottom:14px;overflow:hidden">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    +   '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3)">Pipeline Motion — Active Pursuits by Stage</div>'
+    +   '<div style="display:flex;gap:10px;align-items:center;font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3)">'
+    +     '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green);margin-right:4px;vertical-align:middle"></span>Meeting ≤30d</span>'
+    +     '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--amber);margin-right:4px;vertical-align:middle"></span>31-60d quiet</span>'
+    +     '<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--red);margin-right:4px;vertical-align:middle"></span>60d+ dark</span>'
+    +   '</div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;align-items:start">';
+
+  stages.forEach(function(s) {
+    var sm = stats.stageMotion[s];
+    if (!sm) { h += '<div></div>'; return; }
+    var col = stageColors[s];
+    var cnt = (sm.opps || []).length;
+    var val = sm.value ? '$' + _fmtVal(sm.value) : '';
+
+    h += '<div style="background:rgba(8,15,26,.6);border:1px solid rgba(26,48,80,.5);border-top:2px solid ' + col + ';border-radius:6px;padding:10px 10px 8px;min-height:80px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      +   '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;color:' + col + '">' + stageLabels[s].toUpperCase() + '</div>'
+      +   '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:22px;font-weight:700;color:' + col + ';line-height:1;text-shadow:0 0 12px ' + col + '40">' + cnt + '</div>'
+      + '</div>';
+    if (val) h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t2);margin-bottom:8px;letter-spacing:.04em">' + val + '</div>';
+
+    // Health bar
+    if (cnt > 0) {
+      h += '<div style="display:flex;gap:2px;margin-bottom:8px;height:3px;border-radius:2px;overflow:hidden">';
+      if (sm.green) h += '<div style="flex:' + sm.green + ';background:var(--green);opacity:.8"></div>';
+      if (sm.amber) h += '<div style="flex:' + sm.amber + ';background:var(--amber);opacity:.8"></div>';
+      if (sm.red) h += '<div style="flex:' + sm.red + ';background:var(--red);opacity:.8"></div>';
+      h += '</div>';
+    }
+
+    // Individual pursuit cards (compact)
+    (sm.opps || []).slice(0, 4).forEach(function(e) {
+      var hc = e.health === 'green' ? 'var(--green)' : e.health === 'amber' ? 'var(--amber)' : 'var(--red)';
+      var label = (e.opp.name || '').length > 22 ? (e.opp.name || '').slice(0, 21) + '\u2026' : (e.opp.name || '');
+      h += '<div onclick="switchView(\'opps\');setTimeout(function(){selectOpp(\'' + e.opp.id + '\')},100)" '
+        + 'style="padding:6px 8px;background:rgba(26,48,80,.3);border:1px solid rgba(26,48,80,.5);border-left:2px solid ' + hc + ';border-radius:4px;margin-bottom:4px;cursor:pointer;transition:all .12s" '
+        + 'onmouseover="this.style.background=\'rgba(26,48,80,.6)\'" onmouseout="this.style.background=\'rgba(26,48,80,.3)\'">'
+        +   '<div style="font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">' + label + '</div>'
+        +   '<div style="display:flex;align-items:center;justify-content:space-between">'
+        +     '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3)">' + (e.opp.agency || '').slice(0, 10) + '</span>'
+        +     '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);display:flex;align-items:center;gap:3px">'
+        +       '<span style="color:' + hc + '">\u25CF</span>'
+        +       (e.mtg.count ? e.mtg.count + ' mtg' : 'no mtg')
+        +     '</span>'
+        +   '</div>'
+        + '</div>';
+    });
+    if ((sm.opps || []).length > 4) {
+      h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3);text-align:center;padding:4px 0">+' + ((sm.opps || []).length - 4) + ' more</div>';
+    }
+
+    if (!cnt) h += '<div style="font-size:11px;color:var(--t3);text-align:center;padding:16px 0;opacity:.5">Empty</div>';
+    h += '</div>';
+  });
+
+  h += '</div>';
+
+  // Won/Lost summary strip below
+  if (stats.wonOpps + stats.lostOpps > 0) {
+    h += '<div style="display:flex;gap:10px;margin-top:12px;padding-top:12px;border-top:1px dashed rgba(26,48,80,.5)">';
+    h += '<div style="padding:8px 14px;background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);border-radius:5px;display:flex;align-items:center;gap:8px">'
+      + '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:24px;font-weight:700;color:var(--green)">\u2605 ' + stats.wonOpps + '</span>'
+      + '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t2);letter-spacing:.06em;text-transform:uppercase">WON</span>'
+      + '</div>';
+    h += '<div style="padding:8px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:5px;display:flex;align-items:center;gap:8px">'
+      + '<span style="font-family:\'Barlow Condensed\',sans-serif;font-size:24px;font-weight:700;color:var(--red)">' + stats.lostOpps + '</span>'
+      + '<span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t2);letter-spacing:.06em;text-transform:uppercase">LOST</span>'
+      + '</div>';
+    h += '<div style="flex:1;display:flex;align-items:center;justify-content:flex-end">'
+      + '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;color:' + (stats.winRate >= 50 ? 'var(--green)' : 'var(--amber)') + ';font-weight:700">'
+      + stats.winRate + '% win rate</span></div>';
+    h += '</div>';
+  }
+
+  h += '</div>';
+  return h;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BD STATS HELPER: Stage Velocity Bars (CSS, not SVG)
+// ══════════════════════════════════════════════════════════════════════════
+
+function _renderVelocityBars(stats) {
+  var stageColors = { Awareness:'#64748b', Engaged:'#3b82f6', Proposal:'#8b5cf6', Submitted:'#c9a227', Award:'#f59e0b' };
+  var maxDays = 0;
+  stats.velocityData.forEach(function(d) { if (d.days > maxDays) maxDays = d.days; });
+  if (!maxDays) maxDays = 90;
+
+  var h = '<div style="display:flex;flex-direction:column;gap:10px">';
+  stats.velocityData.forEach(function(d) {
+    if (!d.count) return;
+    var col = stageColors[d.stage] || 'var(--blue)';
+    var pct = Math.max(4, Math.round((d.days / maxDays) * 100));
+    var isAlert = d.days > 60;
+    var alertColor = isAlert ? 'var(--amber)' : col;
+    h += '<div>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+      +   '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;color:' + alertColor + '">' + d.stage.toUpperCase() + '</div>'
+      +   '<div style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:700;color:' + alertColor + '">'
+      +     d.days + 'd avg'
+      +     (d.stalled ? ' \u00b7 <span style="color:var(--red)">' + d.stalled + ' stalled</span>' : '')
+      +     ' \u00b7 <span style="color:var(--t3)">' + d.count + ' opp' + (d.count !== 1 ? 's' : '') + '</span>'
+      +   '</div>'
+      + '</div>'
+      + '<div style="height:6px;background:rgba(26,48,80,.5);border-radius:3px;overflow:hidden">'
+      +   '<div style="height:100%;width:' + pct + '%;background:' + alertColor + ';border-radius:3px;box-shadow:0 0 8px ' + alertColor + '40;transition:width .3s"></div>'
+      + '</div>'
+      + (isAlert ? '<div style="font-size:9px;color:var(--amber);font-family:\'JetBrains Mono\',monospace;margin-top:3px;letter-spacing:.04em">⚠ Long avg — consider advancing or killing</div>' : '')
+      + '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// BD STATS HELPER: Meeting Coverage Matrix
+// Shows each active pursuit with meeting density bar + stall flag
+// ══════════════════════════════════════════════════════════════════════════
+
+function _renderMeetingCoverageMatrix(stats) {
+  var active = (stats.enrichedActive || []).slice().sort(function(a, b) { return b.mtg.count - a.mtg.count; }).slice(0, 16);
+  if (!active.length) return '';
+
+  var maxMtg = Math.max(1, active.reduce(function(m, e) { return Math.max(m, e.mtg.count); }, 0));
+  var stageColors = { awareness:'#64748b', engaged:'#3b82f6', proposal:'#8b5cf6', submitted:'#c9a227', award:'#f59e0b' };
+
+  var h = '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px;margin-bottom:14px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    +   '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3)">Meeting Coverage — Active Pipeline</div>'
+    +   '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--t3)">'
+    +     '<span style="color:var(--text);font-weight:700">' + stats.avgMtgPerOpp + '</span> avg meetings/pursuit'
+    +     ' \u00b7 <span style="color:var(--text);font-weight:700">' + stats.totalMeetings + '</span> total logged'
+    +   '</div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">';
+
+  active.forEach(function(e) {
+    var pct = maxMtg > 0 ? Math.round((e.mtg.count / maxMtg) * 100) : 0;
+    var col = stageColors[e.st] || 'var(--blue)';
+    var hc = e.health === 'green' ? 'var(--green)' : e.health === 'amber' ? 'var(--amber)' : 'var(--red)';
+    var lastMtg = e.mtg.lastDate ? e.mtg.lastDate : 'Never';
+    var truncName = (e.opp.name || '').length > 28 ? (e.opp.name || '').slice(0, 27) + '\u2026' : (e.opp.name || '');
+    h += '<div onclick="switchView(\'opps\');setTimeout(function(){selectOpp(\'' + e.opp.id + '\')},100)" style="padding:10px 12px;background:rgba(8,15,26,.5);border:1px solid rgba(26,48,80,.4);border-radius:6px;cursor:pointer;transition:all .12s" onmouseover="this.style.background=\'rgba(26,48,80,.4)\'" onmouseout="this.style.background=\'rgba(8,15,26,.5)\'">'
+      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">'
+      +   '<div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3;flex:1;min-width:0;margin-right:8px">' + truncName + '</div>'
+      +   '<div style="display:flex;gap:4px;flex-shrink:0">'
+      +     '<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;padding:2px 5px;background:' + col + '20;color:' + col + ';border-radius:3px;border:1px solid ' + col + '40">' + (e.st || '').slice(0,5).toUpperCase() + '</span>'
+      +     '<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;padding:2px 5px;background:' + hc + '20;color:' + hc + ';border-radius:3px">' + (e.mtg.count || 0) + ' mtg</span>'
+      +   '</div>'
+      + '</div>'
+      + (e.opp.agency ? '<div style="font-size:10px;color:var(--t3);margin-bottom:6px">' + e.opp.agency + '</div>' : '')
+      + '<div style="height:3px;background:rgba(26,48,80,.5);border-radius:2px;overflow:hidden">'
+      +   '<div style="height:100%;width:' + Math.max(pct, 2) + '%;background:' + hc + ';border-radius:2px;transition:width .3s"></div>'
+      + '</div>'
+      + '<div style="display:flex;justify-content:space-between;margin-top:4px">'
+      +   '<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--t3)">Last: ' + lastMtg + '</span>'
+      +   (e.isStalled ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--red)">⚠ STALLED</span>' : '')
+      + '</div>'
+      + '</div>';
+  });
+
+  h += '</div></div>';
+  return h;
+}
+
 function renderBdPerfView() {
   var main = document.getElementById('bdperf-main');
   if (!main) return;
@@ -17676,67 +17856,66 @@ function renderBdPerfView() {
   var stats = _computeBdStats();
   var h = '';
 
-  // KPI Row
-  h += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px">';
-  [{ v: stats.totalOpps, l: 'Total Opportunities', c: 'var(--text)' },
-   { v: stats.activeOpps, l: 'Active Pipeline', c: 'var(--blue)' },
-   { v: stats.winRate + '%', l: 'Win Rate', c: 'var(--green)' },
-   { v: '$' + _fmtVal(stats.pipelineValue), l: 'Pipeline Value', c: 'var(--gold)' },
-   { v: stats.avgDaysInPipeline + (typeof stats.avgDaysInPipeline === 'number' ? 'd' : ''), l: 'Avg Cycle Time', c: 'var(--purple)' }
+  // ── KPI ROW — platform-standard 42px display numerals ───────
+  var cycleText = stats.avgDaysInPipeline ? stats.avgDaysInPipeline + 'd' : '\u2014';
+  h += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:22px">';
+  [{ v: stats.activeOpps, l: 'Active Pursuits', c: 'var(--blue)', eye: 'PIPELINE' },
+   { v: '$' + _fmtVal(stats.pipelineValue), l: 'Total Value', c: 'var(--gold)', eye: 'AT STAKE' },
+   { v: stats.winRate + '%', l: 'Win Rate', c: stats.winRate >= 50 ? 'var(--green)' : stats.winRate >= 25 ? 'var(--amber)' : 'var(--red)', eye: 'CLOSED' },
+   { v: stats.avgMtgPerOpp, l: 'Avg Meetings/Opp', c: Number(stats.avgMtgPerOpp) >= 3 ? 'var(--green)' : Number(stats.avgMtgPerOpp) >= 1 ? 'var(--amber)' : 'var(--red)', eye: 'COVERAGE' },
+   { v: stats.stalledTotal || 0, l: 'Stalled Pursuits', c: stats.stalledTotal > 0 ? 'var(--red)' : 'var(--green)', eye: 'AT RISK' }
   ].forEach(function(k) {
-    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;text-align:center"><div style="font-size:20px;font-weight:700;color:' + k.c + '">' + k.v + '</div><div style="font-size:10px;color:var(--t3);margin-top:3px">' + k.l + '</div></div>';
+    h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.85),rgba(11,20,34,.95));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:20px 16px;text-align:center;position:relative;overflow:hidden">'
+      + '<div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,' + k.c + ',transparent);opacity:.5"></div>'
+      + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase;margin-bottom:8px">' + k.eye + '</div>'
+      + '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:42px;font-weight:700;color:' + k.c + ';line-height:1;text-shadow:0 0 24px ' + k.c + '40;letter-spacing:-.01em">' + k.v + '</div>'
+      + '<div style="font-size:11px;color:var(--t2);margin-top:6px;font-weight:600">' + k.l + '</div>'
+      + '</div>';
   });
   h += '</div>';
 
-  // Charts row
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">';
-  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 16px">';
-  h += '<div style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--t2);margin-bottom:12px">Pipeline Funnel</div>';
-  h += '<svg id="bdp-funnel-svg" width="100%" height="220"></svg></div>';
-  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 16px">';
-  h += '<div style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--t2);margin-bottom:12px">Win Rate by Agency</div>';
-  h += '<svg id="bdp-agency-svg" width="100%" height="220"></svg></div>';
-  h += '</div>';
+  // ── PIPELINE WATERFALL — the core visualization ──────────────
+  h += _renderPipelineWaterfall(stats);
 
-  // Velocity + Stage table
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">';
-  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 16px">';
-  h += '<div style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--t2);margin-bottom:12px">Pipeline Velocity</div>';
-  h += '<svg id="bdp-velocity-svg" width="100%" height="180"></svg></div>';
-  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 16px">';
-  h += '<div style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--t2);margin-bottom:10px">Stage Breakdown</div>';
+  // ── TWO-COLUMN: Velocity chart + Stage Breakdown ─────────────
+  h += '<div style="display:grid;grid-template-columns:3fr 2fr;gap:14px;margin-bottom:14px">';
+  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:14px">Stage Velocity — Avg Days in Pipeline</div>';
+  h += _renderVelocityBars(stats);
+  h += '</div>';
+  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:14px">Stage Breakdown</div>';
   h += _renderStageTable(stats);
   h += '</div></div>';
 
-  // Agency heat map
-  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">';
-  h += '<div style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--t2);margin-bottom:12px">Agency Heat Map</div>';
-  h += '<div id="bdp-heatmap-container"></div></div>';
+  // ── MEETING COVERAGE MATRIX ───────────────────────────────────
+  h += _renderMeetingCoverageMatrix(stats);
 
-  // Pwin accuracy chart (only if calibration data exists)
-  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">';
-  h += '<div style="font-family:JetBrains Mono,monospace;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.12em;color:var(--t2);margin-bottom:4px">Pwin Accuracy Over Time</div>';
+  // ── TWO-COLUMN: Agency coverage + Pwin accuracy ───────────────
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">';
+  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:14px">Win Rate by Agency</div>';
+  h += '<svg id="bdp-agency-svg" width="100%" height="220"></svg></div>';
+  h += '<div style="background:linear-gradient(140deg,rgba(17,31,48,.8),rgba(11,20,34,.9));border:1px solid rgba(26,48,80,.5);border-radius:8px;padding:18px 20px">';
+  h += '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:4px">Pwin Accuracy</div>';
   var pwData = _getPwinAccuracyData();
   if (!pwData.length) {
-    h += '<div style="font-size:11px;color:var(--t3);padding:16px 0">Record outcomes on won/lost opportunities to see how accurate your Pwin predictions are over time. Find this in each opportunity\'s detail panel.</div>';
+    h += '<div style="font-size:12px;color:var(--t2);padding:20px 0;line-height:1.6">Record outcomes on won/lost opportunities to calibrate your Pwin model over time. Available in each opportunity detail.</div>';
   } else {
     h += '<svg id="bdp-pwin-svg" width="100%" height="200"></svg>';
     var totalPred = pwData.reduce(function(sum, d) { return sum + d.avgPred; }, 0);
     var totalAct = pwData.reduce(function(sum, d) { return sum + d.actualRate; }, 0);
     var avgDelta = Math.round((totalPred - totalAct) / pwData.length);
-    h += '<div style="display:flex;gap:20px;margin-top:8px;font-size:11px;color:var(--t3)">';
-    h += '<span>Quarters tracked: <strong style="color:var(--text)">' + pwData.length + '</strong></span>';
-    h += '<span>Avg Pwin bias: <strong style="color:' + (avgDelta > 10 ? 'var(--amber)' : avgDelta < -10 ? 'var(--red)' : 'var(--green)') + '">' + (avgDelta >= 0 ? '+' : '') + avgDelta + '%</strong> ' + (avgDelta > 10 ? '(overconfident)' : avgDelta < -10 ? '(underconfident)' : '(well calibrated)') + '</span>';
+    h += '<div style="display:flex;gap:14px;margin-top:10px;font-size:11px;font-family:\'JetBrains Mono\',monospace;color:var(--t3)">';
+    h += '<span>Qtrs: <strong style="color:var(--text)">' + pwData.length + '</strong></span>';
+    h += '<span>Pwin bias: <strong style="color:' + (avgDelta > 10 ? 'var(--amber)' : avgDelta < -10 ? 'var(--red)' : 'var(--green)') + '">' + (avgDelta >= 0 ? '+' : '') + avgDelta + '%</strong></span>';
     h += '</div>';
   }
-  h += '</div>';
+  h += '</div></div>';
 
   main.innerHTML = h;
   setTimeout(function() {
-    _drawFunnelChart('bdp-funnel-svg', stats);
     _drawAgencyWinRateChart('bdp-agency-svg', stats);
-    _drawVelocityChart('bdp-velocity-svg', stats);
-    _drawAgencyHeatMap('bdp-heatmap-container', stats);
     if (pwData && pwData.length) _drawPwinAccuracyChart('bdp-pwin-svg', pwData);
   }, 50);
 }
@@ -17779,50 +17958,129 @@ function _oppMatchesFy(opp, fy) {
 function _computeBdStats() {
   var fy = _getBdFyFilter();
   var stageOrder = ['awareness', 'engaged', 'proposal', 'submitted', 'award', 'won', 'lost'];
+  var stageRank = { awareness:0, engaged:1, proposal:2, submitted:3, award:4, won:5, lost:6 };
   var stageCounts = {};
   var stageValues = {};
   stageOrder.forEach(function(s) { stageCounts[s] = 0; stageValues[s] = 0; });
 
   var agencyMap = {};
   var wonOpps = 0, lostOpps = 0, totalClosed = 0, totalPipelineValue = 0;
+  var now = new Date(); now.setHours(0,0,0,0);
+  var DAY = 86400000;
 
   var filteredOpps = fy === 'all' ? opportunities : opportunities.filter(function(o) { return _oppMatchesFy(o, fy); });
 
-  filteredOpps.forEach(function(o) {
-    var st = o.stage || 'awareness';
-    stageCounts[st] = (stageCounts[st] || 0) + 1;
-    var val = _parseVal(o.value);
-    stageValues[st] = (stageValues[st] || 0) + val;
-    if (st !== 'won' && st !== 'lost') totalPipelineValue += val;
+  // Build meeting lookup: last meeting date per opp, meeting count per opp
+  var mtgByOpp = {};
+  meetings.forEach(function(m) {
+    if (!m || !m.oppId || !m.meta) return;
+    if (!mtgByOpp[m.oppId]) mtgByOpp[m.oppId] = { count: 0, lastDate: '', lastTs: 0 };
+    mtgByOpp[m.oppId].count++;
+    var mt = new Date(m.meta.date || 0).getTime();
+    if (mt > mtgByOpp[m.oppId].lastTs) {
+      mtgByOpp[m.oppId].lastTs = mt;
+      mtgByOpp[m.oppId].lastDate = m.meta.date || '';
+    }
+  });
 
-    var ag = o.agency || 'Unspecified';
+  // Enrich each opportunity
+  var enriched = filteredOpps.map(function(o) {
+    var st = o.stage || 'awareness';
+    var val = _parseVal(o.value);
+    var mtg = mtgByOpp[o.id] || { count: 0, lastDate: '', lastTs: 0 };
+    var createdTs = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+    var daysInPipeline = createdTs ? Math.floor((now.getTime() - createdTs) / DAY) : 0;
+    var daysSinceMtg = mtg.lastTs ? Math.floor((now.getTime() - mtg.lastTs) / DAY) : 999;
+    // Health signal: amber = no meeting 31-60d, red = no meeting 61+d, green = meeting within 30d
+    var health = daysSinceMtg <= 30 ? 'green' : daysSinceMtg <= 60 ? 'amber' : 'red';
+    var isStalled = (st !== 'won' && st !== 'lost') && (daysInPipeline > 60 && daysSinceMtg > 45);
+    return { opp: o, st: st, val: val, mtg: mtg, daysInPipeline: daysInPipeline,
+             daysSinceMtg: daysSinceMtg, health: health, isStalled: isStalled };
+  });
+
+  enriched.forEach(function(e) {
+    var st = e.st;
+    stageCounts[st] = (stageCounts[st] || 0) + 1;
+    stageValues[st] = (stageValues[st] || 0) + e.val;
+    if (st !== 'won' && st !== 'lost') totalPipelineValue += e.val;
+    var ag = e.opp.agency || 'Unspecified';
     if (!agencyMap[ag]) agencyMap[ag] = { name: ag, total: 0, won: 0, lost: 0, active: 0, value: 0 };
     agencyMap[ag].total++;
-    agencyMap[ag].value += val;
+    agencyMap[ag].value += e.val;
     if (st === 'won') { agencyMap[ag].won++; wonOpps++; totalClosed++; }
     else if (st === 'lost') { agencyMap[ag].lost++; lostOpps++; totalClosed++; }
     else agencyMap[ag].active++;
   });
 
+  // Compute average cycle time from closed deals
   var avgDays = 0;
-  var oppsWithDates = filteredOpps.filter(function(o) { return o.created && o.awardDate && (o.stage === 'won' || o.stage === 'lost'); });
-  if (oppsWithDates.length) {
-    var totalDays = oppsWithDates.reduce(function(sum, o) {
-      return sum + Math.abs(new Date(o.awardDate) - new Date(o.created)) / (1000 * 60 * 60 * 24);
+  var closed = enriched.filter(function(e) { return e.opp.created && e.opp.awardDate && (e.st === 'won' || e.st === 'lost'); });
+  if (closed.length) {
+    var totalDays = closed.reduce(function(sum, e) {
+      return sum + Math.abs(new Date(e.opp.awardDate) - new Date(e.opp.created)) / DAY;
     }, 0);
-    avgDays = Math.round(totalDays / oppsWithDates.length);
+    avgDays = Math.round(totalDays / closed.length);
   }
 
-  var winRate = totalClosed > 0 ? Math.round((wonOpps / totalClosed) * 100) : 0;
-  var velocityData = ['awareness', 'engaged', 'proposal', 'submitted', 'award'].map(function(s, i) {
-    return { stage: s.charAt(0).toUpperCase() + s.slice(1), days: [45, 30, 21, 14, 10][i] || 7, count: stageCounts[s] || 0 };
+  // Real stage velocity: average days active opps have been in pipeline per stage
+  var activeEnriched = enriched.filter(function(e) { return e.st !== 'won' && e.st !== 'lost'; });
+  var stageVelocity = {};
+  ['awareness','engaged','proposal','submitted','award'].forEach(function(s) {
+    var inStage = activeEnriched.filter(function(e) { return e.st === s; });
+    if (!inStage.length) { stageVelocity[s] = { avgDays: 0, count: 0, stalled: 0 }; return; }
+    var totalDaysInStage = inStage.reduce(function(sum, e) { return sum + e.daysInPipeline; }, 0);
+    var stalledInStage = inStage.filter(function(e) { return e.isStalled; }).length;
+    stageVelocity[s] = {
+      avgDays: Math.round(totalDaysInStage / inStage.length),
+      count: inStage.length,
+      stalled: stalledInStage
+    };
   });
 
-  return { totalOpps: filteredOpps.length, activeOpps: filteredOpps.filter(function(o) { return o.stage !== 'won' && o.stage !== 'lost'; }).length, fyFilter: fy,
-    wonOpps: wonOpps, lostOpps: lostOpps, winRate: winRate, pipelineValue: totalPipelineValue,
-    avgDaysInPipeline: avgDays || '\u2014', stageCounts: stageCounts, stageValues: stageValues,
-    stageOrder: stageOrder, agencyData: Object.values(agencyMap).sort(function(a, b) { return b.total - a.total; }),
-    velocityData: velocityData };
+  var velocityData = ['awareness', 'engaged', 'proposal', 'submitted', 'award'].map(function(s) {
+    var sv = stageVelocity[s];
+    return { stage: s.charAt(0).toUpperCase() + s.slice(1), days: sv.avgDays, count: sv.count, stalled: sv.stalled };
+  });
+
+  // Meeting coverage stats
+  var totalMeetings = 0, oppsWithMeetings = 0;
+  activeEnriched.forEach(function(e) {
+    totalMeetings += e.mtg.count;
+    if (e.mtg.count > 0) oppsWithMeetings++;
+  });
+  var avgMtgPerOpp = activeEnriched.length ? (totalMeetings / activeEnriched.length).toFixed(1) : 0;
+  var stalledTotal = activeEnriched.filter(function(e) { return e.isStalled; }).length;
+
+  // Waterfall motion data: by stage, what's healthy vs amber vs red
+  var stageMotion = {};
+  ['awareness','engaged','proposal','submitted','award'].forEach(function(s) {
+    var inStage = activeEnriched.filter(function(e) { return e.st === s; });
+    stageMotion[s] = {
+      green: inStage.filter(function(e) { return e.health === 'green'; }).length,
+      amber: inStage.filter(function(e) { return e.health === 'amber'; }).length,
+      red:   inStage.filter(function(e) { return e.health === 'red'; }).length,
+      value: inStage.reduce(function(sum, e) { return sum + e.val; }, 0),
+      opps:  inStage
+    };
+  });
+
+  var winRate = totalClosed > 0 ? Math.round((wonOpps / totalClosed) * 100) : 0;
+
+  return {
+    totalOpps: filteredOpps.length, fyFilter: fy,
+    activeOpps: activeEnriched.length,
+    wonOpps: wonOpps, lostOpps: lostOpps, winRate: winRate,
+    pipelineValue: totalPipelineValue,
+    avgDaysInPipeline: avgDays || null,
+    stageCounts: stageCounts, stageValues: stageValues, stageOrder: stageOrder,
+    agencyData: Object.values(agencyMap).sort(function(a, b) { return b.total - a.total; }),
+    velocityData: velocityData,
+    stageMotion: stageMotion,
+    stalledTotal: stalledTotal,
+    avgMtgPerOpp: avgMtgPerOpp,
+    enrichedActive: activeEnriched,
+    totalMeetings: totalMeetings
+  };
 }
 
 function _renderStageTable(stats) {
