@@ -4224,6 +4224,489 @@ input[type="url"], textarea, select {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   CORSAIR DETAIL LAYER — Right-pane pursuit dossier
+   Operator-grade rebuild of the renderOppDetail visual surface, plus
+   class lifts for the legacy .card / .opp-detail-hdr / .board-kpi /
+   .export-btn / .irow / .ctitle markup the renderer still emits.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── First-screen header block ── */
+.cop-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.cop-detail-header-info { flex: 1; min-width: 0; }
+.cop-detail-name {
+  font-family: var(--font-sub);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  color: var(--bone);
+  line-height: 1.15;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+.cop-detail-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.cop-detail-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  border: 1px solid;
+  border-radius: 1px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cop-detail-tag--stage { color: var(--stage-c, var(--gold)); border-color: var(--stage-c, var(--gold)); }
+.cop-detail-tag--agency { color: #9cc5ed; border-color: rgba(91,143,196,0.45); background: rgba(91,143,196,0.06); }
+.cop-detail-tag--vehicle { color: var(--gold); border-color: rgba(212,130,58,0.45); background: rgba(212,130,58,0.06); }
+.cop-detail-tag--value { color: #6ed094; border-color: rgba(58,138,92,0.45); background: rgba(58,138,92,0.06); }
+
+/* ── Header action buttons (Prep, Brief, Teaming, Proposal, Export, Delete) ── */
+.cop-detail-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.export-btn,
+.cop-detail-actions button {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.16em !important;
+  text-transform: uppercase !important;
+  padding: 6px 11px !important;
+  border-radius: 1px !important;
+  border-width: 1px !important;
+  cursor: pointer;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1) !important;
+  background: transparent;
+}
+.export-btn:hover {
+  background: rgba(212,130,58,0.10) !important;
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+}
+
+/* Stage select in the header — kill the legacy chrome */
+.cop-detail-actions select#opp-stage-edit {
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  letter-spacing: 0.12em !important;
+  text-transform: uppercase !important;
+  padding: 6px 9px !important;
+  border-radius: 1px !important;
+  background: rgba(10,16,32,0.6) !important;
+  border: 1px solid var(--rule-2) !important;
+  color: var(--text) !important;
+}
+
+/* ── Pipeline progression bar (rebuilt) ── */
+.cop-detail-pipeline {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  margin: 6px 0 18px;
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+}
+.cop-detail-pipe-step {
+  background: rgba(10,16,32,0.85);
+  border: none;
+  padding: 9px 4px 8px;
+  text-align: center;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--paper-2);
+  line-height: 1.25;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+  position: relative;
+  overflow: hidden;
+}
+.cop-detail-pipe-step:hover {
+  background: rgba(20,28,48,0.95);
+  color: var(--text);
+}
+.cop-detail-pipe-step.past {
+  background: rgba(20,28,48,0.5);
+  color: var(--paper);
+}
+.cop-detail-pipe-step.past::before {
+  content: '✓';
+  font-size: 9px;
+  margin-right: 3px;
+  opacity: 0.75;
+}
+.cop-detail-pipe-step.current {
+  background: var(--stage-c, var(--gold));
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 0 14px var(--stage-c, var(--gold));
+}
+.cop-detail-pipe-step.won {
+  background: #3a8a5c;
+  color: #fff;
+  letter-spacing: 0.18em;
+}
+.cop-detail-pipe-step.lost {
+  background: #b34040;
+  color: #fff;
+  letter-spacing: 0.18em;
+}
+
+/* ── Win-probability gauge card ── */
+.cop-detail-winprob {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(160deg, rgba(13,20,38,0.92), rgba(7,13,24,0.96));
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--gold);
+  border-radius: 1px;
+}
+.cop-winprob-gauge { flex-shrink: 0; text-align: center; }
+.cop-winprob-gauge svg { display: block; }
+.cop-winprob-gauge-lbl {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+.cop-winprob-body { flex: 1; min-width: 0; }
+.cop-winprob-headline {
+  font-family: var(--font-sub);
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: 0.005em;
+}
+.cop-winprob-factors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.cop-winprob-factor {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid;
+  border-radius: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.cop-winprob-gaps {
+  flex-shrink: 0;
+  border-left: 1px solid var(--rule);
+  padding-left: 18px;
+  max-width: 220px;
+}
+.cop-winprob-gaps-lbl {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: #ff8080;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.cop-winprob-gap-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  line-height: 1.45;
+}
+.cop-winprob-gap-row::before {
+  content: '!';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  background: rgba(179,64,64,0.18);
+  color: #ff8080;
+  border: 1px solid rgba(179,64,64,0.5);
+  border-radius: 1px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+/* ── Contact health strip — operator-grade person cards ── */
+.cop-detail-contacts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1px;
+  margin-bottom: 14px;
+  padding: 0;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--gold);
+  border-radius: 1px;
+}
+.cop-detail-contacts-hdr {
+  grid-column: 1 / -1;
+  background: rgba(13,20,38,0.92);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: var(--gold);
+  text-transform: uppercase;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.cop-detail-contact {
+  background: rgba(10,16,32,0.85);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 140ms cubic-bezier(.2,.6,.2,1);
+  border-left: 2px solid var(--stage-c, var(--paper-3));
+  min-width: 0;
+}
+.cop-detail-contact:hover {
+  background: rgba(20,28,48,0.95);
+  box-shadow: inset 0 0 0 1px rgba(212,130,58,0.25);
+}
+.cop-detail-contact-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bone);
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cop-detail-contact-role {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper);
+  margin-bottom: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cop-detail-contact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.cop-detail-contact-health {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.cop-detail-contact-days {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+}
+.cop-detail-contact-stance {
+  font-size: 10px;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.005em;
+}
+
+/* ── Timing cards (RFP / Award) ── */
+.cop-detail-timing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  margin-bottom: 12px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+}
+.cop-detail-timing-card {
+  background: rgba(10,16,32,0.85);
+  padding: 12px 14px;
+  position: relative;
+}
+.cop-detail-timing-lbl {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.cop-detail-timing-date {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--bone);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  margin-bottom: 3px;
+}
+.cop-detail-timing-delta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.cop-detail-timing-delta--critical { color: #ff6464; }
+.cop-detail-timing-delta--warn { color: #f0a560; }
+.cop-detail-timing-delta--ok { color: var(--paper); }
+.cop-detail-timing-delta--past { color: #ff6464; }
+.cop-detail-timing-fy {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  border-radius: 1px;
+  border: 1px solid;
+}
+
+/* ── KPI tiles (lifted from .board-kpi legacy class) ── */
+.g4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  margin-bottom: 14px;
+}
+.board-kpi {
+  background: rgba(10,16,32,0.85);
+  padding: 11px 12px 10px;
+  text-align: left;
+  border-radius: 0 !important;
+}
+.board-kpi-val {
+  font-family: var(--font-display) !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.005em !important;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.board-kpi-lbl {
+  font-family: var(--font-mono) !important;
+  font-size: 8.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.22em !important;
+  color: var(--paper-2) !important;
+  text-transform: uppercase !important;
+  margin-top: 4px !important;
+}
+
+/* ── Detail-pane card system (lifts legacy .card / .card-urgent / .card-warn) ── */
+#opp-detail .card {
+  background: linear-gradient(170deg, rgba(13,20,38,0.92), rgba(7,13,24,0.96)) !important;
+  border: 1px solid var(--rule) !important;
+  border-left: 2px solid var(--rule-2) !important;
+  border-radius: 1px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 10px;
+}
+#opp-detail .card-urgent {
+  border-left-color: #b34040 !important;
+  box-shadow: inset 0 0 0 1px rgba(179,64,64,0.10);
+}
+#opp-detail .card-warn {
+  border-left-color: var(--gold) !important;
+}
+#opp-detail .card-ref {
+  border-left-color: var(--paper) !important;
+}
+#opp-detail .opp-detail-hdr,
+#opp-detail .ctitle {
+  font-family: var(--font-mono) !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.28em !important;
+  color: var(--gold) !important;
+  text-transform: uppercase !important;
+  margin-bottom: 10px !important;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+}
+#opp-detail .card-urgent .opp-detail-hdr,
+#opp-detail .card-urgent .ctitle { color: #ff8080 !important; }
+#opp-detail .card-warn .opp-detail-hdr,
+#opp-detail .card-warn .ctitle { color: var(--gold) !important; }
+
+/* Inline rows inside detail-pane cards */
+#opp-detail .irow {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(125,118,105,0.08);
+}
+#opp-detail .irow:last-child { border-bottom: none; }
+#opp-detail .irow .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+/* Inline Edit button used inside Context / Notes / Capture Lead cards */
+#opp-detail .card button[onclick*="edit"] {
+  font-family: var(--font-mono) !important;
+  font-size: 9.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.16em !important;
+  text-transform: uppercase !important;
+  padding: 4px 9px !important;
+  border-radius: 1px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   END CORSAIR DETAIL LAYER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
    END CORSAIR COP LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -11092,27 +11575,23 @@ function renderOppDetail(opp){
   var active=OPP_STAGES.filter(function(s){return s.key!=='lost';});
 
   // ── PIPELINE STAGE BAR — visual Kanban with clickable progression ──
-  var pipelineH='<div class="opp-pipeline-v2" style="display:flex;align-items:stretch;gap:4px;margin:8px 0 20px;background:rgba(7,13,24,.5);border:1px solid rgba(26,34,54,.5);border-radius:9px;padding:6px;position:relative;overflow:hidden">';
-  active.forEach(function(s,i){
-    var isDone = i < si;
-    var isCurrent = i === si;
-    var bg = isCurrent ? s.color : isDone ? "rgba(52,211,153,.18)" : "rgba(26,34,54,.3)";
-    var txt = isCurrent ? "#0b0d11" : isDone ? "var(--green)" : "var(--t3)";
-    var weight = isCurrent ? "700" : "600";
-    var arrow = i < active.length - 1;
-    pipelineH += '<button onclick="window._setOppStage(\''+opp.id+'\',\''+s.key+'\')" title="Set stage: ' + s.label + '" style="flex:1;padding:9px 6px;background:' + bg + ';border:none;border-radius:5px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:' + weight + ';color:' + txt + ';letter-spacing:.06em;text-transform:uppercase;transition:all .15s;position:relative;text-align:center;line-height:1.3' + (isCurrent ? ';box-shadow:0 0 12px ' + s.color + '60' : '') + '" onmouseover="if(!this.dataset.cur)this.style.background=\'rgba(255,255,255,.06)\'" onmouseout="if(!this.dataset.cur)this.style.background=\'' + bg + '\'" ' + (isCurrent ? 'data-cur="1"' : '') + '>'
-      + (isDone ? '<span style="margin-right:4px">\u2713</span>' : '')
+  // \u2500\u2500 Pipeline progression bar \u2014 10 stages, click to set, current glows \u2500\u2500
+  var pipelineH = '<div class="cop-detail-pipeline">';
+  OPP_STAGES.forEach(function(s, i){
+    var oi = oppStageIndex(s.key);
+    var cls = '';
+    if (s.key === 'won')  cls = (opp.stage === 'won')  ? 'won  current'  : 'won';
+    else if (s.key === 'lost') cls = (opp.stage === 'lost') ? 'lost current' : 'lost';
+    else if (oi < si) cls = 'past';
+    else if (oi === si) cls = 'current';
+    pipelineH += '<button class="cop-detail-pipe-step ' + cls + '" '
+      + 'style="--stage-c:' + s.color + '" '
+      + 'onclick="window._setOppStage(\'' + opp.id + '\',\'' + s.key + '\')" '
+      + 'title="Set stage: ' + s.label + '">'
       + s.label
       + '</button>';
-    if (arrow) pipelineH += '<div style="display:flex;align-items:center;color:var(--t3);font-size:10px;padding:0 2px;flex-shrink:0">\u203A</div>';
   });
-  // Won/Lost indicator (right side, if applicable)
-  if (opp.stage === 'won') {
-    pipelineH += '<div style="display:flex;align-items:center;justify-content:center;padding:9px 14px;background:rgba(52,211,153,.2);border-radius:5px;border:1px solid rgba(52,211,153,.4);color:var(--green);font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;margin-left:6px">\u2605 WON</div>';
-  } else if (opp.stage === 'lost') {
-    pipelineH += '<div style="display:flex;align-items:center;justify-content:center;padding:9px 14px;background:rgba(239,68,68,.15);border-radius:5px;border:1px solid rgba(239,68,68,.4);color:var(--red);font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;margin-left:6px">LOST</div>';
-  }
-  pipelineH+='</div>';
+  pipelineH += '</div>';
 
   // Get meetings tagged to this opportunity
   var taggedMtgs=meetings.filter(function(m){return(m.oppId===opp.id)||(opp.meetings||[]).includes(m.id);});
@@ -11135,43 +11614,50 @@ function renderOppDetail(opp){
   var latestPulse=pulses[pulses.length-1];
 
   var h='';
-  // Header
-  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
-  h+='<div><div style="font-size:19px;font-weight:700;margin-bottom:4px">'+opp.name+'</div>';
-  h+='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
-  if(opp.agency)h+='<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(59,130,246,.1);color:#3b82f6;border:1px solid rgba(59,130,246,.2)">'+opp.agency+'</span>';
-  if(opp.vehicle)h+='<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(212,130,58,.1);color:var(--gold);border:1px solid rgba(212,130,58,.2)">'+opp.vehicle+'</span>';
-  if(opp.value)h+='<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.2)">'+opp.value+'</span>';
-  h+='<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:'+ha(sc.color,.15)+';color:'+sc.color+';border:1px solid '+ha(sc.color,.3)+'">'+sc.label+'</span>';
+  // ── Header — operator-grade pursuit dossier title block ──
+  var nmEsc=(opp.name||'').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+  var safeNm=opp.name.replace(/'/g,"\\'");
+  h+='<div class="cop-detail-header" style="--stage-c:'+sc.color+'">';
+  h+='<div class="cop-detail-header-info">';
+  h+='<div class="cop-detail-name">'+nmEsc+'</div>';
+  h+='<div class="cop-detail-tags">';
+  h+='<span class="cop-detail-tag cop-detail-tag--stage">'+sc.label+'</span>';
+  if(opp.agency)h+='<span class="cop-detail-tag cop-detail-tag--agency">'+opp.agency+'</span>';
+  if(opp.vehicle)h+='<span class="cop-detail-tag cop-detail-tag--vehicle">'+opp.vehicle+'</span>';
+  if(opp.value)h+='<span class="cop-detail-tag cop-detail-tag--value">'+opp.value+'</span>';
   h+='</div></div>';
-  h+='<div style="display:flex;gap:6px">';
-  h+='<select id="opp-stage-edit" onchange="updateOppStage(\''+opp.id+'\')" style="font-size:11px;padding:4px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:var(--s2);color:var(--text)">';
+  h+='<div class="cop-detail-actions">';
+  h+='<select id="opp-stage-edit" onchange="updateOppStage(\''+opp.id+'\')">';
   OPP_STAGES.forEach(function(s){h+='<option value="'+s.key+'"'+(s.key===opp.stage?' selected':'')+'>'+s.label+'</option>';});
   h+='</select>';
-  h+='<button onclick="window.openMeetingPrepBrief(\'\',\''+opp.name.replace(/\'/g,"\\\'")+'\'\',\'\',\''+opp.id+'\')" class="export-btn" style="color:var(--cyan);border-color:rgba(6,182,212,.5);background:rgba(6,182,212,.06)" title="Generate meeting prep brief for this opportunity">&#10569; Prep</button>';
-  h+='<button onclick="window.openOppBriefing(\''+opp.id+'\')" class="export-btn" style="color:var(--gold);border-color:rgba(212,130,58,.5);background:rgba(212,130,58,.06)" title="Generate AI strategic briefing">\u25C6 Brief</button>';
-  h+='<button onclick="window.openTeamingIntel(\''+opp.id+'\')" class="export-btn" style="color:var(--green);border-color:rgba(34,197,94,.5);background:rgba(34,197,94,.06)" title="Find named contacts at potential teaming partners">\u2295 Teaming</button>';
-  h+='<button onclick="window.openProposalEngine(\''+opp.id+'\')" class="export-btn" style="color:var(--purple);border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.06)" title="Full proposal engine — RFP to compliance matrix to drafted sections">\u25CE Proposal</button>';
-  h+='<button onclick="exportOpportunity()" class="export-btn">&#8599; Export</button>';
-  h+='<button onclick="deleteCurrentOpp()" style="padding:4px 8px;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:11px;cursor:pointer">Delete</button>';
+  h+='<button onclick="window.openMeetingPrepBrief(\'\',\''+safeNm+'\',\'\',\''+opp.id+'\')" class="export-btn" style="color:#5fb3b8;border-color:rgba(95,179,184,0.5)" title="Generate meeting prep brief for this opportunity">PREP</button>';
+  h+='<button onclick="window.openOppBriefing(\''+opp.id+'\')" class="export-btn" style="color:var(--gold);border-color:rgba(212,130,58,0.5)" title="Generate AI strategic briefing">BRIEF</button>';
+  h+='<button onclick="window.openTeamingIntel(\''+opp.id+'\')" class="export-btn" style="color:#6ed094;border-color:rgba(58,138,92,0.5)" title="Find named contacts at potential teaming partners">TEAMING</button>';
+  h+='<button onclick="window.openProposalEngine(\''+opp.id+'\')" class="export-btn" style="color:#a98fcf;border-color:rgba(169,143,207,0.5)" title="Full proposal engine—">PROPOSAL</button>';
+  h+='<button onclick="exportOpportunity()" class="export-btn">EXPORT</button>';
+  h+='<button onclick="deleteCurrentOpp()" class="export-btn" style="color:#ff6464;border-color:rgba(179,64,64,0.5)">DELETE</button>';
   h+='</div></div>';
 
   h+=pipelineH;
 
-  // ── CONTACT HEALTH STRIP — key people on this deal + their relationship status ──
+  // ── Contact health strip — operator-grade person cards in an ink grid ──
   var stripPeople = Object.values(allPeople).slice(0, 6);
   if (stripPeople.length) {
-    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding:10px 12px;background:rgba(7,13,24,.5);border:1px solid rgba(26,34,54,.4);border-radius:8px">';
-    h += '<div style="width:100%;font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:6px">Key Contacts on This Pursuit</div>';
+    h += '<div class="cop-detail-contacts">';
+    h += '<div class="cop-detail-contacts-hdr">Key Contacts on This Pursuit &nbsp;·&nbsp; ' + stripPeople.length + '</div>';
     stripPeople.forEach(function(p) {
       var node = nodes.find(function(n){ return n.type==='person' && nameSimilarity(n.name, p.name) >= 0.75; });
       var health = (node && getMtgsForNode(node.id).length) ? computeRelHealth(node.id) : null;
       var lastStance = p.stances.length ? p.stances[p.stances.length-1].stance : null;
-      var hColor = health === null ? 'var(--t3)' : health >= 7 ? 'var(--green)' : health >= 4 ? 'var(--amber)' : 'var(--red)';
-      var sColor = !lastStance ? 'var(--t3)' :
-        lastStance.toLowerCase().match(/positive|champion|engaged|committed|enthusiastic/) ? 'var(--green)' :
-        lastStance.toLowerCase().match(/cautious|hesitant|concerned|skeptical/) ? 'var(--amber)' :
-        lastStance.toLowerCase().match(/negative|cold|opposed|blocking/) ? 'var(--red)' : 'var(--t2)';
+      var hColor = health === null ? 'var(--paper-2)' : health >= 7 ? '#6ed094' : health >= 4 ? '#f0a560' : '#ff6464';
+      var roleColor = '#b5ad9f';  // bone (contact default)
+      if (node && window._corsairBorderColor) {
+        roleColor = window._corsairBorderColor(node) || roleColor;
+      }
+      var sColor = !lastStance ? 'var(--paper-2)' :
+        lastStance.toLowerCase().match(/positive|champion|engaged|committed|enthusiastic/) ? '#6ed094' :
+        lastStance.toLowerCase().match(/cautious|hesitant|concerned|skeptical/) ? '#f0a560' :
+        lastStance.toLowerCase().match(/negative|cold|opposed|blocking/) ? '#ff6464' : 'var(--paper)';
       var daysAgo = null;
       if (node) {
         var nm = getMtgsForNode(node.id);
@@ -11181,22 +11667,22 @@ function renderOppDetail(opp){
         }
       }
       var clickAction = node ? 'switchView(\'network\');setTimeout(function(){window._panelFocusNode&&window._panelFocusNode(\'' + node.id + '\')},300)' : '';
-      h += '<div onclick="' + (clickAction || 'void(0)') + '" style="flex:1;min-width:120px;max-width:200px;padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px' + (clickAction ? ';cursor:pointer' : '') + '">';
-      h += '<div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">' + p.name + '</div>';
-      h += '<div style="font-size:9px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:5px">' + (p.role || '') + '</div>';
-      h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
+      h += '<div class="cop-detail-contact" style="--stage-c:' + roleColor + '" onclick="' + (clickAction || 'void(0)') + '">';
+      h += '<div class="cop-detail-contact-name">' + p.name + '</div>';
+      h += '<div class="cop-detail-contact-role">' + (p.role || '— role unknown —') + '</div>';
+      h += '<div class="cop-detail-contact-row">';
       if (health !== null) {
-        h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;color:' + hColor + '">' + health.toFixed(1) + '</span>';
+        h += '<span class="cop-detail-contact-health" style="color:' + hColor + '">' + health.toFixed(1) + '</span>';
       } else {
-        h += '<span style="font-size:9px;color:var(--t3)">new</span>';
+        h += '<span class="cop-detail-contact-health" style="color:var(--paper-2)">NEW</span>';
       }
       if (daysAgo !== null) {
-        var dColor = daysAgo <= 14 ? 'var(--green)' : daysAgo <= 45 ? 'var(--amber)' : 'var(--red)';
-        h += '<span style="font-size:9px;color:' + dColor + '">' + daysAgo + 'd ago</span>';
+        var dColor = daysAgo <= 14 ? '#6ed094' : daysAgo <= 45 ? '#f0a560' : '#ff6464';
+        h += '<span class="cop-detail-contact-days" style="color:' + dColor + '">' + daysAgo + 'D AGO</span>';
       }
       h += '</div>';
       if (lastStance) {
-        h += '<div style="font-size:9px;color:' + sColor + ';margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + lastStance + '">' + lastStance.slice(0,30) + '</div>';
+        h += '<div class="cop-detail-contact-stance" style="color:' + sColor + '" title="' + lastStance.replace(/"/g,'&quot;') + '">' + lastStance.slice(0,40) + '</div>';
       }
       h += '</div>';
     });
@@ -11204,65 +11690,77 @@ function renderOppDetail(opp){
   }
 
   // ── WIN PROBABILITY ─────────────────────────────────────────
+  // ── Win-probability gauge — cinematic card with factor pills + gap callouts ──
   var winProb=computeWinProb(opp,taggedMtgs,allPeople,allRisks);
   var probScore=winProb.score;
-  var probColor=probScore>=65?'var(--green)':probScore>=35?'var(--amber)':'var(--red)';
+  var probColor=probScore>=65?'#6ed094':probScore>=35?'#f0a560':'#ff6464';
   var probLabel=probScore>=65?'Strong position':probScore>=35?'Competitive':probScore<20?'At risk':'Developing';
-  h+='<div style="margin-bottom:14px;padding:12px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);display:flex;align-items:center;gap:16px">';
-  // Probability gauge
-  h+='<div style="flex-shrink:0;text-align:center">';
-  var gaugeCircumference=2*Math.PI*18;
+  h+='<div class="cop-detail-winprob">';
+  // Gauge
+  h+='<div class="cop-winprob-gauge">';
+  var gaugeCircumference=2*Math.PI*22;
   var gaugeDash=(probScore/100)*gaugeCircumference;
-  h+='<svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="18" fill="none" stroke="var(--b1)" stroke-width="4"/>';
-  h+='<circle cx="26" cy="26" r="18" fill="none" stroke="'+probColor+'" stroke-width="4" stroke-dasharray="'+gaugeDash+' '+gaugeCircumference+'" stroke-linecap="round" transform="rotate(-90 26 26)"/>';
-  h+='<text x="26" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="'+probColor+'" font-family="IBM Plex Mono,monospace">'+probScore+'%</text></svg>';
-  h+='<div style="font-size:8px;color:var(--t3);margin-top:-2px;letter-spacing:0.05em;font-family:\'IBM Plex Mono\',monospace">WIN PROB</div>';
+  h+='<svg width="68" height="68" viewBox="0 0 68 68"><circle cx="34" cy="34" r="22" fill="none" stroke="rgba(125,118,105,0.18)" stroke-width="5"/>';
+  h+='<circle cx="34" cy="34" r="22" fill="none" stroke="'+probColor+'" stroke-width="5" stroke-dasharray="'+gaugeDash+' '+gaugeCircumference+'" stroke-linecap="round" transform="rotate(-90 34 34)" style="filter:drop-shadow(0 0 6px '+probColor+'88)"/>';
+  h+='<text x="34" y="40" text-anchor="middle" font-size="18" font-weight="700" fill="'+probColor+'" font-family="Big Shoulders Display,sans-serif" letter-spacing="-0.02em">'+probScore+'</text></svg>';
+  h+='<div class="cop-winprob-gauge-lbl">PWIN</div>';
   h+='</div>';
-  // Score breakdown
-  h+='<div style="flex:1">';
-  h+='<div style="font-size:13px;font-weight:600;color:'+probColor+';margin-bottom:6px">'+probLabel+'</div>';
-  h+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  // Headline + factor pills
+  h+='<div class="cop-winprob-body">';
+  h+='<div class="cop-winprob-headline" style="color:'+probColor+'">'+probLabel+'</div>';
+  h+='<div class="cop-winprob-factors">';
   winProb._factors&&winProb._factors.forEach(function(f){
-    h+='<div style="font-size:10px;padding:2px 7px;border-radius:10px;background:'+ha(f.color,.12)+';color:'+f.color+';border:1px solid '+ha(f.color,.25)+'">'+f.label+': '+f.value+'</div>';
+    h+='<div class="cop-winprob-factor" style="color:'+f.color+';border-color:'+f.color+'66;background:'+ha(f.color,0.10)+'">'+f.label+': '+f.value+'</div>';
   });
   h+='</div></div>';
-  // Gap analysis inline
+  // Gap analysis
   var gaps=computeNetworkGaps(opp,allPeople);
   if(gaps.length){
-    h+='<div style="flex-shrink:0;border-left:1px solid var(--b1);padding-left:16px">';
-    h+='<div style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px">Network Gaps</div>';
+    h+='<div class="cop-winprob-gaps">';
+    h+='<div class="cop-winprob-gaps-lbl">Network Gaps</div>';
     gaps.slice(0,3).forEach(function(g){
-      h+='<div style="font-size:10px;color:var(--red);margin-bottom:3px;display:flex;gap:5px;align-items:flex-start">';
-      h+='<span style="flex-shrink:0">⚬</span><span>'+g+'</span></div>';
+      h+='<div class="cop-winprob-gap-row">'+g+'</div>';
     });
     h+='</div>';
   }
   h+='</div>';
   if(opp.rfpDate||opp.awardDate){
     var now=new Date();now.setHours(0,0,0,0);
-    h+='<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
+    // ── Timing cards — RFP and Award dates with delta + FY indicators ──
+    function _timingDeltaCls(d, warnThresh){
+      if (d < 0) return 'past';
+      if (d <= 7) return 'critical';
+      if (d <= (warnThresh || 30)) return 'warn';
+      return 'ok';
+    }
+    function _timingDeltaTxt(d){
+      if (d < 0) return Math.abs(d) + 'd past';
+      if (d === 0) return 'today';
+      return d + 'd out';
+    }
+    h+='<div class="cop-detail-timing">';
     if(opp.rfpDate){
       var rfp=new Date(opp.rfpDate+'T00:00:00');
       var rfpDiff=Math.round((rfp-now)/86400000);
       var rfpFY=getFYInfo(opp.rfpDate);
-      h+='<div style="padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm)">';
-      h+='<div style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">RFP / Solicitation</div>';
-      h+='<div style="font-size:13px;font-weight:600">'+opp.rfpDate+'</div>';
-      h+='<div style="font-size:10px;color:'+(rfpDiff<0?'var(--red)':rfpDiff<30?'var(--amber)':'var(--t2)')+'">'+( rfpDiff<0?Math.abs(rfpDiff)+'d past':rfpDiff===0?'TODAY':rfpDiff+'d away')+'</div>';
-      if(rfpFY)h+='<div style="font-size:9px;margin-top:3px;padding:1px 5px;background:'+rfpFY.color.replace(')',', .12)').replace('var(','rgba(').replace('--red','239,68,68').replace('--amber','245,158,11').replace('--gold','201,162,39').replace('--blue','59,130,246').replace('--t2','107,114,128')+';color:'+rfpFY.color+';border-radius:3px;display:inline-block;font-family:\'IBM Plex Mono\',monospace">'+rfpFY.fullLabel+'</div>';
+      h+='<div class="cop-detail-timing-card">';
+      h+='<div class="cop-detail-timing-lbl">RFP / Solicitation</div>';
+      h+='<div class="cop-detail-timing-date">'+opp.rfpDate+'</div>';
+      h+='<div class="cop-detail-timing-delta cop-detail-timing-delta--'+_timingDeltaCls(rfpDiff,30)+'">'+_timingDeltaTxt(rfpDiff)+'</div>';
+      if(rfpFY)h+='<div class="cop-detail-timing-fy" style="color:'+rfpFY.color+';border-color:'+rfpFY.color+'66;background:'+ha(rfpFY.color,0.10)+'">'+rfpFY.fullLabel+'</div>';
       h+='</div>';
     }
     if(opp.awardDate){
       var aw=new Date(opp.awardDate+'T00:00:00');
       var awDiff=Math.round((aw-now)/86400000);
       var awFY=getFYInfo(opp.awardDate);
-      h+='<div style="padding:8px 12px;background:var(--s2);border:1px solid '+(awFY&&awFY.fq===4?awFY.color:'var(--b1)')+';border-radius:var(--rsm)">';
-      h+='<div style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">Award Date</div>';
-      h+='<div style="font-size:13px;font-weight:600">'+opp.awardDate+'</div>';
-      h+='<div style="font-size:10px;color:'+(awDiff<0?'var(--red)':awDiff<60?'var(--amber)':'var(--t2)')+'">'+( awDiff<0?Math.abs(awDiff)+'d past':awDiff===0?'TODAY':awDiff+'d away')+'</div>';
+      h+='<div class="cop-detail-timing-card">';
+      h+='<div class="cop-detail-timing-lbl">Award Date</div>';
+      h+='<div class="cop-detail-timing-date">'+opp.awardDate+'</div>';
+      h+='<div class="cop-detail-timing-delta cop-detail-timing-delta--'+_timingDeltaCls(awDiff,60)+'">'+_timingDeltaTxt(awDiff)+'</div>';
       if(awFY){
-        h+='<div style="font-size:9px;margin-top:3px;font-family:\'IBM Plex Mono\',monospace;font-weight:600;color:'+awFY.color+'">'+awFY.fullLabel+(awFY.fq===4?' ⚡':'')+'</div>';
-        h+='<div style="font-size:9px;color:var(--t3);margin-top:1px;line-height:1.3">'+awFY.context.split('—')[0].trim()+'</div>';
+        var fyExtra=(awFY.fq===4?' &nbsp;·&nbsp; EOFY':'');
+        h+='<div class="cop-detail-timing-fy" style="color:'+awFY.color+';border-color:'+awFY.color+'66;background:'+ha(awFY.color,0.10)+'">'+awFY.fullLabel+fyExtra+'</div>';
       }
       h+='</div>';
     }
