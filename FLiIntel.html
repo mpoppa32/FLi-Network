@@ -3921,6 +3921,56 @@ input[type="url"], textarea, select {
   box-shadow: 0 0 0 1px #fff, 0 0 6px #fff;
 }
 
+/* Pivot chip — applied when COP filter is set by a team member from the
+   TEAM view capture-load badge. Always active with a dismiss × */
+.cop-filter-chip--pivot {
+  background: rgba(91,143,196,0.15);
+  border-color: rgba(91,143,196,0.55);
+  color: #9cc5ed;
+}
+.cop-filter-chip--pivot:hover {
+  background: rgba(91,143,196,0.25);
+  border-color: #5b8fc4;
+  color: #fff;
+}
+.cop-filter-chip--pivot.active {
+  background: #5b8fc4;
+  color: #fff;
+  border-color: #5b8fc4;
+  box-shadow: 0 0 14px rgba(91,143,196,0.4);
+}
+.cop-filter-chip--pivot.active:hover { background: #6f9fd0; }
+
+/* ── Team-view capture-load badge (per member) ── */
+.team-cap-load {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--gold);
+  background: rgba(212,130,58,0.10);
+  border: 1px solid rgba(212,130,58,0.42);
+  padding: 3px 7px;
+  border-radius: 1px;
+  flex-shrink: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+}
+.team-cap-load:hover {
+  background: rgba(212,130,58,0.22);
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(212,130,58,0.28);
+  color: var(--bone);
+}
+.team-cap-load--zero {
+  color: var(--paper-3);
+  background: transparent;
+  border-color: var(--rule);
+  cursor: default;
+}
+.team-cap-load--zero:hover { background: transparent; border-color: var(--rule); box-shadow: none; }
+
 /* ── Section header (ACTIVE PURSUITS · BY URGENCY) ── */
 .cop-section-lbl {
   font-family: var(--font-mono);
@@ -10269,19 +10319,36 @@ function renderOppSidebar(){
   var q=(document.getElementById('opp-search-inp')||{}).value||'';
   _renderOppList(q);
 }
-var _copFilters = window._copFilters || { mineOnly: false, unassignedOnly: false };
+var _copFilters = window._copFilters || { mineOnly: false, unassignedOnly: false, byLead: null };
 window._copFilters = _copFilters;
 
 window._copToggleMineOnly = function(){
   _copFilters.mineOnly = !_copFilters.mineOnly;
-  if (_copFilters.mineOnly) _copFilters.unassignedOnly = false;  // mutually exclusive
+  if (_copFilters.mineOnly) { _copFilters.unassignedOnly = false; _copFilters.byLead = null; }
   if (typeof renderOppSidebar === 'function') renderOppSidebar();
 };
 
 window._copToggleUnassignedOnly = function(){
   _copFilters.unassignedOnly = !_copFilters.unassignedOnly;
-  if (_copFilters.unassignedOnly) _copFilters.mineOnly = false;  // mutually exclusive
+  if (_copFilters.unassignedOnly) { _copFilters.mineOnly = false; _copFilters.byLead = null; }
   if (typeof renderOppSidebar === 'function') renderOppSidebar();
+};
+
+window._copClearByLead = function(){
+  _copFilters.byLead = null;
+  if (typeof renderOppSidebar === 'function') renderOppSidebar();
+};
+
+// Cross-view bridge from the TEAM view capture-load badge
+window._teamFilterCOPByLead = function(name){
+  if (!name) return;
+  _copFilters.byLead = name;
+  _copFilters.mineOnly = false;
+  _copFilters.unassignedOnly = false;
+  if (typeof switchView === 'function') switchView('opps');
+  setTimeout(function(){
+    if (typeof renderOppSidebar === 'function') renderOppSidebar();
+  }, 50);
 };
 
 function _copIsMine(o){
@@ -10311,15 +10378,25 @@ function _renderOppList(q){
   var unassignedCount = opportunities.filter(_copIsUnassigned).length;
   if (_copFilters.mineOnly) filtered = filtered.filter(_copIsMine);
   if (_copFilters.unassignedOnly) filtered = filtered.filter(_copIsUnassigned);
+  if (_copFilters.byLead) {
+    var bylc = _copFilters.byLead.toLowerCase().trim();
+    filtered = filtered.filter(function(o){
+      var lead = ((o.captureLead || o.lead) || '').toLowerCase().trim();
+      return lead === bylc;
+    });
+  }
   if(!filtered.length){
     var emptyMsg = _copFilters.mineOnly
       ? 'No pursuits assigned to you' + (q ? ' (matching filter)' : '')
       : _copFilters.unassignedOnly
         ? 'Every pursuit has a capture lead'
-        : (q ? 'No matching pursuits' : 'No pursuits yet');
+        : _copFilters.byLead
+          ? 'No pursuits owned by ' + _copFilters.byLead
+          : (q ? 'No matching pursuits' : 'No pursuits yet');
     var chipBar = '<div class="cop-filter-bar">'
       + '<button class="cop-filter-chip' + (_copFilters.mineOnly?' active':'') + '" onclick="_copToggleMineOnly()" type="button"><span class="cop-filter-dot"></span>MINE ONLY' + (mineCount ? ' · ' + mineCount : '') + '</button>'
       + (unassignedCount ? '<button class="cop-filter-chip cop-filter-chip--danger' + (_copFilters.unassignedOnly?' active':'') + '" onclick="_copToggleUnassignedOnly()" type="button"><span class="cop-filter-dot"></span>UNASSIGNED · ' + unassignedCount + '</button>' : '')
+      + (_copFilters.byLead ? '<button class="cop-filter-chip cop-filter-chip--pivot active" onclick="_copClearByLead()" type="button">OWNED BY ' + (_copFilters.byLead || '').toUpperCase() + ' &nbsp;×</button>' : '')
       + '</div>';
     list.innerHTML = chipBar + '<div style="padding:36px 14px;text-align:center;font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:0.14em;text-transform:uppercase">'+emptyMsg+'</div>';
     return;
@@ -10466,13 +10543,14 @@ function _renderOppList(q){
   }
   h += '</div>';
 
-  // Filter chip row — MINE ONLY + UNASSIGNED toggles (mutually exclusive)
+  // Filter chip row — MINE ONLY + UNASSIGNED + by-lead pivot chip
   h += '<div class="cop-filter-bar">'
     + '<button class="cop-filter-chip' + (_copFilters.mineOnly ? ' active' : '') + '" onclick="_copToggleMineOnly()" type="button">'
     +   '<span class="cop-filter-dot"></span>'
     +   'MINE ONLY' + (mineCount ? ' · ' + mineCount : '')
     + '</button>'
     + (unassignedCount ? '<button class="cop-filter-chip cop-filter-chip--danger' + (_copFilters.unassignedOnly ? ' active' : '') + '" onclick="_copToggleUnassignedOnly()" type="button"><span class="cop-filter-dot"></span>UNASSIGNED · ' + unassignedCount + '</button>' : '')
+    + (_copFilters.byLead ? '<button class="cop-filter-chip cop-filter-chip--pivot active" onclick="_copClearByLead()" type="button" title="Clear filter"><span class="cop-filter-dot"></span>OWNED BY ' + (_copFilters.byLead || '').toUpperCase() + ' &nbsp;×</button>' : '')
     + '</div>';
 
   if (active.length) {
@@ -19536,6 +19614,24 @@ async function renderTeamView() {
 
   _teamViewData = { members: members, memberMap: memberMap };
 
+  // Capture-load per member \u2014 count active pursuits where captureLead
+  // matches the member name (case-insensitive). Closed pursuits (won/lost)
+  // don't count toward live ownership load.
+  var capLoadByUid = {};
+  var nameToUid = {};
+  members.forEach(function(m){
+    capLoadByUid[m.uid] = 0;
+    if (m.name) nameToUid[m.name.toLowerCase().trim()] = m.uid;
+  });
+  (opportunities || []).forEach(function(o){
+    if (!o) return;
+    if (o.stage === 'won' || o.stage === 'lost') return;
+    var lead = ((o.captureLead || o.lead) || '').toLowerCase().trim();
+    if (!lead) return;
+    var uid = nameToUid[lead];
+    if (uid && capLoadByUid[uid] !== undefined) capLoadByUid[uid]++;
+  });
+
   // Sidebar
   var sh = '<div style="font-family:IBM Plex Mono,monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);padding:4px 6px 8px">Team Members</div>';
   members.forEach(function(m) {
@@ -19546,12 +19642,19 @@ async function renderTeamView() {
     var imgHtml = m.photo
       ? '<img src="' + m.photo + '" style="width:30px;height:30px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--b2)">'
       : '<div style="width:30px;height:30px;border-radius:50%;background:var(--b1);border:1.5px solid var(--b2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--gold);flex-shrink:0">' + ini + '</div>';
+    var capLoad = capLoadByUid[m.uid] || 0;
+    var safeName = (m.name || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    var capBadge = capLoad > 0
+      ? '<button class="team-cap-load" onclick="event.stopPropagation();window._teamFilterCOPByLead&&window._teamFilterCOPByLead(\'' + safeName + '\')" title="View pursuits owned by ' + safeName + ' in the COP">' + capLoad + ' CAPTURE' + (capLoad === 1 ? '' : 'S') + '</button>'
+      : '<div class="team-cap-load team-cap-load--zero" title="No pursuits assigned">\u2014 NONE \u2014</div>';
     sh += '<div style="display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:6px">'
       + imgHtml
       + '<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
       + m.name + (isMe ? ' <span style="font-size:9px;color:var(--t3)">(you)</span>' : '') + '</div>'
       + '<div style="font-size:9px;color:var(--t3)">' + bucket.meetings.length + ' mtgs \u00b7 ' + bucket.contacts.size + ' contacts</div>'
-      + '</div></div>';
+      + '</div>'
+      + capBadge
+      + '</div>';
   });
   sidebar.innerHTML = sh;
 
