@@ -7457,6 +7457,7 @@ input[type="url"], textarea, select {
           <button onclick="closeModal('user-modal');var b=document.getElementById('nav-export-btn');if(b)b.click();" style="padding:9px 8px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;color:var(--t2);font-size:10px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;text-align:center;transition:border-color 140ms" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--b1)'">Export</button>
           <button onclick="closeModal('user-modal');var b=document.getElementById('nav-import-trigger');if(b)b.click();" style="padding:9px 8px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;color:var(--t2);font-size:10px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;text-align:center;transition:border-color 140ms" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--b1)'">Restore</button>
           <button onclick="closeModal('user-modal');var b=document.getElementById('nav-share-btn');if(b)b.click();" style="padding:9px 8px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;color:var(--t2);font-size:10px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;text-align:center;transition:border-color 140ms" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--b1)'">Share</button>
+          <button onclick="closeModal('user-modal');window.openCsvImport();" style="padding:9px 8px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;color:var(--t2);font-size:10px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;text-align:center;transition:border-color 140ms" onmouseover="this.style.borderColor='#4ecdc4'" onmouseout="this.style.borderColor='var(--b1)'">CSV Import</button>
         </div>
       </div>
 
@@ -7753,6 +7754,9 @@ input[type="url"], textarea, select {
   <div class="mob-drawer-item" onclick="closeMobDrawer();document.getElementById('nav-import-file').click()">
     <span class="di-icon">📥</span><span>Restore from Backup</span>
   </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();window.openCsvImport()">
+    <span class="di-icon">📋</span><span>CSV Import</span>
+  </div>
   <div class="mob-drawer-item" onclick="closeMobDrawer();showMembers()">
     <span class="di-icon">👥</span><span>Members</span>
   </div>
@@ -7799,6 +7803,41 @@ input[type="url"], textarea, select {
     </div>
   </div>
 </div>
+
+<!-- CSV IMPORT MODAL -->
+<div class="overlay" id="csv-import-modal" style="display:none">
+  <div class="modal" style="max-width:560px;max-height:85vh;overflow-y:auto;padding:0;background:linear-gradient(180deg,rgba(10,16,32,.98),rgba(7,13,24,.98));border:1px solid rgba(212,130,58,.15)">
+    <div style="padding:20px 24px 14px;border-bottom:1px solid var(--b1)">
+      <div style="font-family:'Big Shoulders Display',sans-serif;font-size:22px;font-weight:800;color:var(--bone);letter-spacing:.02em">CSV Import</div>
+      <div style="font-size:11px;color:var(--t3);margin-top:4px">Import opportunities or contacts from a CSV file</div>
+    </div>
+    <div style="padding:16px 24px 20px">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button id="csv-type-opps" onclick="window._csvSetType('opportunities')" style="flex:1;padding:10px 12px;background:rgba(212,130,58,.12);border:2px solid var(--gold);border-radius:2px;color:var(--gold);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.1em;text-transform:uppercase">Opportunities</button>
+        <button id="csv-type-contacts" onclick="window._csvSetType('contacts')" style="flex:1;padding:10px 12px;background:var(--s1);border:2px solid var(--b1);border-radius:2px;color:var(--t2);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.1em;text-transform:uppercase">Contacts</button>
+      </div>
+      <div id="csv-drop-zone" style="border:2px dashed var(--b2);border-radius:2px;padding:28px 16px;text-align:center;cursor:pointer;transition:border-color 160ms;margin-bottom:14px" ondragover="event.preventDefault();this.style.borderColor='var(--gold)'" ondragleave="this.style.borderColor='var(--b2)'" ondrop="event.preventDefault();this.style.borderColor='var(--b2)';window._csvHandleFile(event.dataTransfer.files[0])" onclick="document.getElementById('csv-file-inp').click()">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:6px">Drop CSV here or click to browse</div>
+        <div id="csv-file-name" style="font-size:12px;color:var(--gold);display:none"></div>
+        <input type="file" id="csv-file-inp" accept=".csv,.txt" style="display:none" onchange="window._csvHandleFile(this.files[0])">
+      </div>
+      <div id="csv-field-map" style="display:none;margin-bottom:14px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span style="width:3px;height:12px;background:var(--gold);border-radius:1px"></span>Column Mapping</div>
+        <div id="csv-map-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px"></div>
+      </div>
+      <div id="csv-preview" style="display:none;margin-bottom:14px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--amber);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span style="width:3px;height:12px;background:var(--amber);border-radius:1px"></span>Preview (<span id="csv-row-count">0</span> rows)</div>
+        <div id="csv-preview-table" style="overflow-x:auto;max-height:200px;overflow-y:auto;border:1px solid var(--b1);border-radius:2px"></div>
+      </div>
+      <div id="csv-import-status" style="font-size:11px;color:var(--t3);margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="closeModal('csv-import-modal');window._csvReset()">Cancel</button>
+        <button class="btn btn-gold" id="csv-import-btn" onclick="window._csvDoImport()" style="display:none">Import</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- CAPTURE LEAD PICKER MODAL -->
 <div class="overlay" id="lead-picker-modal" style="display:none">
   <div class="modal" style="max-width:380px">
@@ -16949,6 +16988,247 @@ async function importData(event){var file=event.target.files[0];if(!file)return;
         for(var ri=0;ri<newCR.length;ri++){calibrationRecords.push(newCR[ri]);try{await fbSet(wsPath('calibration/'+newCR[ri].id),newCR[ri]);}catch(e){}}
       }
       toast('Import complete');}catch(err){console.error(err);toast('Import failed: '+(err.message||'Could not read file'));}};reader.onerror=function(){toast('Could not read file');};reader.readAsText(file);event.target.value='';}
+
+// ── CSV IMPORT ENGINE ──────────────────────────────────────────────────
+(function(){
+  var _csvType='opportunities';
+  var _csvHeaders=[];
+  var _csvRows=[];
+  var _csvMappings={};
+
+  var OPP_FIELDS=[
+    {key:'name',label:'Name',required:true},
+    {key:'agency',label:'Agency / Customer'},
+    {key:'vehicle',label:'Contract Vehicle'},
+    {key:'value',label:'Est. Value'},
+    {key:'stage',label:'Stage'},
+    {key:'rfpDate',label:'RFP Date'},
+    {key:'awardDate',label:'Award Date'},
+    {key:'captureLead',label:'Capture Lead'},
+    {key:'notes',label:'Notes'}
+  ];
+  var CONTACT_FIELDS=[
+    {key:'name',label:'Name',required:true},
+    {key:'type',label:'Type (person/company/government)'},
+    {key:'role',label:'Role / Title'},
+    {key:'org',label:'Organization'},
+    {key:'govType',label:'Gov Type'},
+    {key:'priority',label:'Priority (1=T1, 2=T2)'},
+    {key:'notes',label:'Notes'}
+  ];
+
+  var STAGE_ALIASES={'opportunity id':'awareness','qualify':'tracking','capture planning':'engaged','capture':'engaged','bid decision':'rfp','proposal':'proposal','final proposal':'negotiation','submitted':'submitted','evaluation':'award','award':'award','won':'won','lost':'lost','no-bid':'lost','no bid':'lost','awareness':'awareness','tracking':'tracking','engaged':'engaged','rfp':'rfp','negotiation':'negotiation'};
+
+  function parseCSV(text){
+    var lines=[];var cur='';var inQ=false;
+    for(var i=0;i<text.length;i++){
+      var ch=text[i];
+      if(ch==='"'){if(inQ&&text[i+1]==='"'){cur+='"';i++;}else{inQ=!inQ;}
+      }else if(ch==='\n'&&!inQ){lines.push(cur);cur='';}
+      else if(ch==='\r'&&!inQ){if(text[i+1]==='\n')i++;lines.push(cur);cur='';}
+      else{cur+=ch;}
+    }
+    if(cur)lines.push(cur);
+    return lines.map(function(line){
+      var cells=[];var c='';var q=false;
+      for(var j=0;j<line.length;j++){
+        var x=line[j];
+        if(x==='"'){if(q&&line[j+1]==='"'){c+='"';j++;}else{q=!q;}
+        }else if(x===','&&!q){cells.push(c.trim());c='';}
+        else{c+=x;}
+      }
+      cells.push(c.trim());
+      return cells;
+    });
+  }
+
+  function autoMap(headers,fields){
+    var map={};
+    fields.forEach(function(f){
+      var best=-1;
+      var kl=f.key.toLowerCase();
+      var ll=f.label.toLowerCase().split(/[\s\/()]+/);
+      for(var i=0;i<headers.length;i++){
+        var h=headers[i].toLowerCase().replace(/[^a-z0-9]/g,'');
+        if(h===kl||h===kl+'name'||h===f.label.toLowerCase().replace(/[^a-z0-9]/g,'')){best=i;break;}
+        for(var w=0;w<ll.length;w++){if(ll[w].length>2&&h.indexOf(ll[w])>=0){best=i;break;}}
+        if(best>=0)break;
+      }
+      map[f.key]=best;
+    });
+    return map;
+  }
+
+  function renderMapGrid(){
+    var fields=_csvType==='opportunities'?OPP_FIELDS:CONTACT_FIELDS;
+    var grid=document.getElementById('csv-map-grid');
+    grid.innerHTML='';
+    fields.forEach(function(f){
+      var row=document.createElement('div');
+      row.style.cssText='display:contents';
+      var lbl=document.createElement('div');
+      lbl.style.cssText='padding:6px 8px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t2);display:flex;align-items:center';
+      lbl.textContent=f.label+(f.required?' *':'');
+      var sel=document.createElement('select');
+      sel.style.cssText='padding:6px 8px;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-size:11px;font-family:IBM Plex Sans,sans-serif';
+      sel.innerHTML='<option value="-1">— skip —</option>';
+      _csvHeaders.forEach(function(h,i){
+        sel.innerHTML+='<option value="'+i+'"'+((_csvMappings[f.key]===i)?' selected':'')+'>'+h.replace(/</g,'&lt;')+'</option>';
+      });
+      sel.onchange=function(){_csvMappings[f.key]=parseInt(sel.value);};
+      grid.appendChild(lbl);
+      grid.appendChild(sel);
+    });
+    document.getElementById('csv-field-map').style.display='block';
+  }
+
+  function renderPreview(){
+    var fields=_csvType==='opportunities'?OPP_FIELDS:CONTACT_FIELDS;
+    var mapped=fields.filter(function(f){return _csvMappings[f.key]>=0;});
+    if(!mapped.length){document.getElementById('csv-preview').style.display='none';return;}
+    var show=_csvRows.slice(0,5);
+    var html='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr>';
+    mapped.forEach(function(f){html+='<th style="padding:5px 8px;background:var(--s1);color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;text-align:left;border-bottom:1px solid var(--b1);white-space:nowrap">'+f.label+'</th>';});
+    html+='</tr></thead><tbody>';
+    show.forEach(function(row){
+      html+='<tr>';
+      mapped.forEach(function(f){
+        var v=_csvMappings[f.key]>=0?(row[_csvMappings[f.key]]||''):'';
+        html+='<td style="padding:4px 8px;border-bottom:1px solid var(--b1);color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+v.replace(/</g,'&lt;').slice(0,60)+'</td>';
+      });
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+    document.getElementById('csv-preview-table').innerHTML=html;
+    document.getElementById('csv-row-count').textContent=_csvRows.length;
+    document.getElementById('csv-preview').style.display='block';
+    document.getElementById('csv-import-btn').style.display=_csvRows.length?'inline-flex':'none';
+  }
+
+  window._csvSetType=function(t){
+    _csvType=t;
+    var ob=document.getElementById('csv-type-opps');
+    var cb=document.getElementById('csv-type-contacts');
+    if(t==='opportunities'){
+      ob.style.background='rgba(212,130,58,.12)';ob.style.borderColor='var(--gold)';ob.style.color='var(--gold)';
+      cb.style.background='var(--s1)';cb.style.borderColor='var(--b1)';cb.style.color='var(--t2)';
+    }else{
+      cb.style.background='rgba(212,130,58,.12)';cb.style.borderColor='var(--gold)';cb.style.color='var(--gold)';
+      ob.style.background='var(--s1)';ob.style.borderColor='var(--b1)';ob.style.color='var(--t2)';
+    }
+    if(_csvHeaders.length){
+      _csvMappings=autoMap(_csvHeaders,t==='opportunities'?OPP_FIELDS:CONTACT_FIELDS);
+      renderMapGrid();renderPreview();
+    }
+  };
+
+  window._csvHandleFile=function(file){
+    if(!file)return;
+    document.getElementById('csv-file-name').textContent=file.name;
+    document.getElementById('csv-file-name').style.display='block';
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var parsed=parseCSV(e.target.result);
+      if(parsed.length<2){toast('CSV has no data rows');return;}
+      _csvHeaders=parsed[0];
+      _csvRows=parsed.slice(1).filter(function(r){return r.some(function(c){return c;});});
+      var fields=_csvType==='opportunities'?OPP_FIELDS:CONTACT_FIELDS;
+      _csvMappings=autoMap(_csvHeaders,fields);
+      renderMapGrid();renderPreview();
+    };
+    reader.readAsText(file);
+  };
+
+  window._csvReset=function(){
+    _csvHeaders=[];_csvRows=[];_csvMappings={};
+    document.getElementById('csv-file-name').style.display='none';
+    document.getElementById('csv-field-map').style.display='none';
+    document.getElementById('csv-preview').style.display='none';
+    document.getElementById('csv-import-btn').style.display='none';
+    document.getElementById('csv-import-status').style.display='none';
+    var inp=document.getElementById('csv-file-inp');if(inp)inp.value='';
+  };
+
+  window._csvDoImport=async function(){
+    var fields=_csvType==='opportunities'?OPP_FIELDS:CONTACT_FIELDS;
+    var nameIdx=_csvMappings['name'];
+    if(nameIdx<0||nameIdx===undefined){toast('Map the Name column first');return;}
+    var statusEl=document.getElementById('csv-import-status');
+    statusEl.style.display='block';
+    statusEl.textContent='Importing...';
+    var created=0;var skipped=0;var now=new Date().toISOString();
+    try{
+      if(_csvType==='opportunities'){
+        var existNames=new Set(opportunities.map(function(o){return(o.name||'').toLowerCase();}));
+        for(var i=0;i<_csvRows.length;i++){
+          var row=_csvRows[i];
+          var nm=(row[nameIdx]||'').trim();
+          if(!nm){skipped++;continue;}
+          if(existNames.has(nm.toLowerCase())){skipped++;continue;}
+          var stageRaw=((_csvMappings.stage>=0?row[_csvMappings.stage]:'') ||'').trim().toLowerCase();
+          var stage=STAGE_ALIASES[stageRaw]||'awareness';
+          var opp={
+            id:'opp-'+Date.now()+'-'+i,
+            name:nm,
+            agency:_csvMappings.agency>=0?(row[_csvMappings.agency]||'').trim():'',
+            vehicle:_csvMappings.vehicle>=0?(row[_csvMappings.vehicle]||'').trim():'',
+            value:_csvMappings.value>=0?(row[_csvMappings.value]||'').trim():'',
+            stage:stage,
+            rfpDate:_csvMappings.rfpDate>=0?(row[_csvMappings.rfpDate]||'').trim():'',
+            awardDate:_csvMappings.awardDate>=0?(row[_csvMappings.awardDate]||'').trim():'',
+            captureLead:_csvMappings.captureLead>=0?(row[_csvMappings.captureLead]||'').trim():'',
+            notes:_csvMappings.notes>=0?(row[_csvMappings.notes]||'').trim():'',
+            meetings:[],
+            created:now,
+            updatedAt:now
+          };
+          await saveOpp(opp);
+          created++;
+          statusEl.textContent='Imported '+created+' of '+_csvRows.length+'...';
+        }
+      }else{
+        var existContactNames=new Set(nodes.map(function(n){return(n.name||'').toLowerCase();}));
+        for(var j=0;j<_csvRows.length;j++){
+          var crow=_csvRows[j];
+          var cn=(crow[nameIdx]||'').trim();
+          if(!cn){skipped++;continue;}
+          if(existContactNames.has(cn.toLowerCase())){skipped++;continue;}
+          var typeRaw=((_csvMappings.type>=0?crow[_csvMappings.type]:'') ||'').trim().toLowerCase();
+          var ntype=typeRaw==='company'?'company':typeRaw==='government'||typeRaw==='gov'?'government':'person';
+          var priRaw=_csvMappings.priority>=0?(crow[_csvMappings.priority]||'').trim():'';
+          var pri=priRaw==='1'||priRaw.toLowerCase()==='t1'?1:priRaw==='2'||priRaw.toLowerCase()==='t2'?2:3;
+          var node={
+            id:'n-'+Date.now()+'-'+j,
+            name:cn,
+            type:ntype,
+            role:_csvMappings.role>=0?(crow[_csvMappings.role]||'').trim():'',
+            org:_csvMappings.org>=0?(crow[_csvMappings.org]||'').trim():'',
+            govType:_csvMappings.govType>=0?(crow[_csvMappings.govType]||'').trim():'',
+            priority:pri,
+            notes:_csvMappings.notes>=0?(crow[_csvMappings.notes]||'').trim():''
+          };
+          nodes.push(node);nodeMap.set(node.id,node);
+          await saveNode(node);
+          created++;
+          statusEl.textContent='Imported '+created+' of '+_csvRows.length+'...';
+        }
+      }
+      statusEl.innerHTML='<span style="color:var(--green)">✓ '+created+' imported</span>'+(skipped?' · <span style="color:var(--t3)">'+skipped+' skipped (duplicate or blank)</span>':'');
+      toast(created+' '+_csvType+' imported'+(skipped?', '+skipped+' skipped':''));
+      if(_csvType==='opportunities'){renderOppSidebar();}
+      else{if(typeof renderGraph==='function')renderGraph();}
+    }catch(err){
+      statusEl.innerHTML='<span style="color:#ef4444">Import failed: '+(err.message||'Unknown error')+'</span>';
+      toast('CSV import failed');
+    }
+  };
+
+  window.openCsvImport=function(){
+    window._csvReset();
+    window._csvSetType('opportunities');
+    document.getElementById('csv-import-modal').style.display='flex';
+  };
+})();
 
 async function inviteMember(){
   var email=document.getElementById('invite-email').value.trim();
