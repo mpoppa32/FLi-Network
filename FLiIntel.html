@@ -30051,6 +30051,154 @@ window.addEventListener('resize', function() {
   window._corsairRenderHalos = _renderPursuitHalos;
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // EDGE PULSE — animated amber dot that travels source → target whenever a
+  // new link appears in the graph, with a small impact ripple on arrival.
+  // Makes "new intelligence arrived" feel alive without explicit notifications.
+  //
+  // Detection: MutationObserver on the inner zoomable group watches for
+  // .link-g enter additions. d3's data-join only inserts new <g> elements
+  // for genuinely new link keys, so this is a clean "new link" signal.
+  //
+  // Guardrails:
+  //   • 3-second arm grace after the graph initializes so the initial render
+  //     doesn't pulse every link
+  //   • > 25 simultaneous additions → workspace reload / bulk import, skip
+  //   • 800ms dedupe per edge so back-to-back saves don't stack pulses
+  //   • Skipped entirely when the operator isn't viewing the graph
+  //   • Multi-edge cascade: stagger 80ms between pulses for a clean wave
+  // ═══════════════════════════════════════════════════════════════════════════
+  var _recentPulses = {};
+  function _pulseDedupe(sid, tid){
+    var key  = sid + '::' + tid;
+    var keyR = tid + '::' + sid;
+    var now = performance.now();
+    var last = Math.max(_recentPulses[key] || 0, _recentPulses[keyR] || 0);
+    if (now - last < 800) return false;
+    _recentPulses[key] = now;
+    return true;
+  }
+  function _impactRipple(inner, node){
+    if (!node || typeof node.x !== 'number') return;
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var rippleR = (typeof window.nr === 'function' ? window.nr(node) : 18) + 4;
+    var ripple = document.createElementNS(svgNS, 'circle');
+    ripple.setAttribute('class', 'edge-pulse-ripple');
+    ripple.setAttribute('cx', (node.x || 0).toFixed(1));
+    ripple.setAttribute('cy', (node.y || 0).toFixed(1));
+    ripple.setAttribute('r',  rippleR.toFixed(1));
+    ripple.setAttribute('fill', 'none');
+    ripple.setAttribute('stroke', '#d4823a');
+    ripple.setAttribute('stroke-width', '2');
+    ripple.setAttribute('opacity', '0.65');
+    ripple.setAttribute('pointer-events', 'none');
+    inner.appendChild(ripple);
+    var r0 = performance.now();
+    var rdur = 360;
+    function rippleStep(now){
+      var t = Math.min(1, (now - r0) / rdur);
+      var e = 1 - Math.pow(1 - t, 2);
+      ripple.setAttribute('cx', (node.x || 0).toFixed(1));
+      ripple.setAttribute('cy', (node.y || 0).toFixed(1));
+      ripple.setAttribute('r', (rippleR + e * rippleR * 1.4).toFixed(1));
+      ripple.setAttribute('opacity', (0.65 * (1 - e)).toFixed(2));
+      ripple.setAttribute('stroke-width', (2 * (1 - e * 0.5)).toFixed(2));
+      if (t < 1) requestAnimationFrame(rippleStep);
+      else { try { ripple.remove(); } catch(e){} }
+    }
+    requestAnimationFrame(rippleStep);
+  }
+  window._corsairPulseEdge = function(sourceId, targetId, opts){
+    if (!sourceId || !targetId) return;
+    opts = opts || {};
+    if (!opts.force && !_pulseDedupe(String(sourceId), String(targetId))) return;
+    if (!opts.force && !isGraphView()) return;
+    var nm = window.nodeMap;
+    if (!nm || typeof nm.get !== 'function') return;
+    var src = nm.get(sourceId) || nm.get(String(sourceId));
+    var tgt = nm.get(targetId) || nm.get(String(targetId));
+    if (!src || !tgt) return;
+    var svgEl = document.getElementById('net-canvas');
+    if (!svgEl) return;
+    var inner = svgEl.querySelector('g');
+    if (!inner) return;
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var pulse = document.createElementNS(svgNS, 'circle');
+    pulse.setAttribute('class', 'edge-pulse');
+    pulse.setAttribute('r', '5');
+    pulse.setAttribute('fill', '#d4823a');
+    pulse.setAttribute('opacity', '0');
+    pulse.setAttribute('filter', 'url(#glowAmber)');
+    pulse.setAttribute('pointer-events', 'none');
+    inner.appendChild(pulse);
+    var t0 = performance.now();
+    var dur = opts.duration || 880;
+    function step(now){
+      var t = Math.min(1, (now - t0) / dur);
+      var e = 1 - Math.pow(1 - t, 3);
+      // Read positions live so the pulse tracks moving nodes
+      var sx = src.x || 0, sy = src.y || 0;
+      var tx = tgt.x || 0, ty = tgt.y || 0;
+      var px = sx + (tx - sx) * e;
+      var py = sy + (ty - sy) * e;
+      pulse.setAttribute('cx', px.toFixed(1));
+      pulse.setAttribute('cy', py.toFixed(1));
+      var op = t < 0.12 ? (t / 0.12) : t > 0.85 ? (1 - (t - 0.85) / 0.15) : 1;
+      pulse.setAttribute('opacity', op.toFixed(2));
+      if (t < 1) requestAnimationFrame(step);
+      else {
+        try { pulse.remove(); } catch(e){}
+        _impactRipple(inner, tgt);
+      }
+    }
+    requestAnimationFrame(step);
+  };
+
+  // ── Watcher: detect new .link-g additions in the graph and emit pulses ──
+  var _pulseArmed = false;
+  var _pulseObserver = null;
+  function _tryHookPulseWatcher(){
+    var svgEl = document.getElementById('net-canvas');
+    if (!svgEl) return false;
+    var inner = svgEl.querySelector('g');
+    if (!inner) return false;
+    if (_pulseObserver) return true;
+    // Arm after the initial render settles
+    setTimeout(function(){ _pulseArmed = true; }, 3000);
+    _pulseObserver = new MutationObserver(function(records){
+      if (!_pulseArmed) return;
+      if (!isGraphView()) return;
+      var newAdds = [];
+      for (var i=0;i<records.length;i++){
+        var r = records[i];
+        if (r.type !== 'childList') continue;
+        for (var j=0;j<r.addedNodes.length;j++){
+          var n = r.addedNodes[j];
+          if (n && n.classList && n.classList.contains('link-g')) newAdds.push(n);
+        }
+      }
+      if (newAdds.length === 0) return;
+      // Bulk add → workspace reload, skip to avoid a fireworks show
+      if (newAdds.length > 25) return;
+      // Cascade pulses for a single multi-edge meeting save
+      newAdds.forEach(function(node, idx){
+        var d = node.__data__;
+        if (!d) return;
+        var sid = (d.source && d.source.id) || d.source;
+        var tid = (d.target && d.target.id) || d.target;
+        setTimeout(function(){
+          window._corsairPulseEdge(sid, tid);
+        }, idx * 80);
+      });
+    });
+    _pulseObserver.observe(inner, { childList: true, subtree: true });
+    return true;
+  }
+  if (!_tryHookPulseWatcher()){
+    var pulseInt = setInterval(function(){ if (_tryHookPulseWatcher()) clearInterval(pulseInt); }, 400);
+    setTimeout(function(){ clearInterval(pulseInt); }, 30000);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // COP → GRAPH BRIDGE
   // Clicking the ↗ button on a pursuit card switches to the entity graph and
   // opens the Inspector on the BD-target node — which in turn triggers the
