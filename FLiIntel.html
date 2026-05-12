@@ -3821,6 +3821,30 @@ input[type="url"], textarea, select {
 }
 .cop-stat-key .cop-stat-val { color: var(--gold); }
 
+/* Danger tile — UNASSIGNED count when > 0 */
+.cop-stat-danger {
+  background: linear-gradient(180deg, rgba(40,12,12,0.7), rgba(20,6,6,0.92));
+  cursor: pointer;
+  transition: background 140ms cubic-bezier(.2,.6,.2,1);
+  position: relative;
+}
+.cop-stat-danger::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: #b34040;
+  box-shadow: 0 0 12px rgba(179,64,64,0.55);
+  animation: cop-danger-pulse 2s cubic-bezier(.4,0,.6,1) infinite;
+}
+.cop-stat-danger:hover { background: linear-gradient(180deg, rgba(60,18,18,0.85), rgba(30,9,9,0.96)); }
+.cop-stat-danger .cop-stat-val { color: #ff6464; }
+.cop-stat-danger .cop-stat-lbl { color: rgba(255,100,100,0.62); }
+@keyframes cop-danger-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(179,64,64,0.35); }
+  50%      { box-shadow: 0 0 16px rgba(179,64,64,0.75); }
+}
+
 /* ── Filter chip bar (MINE ONLY etc.) ── */
 .cop-filter-bar {
   display: flex;
@@ -3869,6 +3893,32 @@ input[type="url"], textarea, select {
 .cop-filter-chip.active .cop-filter-dot {
   background: var(--ink);
   box-shadow: 0 0 0 1px var(--ink), 0 0 6px var(--ink);
+}
+
+/* Danger chip — UNASSIGNED toggle (red-flag styling) */
+.cop-filter-chip--danger {
+  border-color: rgba(179,64,64,0.55);
+  color: #ff8080;
+}
+.cop-filter-chip--danger:hover {
+  color: #ffb0b0;
+  border-color: #b34040;
+  background: rgba(179,64,64,0.10);
+}
+.cop-filter-chip--danger .cop-filter-dot {
+  background: #b34040;
+  box-shadow: 0 0 0 1px rgba(179,64,64,0.4), 0 0 6px rgba(179,64,64,0.6);
+}
+.cop-filter-chip--danger.active {
+  background: #b34040;
+  color: #fff;
+  border-color: #b34040;
+  box-shadow: 0 0 16px rgba(179,64,64,0.55);
+}
+.cop-filter-chip--danger.active:hover { background: #c75050; }
+.cop-filter-chip--danger.active .cop-filter-dot {
+  background: #fff;
+  box-shadow: 0 0 0 1px #fff, 0 0 6px #fff;
 }
 
 /* ── Section header (ACTIVE PURSUITS · BY URGENCY) ── */
@@ -10219,11 +10269,18 @@ function renderOppSidebar(){
   var q=(document.getElementById('opp-search-inp')||{}).value||'';
   _renderOppList(q);
 }
-var _copFilters = window._copFilters || { mineOnly: false };
+var _copFilters = window._copFilters || { mineOnly: false, unassignedOnly: false };
 window._copFilters = _copFilters;
 
 window._copToggleMineOnly = function(){
   _copFilters.mineOnly = !_copFilters.mineOnly;
+  if (_copFilters.mineOnly) _copFilters.unassignedOnly = false;  // mutually exclusive
+  if (typeof renderOppSidebar === 'function') renderOppSidebar();
+};
+
+window._copToggleUnassignedOnly = function(){
+  _copFilters.unassignedOnly = !_copFilters.unassignedOnly;
+  if (_copFilters.unassignedOnly) _copFilters.mineOnly = false;  // mutually exclusive
   if (typeof renderOppSidebar === 'function') renderOppSidebar();
 };
 
@@ -10236,6 +10293,13 @@ function _copIsMine(o){
   return (dn && lead === dn) || (em && lead === em);
 }
 
+function _copIsUnassigned(o){
+  if (!o) return false;
+  if (o.stage === 'won' || o.stage === 'lost') return false;  // closed pursuits don't need a lead
+  var lead = ((o.captureLead || o.lead) || '').trim();
+  return !lead;
+}
+
 function _renderOppList(q){
   var list=document.getElementById('opp-stage-list');
   if(!list)return;
@@ -10244,14 +10308,20 @@ function _renderOppList(q){
     return s.indexOf(q.toLowerCase())!==-1;
   }):opportunities.slice();
   var mineCount = opportunities.filter(_copIsMine).length;
+  var unassignedCount = opportunities.filter(_copIsUnassigned).length;
   if (_copFilters.mineOnly) filtered = filtered.filter(_copIsMine);
+  if (_copFilters.unassignedOnly) filtered = filtered.filter(_copIsUnassigned);
   if(!filtered.length){
     var emptyMsg = _copFilters.mineOnly
       ? 'No pursuits assigned to you' + (q ? ' (matching filter)' : '')
-      : (q ? 'No matching pursuits' : 'No pursuits yet');
-    list.innerHTML='<div style="padding:36px 14px;text-align:center;font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:0.14em;text-transform:uppercase">'+emptyMsg+'</div>';
-    // Still render the filter chip so the operator can toggle MINE ONLY off
-    list.innerHTML = '<div class="cop-filter-bar"><button class="cop-filter-chip' + (_copFilters.mineOnly?' active':'') + '" onclick="_copToggleMineOnly()" type="button"><span class="cop-filter-dot"></span>MINE ONLY' + (mineCount ? ' · ' + mineCount : '') + '</button></div>' + list.innerHTML;
+      : _copFilters.unassignedOnly
+        ? 'Every pursuit has a capture lead'
+        : (q ? 'No matching pursuits' : 'No pursuits yet');
+    var chipBar = '<div class="cop-filter-bar">'
+      + '<button class="cop-filter-chip' + (_copFilters.mineOnly?' active':'') + '" onclick="_copToggleMineOnly()" type="button"><span class="cop-filter-dot"></span>MINE ONLY' + (mineCount ? ' · ' + mineCount : '') + '</button>'
+      + (unassignedCount ? '<button class="cop-filter-chip cop-filter-chip--danger' + (_copFilters.unassignedOnly?' active':'') + '" onclick="_copToggleUnassignedOnly()" type="button"><span class="cop-filter-dot"></span>UNASSIGNED · ' + unassignedCount + '</button>' : '')
+      + '</div>';
+    list.innerHTML = chipBar + '<div style="padding:36px 14px;text-align:center;font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:0.14em;text-transform:uppercase">'+emptyMsg+'</div>';
     return;
   }
 
@@ -10391,14 +10461,18 @@ function _renderOppList(q){
   h +=   '<div class="cop-stat"><div class="cop-stat-lbl">PWIN AVG</div><div class="cop-stat-val">' + avgPW + '%</div></div>';
   h +=   '<div class="cop-stat"><div class="cop-stat-lbl">ACTIVE</div><div class="cop-stat-val">' + activeCount + '</div></div>';
   if (winRate !== null) h += '<div class="cop-stat"><div class="cop-stat-lbl">WIN RATE</div><div class="cop-stat-val">' + winRate + '%</div></div>';
+  if (unassignedCount > 0) {
+    h += '<div class="cop-stat cop-stat-danger" onclick="_copToggleUnassignedOnly()" title="Click to filter to unassigned pursuits"><div class="cop-stat-lbl">UNASSIGNED</div><div class="cop-stat-val">' + unassignedCount + '</div></div>';
+  }
   h += '</div>';
 
-  // Filter chip row — MINE ONLY toggle
+  // Filter chip row — MINE ONLY + UNASSIGNED toggles (mutually exclusive)
   h += '<div class="cop-filter-bar">'
     + '<button class="cop-filter-chip' + (_copFilters.mineOnly ? ' active' : '') + '" onclick="_copToggleMineOnly()" type="button">'
     +   '<span class="cop-filter-dot"></span>'
     +   'MINE ONLY' + (mineCount ? ' · ' + mineCount : '')
     + '</button>'
+    + (unassignedCount ? '<button class="cop-filter-chip cop-filter-chip--danger' + (_copFilters.unassignedOnly ? ' active' : '') + '" onclick="_copToggleUnassignedOnly()" type="button"><span class="cop-filter-dot"></span>UNASSIGNED · ' + unassignedCount + '</button>' : '')
     + '</div>';
 
   if (active.length) {
