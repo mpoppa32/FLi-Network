@@ -6266,7 +6266,7 @@ input[type="url"], textarea, select {
           </label>
           <button onclick="bulkDeleteArchive()" style="padding:4px 12px;background:var(--red);color:#fff;border:none;border-radius:var(--rsm);font-family:IBM Plex Sans,sans-serif;font-size:11px;cursor:pointer;font-weight:600">Delete Selected</button>
         </div>
-        <div id="arch-empty" class="empty">No meetings yet</div>
+        <div id="arch-empty" class="empty-state" style="padding:2.5rem 2rem"><div class="empty-state-title">No meetings logged</div><div class="empty-state-sub">Your meeting archive lives here. Log a meeting to start building your intelligence history.</div><button class="empty-state-cta" onclick="switchIntelTab('log')">Log First Meeting</button></div>
         <div id="arch-list"></div>
       </div>
       <div id="itab-board" style="display:none">
@@ -9329,7 +9329,7 @@ function renderMobileNetworkList(){
   });
 
   if(!people.length){
-    h+='<div style="text-align:center;padding:60px 0;color:var(--t3);font-size:13px">No contacts yet.<br>Process a meeting to add people.</div>';
+    h+='<div class="empty-state"><div class="empty-state-title">Network is empty</div><div class="empty-state-sub">Process a meeting to populate your relationship graph — contacts, organizations, and connections are extracted automatically.</div><button class="empty-state-cta" onclick="switchView(\'intel\');switchIntelTab(\'log\')">Log First Meeting</button></div>';
   }
 
   container.innerHTML=h;
@@ -13815,7 +13815,7 @@ function renderSidebarMtgList(){
   var list=document.getElementById('sidebar-mtg-list');
   if(!list)return;
   if(!meetings.length){
-    list.innerHTML='<div style="font-size:11px;color:var(--t3);padding:10px 4px;text-align:center;line-height:1.7">No meetings yet.<br><span style="color:var(--t2)">Log your first on the Log tab.</span></div>';
+    list.innerHTML='<div style="font-size:11px;color:var(--t3);padding:14px 8px;text-align:center;line-height:1.7"><div style="font-family:Antonio,sans-serif;font-size:14px;color:var(--text);margin-bottom:4px">No meetings logged</div><div>Log your first meeting to start building intel.</div></div>';
     return;
   }
   list.innerHTML=meetings.slice(0,15).map(function(m){
@@ -17234,7 +17234,7 @@ function filterTLItems(items){return items.filter(function(item){if(tlFilter==='
 
 function bucketTLItems(items){var now=new Date();now.setHours(0,0,0,0);var in7=new Date(now);in7.setDate(in7.getDate()+7);var in30=new Date(now);in30.setDate(in30.getDate()+30);var b={overdue:[],today:[],week:[],month:[],beyond:[],completed:[]};items.forEach(function(item){if(item.status==='completed'){b.completed.push(item);return;}if(!item.deadline){b.beyond.push(item);return;}var d=new Date(item.deadline+'T00:00:00');if(d<now)b.overdue.push(item);else if(d.toDateString()===now.toDateString())b.today.push(item);else if(d<=in7)b.week.push(item);else if(d<=in30)b.month.push(item);else b.beyond.push(item);});return b;}
 
-function renderTimeline(){var all=getTLItems(),filtered=filterTLItems(all),buckets=bucketTLItems(filtered),now=new Date();now.setHours(0,0,0,0);if(document.getElementById('tl-subtitle'))document.getElementById('tl-subtitle').textContent=(currentWs?currentWs.name+' -- ':'')+'all commitments and deadlines';var oc=buckets.overdue.length,wc=buckets.week.length+buckets.today.length,ar=filtered.filter(function(i){return i.status==='at-risk';}).length,cc=buckets.completed.length;document.getElementById('tl-pulse').innerHTML=tlPC(oc,'Overdue',oc>0?'var(--red)':'var(--t2)','⚠')+tlPC(wc,'Due This Week',wc>0?'var(--amber)':'var(--t2)','◷')+tlPC(ar,'At Risk',ar>0?'var(--red)':'var(--t2)','⬤')+tlPC(cc,'Completed','var(--green)','✓');var fyBarEl2=document.getElementById('tl-fy-bar');if(fyBarEl2)fyBarEl2.innerHTML=renderFYCalendarBar();if(window._renderTimelineVelocity)window._renderTimelineVelocity();var srcMap={};all.forEach(function(i){srcMap[i.source]=(srcMap[i.source]||0)+1;});var srcEl=document.getElementById('tl-src-list');if(srcEl)srcEl.innerHTML=Object.keys(srcMap).slice(0,12).map(function(s){var active=tlSrcFilter===s;return '<button class="tl-filter-btn'+(active?' active':'')+'" onclick="setTLSrcFilter(\''+s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')" style="font-size:11px"><div class="tl-filter-dot" style="background:var(--t3)"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;flex:1">'+s+'</span><span style="font-size:10px;color:var(--t3);margin-left:4px">'+srcMap[s]+'</span></button>';}).join('');var defs=[{key:'overdue',label:'Overdue',color:'#ef4444',open:true},{key:'today',label:'Today',color:'#d4823a',open:true},{key:'week',label:'This Week',color:'#22c55e',open:true},{key:'month',label:'This Month',color:'#3b82f6',open:true},{key:'beyond',label:'Beyond 30 Days',color:'#4a5568',open:false},{key:'completed',label:'Completed',color:'var(--green)',open:false,subdued:true}];var html='';defs.forEach(function(sec){var items=buckets[sec.key];if(!items.length)return;html+='<div class="tl-section"><div class="tl-sec-hdr" onclick="toggleTLSection(\'tls-'+sec.key+'\')"><div class="tl-sec-title" style="color:'+sec.color+'">'+sec.label+'</div><div class="tl-sec-count" style="background:'+sec.color+'22;color:'+sec.color+'">'+items.length+'</div><div class="tl-sec-chevron'+(sec.open?' open':'')+'" id="tlc-'+sec.key+'">&#9660;</div></div><div class="tl-sec-body'+(sec.open?' open':'')+'" id="tls-'+sec.key+'">';items.forEach(function(item){html+=renderTLCard(item,now);});html+='</div></div>';});if(!html)html='<div class="empty">No items match the current filter.<br>Process meetings or add a commitment to get started.</div>';document.getElementById('tl-sections').innerHTML=html;}
+function renderTimeline(){var all=getTLItems(),filtered=filterTLItems(all),buckets=bucketTLItems(filtered),now=new Date();now.setHours(0,0,0,0);if(document.getElementById('tl-subtitle'))document.getElementById('tl-subtitle').textContent=(currentWs?currentWs.name+' -- ':'')+'all commitments and deadlines';var oc=buckets.overdue.length,wc=buckets.week.length+buckets.today.length,ar=filtered.filter(function(i){return i.status==='at-risk';}).length,cc=buckets.completed.length;document.getElementById('tl-pulse').innerHTML=tlPC(oc,'Overdue',oc>0?'var(--red)':'var(--t2)','⚠')+tlPC(wc,'Due This Week',wc>0?'var(--amber)':'var(--t2)','◷')+tlPC(ar,'At Risk',ar>0?'var(--red)':'var(--t2)','⬤')+tlPC(cc,'Completed','var(--green)','✓');var fyBarEl2=document.getElementById('tl-fy-bar');if(fyBarEl2)fyBarEl2.innerHTML=renderFYCalendarBar();if(window._renderTimelineVelocity)window._renderTimelineVelocity();var srcMap={};all.forEach(function(i){srcMap[i.source]=(srcMap[i.source]||0)+1;});var srcEl=document.getElementById('tl-src-list');if(srcEl)srcEl.innerHTML=Object.keys(srcMap).slice(0,12).map(function(s){var active=tlSrcFilter===s;return '<button class="tl-filter-btn'+(active?' active':'')+'" onclick="setTLSrcFilter(\''+s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')" style="font-size:11px"><div class="tl-filter-dot" style="background:var(--t3)"></div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;flex:1">'+s+'</span><span style="font-size:10px;color:var(--t3);margin-left:4px">'+srcMap[s]+'</span></button>';}).join('');var defs=[{key:'overdue',label:'Overdue',color:'#ef4444',open:true},{key:'today',label:'Today',color:'#d4823a',open:true},{key:'week',label:'This Week',color:'#22c55e',open:true},{key:'month',label:'This Month',color:'#3b82f6',open:true},{key:'beyond',label:'Beyond 30 Days',color:'#4a5568',open:false},{key:'completed',label:'Completed',color:'var(--green)',open:false,subdued:true}];var html='';defs.forEach(function(sec){var items=buckets[sec.key];if(!items.length)return;html+='<div class="tl-section"><div class="tl-sec-hdr" onclick="toggleTLSection(\'tls-'+sec.key+'\')"><div class="tl-sec-title" style="color:'+sec.color+'">'+sec.label+'</div><div class="tl-sec-count" style="background:'+sec.color+'22;color:'+sec.color+'">'+items.length+'</div><div class="tl-sec-chevron'+(sec.open?' open':'')+'" id="tlc-'+sec.key+'">&#9660;</div></div><div class="tl-sec-body'+(sec.open?' open':'')+'" id="tls-'+sec.key+'">';items.forEach(function(item){html+=renderTLCard(item,now);});html+='</div></div>';});if(!html)html='<div class="empty-state"><div class="empty-state-title">No items on the timeline</div><div class="empty-state-sub">Process meetings to surface action items and milestones, or add a commitment manually to start tracking deadlines.</div><button class="empty-state-cta" onclick="openAddCommitmentModal()">+ Add Commitment</button></div>';document.getElementById('tl-sections').innerHTML=html;}
 
 function tlPC(num,label,color,icon){
   var hasVal=num>0;
@@ -29072,9 +29072,9 @@ window.renderSidebarMtgList = function() {
     : meetings.slice(0, 25);
 
   if (!source.length) {
-    list.innerHTML = '<div style="font-size:11px;color:var(--t3);padding:10px 4px;text-align:center;line-height:1.7">'
-      + (_searchQuery ? 'No meetings match "' + _searchQuery + '"' : 'No meetings yet.<br><span style="color:var(--t2)">Log your first on the Log tab.</span>')
-      + '</div>';
+    list.innerHTML = _searchQuery
+      ? '<div style="font-size:11px;color:var(--t3);padding:10px 4px;text-align:center;line-height:1.7">No meetings match "' + _searchQuery + '"</div>'
+      : '<div class="empty-state" style="padding:2rem 1.5rem"><div class="empty-state-title">No intel to search</div><div class="empty-state-sub">Log and process meetings to build your searchable intelligence archive.</div><button class="empty-state-cta" onclick="switchView(\'intel\');switchIntelTab(\'log\')">Log First Meeting</button></div>';
     return;
   }
 
