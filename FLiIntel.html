@@ -5067,6 +5067,268 @@ input[type="url"], textarea, select {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   CORSAIR RHYTHM LAYER — Agentic Loop / BD Rhythm morning briefing
+   The first thing the operator sees on workspace load. Synthesizes overdue
+   commitments, imminent RFP/award milestones, cooling T1/T2 contacts, and
+   unassigned pursuits into a prioritized 'today's actions' grid.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.rhythm-panel {
+  margin: 0 14px 12px;
+  background: linear-gradient(160deg, rgba(13,20,38,0.96), rgba(7,13,24,0.99));
+  border: 1px solid var(--rule-2);
+  border-left: 2px solid var(--gold);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(212,130,58,0.06);
+  border-radius: 1px;
+  display: none;
+}
+.rhythm-panel.visible { display: block; }
+.rhythm-panel.collapsed .rhythm-body { display: none; }
+
+.rhythm-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px 9px;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  user-select: none;
+  transition: background 140ms cubic-bezier(.2,.6,.2,1);
+}
+.rhythm-header:hover { background: rgba(212,130,58,0.04); }
+.rhythm-panel.collapsed .rhythm-header { border-bottom: none; }
+
+.rhythm-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.rhythm-eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 10px var(--gold);
+  animation: rhythm-pulse 2.6s cubic-bezier(.4,0,.6,1) infinite;
+}
+@keyframes rhythm-pulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.25); }
+}
+
+.rhythm-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  margin-left: 4px;
+}
+.rhythm-counter {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid;
+  border-radius: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.rhythm-counter-critical {
+  color: #ff8080;
+  border-color: rgba(179,64,64,0.6);
+  background: rgba(179,64,64,0.10);
+}
+.rhythm-counter-warn {
+  color: #f0a560;
+  border-color: rgba(212,130,58,0.55);
+  background: rgba(212,130,58,0.08);
+}
+.rhythm-counter-clean {
+  color: #6ed094;
+  border-color: rgba(58,138,92,0.55);
+  background: rgba(58,138,92,0.08);
+}
+
+.rhythm-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+}
+
+.rhythm-toggle {
+  background: transparent;
+  border: 1px solid var(--rule-2);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  padding: 4px 9px;
+  border-radius: 1px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+}
+.rhythm-toggle:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+  background: rgba(212,130,58,0.06);
+}
+.rhythm-toggle-icon {
+  display: inline-block;
+  transition: transform 200ms cubic-bezier(.2,.6,.2,1);
+}
+.rhythm-panel.collapsed .rhythm-toggle-icon { transform: rotate(-90deg); }
+
+.rhythm-body {
+  padding: 12px 14px 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.rhythm-card {
+  display: flex;
+  align-items: stretch;
+  background: rgba(7,13,24,0.7);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  cursor: pointer;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+  overflow: hidden;
+}
+.rhythm-card:hover {
+  border-color: var(--rule-2);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0,0,0,0.45);
+}
+.rhythm-card-strip {
+  width: 3px;
+  flex-shrink: 0;
+  background: var(--severity-c, var(--paper-2));
+  box-shadow: 0 0 6px var(--severity-c, var(--paper-2));
+}
+.rhythm-card-body {
+  flex: 1;
+  padding: 9px 11px 10px;
+  min-width: 0;
+}
+.rhythm-card-meta {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--severity-c, var(--paper));
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rhythm-card-meta-divider {
+  flex: 1;
+  height: 1px;
+  background: var(--severity-c, var(--paper-3));
+  opacity: 0.3;
+}
+.rhythm-card-subject {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bone);
+  line-height: 1.3;
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.rhythm-card-actor {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--paper);
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rhythm-card-arrow {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--paper-2);
+  font-size: 14px;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  transition: color 140ms cubic-bezier(.2,.6,.2,1), transform 140ms cubic-bezier(.2,.6,.2,1);
+}
+.rhythm-card:hover .rhythm-card-arrow {
+  color: var(--gold);
+  transform: translateX(2px);
+}
+
+/* Severity color tokens */
+.rhythm-card[data-sev="critical"] { --severity-c: #ff6464; }
+.rhythm-card[data-sev="warn"]     { --severity-c: #f0a560; }
+.rhythm-card[data-sev="info"]     { --severity-c: #5b8fc4; }
+.rhythm-card[data-sev="ok"]       { --severity-c: #6ed094; }
+
+.rhythm-empty {
+  grid-column: 1 / -1;
+  padding: 28px 14px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+}
+.rhythm-empty-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 1px;
+  background: rgba(58,138,92,0.10);
+  border: 1px solid rgba(58,138,92,0.6);
+  color: #6ed094;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 auto 12px;
+}
+
+.rhythm-section-lbl {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+  padding: 6px 0 4px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 2px;
+}
+.rhythm-section-lbl:first-child { padding-top: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   END CORSAIR RHYTHM LAYER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
    END CORSAIR COP LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -5230,6 +5492,23 @@ input[type="url"], textarea, select {
   </div>
 
   <!-- DAILY STRIP — "What to do today" persistent action surface -->
+  <!-- CORSAIR RHYTHM BRIEFING — agentic loop / BD rhythm morning surface -->
+  <div class="rhythm-panel" id="corsair-rhythm">
+    <div class="rhythm-header" onclick="window._corsairToggleRhythm&amp;&amp;window._corsairToggleRhythm()">
+      <div class="rhythm-eyebrow">
+        <span class="rhythm-eyebrow-dot"></span>
+        Morning Briefing
+      </div>
+      <div class="rhythm-summary" id="rhythm-summary"></div>
+      <div class="rhythm-meta" id="rhythm-meta"></div>
+      <button class="rhythm-toggle" type="button">
+        <span class="rhythm-toggle-icon">&#9662;</span>
+        <span id="rhythm-toggle-lbl">Collapse</span>
+      </button>
+    </div>
+    <div class="rhythm-body" id="rhythm-body"></div>
+  </div>
+
   <div class="daily-strip" id="daily-strip" style="display:none">
     <div class="daily-strip-eyebrow">Today</div>
     <div id="daily-strip-items" style="display:flex;flex:1;overflow-x:auto;scrollbar-width:none"></div>
@@ -7570,6 +7849,11 @@ function connectWorkspace(){
   setSS('connecting...');
   window._loadCurrentUserRole&&window._loadCurrentUserRole(currentWsId);
   if(window._initTheme)window._initTheme();
+  // Schedule the rhythm briefing once data has had time to settle from
+  // Firebase. Subsequent refreshes come from _runAlertCheck (2-min throttle)
+  // and the 3-min auto interval.
+  setTimeout(function(){ if (typeof _corsairRefreshRhythm === 'function') _corsairRefreshRhythm(); }, 1500);
+  setTimeout(function(){ if (typeof _corsairRefreshRhythm === 'function') _corsairRefreshRhythm(); }, 4500);
   // Show ticker
   var tk=document.getElementById('intel-ticker');
   if(tk){tk.style.display='flex';
@@ -19042,7 +19326,282 @@ function _runAlertCheck(){
   _alerts=_computeAlerts();
   _updateAlertBadge();
   if(_alertsPanelOpen)_renderAlertsPanel();
+  // Refresh the rhythm briefing in concert so the operator sees fresh state
+  if (typeof _corsairRefreshRhythm === 'function') _corsairRefreshRhythm();
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CORSAIR RHYTHM ENGINE — Agentic Loop + BD Rhythm
+// Synthesizes overdue commitments, imminent RFP/award milestones, cooling
+// T1/T2 contacts, unassigned active pursuits, and pipeline-momentum stalls
+// into a single prioritized 'today's actions' grid rendered in the
+// #corsair-rhythm panel. Reads existing module state directly — does not
+// duplicate detection logic that already lives in _computeAlerts /
+// _buildDecayAlerts / getProcurementAlerts.
+// ═══════════════════════════════════════════════════════════════════════════
+
+var _corsairRhythmCollapsed = false;
+
+function _corsairBuildRhythm(){
+  var now = new Date();
+  var todayMs = now.getTime();
+  var DAY = 86400000;
+  var items = [];
+
+  // Build last-meeting lookup per node
+  var lastMtgByNode = {};
+  (meetings || []).forEach(function(m){
+    if (!m || !m.meta || !m.meta.date) return;
+    var ts = new Date(m.meta.date).getTime();
+    (m.intel && m.intel.keyPeople || []).forEach(function(p){
+      if (!p || !p.name) return;
+      // Match to a node by similarity
+      var nd = nodes.find(function(n){return n.type==='person' && nameSimilarity(n.name, p.name) >= 0.75;});
+      if (!nd) return;
+      if (!lastMtgByNode[nd.id] || ts > lastMtgByNode[nd.id]) lastMtgByNode[nd.id] = ts;
+    });
+  });
+
+  // ── 1. Overdue commitments (from tl_commitments and commitments) ──
+  var allCommits = [].concat(tlCommitments || []).concat(commitments || []);
+  allCommits.forEach(function(c){
+    if (!c || c.status === 'complete' || c.closedAt) return;
+    if (!c.deadline) return;
+    var d = new Date(c.deadline);
+    if (isNaN(d.getTime())) return;
+    var days = Math.floor((d.getTime() - todayMs) / DAY);
+    var subj = c.task || c.title || '(untitled commitment)';
+    if (days < 0) {
+      items.push({
+        sev: 'critical',
+        kind: 'OVERDUE',
+        meta: Math.abs(days) + 'd past · ' + (c.owner || 'unassigned'),
+        subject: subj,
+        actor: c.owner ? 'Owner · ' + c.owner : '',
+        click: 'switchView(\'intel\');switchIntelTab&&switchIntelTab(\'board\')',
+        rank: days  // most overdue first (most negative)
+      });
+    } else if (days <= 3) {
+      items.push({
+        sev: 'warn',
+        kind: 'DUE SOON',
+        meta: (days === 0 ? 'today' : days + 'd out') + ' · ' + (c.owner || 'unassigned'),
+        subject: subj,
+        actor: c.owner ? 'Owner · ' + c.owner : '',
+        click: 'switchView(\'intel\');switchIntelTab&&switchIntelTab(\'board\')',
+        rank: 100 + days
+      });
+    }
+  });
+
+  // ── 2. Imminent RFP / Award milestones ──
+  (opportunities || []).forEach(function(o){
+    if (!o || o.stage === 'won' || o.stage === 'lost') return;
+    function evalDate(field, label, criticalThresh, warnThresh){
+      if (!o[field]) return;
+      var d = new Date(o[field] + 'T00:00:00');
+      if (isNaN(d.getTime())) return;
+      var days = Math.floor((d.getTime() - todayMs) / DAY);
+      if (days < 0) {
+        // Slipped — past the date and still not in submitted/won
+        if (label === 'RFP' && o.stage !== 'submitted' && o.stage !== 'award' && o.stage !== 'won') {
+          items.push({
+            sev: 'critical',
+            kind: 'SLIPPED RFP',
+            meta: Math.abs(days) + 'd past · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+            subject: o.name,
+            actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
+            click: 'window.selectOpp(\'' + o.id + '\')',
+            rank: 50 + days
+          });
+        }
+        return;
+      }
+      if (days <= criticalThresh) {
+        items.push({
+          sev: 'critical',
+          kind: label + ' IMMINENT',
+          meta: (days === 0 ? 'today' : days + 'd out') + ' · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+          subject: o.name,
+          actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
+          click: 'window.selectOpp(\'' + o.id + '\')',
+          rank: 200 + days
+        });
+      } else if (days <= warnThresh) {
+        items.push({
+          sev: 'warn',
+          kind: label + ' SOON',
+          meta: days + 'd out · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+          subject: o.name,
+          actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
+          click: 'window.selectOpp(\'' + o.id + '\')',
+          rank: 300 + days
+        });
+      }
+    }
+    evalDate('rfpDate', 'RFP', 7, 21);
+    evalDate('awardDate', 'AWARD', 14, 45);
+  });
+
+  // ── 3. Cooling T1/T2 contacts ──
+  nodes.forEach(function(n){
+    if (!n || n.type !== 'person') return;
+    if (n.priority === 3) return;  // T3 cooling is less actionable
+    var lastTs = lastMtgByNode[n.id];
+    if (!lastTs) return;  // never logged → not 'cooling', just unknown
+    var days = Math.floor((todayMs - lastTs) / DAY);
+    if (days < 30) return;
+    var sev = days >= 60 ? 'critical' : 'warn';
+    items.push({
+      sev: sev,
+      kind: 'COOLING T' + (n.priority || 2),
+      meta: days + 'd silent · ' + (n.org || n.role || ''),
+      subject: n.name,
+      actor: n.role || '',
+      click: 'switchView(\'network\');setTimeout(function(){window.openNetPanel&&window.openNetPanel(window.nodeMap.get(\'' + n.id + '\'))},250)',
+      rank: 400 + (200 - Math.min(days, 200))  // longer-silent ranks earlier within COOLING group
+    });
+  });
+
+  // ── 4. Unassigned active pursuits (rolled up — single card) ──
+  var unassigned = (opportunities || []).filter(function(o){
+    if (!o || o.stage === 'won' || o.stage === 'lost') return false;
+    return !((o.captureLead || o.lead) || '').trim();
+  });
+  if (unassigned.length) {
+    items.push({
+      sev: 'warn',
+      kind: 'UNASSIGNED',
+      meta: unassigned.length + ' active pursuit' + (unassigned.length === 1 ? '' : 's'),
+      subject: 'No capture lead assigned',
+      actor: 'Pipeline ownership gap',
+      click: 'switchView(\'opps\');setTimeout(function(){window._copToggleUnassignedOnly&&window._copToggleUnassignedOnly()},150)',
+      rank: 800
+    });
+  }
+
+  // ── 5. Stalled pursuits — no stage change AND no meetings in 30+ days ──
+  (opportunities || []).forEach(function(o){
+    if (!o || o.stage === 'won' || o.stage === 'lost') return;
+    if (o.stage === 'awareness' || o.stage === 'tracking') return;  // early stages, naturally slow
+    var taggedMtgs = (meetings || []).filter(function(m){return m.oppId===o.id || (o.meetings||[]).includes(m.id);});
+    var lastMtgTs = 0;
+    taggedMtgs.forEach(function(m){
+      if (m && m.meta && m.meta.date) {
+        var t = new Date(m.meta.date).getTime();
+        if (t > lastMtgTs) lastMtgTs = t;
+      }
+    });
+    if (!lastMtgTs) return;
+    var quietDays = Math.floor((todayMs - lastMtgTs) / DAY);
+    if (quietDays < 30) return;
+    items.push({
+      sev: quietDays >= 60 ? 'critical' : 'warn',
+      kind: 'STALLED',
+      meta: quietDays + 'd quiet · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+      subject: o.name,
+      actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
+      click: 'window.selectOpp(\'' + o.id + '\')',
+      rank: 900 + (300 - Math.min(quietDays, 300))
+    });
+  });
+
+  // Sort by rank (severity-weighted; critical items get earlier rank values)
+  items.sort(function(a, b){
+    var sevOrder = { critical: 0, warn: 1, info: 2, ok: 3 };
+    if (sevOrder[a.sev] !== sevOrder[b.sev]) return sevOrder[a.sev] - sevOrder[b.sev];
+    return a.rank - b.rank;
+  });
+
+  var critCount = items.filter(function(x){return x.sev==='critical';}).length;
+  var warnCount = items.filter(function(x){return x.sev==='warn';}).length;
+
+  return { items: items, critCount: critCount, warnCount: warnCount };
+}
+
+function _corsairRenderRhythm(){
+  var panel = document.getElementById('corsair-rhythm');
+  if (!panel) return;
+  if (!currentWsId) { panel.classList.remove('visible'); return; }
+
+  var data = _corsairBuildRhythm();
+  var body = document.getElementById('rhythm-body');
+  var summary = document.getElementById('rhythm-summary');
+  var meta = document.getElementById('rhythm-meta');
+  if (!body || !summary || !meta) return;
+
+  panel.classList.add('visible');
+  panel.classList.toggle('collapsed', _corsairRhythmCollapsed);
+
+  // Summary chips
+  var sumH = '';
+  if (data.critCount > 0) sumH += '<span class="rhythm-counter rhythm-counter-critical">' + data.critCount + ' Critical</span>';
+  if (data.warnCount > 0) sumH += '<span class="rhythm-counter rhythm-counter-warn">' + data.warnCount + ' Watch</span>';
+  if (data.critCount === 0 && data.warnCount === 0) sumH += '<span class="rhythm-counter rhythm-counter-clean">All Clear</span>';
+  summary.innerHTML = sumH;
+
+  // Meta line
+  var nowStr = new Date().toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  meta.textContent = nowStr;
+
+  // Body — grouped by severity then kind
+  if (data.items.length === 0) {
+    body.innerHTML = '<div class="rhythm-empty"><div class="rhythm-empty-check">&#10003;</div>No outstanding actions · pipeline is clean</div>';
+    return;
+  }
+
+  function escH(s){return String(s||'').replace(/[<>&"]/g,function(c){return ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'})[c];});}
+
+  var grouped = { critical: [], warn: [], info: [] };
+  data.items.forEach(function(it){
+    if (grouped[it.sev]) grouped[it.sev].push(it);
+  });
+
+  var h = '';
+  ['critical','warn','info'].forEach(function(sev){
+    var arr = grouped[sev];
+    if (!arr.length) return;
+    var lbl = sev === 'critical' ? 'Critical · act today' : sev === 'warn' ? 'Watch · resolve this week' : 'Information';
+    h += '<div class="rhythm-section-lbl">' + lbl + ' &nbsp;·&nbsp; ' + arr.length + '</div>';
+    arr.slice(0, 12).forEach(function(it){
+      h += '<div class="rhythm-card" data-sev="' + sev + '" onclick="' + (it.click || 'void(0)').replace(/"/g,'&quot;') + '">';
+      h +=   '<div class="rhythm-card-strip"></div>';
+      h +=   '<div class="rhythm-card-body">';
+      h +=     '<div class="rhythm-card-meta">' + escH(it.kind) + '<span class="rhythm-card-meta-divider"></span><span style="color:var(--paper);letter-spacing:0.10em">' + escH(it.meta) + '</span></div>';
+      h +=     '<div class="rhythm-card-subject">' + escH(it.subject) + '</div>';
+      if (it.actor) h += '<div class="rhythm-card-actor">' + escH(it.actor) + '</div>';
+      h +=   '</div>';
+      h +=   '<div class="rhythm-card-arrow">&#10095;</div>';
+      h += '</div>';
+    });
+  });
+
+  body.innerHTML = h;
+}
+
+function _corsairRefreshRhythm(){
+  // Debounce to avoid render thrash on rapid data changes
+  if (_corsairRefreshRhythm._timer) clearTimeout(_corsairRefreshRhythm._timer);
+  _corsairRefreshRhythm._timer = setTimeout(function(){
+    try { _corsairRenderRhythm(); } catch(e){}
+  }, 80);
+}
+
+window._corsairToggleRhythm = function(){
+  _corsairRhythmCollapsed = !_corsairRhythmCollapsed;
+  var panel = document.getElementById('corsair-rhythm');
+  if (panel) panel.classList.toggle('collapsed', _corsairRhythmCollapsed);
+  var lbl = document.getElementById('rhythm-toggle-lbl');
+  if (lbl) lbl.textContent = _corsairRhythmCollapsed ? 'Expand' : 'Collapse';
+};
+window._corsairBuildRhythm = _corsairBuildRhythm;
+window._corsairRenderRhythm = _corsairRenderRhythm;
+window._corsairRefreshRhythm = _corsairRefreshRhythm;
+
+// Auto-refresh every 3 minutes when the workspace is open
+setInterval(function(){
+  if (currentWsId) _corsairRefreshRhythm();
+}, 180000);
 
 function _updateAlertBadge(){
   var btn=document.getElementById('nav-brief-btn');
