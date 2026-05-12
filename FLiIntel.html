@@ -13744,54 +13744,53 @@ async function _callMemoryClaude(query,context){
 function _renderMemoryResults(query,answer,topMeetings,totalMatches){
   var h='';
 
-  // Query echo + match count
-  h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--b1)">';
-  h+='<div style="flex:1"><span style="font-size:10px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace">QUERY</span>';
-  h+='<div style="font-size:12px;color:var(--text);margin-top:2px;font-style:italic">'+query+'</div></div>';
-  h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:18px;font-weight:700;color:var(--purple)">'+topMeetings.length+'</div>';
-  h+='<div style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;margin-top:2px">of '+totalMatches+' matches</div></div>';
+  // Query header with amber left-rule
+  h+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:12px 14px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid var(--purple);border-radius:2px">';
+  h+='<div style="flex:1;min-width:0"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--purple);margin-bottom:3px">Query</div>';
+  h+='<div style="font-size:13px;color:var(--text);font-weight:500;line-height:1.4">'+query+'</div></div>';
+  h+='<div style="text-align:right;flex-shrink:0"><div style="font-family:\'Big Shoulders Display\',Antonio,sans-serif;font-size:26px;font-weight:700;color:var(--purple);line-height:1">'+topMeetings.length+'</div>';
+  h+='<div style="font-size:8px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;letter-spacing:.1em;text-transform:uppercase">of '+totalMatches+' hits</div></div>';
   h+='</div>';
 
-  // Answer block
-  h+='<div style="padding:12px 14px;background:linear-gradient(135deg,rgba(139,92,246,.07),rgba(139,92,246,.03));border:1px solid rgba(139,92,246,.25);border-radius:var(--r);margin-bottom:12px">';
-  h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--purple);margin-bottom:10px">Intelligence Synthesis</div>';
+  // Answer block — ink gradient card
+  h+='<div style="padding:16px 18px;background:linear-gradient(140deg,rgba(139,92,246,.07),rgba(10,16,32,.6));border:1px solid rgba(139,92,246,.2);border-left:3px solid var(--purple);border-radius:2px;margin-bottom:14px">';
+  h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--purple);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--purple);box-shadow:0 0 8px var(--purple)"></span>Intelligence Synthesis</div>';
 
-  // Render answer: bold [citations], highlight "Key takeaway:"
   var formatted=answer
-    .replace(/\[([^\]]+)\]/g,'<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:rgba(139,92,246,.12);color:var(--purple);font-family:\'IBM Plex Mono\',monospace;white-space:nowrap">[$1]</span>')
-    .replace(/Key takeaway:/gi,'<div style="margin-top:10px;padding:7px 10px;background:rgba(212,130,58,.08);border-left:2px solid var(--gold);border-radius:0 var(--rsm) var(--rsm) 0"><span style="font-size:9px;font-weight:700;color:var(--gold);font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em">Key takeaway</span><div style="font-size:12px;color:var(--text);margin-top:3px">')
-    .replace(/\n\n/g,'</p><p style="margin:6px 0 0;font-size:12px;line-height:1.7;color:var(--text)">')
+    .replace(/\[([^\]]+)\]/g,'<span style="font-size:10px;padding:1px 5px;border-radius:2px;background:rgba(139,92,246,.1);color:var(--purple);font-family:\'IBM Plex Mono\',monospace;white-space:nowrap;border:1px solid rgba(139,92,246,.2)">[$1]</span>')
+    .replace(/Key takeaway:/gi,'<div style="margin-top:12px;padding:8px 12px;background:rgba(212,130,58,.06);border-left:3px solid var(--gold);border-radius:0 2px 2px 0"><span style="font-size:8px;font-weight:700;color:var(--gold);font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:.12em">Key Takeaway</span><div style="font-size:12px;color:var(--text);margin-top:4px;line-height:1.6">')
+    .replace(/\n\n/g,'</p><p style="margin:8px 0 0;font-size:12px;line-height:1.7;color:var(--text)">')
     .replace(/\n/g,'<br>');
 
   h+='<p style="margin:0;font-size:12px;line-height:1.7;color:var(--text)">'+formatted+'</p>';
   h+='</div>';
 
-  // Source meetings — collapsible list
-  h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;padding-top:2px">Source Meetings</div>';
+  // Source meetings
+  h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:8px"><span style="width:4px;height:14px;background:var(--gold);border-radius:1px"></span>Source Meetings</div>';
   topMeetings.forEach(function(item){
     var m=item.m;
     var sc=PC[m.intel.companyPulse]||{b:'rgba(26,34,54,.5)',t:'#6b7280'};
-    h+='<div style="padding:7px 10px;border:1px solid var(--b1);border-radius:var(--rsm);margin-bottom:5px;cursor:pointer;transition:border-color .15s" '
+    h+='<div style="padding:8px 12px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;margin-bottom:4px;cursor:pointer;transition:border-color .14s,background .14s" '
       +'onclick="closeMemoryAndGoTo('+m.id+')" '
-      +'onmouseover="this.style.borderColor=\'var(--purple)\'" '
-      +'onmouseout="this.style.borderColor=\'var(--b1)\'">';
-    h+='<div style="display:flex;align-items:center;gap:7px">';
-    h+='<span style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;flex-shrink:0">'+m.meta.date+'</span>';
-    h+='<span style="font-size:11px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.meta.title+'</span>';
-    if(m.intel.companyPulse){h+='<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+sc.b+';color:'+sc.t+'">'+m.intel.companyPulse+'</span>';}
+      +'onmouseover="this.style.borderColor=\'rgba(139,92,246,.4)\';this.style.background=\'rgba(139,92,246,.04)\'" '
+      +'onmouseout="this.style.borderColor=\'var(--b1)\';this.style.background=\'var(--s1)\'">';
+    h+='<div style="display:flex;align-items:center;gap:8px">';
+    h+='<span style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;flex-shrink:0;letter-spacing:.04em">'+m.meta.date+'</span>';
+    h+='<span style="font-size:11px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">'+m.meta.title+'</span>';
+    if(m.intel.companyPulse){h+='<span style="font-size:8px;padding:1px 5px;border-radius:2px;background:'+sc.b+';color:'+sc.t+';font-family:\'IBM Plex Mono\',monospace;letter-spacing:.04em">'+m.intel.companyPulse+'</span>';}
+    h+='<span style="font-size:11px;color:var(--purple);opacity:.5">&#10095;</span>';
     h+='</div>';
     if(item.matchedTerms&&item.matchedTerms.length){
-      h+='<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px">';
+      h+='<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">';
       item.matchedTerms.slice(0,6).forEach(function(t){
-        h+='<span style="font-size:9px;padding:0 4px;border-radius:2px;background:rgba(139,92,246,.1);color:var(--purple)">'+t+'</span>';
+        h+='<span style="font-size:8px;padding:1px 5px;border-radius:2px;background:rgba(139,92,246,.08);color:var(--purple);border:1px solid rgba(139,92,246,.15);font-family:\'IBM Plex Mono\',monospace;letter-spacing:.04em">'+t+'</span>';
       });
       h+='</div>';
     }
     h+='</div>';
   });
 
-  // New search button
-  h+='<button onclick="clearMemorySearch()" style="width:100%;margin-top:10px;padding:7px;border:1px dashed var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:IBM Plex Sans,sans-serif">+ Ask another question</button>';
+  h+='<button onclick="clearMemorySearch()" style="width:100%;margin-top:12px;padding:9px;border:1px solid rgba(139,92,246,.25);border-radius:2px;background:rgba(139,92,246,.04);color:var(--purple);font-size:10px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;transition:background .14s" onmouseover="this.style.background=\'rgba(139,92,246,.1)\'" onmouseout="this.style.background=\'rgba(139,92,246,.04)\'">+ New Query</button>';
 
   document.getElementById('memory-results').innerHTML=h;
 }
