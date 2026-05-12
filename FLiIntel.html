@@ -19987,11 +19987,16 @@ function _corsairBuildRhythm(){
   });
 
   // ── 1. Overdue commitments (from tl_commitments and commitments) ──
-  var allCommits = [].concat(tlCommitments || []).concat(commitments || []);
+  var _tlSet = new Set((tlCommitments || []).map(function(c){return c.id;}));
+  var allCommits = [].concat(
+    (tlCommitments || []).map(function(c){return Object.assign({_src:'tl',_cid:c.id},c);}),
+    (commitments || []).map(function(c){return Object.assign({_src:'commit',_cid:c.id},c);})
+  );
   allCommits.forEach(function(c){
-    if (!c || c.status === 'complete' || c.closedAt) return;
+    if (!c) return;
+    if (c.status === 'completed' || c.status === 'fulfilled' || c.status === 'broken' || c.status === 'closed' || c.closedAt) return;
     if (!c.deadline) return;
-    var d = new Date(c.deadline);
+    var d = new Date(c.deadline + (c.deadline.length === 10 ? 'T00:00:00' : ''));
     if (isNaN(d.getTime())) return;
     var days = Math.floor((d.getTime() - todayMs) / DAY);
     var subj = c.task || c.title || '(untitled commitment)';
@@ -20003,7 +20008,8 @@ function _corsairBuildRhythm(){
         subject: subj,
         actor: c.owner ? 'Owner · ' + c.owner : '',
         click: 'switchView(\'intel\');switchIntelTab&&switchIntelTab(\'board\')',
-        rank: days  // most overdue first (most negative)
+        rank: days,
+        _cid: c._cid, _src: c._src
       });
     } else if (days <= 3) {
       items.push({
@@ -20013,7 +20019,8 @@ function _corsairBuildRhythm(){
         subject: subj,
         actor: c.owner ? 'Owner · ' + c.owner : '',
         click: 'switchView(\'intel\');switchIntelTab&&switchIntelTab(\'board\')',
-        rank: 100 + days
+        rank: 100 + days,
+        _cid: c._cid, _src: c._src
       });
     }
   });
@@ -20143,6 +20150,27 @@ function _corsairBuildRhythm(){
   return { items: items, critCount: critCount, warnCount: warnCount };
 }
 
+window._rhythmDismiss = async function(cid, src, action) {
+  if (src === 'commit') {
+    var c = commitments.find(function(x){return x.id === cid;});
+    if (c) {
+      c.status = action === 'broken' ? 'broken' : 'fulfilled';
+      c.closedAt = new Date().toISOString();
+      await saveCommitment(c);
+    }
+  } else if (src === 'tl') {
+    var t = tlCommitments.find(function(x){return x.id === cid;});
+    if (t) {
+      t.status = 'completed';
+      await saveTLCommitment(t);
+    }
+  }
+  toast('Item resolved');
+  _corsairRefreshRhythm();
+  if (typeof renderTimeline === 'function') try { renderTimeline(); } catch(e){}
+  if (typeof renderBoard === 'function') try { renderBoard(); } catch(e){}
+};
+
 function _corsairRenderRhythm(){
   var panel = document.getElementById('corsair-rhythm');
   if (!panel) return;
@@ -20188,14 +20216,20 @@ function _corsairRenderRhythm(){
     var lbl = sev === 'critical' ? 'Critical · act today' : sev === 'warn' ? 'Watch · resolve this week' : 'Information';
     h += '<div class="rhythm-section-lbl">' + lbl + ' &nbsp;·&nbsp; ' + arr.length + '</div>';
     arr.slice(0, 12).forEach(function(it){
-      h += '<div class="rhythm-card" data-sev="' + sev + '" onclick="' + (it.click || 'void(0)').replace(/"/g,'&quot;') + '">';
+      h += '<div class="rhythm-card" data-sev="' + sev + '">';
       h +=   '<div class="rhythm-card-strip"></div>';
-      h +=   '<div class="rhythm-card-body">';
+      h +=   '<div class="rhythm-card-body" onclick="' + (it.click || 'void(0)').replace(/"/g,'&quot;') + '" style="cursor:pointer">';
       h +=     '<div class="rhythm-card-meta">' + escH(it.kind) + '<span class="rhythm-card-meta-divider"></span><span style="color:var(--paper);letter-spacing:0.10em">' + escH(it.meta) + '</span></div>';
       h +=     '<div class="rhythm-card-subject">' + escH(it.subject) + '</div>';
       if (it.actor) h += '<div class="rhythm-card-actor">' + escH(it.actor) + '</div>';
+      if (it._cid) {
+        h += '<div style="display:flex;gap:6px;margin-top:8px">';
+        h += '<button onclick="event.stopPropagation();_rhythmDismiss(\'' + escH(it._cid) + '\',\'' + escH(it._src) + '\',\'done\')" style="font-size:8px;padding:3px 8px;border:1px solid var(--green);border-radius:2px;background:transparent;color:var(--green);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✓ DONE</button>';
+        h += '<button onclick="event.stopPropagation();_rhythmDismiss(\'' + escH(it._cid) + '\',\'' + escH(it._src) + '\',\'broken\')" style="font-size:8px;padding:3px 8px;border:1px solid var(--red);border-radius:2px;background:transparent;color:var(--red);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✗ DROP</button>';
+        h += '</div>';
+      }
       h +=   '</div>';
-      h +=   '<div class="rhythm-card-arrow">&#10095;</div>';
+      h +=   '<div class="rhythm-card-arrow" onclick="' + (it.click || 'void(0)').replace(/"/g,'&quot;') + '" style="cursor:pointer">&#10095;</div>';
       h += '</div>';
     });
   });
