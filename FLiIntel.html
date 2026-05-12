@@ -5964,11 +5964,24 @@ input[type="url"], textarea, select {
       <div class="fld"><div class="lbl">RFP / Solicitation Date</div><input type="date" id="opp-rfp-inp"></div>
       <div class="fld"><div class="lbl">Award Date</div><input type="date" id="opp-award-inp"></div>
     </div>
-    <div class="fld"><div class="lbl">Capture Lead</div><input type="text" id="opp-lead-inp" placeholder="Person owning this pursuit"></div>
+    <div class="fld"><div class="lbl">Capture Lead</div><select id="opp-lead-inp"><option value="">— Unassigned —</option></select></div>
     <div class="fld"><div class="lbl">Notes</div><textarea id="opp-notes-inp" style="min-height:70px" placeholder="Key context, incumbent, competitive landscape..."></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
       <button class="btn btn-sm" onclick="closeModal('new-opp-modal')">Cancel</button>
       <button class="btn btn-gold" onclick="confirmNewOpp()">Create Opportunity</button>
+    </div>
+  </div>
+</div>
+<!-- CAPTURE LEAD PICKER MODAL -->
+<div class="overlay" id="lead-picker-modal" style="display:none">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-title">Assign Capture Lead</div>
+    <div style="font-size:12px;color:var(--t2);margin-bottom:14px;line-height:1.5">Who owns this pursuit? First check at every capture review.</div>
+    <div class="fld"><div class="lbl">Workspace Member</div><select id="lead-picker-sel"><option value="">— Unassigned —</option></select></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+      <button class="btn btn-sm" onclick="closeModal('lead-picker-modal')">Cancel</button>
+      <button class="btn btn-sm" onclick="_clearLeadPicker()">Clear</button>
+      <button class="btn btn-gold" onclick="_saveLeadPicker()">Assign</button>
     </div>
   </div>
 </div>
@@ -10030,6 +10043,57 @@ var OPP_STAGES=[
 function oppStageConfig(key){return OPP_STAGES.find(function(s){return s.key===key;})||OPP_STAGES[0];}
 function oppStageIndex(key){return OPP_STAGES.findIndex(function(s){return s.key===key;});}
 
+// Capture Lead picker — fetches workspace members from the same Firebase
+// path as renderTeamView (workspaces/{wsId}/members) and populates a select.
+// Stores member name as the value (consistent with the existing free-text
+// data shape). Legacy free-text leads that don't match a member are kept
+// as an "(legacy)" option so historical data isn't lost on save.
+async function _populateLeadSelect(selectEl, currentValue){
+  if (!selectEl) return;
+  selectEl.innerHTML = '<option value="">— Unassigned —</option>';
+  var members = [];
+  try {
+    if (currentWsId) {
+      var snap = await get(ref(db, 'workspaces/' + currentWsId + '/members'));
+      var obj = snap.val() || {};
+      members = Object.values(obj).filter(function(m){return m && (m.name || m.email);});
+    }
+  } catch(e){}
+  // Defensive: include currentUser if not present in the fetched list
+  if (currentUser && currentUser.uid){
+    var has = members.some(function(m){return m.uid === currentUser.uid;});
+    if (!has){
+      members.push({
+        uid: currentUser.uid,
+        name: currentUser.displayName || currentUser.email || 'You',
+        email: currentUser.email || ''
+      });
+    }
+  }
+  members.sort(function(a,b){
+    var an = (a.name || a.email || '').toLowerCase();
+    var bn = (b.name || b.email || '').toLowerCase();
+    return an < bn ? -1 : an > bn ? 1 : 0;
+  });
+  members.forEach(function(m){
+    var displayName = m.name || m.email || '(unnamed)';
+    var isYou = currentUser && m.uid === currentUser.uid;
+    var opt = document.createElement('option');
+    opt.value = displayName;
+    opt.textContent = displayName + (isYou ? '  ·  you' : '');
+    if (currentValue && currentValue === displayName) opt.selected = true;
+    selectEl.appendChild(opt);
+  });
+  // Preserve legacy free-text values that don't match any current member
+  if (currentValue && !Array.from(selectEl.options).some(function(o){return o.value === currentValue;})){
+    var legacy = document.createElement('option');
+    legacy.value = currentValue;
+    legacy.textContent = currentValue + '  ·  legacy';
+    legacy.selected = true;
+    selectEl.appendChild(legacy);
+  }
+}
+
 window.openNewOppModal=function(){
   document.getElementById('opp-name-inp').value='';
   document.getElementById('opp-agency-inp').value='';
@@ -10038,8 +10102,11 @@ window.openNewOppModal=function(){
   document.getElementById('opp-stage-inp').value='engaged';
   document.getElementById('opp-rfp-inp').value='';
   document.getElementById('opp-award-inp').value='';
-  var leadInp=document.getElementById('opp-lead-inp');
-  if(leadInp)leadInp.value='';
+  var leadSel=document.getElementById('opp-lead-inp');
+  if(leadSel){
+    leadSel.innerHTML='<option value="">— Unassigned —</option>';
+    _populateLeadSelect(leadSel, '');
+  }
   document.getElementById('opp-notes-inp').value='';
   document.getElementById('new-opp-modal').style.display='flex';
 };
@@ -11230,18 +11297,43 @@ window.editOppNotes=async function(id){
   toast('Notes saved');
 };
 
+window._currentLeadEditOppId=null;
 window.editOppCaptureLead=async function(id){
   var opp=opportunities.find(function(o){return o.id===id;});
   if(!opp)return;
-  var current=opp.captureLead||opp.lead||'';
-  var lead=await showPrompt('Capture Lead',current,{title:'Assign Capture Lead',description:'Who owns this pursuit? First check at every capture review.',confirmLabel:'Assign',rows:1});
-  if(lead===null)return;
-  opp.captureLead=lead.trim();
+  window._currentLeadEditOppId=id;
+  var sel=document.getElementById('lead-picker-sel');
+  document.getElementById('lead-picker-modal').style.display='flex';
+  await _populateLeadSelect(sel, opp.captureLead || opp.lead || '');
+};
+
+window._saveLeadPicker=async function(){
+  var id=window._currentLeadEditOppId;
+  if(!id)return;
+  var opp=opportunities.find(function(o){return o.id===id;});
+  if(!opp){closeModal('lead-picker-modal');return;}
+  var sel=document.getElementById('lead-picker-sel');
+  opp.captureLead=sel ? (sel.value || '') : '';
   opp.updatedAt=new Date().toISOString();
   await saveOpp(opp);
+  closeModal('lead-picker-modal');
   renderOppDetail(opp);
   if(typeof renderOppSidebar==='function')renderOppSidebar();
   toast(opp.captureLead?'Capture lead assigned':'Capture lead cleared');
+};
+
+window._clearLeadPicker=async function(){
+  var id=window._currentLeadEditOppId;
+  if(!id){closeModal('lead-picker-modal');return;}
+  var opp=opportunities.find(function(o){return o.id===id;});
+  if(!opp){closeModal('lead-picker-modal');return;}
+  opp.captureLead='';
+  opp.updatedAt=new Date().toISOString();
+  await saveOpp(opp);
+  closeModal('lead-picker-modal');
+  renderOppDetail(opp);
+  if(typeof renderOppSidebar==='function')renderOppSidebar();
+  toast('Capture lead cleared');
 };
 
 function updateOppSelectors(){
