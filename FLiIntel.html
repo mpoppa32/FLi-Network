@@ -12317,6 +12317,35 @@ function _renderOppList(q){
     if (!lastMtgByOpp[m.oppId] || ts > lastMtgByOpp[m.oppId]) lastMtgByOpp[m.oppId] = ts;
   });
 
+  // ── Rhythm next-action lookup per opp — closes the COP→Rhythm loop ──
+  var nextActionByOpp = {};
+  try {
+    var rhythmItems = (typeof _corsairBuildRhythm === 'function') ? (_corsairBuildRhythm() || []) : [];
+    var oppById = {};
+    opportunities.forEach(function(o){ oppById[o.id] = o; });
+    var sevRank = {critical:0, warn:1, info:2};
+    rhythmItems.forEach(function(it){
+      var oppId = null;
+      // Extract opp id from click handler — most reliable signal
+      if (it.click) {
+        var m = it.click.match(/selectOpp\(['"]([^'"]+)['"]\)/);
+        if (m) oppId = m[1];
+      }
+      // Fallback: match subject text to opp.name
+      if (!oppId && it.subject) {
+        var subjLc = (it.subject || '').toLowerCase().trim();
+        for (var oid in oppById) {
+          if (oppById[oid].name && oppById[oid].name.toLowerCase().trim() === subjLc) { oppId = oid; break; }
+        }
+      }
+      if (!oppId) return;
+      var existing = nextActionByOpp[oppId];
+      if (!existing || (sevRank[it.sev] != null && sevRank[it.sev] < sevRank[existing.sev])) {
+        nextActionByOpp[oppId] = it;
+      }
+    });
+  } catch(e) { /* rhythm unavailable, skip enrichment */ }
+
   // Per-pursuit win probability — cache so we don't recompute when sorting
   var pwByOpp = {};
   function pwOf(o){
@@ -12412,6 +12441,14 @@ function _renderOppList(q){
           + '<div class="cop-metric"><div class="cop-metric-lbl">LAST</div><div class="cop-metric-val">' + (lastTs ? (daysSince === 0 ? 'TDY' : daysSince + 'D') : '—') + '</div></div>'
         + '</div>'
         + lifecycleBar(o.stage)
+        + (function(){
+            var na = nextActionByOpp[o.id];
+            if (!na) return '';
+            var col = na.sev === 'critical' ? '#ef4444' : na.sev === 'warn' ? 'var(--amber)' : 'var(--t2)';
+            var kind = escH(na.kind || 'NEXT');
+            var meta = escH(na.meta || '');
+            return '<div class="cop-card-nextaction" style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:7px 10px;background:rgba(7,13,24,.55);border:1px solid var(--b1);border-left:3px solid ' + col + ';border-radius:2px"><span style="font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:700;letter-spacing:.14em;color:' + col + ';text-transform:uppercase;flex-shrink:0">' + kind + '</span><span style="font-family:IBM Plex Mono,monospace;font-size:9.5px;color:var(--t3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + meta + '</span><span style="color:var(--t3);font-size:11px;flex-shrink:0">›</span></div>';
+          })()
         + (lead ? '<div class="cop-card-lead">CAPTURE LEAD · ' + escH(lead) + '</div>' : '')
       + '</div>'
     + '</div>';
@@ -13978,11 +14015,37 @@ function _renderMemoryResults(query,answer,topMeetings,totalMatches){
   h+='<div style="padding:16px 18px;background:linear-gradient(140deg,rgba(139,92,246,.07),rgba(10,16,32,.6));border:1px solid rgba(139,92,246,.2);border-left:3px solid var(--purple);border-radius:2px;margin-bottom:14px">';
   h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--purple);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:4px;height:4px;border-radius:50%;background:var(--purple);box-shadow:0 0 8px var(--purple)"></span>Intelligence Synthesis</div>';
 
-  var formatted=answer
+  // Auto-link entity and pursuit names — closes Ask Corsair -> Inspector/COP loop
+  var _marks = [];
+  var _annotated = String(answer || '');
+  try {
+    var refs = [];
+    (opportunities || []).forEach(function(o){ if(o && o.name && o.name.length>=4) refs.push({name:o.name, id:o.id, kind:'opp'}); });
+    (nodes || []).forEach(function(n){ if(n && n.name && n.name.length>=4) refs.push({name:n.name, id:n.id, kind:'node'}); });
+    refs.sort(function(a,b){ return b.name.length - a.name.length; });
+    refs.forEach(function(r){
+      var safe = r.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      var rgx = new RegExp('\\b' + safe + '\\b', 'g');
+      _annotated = _annotated.replace(rgx, function(match){
+        var idx = _marks.length;
+        _marks.push({kind:r.kind, id:r.id, txt:match});
+        return ' MARK' + idx + ' ';
+      });
+    });
+  } catch(e) { /* fail-safe: no annotation */ }
+
+  var formatted=_annotated
     .replace(/\[([^\]]+)\]/g,'<span style="font-size:10px;padding:1px 5px;border-radius:2px;background:rgba(139,92,246,.1);color:var(--purple);font-family:\'IBM Plex Mono\',monospace;white-space:nowrap;border:1px solid rgba(139,92,246,.2)">[$1]</span>')
     .replace(/Key takeaway:/gi,'<div style="margin-top:12px;padding:8px 12px;background:rgba(212,130,58,.06);border-left:3px solid var(--gold);border-radius:0 2px 2px 0"><span style="font-size:8px;font-weight:700;color:var(--gold);font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:.12em">Key Takeaway</span><div style="font-size:12px;color:var(--text);margin-top:4px;line-height:1.6">')
     .replace(/\n\n/g,'</p><p style="margin:8px 0 0;font-size:12px;line-height:1.7;color:var(--text)">')
-    .replace(/\n/g,'<br>');
+    .replace(/\n/g,'<br>')
+    .replace(/ MARK(\d+) /g, function(_,n){
+      var m = _marks[parseInt(n,10)]; if(!m) return '';
+      if(m.kind==='opp'){
+        return '<a onclick="window.selectOpp&amp;&amp;window.selectOpp(\''+m.id+'\');switchView(\'cop\')" style="color:var(--gold);cursor:pointer;border-bottom:1px dotted rgba(212,130,58,.6);text-decoration:none">'+m.txt+'</a>';
+      }
+      return '<a onclick="window.openEntityInspector&amp;&amp;window.openEntityInspector(\''+m.id+'\')" style="color:var(--bone);cursor:pointer;border-bottom:1px dotted rgba(244,237,224,.4);text-decoration:none">'+m.txt+'</a>';
+    });
 
   h+='<p style="margin:0;font-size:12px;line-height:1.7;color:var(--text)">'+formatted+'</p>';
   h+='</div>';
@@ -20756,16 +20819,19 @@ window._renderRhythmView = function(){
     html += '<span style="width:4px;height:14px;background:'+cfg.color+';border-radius:1px"></span>'+cfg.label+' <span style="color:var(--t3);font-weight:600">· '+arr.length+'</span></div>';
     html += '<div style="display:grid;gap:6px">';
     arr.sort(function(a,b){return (a.rank||0)-(b.rank||0);});
-    arr.forEach(function(it){
+    arr.forEach(function(it,ix){
       var click = it.click ? it.click.replace(/"/g,'&quot;') : '';
       var subj = (it.subject||'').replace(/</g,'&lt;');
       var actor = (it.actor||'').replace(/</g,'&lt;');
       var kind = (it.kind||'').replace(/</g,'&lt;');
       var mtxt = (it.meta||'').replace(/</g,'&lt;');
+      var oppMatch = it.click ? it.click.match(/selectOpp\(['"]([^'"]+)['"]\)/) : null;
+      var graphTarget = oppMatch ? oppMatch[1] : '';
       html += '<div class="rhythm-row" style="background:linear-gradient(180deg,var(--s1),rgba(7,13,24,.6));border:1px solid var(--b1);border-left:3px solid '+cfg.rule+';border-radius:2px;padding:11px 14px;cursor:pointer;transition:border-color 160ms,transform 160ms" onclick="'+click+'" onmouseover="this.style.borderColor=\'rgba(212,130,58,.4)\';this.style.transform=\'translateX(2px)\'" onmouseout="this.style.borderColor=\'var(--b1)\';this.style.transform=\'\'">';
       html += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">';
       html += '<div style="min-width:140px"><div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:'+cfg.color+'">'+kind+'</div><div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);margin-top:2px">'+mtxt+'</div></div>';
       html += '<div style="flex:1;min-width:200px"><div style="font-family:Antonio,sans-serif;font-size:16px;color:var(--bone);font-weight:700;letter-spacing:-.01em;line-height:1.2">'+subj+'</div>'+(actor?'<div style="font-size:11px;color:var(--t3);margin-top:3px">'+actor+'</div>':'')+'</div>';
+      html += '<button onclick="event.stopPropagation();window._rhythmJumpToGraph(\''+(graphTarget||'').replace(/\'/g,'&#39;')+'\',\''+subj.replace(/\'/g,'&#39;')+'\')" title="View in Graph" style="padding:5px 9px;background:rgba(212,130,58,.06);border:1px solid rgba(212,130,58,.28);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;flex-shrink:0;transition:background 160ms" onmouseover="this.style.background=\'rgba(212,130,58,.16)\'" onmouseout="this.style.background=\'rgba(212,130,58,.06)\'">Graph ↗</button>';
       html += '<div style="color:var(--t3);font-size:16px;font-weight:300">›</div>';
       html += '</div></div>';
     });
@@ -20773,6 +20839,26 @@ window._renderRhythmView = function(){
   });
 
   body.innerHTML = html;
+};
+
+// Loop hook — jump from a rhythm row to the Graph, focused on the relevant entity
+window._rhythmJumpToGraph = function(oppId, subjectLabel){
+  switchView('graph');
+  setTimeout(function(){
+    if (oppId && window._copFocusInGraph) {
+      window._copFocusInGraph(oppId);
+      return;
+    }
+    // Try to match subject text against a graph node
+    if (subjectLabel && (nodes||[]).length) {
+      var lc = (subjectLabel||'').toLowerCase().trim();
+      var match = nodes.find(function(n){ return (n.name||'').toLowerCase() === lc; })
+              || nodes.find(function(n){ return (n.name||'').toLowerCase().indexOf(lc) >= 0; });
+      if (match && window.openEntityInspector) {
+        window.openEntityInspector(match.id);
+      }
+    }
+  }, 220);
 };
 
 // ── INSPECTOR MODE — entity dossier landing ────────────────────────────
