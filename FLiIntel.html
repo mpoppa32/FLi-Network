@@ -15565,7 +15565,7 @@ function renderNetwork(){if(!svg)return;if(_pgView.active)return;if(_tvView.acti
   sim.force('link').links(ld);
   // Alpha boost: higher when new nodes need to settle, lower for minor updates
   var alphaVal=hasNewNodes?0.35:0.08;
-  sim.alpha(alphaVal).restart();window._lM=lM;window._nM=nM;window.sim=sim;window.nodes=nodes;window.links=links;window.nodeMap=nodeMap;window.nr=nr;window.opportunities=opportunities;if(typeof window._corsairRenderHalos==='function')requestAnimationFrame(window._corsairRenderHalos);applyFilter();
+  sim.alpha(alphaVal).restart();window._lM=lM;window._nM=nM;window.sim=sim;window.nodes=nodes;window.links=links;window.nodeMap=nodeMap;window.nr=nr;window.opportunities=opportunities;window.zoom=zoom;window.svg=svg;window.svgEl=svgEl;if(typeof window._corsairRenderHalos==='function')requestAnimationFrame(window._corsairRenderHalos);if(typeof window._corsairRenderMinimap==='function')requestAnimationFrame(window._corsairRenderMinimap);applyFilter();
   // Refresh cooling strip whenever graph re-renders (async — doesn't block)
   setTimeout(renderCoolingStrip,0);}
 
@@ -30162,6 +30162,300 @@ window.addEventListener('resize', function() {
       if (av === 'network') _ensureMembersLoaded();
     }
   }, 600);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MINIMAP — operator overview tile, bottom-left of the network view.
+  // Shows every node as a small dot in the graph's bounding extent, with
+  // an amber rectangle indicating the current main-view viewport. Click
+  // or drag in the minimap to pan the main view to that world point.
+  // ═══════════════════════════════════════════════════════════════════════════
+  var _mmContainer = null, _mmSvg = null, _mmNodes = null, _mmViewport = null;
+  var _mmW = 208, _mmH = 144;
+  var _mmRafPending = false;
+  var _mmProj = null;
+
+  function _ensureMinimap(){
+    var netView = document.getElementById('network-view');
+    if (!netView) return false;
+    if (_mmContainer && _mmContainer.parentNode === netView) return true;
+    if (_mmContainer && _mmContainer.parentNode) _mmContainer.parentNode.removeChild(_mmContainer);
+
+    _mmContainer = document.createElement('div');
+    _mmContainer.id = 'corsair-minimap';
+    _mmContainer.style.cssText = [
+      'position:absolute',
+      'bottom:14px',
+      'left:14px',
+      'width:' + _mmW + 'px',
+      'background:linear-gradient(160deg,rgba(10,16,32,0.96),rgba(7,13,24,0.99))',
+      'border:1px solid var(--rule-2)',
+      'border-left:2px solid var(--gold)',
+      'box-shadow:0 12px 32px rgba(0,0,0,0.55),0 0 0 1px rgba(212,130,58,0.08)',
+      'user-select:none',
+      'pointer-events:auto',
+      'z-index:80',
+      'border-radius:1px'
+    ].join(';');
+
+    var labelDiv = document.createElement('div');
+    labelDiv.style.cssText = 'padding:7px 11px 6px;font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.24em;color:var(--paper-2);text-transform:uppercase;border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between';
+    var labelTxt = document.createElement('span');
+    labelTxt.textContent = 'Graph Overview';
+    var labelCount = document.createElement('span');
+    labelCount.id = 'corsair-minimap-count';
+    labelCount.style.color = 'var(--gold)';
+    labelCount.style.fontWeight = '700';
+    labelCount.textContent = '';
+    labelDiv.appendChild(labelTxt);
+    labelDiv.appendChild(labelCount);
+    _mmContainer.appendChild(labelDiv);
+
+    _mmSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    _mmSvg.setAttribute('width', _mmW);
+    _mmSvg.setAttribute('height', _mmH);
+    _mmSvg.setAttribute('viewBox', '0 0 ' + _mmW + ' ' + _mmH);
+    _mmSvg.style.display = 'block';
+    _mmSvg.style.cursor = 'crosshair';
+    _mmContainer.appendChild(_mmSvg);
+
+    // Background tint
+    var bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bg.setAttribute('width', _mmW);
+    bg.setAttribute('height', _mmH);
+    bg.setAttribute('fill', 'rgba(7,13,24,0.6)');
+    _mmSvg.appendChild(bg);
+
+    // Subtle grid in the minimap — paper-tinted, very faint
+    var gridSize = 24;
+    var gridPath = '';
+    for (var gx = 0; gx <= _mmW; gx += gridSize) gridPath += 'M' + gx + ' 0L' + gx + ' ' + _mmH;
+    for (var gy = 0; gy <= _mmH; gy += gridSize) gridPath += 'M0 ' + gy + 'L' + _mmW + ' ' + gy;
+    var gridEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    gridEl.setAttribute('d', gridPath);
+    gridEl.setAttribute('stroke', 'rgba(125,118,105,0.08)');
+    gridEl.setAttribute('stroke-width', '0.5');
+    gridEl.setAttribute('fill', 'none');
+    _mmSvg.appendChild(gridEl);
+
+    _mmNodes = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    _mmNodes.setAttribute('class', 'mm-nodes');
+    _mmSvg.appendChild(_mmNodes);
+
+    _mmViewport = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    _mmViewport.setAttribute('fill', 'rgba(212,130,58,0.12)');
+    _mmViewport.setAttribute('stroke', '#d4823a');
+    _mmViewport.setAttribute('stroke-width', '1.3');
+    _mmViewport.setAttribute('pointer-events', 'none');
+    _mmSvg.appendChild(_mmViewport);
+
+    // Click + drag to pan main view
+    var dragging = false;
+    function panFromEvent(e){
+      var rect = _mmSvg.getBoundingClientRect();
+      var mx = (e.clientX || (e.touches && e.touches[0].clientX) || 0) - rect.left;
+      var my = (e.clientY || (e.touches && e.touches[0].clientY) || 0) - rect.top;
+      _panMainToMinimapPoint(mx, my);
+    }
+    _mmSvg.addEventListener('mousedown', function(e){
+      if (e.button !== 0) return;
+      dragging = true;
+      _mmSvg.style.cursor = 'grabbing';
+      panFromEvent(e);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    document.addEventListener('mousemove', function(e){
+      if (!dragging) return;
+      panFromEvent(e);
+    });
+    document.addEventListener('mouseup', function(){
+      if (dragging){
+        dragging = false;
+        if (_mmSvg) _mmSvg.style.cursor = 'crosshair';
+      }
+    });
+
+    netView.appendChild(_mmContainer);
+    return true;
+  }
+
+  function _scheduleMinimapRender(){
+    if (_mmRafPending) return;
+    _mmRafPending = true;
+    requestAnimationFrame(_renderMinimap);
+  }
+
+  function _renderMinimap(){
+    _mmRafPending = false;
+    if (!_ensureMinimap()) return;
+    if (!isGraphView()){
+      if (_mmContainer) _mmContainer.style.display = 'none';
+      return;
+    }
+    _mmContainer.style.display = '';
+
+    var nodes = (window._nM && typeof window._nM.data === 'function')
+      ? window._nM.data()
+      : (window.nodes || []);
+    var countEl = document.getElementById('corsair-minimap-count');
+    if (countEl) countEl.textContent = nodes.length + ' entities';
+
+    if (!nodes.length){
+      _mmNodes.innerHTML = '';
+      _mmViewport.setAttribute('width', '0');
+      _mmProj = null;
+      return;
+    }
+
+    // Compute extent
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (var i=0;i<nodes.length;i++){
+      var n = nodes[i];
+      if (typeof n.x !== 'number' || typeof n.y !== 'number') continue;
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    }
+    if (!isFinite(minX)){
+      _mmNodes.innerHTML = '';
+      return;
+    }
+    // Pad extent so nodes near the edge aren't right against the minimap border
+    var padW = (maxX - minX) * 0.08 + 60;
+    var padH = (maxY - minY) * 0.08 + 60;
+    minX -= padW; maxX += padW; minY -= padH; maxY += padH;
+    var gW = Math.max(1, maxX - minX), gH = Math.max(1, maxY - minY);
+    var s = Math.min(_mmW / gW, _mmH / gH);
+    var offX = (_mmW - gW * s) / 2;
+    var offY = (_mmH - gH * s) / 2;
+
+    _mmProj = { minX: minX, minY: minY, s: s, offX: offX, offY: offY };
+
+    function w2m(x, y){
+      return [offX + (x - minX) * s, offY + (y - minY) * s];
+    }
+
+    // Build node dots in a single innerHTML pass — fast even at 200+ nodes
+    var parts = [];
+    for (var j=0;j<nodes.length;j++){
+      var nd = nodes[j];
+      if (typeof nd.x !== 'number' || typeof nd.y !== 'number') continue;
+      var p = w2m(nd.x, nd.y);
+      var col, r;
+      if (nd.type === 'company' || nd.type === 'government'){
+        col = '#d4823a'; r = 1.9;
+      } else if (nd.type === 'deal'){
+        col = '#5fb3b8'; r = 1.6;
+      } else {
+        // Person — role color if cached
+        if (window._corsairBorderColor) {
+          col = window._corsairBorderColor(nd) || '#b5ad9f';
+        } else {
+          col = '#b5ad9f';
+        }
+        r = 1.25;
+      }
+      var op = (nd.priority === 1) ? 0.95 : (nd.priority === 2) ? 0.75 : 0.55;
+      parts.push('<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + r + '" fill="' + col + '" opacity="' + op + '"/>');
+    }
+    _mmNodes.innerHTML = parts.join('');
+
+    // Viewport rectangle — what's visible in the main view in world coords
+    var W = window.W || (document.getElementById('network-view') || {}).offsetWidth || 800;
+    var H = window.H || (document.getElementById('network-view') || {}).offsetHeight || 600;
+    var curT = null;
+    try {
+      if (typeof d3 !== 'undefined' && window.svgEl) curT = d3.zoomTransform(window.svgEl);
+    } catch(e){ curT = null; }
+    if (!curT){
+      _mmViewport.setAttribute('width', '0');
+      return;
+    }
+    var k = curT.k || 1, tx = curT.x || 0, ty = curT.y || 0;
+    var wxMin = (0 - tx) / k, wxMax = (W - tx) / k;
+    var wyMin = (0 - ty) / k, wyMax = (H - ty) / k;
+    var p1 = w2m(wxMin, wyMin);
+    var p2 = w2m(wxMax, wyMax);
+    var vpX = Math.max(0, Math.min(_mmW, p1[0]));
+    var vpY = Math.max(0, Math.min(_mmH, p1[1]));
+    var vpW = Math.max(2, Math.min(_mmW, p2[0]) - vpX);
+    var vpH = Math.max(2, Math.min(_mmH, p2[1]) - vpY);
+    _mmViewport.setAttribute('x', vpX.toFixed(1));
+    _mmViewport.setAttribute('y', vpY.toFixed(1));
+    _mmViewport.setAttribute('width',  vpW.toFixed(1));
+    _mmViewport.setAttribute('height', vpH.toFixed(1));
+  }
+
+  function _panMainToMinimapPoint(mx, my){
+    if (!_mmProj) return;
+    if (typeof d3 === 'undefined') return;
+    if (!window.svg || !window.zoom || !window.svgEl) return;
+    var worldX = _mmProj.minX + (mx - _mmProj.offX) / _mmProj.s;
+    var worldY = _mmProj.minY + (my - _mmProj.offY) / _mmProj.s;
+    var W = window.W || 800;
+    var H = window.H || 600;
+    var curT = d3.zoomTransform(window.svgEl);
+    var k = curT.k || 1;
+    var newT = d3.zoomIdentity.translate(W/2 - worldX * k, H/2 - worldY * k).scale(k);
+    try { window.svg.call(window.zoom.transform, newT); } catch(e){}
+  }
+
+  window._corsairRenderMinimap = _renderMinimap;
+  window._corsairPanGraphTo = _panMainToMinimapPoint;
+
+  // Hook: sim tick → refresh minimap every 4th tick (~15fps while settling)
+  var _mmTickCount = 0;
+  function _tryHookMinimapSim(){
+    if (!window.sim || typeof window.sim.on !== 'function') return false;
+    try {
+      window.sim.on('tick.corsairMinimap', function(){
+        _mmTickCount++;
+        if (_mmTickCount % 4 === 0) _scheduleMinimapRender();
+      });
+      _scheduleMinimapRender();
+      return true;
+    } catch(e){ return false; }
+  }
+  if (!_tryHookMinimapSim()){
+    var mmSimInt = setInterval(function(){ if (_tryHookMinimapSim()) clearInterval(mmSimInt); }, 400);
+    setTimeout(function(){ clearInterval(mmSimInt); }, 30000);
+  }
+
+  // Hook: inner <g> transform changes (zoom/pan) → refresh viewport rect
+  var _mmTransformObserver = null;
+  function _tryHookMinimapZoom(){
+    var svgEl = document.getElementById('net-canvas');
+    if (!svgEl) return false;
+    var inner = svgEl.querySelector('g');
+    if (!inner) return false;
+    if (_mmTransformObserver) return true;
+    _mmTransformObserver = new MutationObserver(function(records){
+      for (var i=0;i<records.length;i++){
+        if (records[i].attributeName === 'transform') {
+          _scheduleMinimapRender();
+          return;
+        }
+      }
+    });
+    _mmTransformObserver.observe(inner, { attributes: true, attributeFilter: ['transform'] });
+    return true;
+  }
+  if (!_tryHookMinimapZoom()){
+    var mmZmInt = setInterval(function(){ if (_tryHookMinimapZoom()) clearInterval(mmZmInt); }, 400);
+    setTimeout(function(){ clearInterval(mmZmInt); }, 30000);
+  }
+
+  // View change → show or hide
+  var _lastAvForMinimap = null;
+  setInterval(function(){
+    var av = window.activeView;
+    if (av !== _lastAvForMinimap){
+      _lastAvForMinimap = av;
+      if (av === 'network') _scheduleMinimapRender();
+      else if (_mmContainer) _mmContainer.style.display = 'none';
+    }
+  }, 500);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // EDGE PULSE — animated amber dot that travels source → target whenever a
