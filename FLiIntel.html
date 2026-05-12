@@ -14958,7 +14958,7 @@ function _getPersonOrgPos(personId){
   return null;
 }
 
-function renderNetwork(){if(!svg)return;if(_pgView.active)return;if(_tvView.active)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','IBM Plex Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){if(d.label==='Works at')return 'none';return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){if(d.label==='Works at')return 1;var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);}).attr('stroke-opacity',function(d){return d.label==='Works at'?0.3:0.7;});lM.select('text').text(function(d){return d.label==='Works at'?'':d.label||'';}).attr('fill',function(d){return es(d.label).c;}).attr('opacity',function(d){return d.label==='Works at'?0:1;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('dblclick',function(ev,d){if(d.pinned){d.fx=null;d.fy=null;d.pinned=false;var nn=nodeMap.get(d.id);if(nn){nn.fx=null;nn.fy=null;nn.pinned=false;}saveNode(d);if(sim)sim.alpha(0.15).restart();setNetStatus(d.name+' unpinned');setTimeout(clearNetStatus,1800);}}).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('circle').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('r',function(d){return nr(d);}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':'url(#dshadow)';});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(7,13,24,0.92)').attr('stroke',function(d){return d.priority===1?ha(nc(d),0.4):'rgba(26,34,54,0.5)';}).attr('stroke-width','0.5').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','IBM Plex Sans,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});// Recompute org radial positions before restart
+function renderNetwork(){if(!svg)return;if(_pgView.active)return;if(_tvView.active)return;var ld=links.map(function(l){return Object.assign({},l,{source:l.source&&l.source.id||l.source,target:l.target&&l.target.id||l.target});});var lSel=lg.selectAll('.link-g').data(ld,function(d){return (d.source&&d.source.id||d.source)+'-'+(d.target&&d.target.id||d.target)+'-'+(d.label||'');});lSel.exit().remove();var lE=lSel.enter().append('g').attr('class','link-g');lE.append('line').attr('stroke-linecap','round');lE.append('text').attr('text-anchor','middle').attr('font-size','9px').attr('font-family','IBM Plex Mono,monospace').attr('dy','-4').attr('pointer-events','none');var lM=lE.merge(lSel);lM.select('line').attr('stroke',function(d){return es(d.label).c;}).attr('stroke-dasharray',function(d){if(d.label==='Works at')return 'none';return es(d.label).dash?'6,4':'none';}).attr('stroke-width',function(d){if(d.label==='Works at')return 1;var s=d.source&&d.source.id||d.source,t=d.target&&d.target.id||d.target;var sh=getMtgsForNode(s).filter(function(m){return getMtgsForNode(t).some(function(cm){return cm.id===m.id;});}).length;return Math.min(1.5+sh*.4,4);}).attr('stroke-opacity',function(d){return d.label==='Works at'?0.3:0.7;});lM.select('text').text(function(d){return d.label==='Works at'?'':d.label||'';}).attr('fill',function(d){return es(d.label).c;}).attr('opacity',function(d){return d.label==='Works at'?0:1;});var nSel=ng.selectAll('.node-g').data(nodes,function(d){return d.id;});nSel.exit().remove();var nE=nSel.enter().append('g').attr('class','node-g').style('cursor','pointer').call(d3.drag().on('start',dragStart).on('drag',dragged).on('end',dragEnd)).on('click',nodeClick).on('dblclick',function(ev,d){if(d.pinned){d.fx=null;d.fy=null;d.pinned=false;var nn=nodeMap.get(d.id);if(nn){nn.fx=null;nn.fy=null;nn.pinned=false;}saveNode(d);if(sim)sim.alpha(0.15).restart();setNetStatus(d.name+' unpinned');setTimeout(clearNetStatus,1800);}}).on('mouseenter',nodeHover).on('mouseleave',nodeLeave);nE.append('circle').attr('class','glow-ring');nE.append('circle').attr('class','pri-ring');nE.append('path').attr('class','main-c');nE.append('text').attr('class','glyph').attr('text-anchor','middle').attr('dominant-baseline','middle').attr('pointer-events','none');nE.append('rect').attr('class','lbl-bg').attr('rx',4).attr('pointer-events','none');nE.append('text').attr('class','lbl').attr('text-anchor','middle').attr('pointer-events','none');var RNGR={1:8,2:3,3:0},RNGW={1:4,2:1.5,3:0},RNGO={1:.88,2:.4,3:0},LBLSZ={1:16,2:13,3:11},LBLW={1:700,2:600,3:500},NFILA={1:.3,2:.16,3:.08};var nM=nE.merge(nSel);nM.select('.glow-ring').attr('r',function(d){return d.priority===1?nr(d)+16:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?1.5:0;}).attr('opacity',function(d){return d.priority===1?.28:0;}).attr('filter','url(#glow)');nM.select('.pri-ring').attr('r',function(d){return d.priority<=2?nr(d)+RNGR[d.priority||2]:0;}).attr('fill','none').attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return RNGW[d.priority||2];}).attr('opacity',function(d){return RNGO[d.priority||2];});nM.select('.main-c').attr('d',function(d){return (window._corsairShape&&window._corsairShape(d.type,nr(d)))||'';}).attr('fill',function(d){return ha(nc(d),NFILA[d.priority||2]);}).attr('stroke',function(d){return nc(d);}).attr('stroke-width',function(d){return d.priority===1?2.5:d.priority===2?1.5:1;}).attr('filter',function(d){return d.priority===1?'url(#glow)':d.priority===2?'url(#glow2)':'url(#dshadow)';});nM.select('.glyph').attr('font-size',function(d){return Math.max(8,nr(d)*.5);}).attr('fill',function(d){return nc(d);}).attr('opacity',function(d){return d.priority===1?.5:d.priority===2?.3:.15;}).text(function(d){return d.type==='company'?'◈':d.type==='person'?'◉':'◆';});nM.select('.lbl-bg').attr('fill','rgba(7,13,24,0.92)').attr('stroke',function(d){return d.priority===1?ha(nc(d),0.4):'rgba(26,34,54,0.5)';}).attr('stroke-width','0.5').attr('height',function(d){return LBLSZ[d.priority||2]+5;}).attr('y',function(d){return nr(d)+LBLSZ[d.priority||2]-2;}).attr('width',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return chars*LBLSZ[d.priority||2]*0.6+12;}).attr('x',function(d){var chars=Math.min(d.name.length,d.priority===1?26:d.priority===2?20:16);return-(chars*LBLSZ[d.priority||2]*0.6+12)/2;});nM.select('.lbl').attr('font-family','IBM Plex Sans,sans-serif').attr('font-size',function(d){return LBLSZ[d.priority||2];}).attr('font-weight',function(d){return LBLW[d.priority||2];}).attr('fill',function(d){return nc(d);}).attr('dy',function(d){return nr(d)+LBLSZ[d.priority||2]+7;}).text(function(d){var mx=d.priority===1?26:d.priority===2?20:16;return d.name.length>mx?d.name.slice(0,mx-1)+'...':d.name;});// Recompute org radial positions before restart
   computeOrgAngles();
   // Apply intel overlay if active
   if(typeof _applyNetOverlay==='function')setTimeout(_applyNetOverlay,600);
@@ -15000,7 +15000,7 @@ function renderNetwork(){if(!svg)return;if(_pgView.active)return;if(_tvView.acti
   sim.force('link').links(ld);
   // Alpha boost: higher when new nodes need to settle, lower for minor updates
   var alphaVal=hasNewNodes?0.35:0.08;
-  sim.alpha(alphaVal).restart();window._lM=lM;window._nM=nM;applyFilter();
+  sim.alpha(alphaVal).restart();window._lM=lM;window._nM=nM;window.sim=sim;window.nodes=nodes;window.links=links;window.nodeMap=nodeMap;window.nr=nr;window.opportunities=opportunities;if(typeof window._corsairRenderHalos==='function')requestAnimationFrame(window._corsairRenderHalos);applyFilter();
   // Refresh cooling strip whenever graph re-renders (async — doesn't block)
   setTimeout(renderCoolingStrip,0);}
 
@@ -29239,6 +29239,255 @@ window.addEventListener('resize', function() {
       el.classList.remove('is-selected','is-neighbor','is-incident');
     });
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PER-ENTITY-TYPE SHAPES
+  // Renders the .main-c element as a <path> with shape derived from node.type.
+  // — person     → circle
+  // — company    → rounded rectangle (organizational mass, slightly wider than tall)
+  // — government → octagon (federal aesthetic)
+  // — deal       → pointy-top hexagon (contract / solicitation)
+  // ═══════════════════════════════════════════════════════════════════════════
+  window._corsairShape = function(type, r){
+    if (!r || r <= 0) return '';
+    var rr;
+    if (type === 'deal') {
+      // pointy-top hexagon inscribed in circle of radius r
+      var hs = (Math.sqrt(3)/2 * r).toFixed(2);
+      var hh = (0.5 * r).toFixed(2);
+      var nhh = (-0.5 * r).toFixed(2);
+      return 'M0,' + (-r).toFixed(2) +
+             ' L' + hs + ',' + nhh +
+             ' L' + hs + ',' + hh +
+             ' L0,' + r.toFixed(2) +
+             ' L-' + hs + ',' + hh +
+             ' L-' + hs + ',' + nhh + ' Z';
+    }
+    if (type === 'government') {
+      // Octagon — federal stop-sign shape, rotated so flat top/bottom
+      var pts = [];
+      for (var i = 0; i < 8; i++) {
+        var ang = -Math.PI/2 + i * (Math.PI/4) + Math.PI/8;
+        pts.push((r * Math.cos(ang)).toFixed(2) + ',' + (r * Math.sin(ang)).toFixed(2));
+      }
+      return 'M' + pts[0] + ' L' + pts.slice(1).join(' L') + ' Z';
+    }
+    if (type === 'company') {
+      // Rounded rectangle — wider than tall, signals organizational mass.
+      // Inscribed roughly within the radius envelope used by collision force.
+      var w = r * 1.35;
+      var h = r * 0.78;
+      rr = Math.min(r * 0.18, 6);
+      return 'M' + (-w + rr).toFixed(2) + ',' + (-h).toFixed(2) +
+             ' L' + (w - rr).toFixed(2) + ',' + (-h).toFixed(2) +
+             ' Q' + w.toFixed(2) + ',' + (-h).toFixed(2) + ' ' + w.toFixed(2) + ',' + (-h + rr).toFixed(2) +
+             ' L' + w.toFixed(2) + ',' + (h - rr).toFixed(2) +
+             ' Q' + w.toFixed(2) + ',' + h.toFixed(2) + ' ' + (w - rr).toFixed(2) + ',' + h.toFixed(2) +
+             ' L' + (-w + rr).toFixed(2) + ',' + h.toFixed(2) +
+             ' Q' + (-w).toFixed(2) + ',' + h.toFixed(2) + ' ' + (-w).toFixed(2) + ',' + (h - rr).toFixed(2) +
+             ' L' + (-w).toFixed(2) + ',' + (-h + rr).toFixed(2) +
+             ' Q' + (-w).toFixed(2) + ',' + (-h).toFixed(2) + ' ' + (-w + rr).toFixed(2) + ',' + (-h).toFixed(2) +
+             ' Z';
+    }
+    // Fallback: circle (used for person and any unknown type)
+    return 'M0,' + (-r).toFixed(2) +
+           ' A' + r.toFixed(2) + ',' + r.toFixed(2) + ' 0 1 1 0,' + r.toFixed(2) +
+           ' A' + r.toFixed(2) + ',' + r.toFixed(2) + ' 0 1 1 0,' + (-r).toFixed(2) + ' Z';
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PURSUIT HALOS
+  // For each opportunity with a BD-target organization in the graph, draws a
+  // translucent amber blob behind its constellation (target + employees) so
+  // the operator can see the pursuit's spatial footprint at a glance.
+  // ═══════════════════════════════════════════════════════════════════════════
+  function _ensureHaloLayer(){
+    var svgEl = document.getElementById('net-canvas');
+    if (!svgEl) return null;
+    // Inner zoomable group is the first <g> direct child of svg
+    var inner = svgEl.querySelector(':scope > g');
+    if (!inner) return null;
+    var existing = inner.querySelector(':scope > g.halo-layer');
+    if (existing) return existing;
+    var halos = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    halos.setAttribute('class', 'halo-layer');
+    halos.setAttribute('pointer-events', 'none');
+    // Insert as first child so halos render behind links and nodes
+    inner.insertBefore(halos, inner.firstChild);
+    return halos;
+  }
+
+  function _haloStageColor(stage){
+    stage = (stage || '').toLowerCase();
+    if (stage === 'won')  return '#3a8a5c';
+    if (stage === 'lost') return '#7d7669';
+    if (stage === 'submitted' || stage === 'award')        return '#f0a560';
+    if (stage === 'proposal'  || stage === 'negotiation')  return '#d4823a';
+    return '#b86b2a';  // earlier-stage pursuits: dimmer amber
+  }
+
+  var _haloRafPending = false;
+  function _renderPursuitHalos(){
+    _haloRafPending = false;
+    var halos = _ensureHaloLayer();
+    if (!halos) return;
+    var opps = window.opportunities || [];
+    var nodes = (window._nM && typeof window._nM.data === 'function')
+      ? window._nM.data()
+      : (window.nodes || []);
+    var links = (window._lM && typeof window._lM.data === 'function')
+      ? window._lM.data()
+      : (window.links || []);
+    if (!opps.length || !nodes.length) {
+      if (halos.childNodes.length) halos.innerHTML = '';
+      return;
+    }
+    var byId = new Map();
+    nodes.forEach(function(n){ byId.set(String(n.id), n); });
+
+    // Build adjacency for fast 1-hop lookup along Works-at edges
+    var workAt = new Map();  // orgId → Set(employee ids)
+    for (var i=0;i<links.length;i++){
+      var l = links[i];
+      if (l.label !== 'Works at') continue;
+      var s = l.source && l.source.id || l.source;
+      var t = l.target && l.target.id || l.target;
+      // Works-at convention: source = person, target = org
+      var orgId = String(t), empId = String(s);
+      if (!workAt.has(orgId)) workAt.set(orgId, new Set());
+      workAt.get(orgId).add(empId);
+    }
+
+    var haloDefs = [];
+    for (var oi=0; oi<opps.length; oi++){
+      var o = opps[oi];
+      if (!o || !o.name) continue;
+      var nameLc = o.name.toLowerCase();
+
+      // Find BD-target node(s): companies/government with matching name
+      var targetIds = [];
+      for (var ni=0; ni<nodes.length; ni++){
+        var n = nodes[ni];
+        if (n.type !== 'company' && n.type !== 'government') continue;
+        if ((n.name||'').toLowerCase() === nameLc) targetIds.push(String(n.id));
+      }
+      if (!targetIds.length) continue;
+
+      // Cluster = targets + their employees via Works-at
+      var cluster = new Set(targetIds);
+      targetIds.forEach(function(tid){
+        var emps = workAt.get(tid);
+        if (emps) emps.forEach(function(eid){ cluster.add(eid); });
+      });
+
+      var pts = [];
+      cluster.forEach(function(id){
+        var n = byId.get(id);
+        if (n && typeof n.x === 'number' && typeof n.y === 'number') {
+          pts.push({ x: n.x, y: n.y, r: (typeof window.nr === 'function' ? window.nr(n) : 18) });
+        }
+      });
+      if (pts.length < 1) continue;
+
+      // Compute centroid + bounding radius
+      var cx = 0, cy = 0;
+      for (var pi=0; pi<pts.length; pi++){ cx += pts[pi].x; cy += pts[pi].y; }
+      cx /= pts.length; cy /= pts.length;
+      var maxD = 0;
+      for (var pj=0; pj<pts.length; pj++){
+        var dx = pts[pj].x - cx, dy = pts[pj].y - cy;
+        var d = Math.sqrt(dx*dx + dy*dy) + pts[pj].r;
+        if (d > maxD) maxD = d;
+      }
+      var radius = maxD + 38;
+      haloDefs.push({
+        cx: cx, cy: cy, r: radius,
+        color: _haloStageColor(o.stage || o.status),
+        name: o.name,
+        stage: o.stage || ''
+      });
+    }
+
+    // Render: rebuild halo group's children (cheap enough at typical scales)
+    var svgNS = 'http://www.w3.org/2000/svg';
+    // Reuse existing circles where possible to avoid DOM churn
+    var existing = halos.querySelectorAll('g.halo-grp');
+    var toRemove = existing.length - haloDefs.length;
+    if (toRemove > 0) {
+      for (var ri=0; ri<toRemove; ri++) halos.removeChild(existing[existing.length - 1 - ri]);
+    }
+    for (var hi=0; hi<haloDefs.length; hi++){
+      var h = haloDefs[hi];
+      var grp = existing[hi];
+      if (!grp) {
+        grp = document.createElementNS(svgNS, 'g');
+        grp.setAttribute('class', 'halo-grp');
+        var c1 = document.createElementNS(svgNS, 'circle');
+        c1.setAttribute('class', 'halo-fill');
+        var c2 = document.createElementNS(svgNS, 'circle');
+        c2.setAttribute('class', 'halo-ring');
+        var lbl = document.createElementNS(svgNS, 'text');
+        lbl.setAttribute('class', 'halo-label');
+        lbl.setAttribute('text-anchor', 'middle');
+        grp.appendChild(c1);
+        grp.appendChild(c2);
+        grp.appendChild(lbl);
+        halos.appendChild(grp);
+      }
+      var fillC  = grp.querySelector('.halo-fill');
+      var ringC  = grp.querySelector('.halo-ring');
+      var lblT   = grp.querySelector('.halo-label');
+      fillC.setAttribute('cx', h.cx.toFixed(1));
+      fillC.setAttribute('cy', h.cy.toFixed(1));
+      fillC.setAttribute('r',  h.r.toFixed(1));
+      fillC.setAttribute('fill', h.color);
+      fillC.setAttribute('fill-opacity', '0.055');
+      ringC.setAttribute('cx', h.cx.toFixed(1));
+      ringC.setAttribute('cy', h.cy.toFixed(1));
+      ringC.setAttribute('r',  h.r.toFixed(1));
+      ringC.setAttribute('fill', 'none');
+      ringC.setAttribute('stroke', h.color);
+      ringC.setAttribute('stroke-opacity', '0.32');
+      ringC.setAttribute('stroke-width', '1');
+      ringC.setAttribute('stroke-dasharray', '4 6');
+      lblT.setAttribute('x', h.cx.toFixed(1));
+      lblT.setAttribute('y', (h.cy - h.r - 6).toFixed(1));
+      lblT.setAttribute('fill', h.color);
+      lblT.setAttribute('font-family', 'IBM Plex Mono,monospace');
+      lblT.setAttribute('font-size', '9');
+      lblT.setAttribute('letter-spacing', '0.16em');
+      lblT.setAttribute('opacity', '0.55');
+      lblT.textContent = ('PURSUIT · ' + h.name).toUpperCase().slice(0, 48);
+    }
+  }
+  function _scheduleHaloRender(){
+    if (_haloRafPending) return;
+    _haloRafPending = true;
+    requestAnimationFrame(_renderPursuitHalos);
+  }
+
+  // Hook sim ticks to refresh halos at ~10 fps (every 6th tick)
+  var _haloTickCount = 0;
+  function _tryHookHaloSim(){
+    if (!window.sim || typeof window.sim.on !== 'function') return false;
+    try {
+      window.sim.on('tick.corsairHalos', function(){
+        _haloTickCount++;
+        if (_haloTickCount % 6 === 0) _scheduleHaloRender();
+      });
+      // Initial render once sim is wired
+      _scheduleHaloRender();
+      return true;
+    } catch(e){ return false; }
+  }
+  if (!_tryHookHaloSim()){
+    var haloHookInt = setInterval(function(){ if (_tryHookHaloSim()) clearInterval(haloHookInt); }, 400);
+    setTimeout(function(){ clearInterval(haloHookInt); }, 30000);
+  }
+  // Also refresh on window resize
+  window.addEventListener('resize', function(){ setTimeout(_scheduleHaloRender, 150); });
+  // Expose for debugging
+  window._corsairRenderHalos = _renderPursuitHalos;
 
   // ═══════════════════════════════════════════════════════════════════════════
   // FOCUS-AND-CONTEXT (The Brain pattern)
