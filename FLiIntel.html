@@ -3762,6 +3762,322 @@ input[type="url"], textarea, select {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   CORSAIR COP LAYER — Common Operating Picture / situation-room rebuild
+   Targets the Opportunities sidebar list area (#opp-stage-list) which is
+   re-rendered by _renderOppList into a pipeline summary strip + urgency-
+   sorted pursuit cards.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+#opp-stage-list {
+  padding: 0 !important;
+  background: transparent;
+}
+
+/* ── Pipeline summary strip ── */
+.cop-pipeline-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: 1px;
+  padding: 0;
+  background: var(--rule);
+  border-top: 1px solid var(--rule-2);
+  border-bottom: 1px solid var(--rule-2);
+  margin-bottom: 14px;
+}
+.cop-stat {
+  background: linear-gradient(180deg, rgba(13,20,38,0.85), rgba(7,13,24,0.95));
+  padding: 12px 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  position: relative;
+}
+.cop-stat-key { background: linear-gradient(180deg, rgba(38,24,12,0.7), rgba(20,12,6,0.92)); }
+.cop-stat-key::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--gold);
+  box-shadow: 0 0 12px rgba(212,130,58,0.5);
+}
+.cop-stat-lbl {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+}
+.cop-stat-val {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--bone);
+  font-feature-settings: 'tnum' on, 'lnum' on;
+  line-height: 1;
+}
+.cop-stat-key .cop-stat-val { color: var(--gold); }
+
+/* ── Section header (ACTIVE PURSUITS · BY URGENCY) ── */
+.cop-section-lbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  color: var(--gold);
+  text-transform: uppercase;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 8px;
+  position: relative;
+}
+.cop-section-lbl::before {
+  content: '';
+  position: absolute;
+  left: 14px; bottom: -1px;
+  width: 28px; height: 2px;
+  background: var(--gold);
+}
+.cop-section-closed {
+  color: var(--paper-2);
+  margin-top: 18px;
+}
+.cop-section-closed::before { background: var(--paper-2); }
+
+/* ── Pursuit card ── */
+.cop-card {
+  position: relative;
+  display: flex;
+  margin: 0 8px 10px;
+  background: linear-gradient(170deg, rgba(13,20,38,0.92), rgba(7,13,24,0.96));
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 160ms cubic-bezier(.2,.6,.2,1),
+              transform 160ms cubic-bezier(.2,.6,.2,1),
+              box-shadow 220ms cubic-bezier(.2,.6,.2,1);
+}
+.cop-card:hover {
+  border-color: var(--rule-2);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45), 0 0 0 1px var(--stage-c, var(--rule-2));
+}
+.cop-card.active {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px var(--gold), 0 12px 36px rgba(0,0,0,0.55), 0 0 28px rgba(212,130,58,0.18);
+}
+.cop-card.closed {
+  opacity: 0.55;
+  background: linear-gradient(170deg, rgba(10,16,32,0.6), rgba(7,13,24,0.85));
+}
+.cop-card.closed:hover { opacity: 0.85; }
+
+.cop-card-strip {
+  width: 3px;
+  flex-shrink: 0;
+  align-self: stretch;
+  background: var(--stage-c);
+  box-shadow: 0 0 8px var(--stage-c);
+}
+
+.cop-card-body {
+  flex: 1;
+  padding: 10px 12px 11px;
+  min-width: 0;
+}
+
+/* ── Card top row: stage chip · urgency · graph button ── */
+.cop-card-row1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cop-stage-chip {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  padding: 3px 7px;
+  border: 1px solid;
+  border-radius: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cop-urgency {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  padding: 3px 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.cop-urgency-critical {
+  background: rgba(179,64,64,0.18);
+  color: #ff6464;
+  border-left: 2px solid #b34040;
+  animation: cop-urgency-pulse 1.8s cubic-bezier(.4,0,.6,1) infinite;
+}
+.cop-urgency-warn {
+  background: rgba(196,134,43,0.15);
+  color: #f0a560;
+  border-left: 2px solid #c4862b;
+}
+.cop-urgency-ok {
+  background: rgba(58,138,92,0.12);
+  color: #6ed094;
+  border-left: 2px solid #3a8a5c;
+}
+.cop-urgency-past {
+  background: rgba(179,64,64,0.25);
+  color: #ff7d7d;
+  border-left: 2px solid #b34040;
+}
+.cop-urgency-stale {
+  background: rgba(125,118,105,0.1);
+  color: var(--paper-2);
+  border-left: 2px solid var(--paper-3);
+}
+@keyframes cop-urgency-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(179,64,64,0); }
+  50%      { box-shadow: 0 0 0 2px rgba(179,64,64,0.35); }
+}
+
+.cop-graph-btn {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  color: var(--paper);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+  flex-shrink: 0;
+}
+.cop-graph-btn:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+  background: rgba(212,130,58,0.1);
+  box-shadow: 0 0 12px rgba(212,130,58,0.3);
+}
+
+/* ── Card name + agency ── */
+.cop-card-name {
+  font-family: var(--font-sub);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--bone);
+  line-height: 1.2;
+  margin-bottom: 3px;
+  letter-spacing: 0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cop-card-agency {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--paper);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cop-card-agency .cop-dim { color: var(--paper-3); }
+
+/* ── Metrics grid ── */
+.cop-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  margin: 0 -12px 10px;
+  padding: 0;
+}
+.cop-metric {
+  background: rgba(10,16,32,0.6);
+  padding: 7px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cop-metric-lbl {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 600;
+  letter-spacing: 0.20em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+}
+.cop-metric-val {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--bone);
+  font-feature-settings: 'tnum' on, 'lnum' on;
+  line-height: 1.05;
+}
+.cop-val { color: var(--gold); }
+.cop-pw-ok   { color: #6ed094; }
+.cop-pw-warn { color: #f0a560; }
+.cop-pw-low  { color: #ff8080; }
+
+/* ── 10-segment lifecycle bar ── */
+.cop-lifecycle {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  height: 4px;
+  margin-bottom: 8px;
+}
+.cop-lc-dot {
+  height: 4px;
+  background: var(--rule);
+  border-radius: 0.5px;
+  transition: background 200ms cubic-bezier(.2,.6,.2,1), box-shadow 200ms cubic-bezier(.2,.6,.2,1);
+}
+.cop-lc-current {
+  box-shadow: 0 0 8px var(--stage-c);
+}
+
+/* ── Capture lead footer ── */
+.cop-card-lead {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+  padding-top: 6px;
+  border-top: 1px dashed var(--rule);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   END CORSAIR COP LAYER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
    END CORSAIR ELEVATION LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
 </style>
@@ -9758,63 +10074,158 @@ function _renderOppList(q){
   var list=document.getElementById('opp-stage-list');
   if(!list)return;
   var filtered=q?opportunities.filter(function(o){
-    var s=(o.name+' '+(o.account||'')+' '+(o.stage||'')).toLowerCase();
+    var s=(o.name+' '+(o.account||'')+' '+(o.agency||'')+' '+(o.stage||'')).toLowerCase();
     return s.indexOf(q.toLowerCase())!==-1;
   }):opportunities;
-  if(!filtered.length){list.innerHTML='<div style="padding:20px 10px;text-align:center;font-size:12px;color:var(--t3)">'+(q?'No matching opportunities':'No opportunities yet')+'</div>';return;}
-  // Group by stage
-  var grouped={};
-  OPP_STAGES.forEach(function(s){grouped[s.key]=[];});
-  filtered.forEach(function(o){if(grouped[o.stage])grouped[o.stage].push(o);else grouped['awareness'].push(o);});
+  if(!filtered.length){list.innerHTML='<div style="padding:36px 14px;text-align:center;font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:0.14em;text-transform:uppercase">'+(q?'No matching pursuits':'No pursuits yet')+'</div>';return;}
+
   var now = new Date(); now.setHours(0,0,0,0);
   var DAY = 86400000;
-  // Build last-meeting lookup per opp for health dots
+
+  // Build last-meeting lookup per opp
   var lastMtgByOpp = {};
-  meetings.forEach(function(m) {
+  meetings.forEach(function(m){
     if (!m.oppId || !m.meta || !m.meta.date) return;
     var ts = new Date(m.meta.date).getTime();
     if (!lastMtgByOpp[m.oppId] || ts > lastMtgByOpp[m.oppId]) lastMtgByOpp[m.oppId] = ts;
   });
-  var h = '';
-  var totalPipelineValue = 0;
-  var activeCount = 0;
-  OPP_STAGES.forEach(function(s){
-    var items=grouped[s.key];
-    if(!items.length)return;
-    var stageVal = 0;
-    items.forEach(function(o) {
-      var v = typeof _parseVal === 'function' ? _parseVal(o.value) : 0;
-      if (s.key !== 'won' && s.key !== 'lost') { totalPipelineValue += v; activeCount++; }
-      stageVal += v;
-    });
-    var stageValTxt = stageVal > 0 && typeof _fmtVal === 'function' ? ' · $' + _fmtVal(stageVal) : '';
-    h+='<div class="opp-stage-group"><div class="opp-stage-lbl"><div class="opp-stage-dot" style="background:'+s.color+'"></div><span style="color:'+s.color+'">'+s.label+'</span><span style="margin-left:auto;font-size:10px;color:var(--t3)">'+items.length+stageValTxt+'</span></div>';
-    items.sort(function(a,b){return(a.name||'').localeCompare(b.name||'');}).forEach(function(o){
-      var isActive=currentOpp&&currentOpp.id===o.id;
-      var mtgCount=(o.meetings||[]).length;
-      var lastTs = lastMtgByOpp[o.id] || 0;
-      var daysSince = lastTs ? Math.floor((now.getTime() - lastTs) / DAY) : 999;
-      var hDot = (s.key === 'won' || s.key === 'lost') ? '' :
-        '<span title="' + (lastTs ? daysSince + 'd since last meeting' : 'No meetings') + '" style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:' +
-        (daysSince <= 21 ? 'var(--green)' : daysSince <= 45 ? 'var(--amber)' : 'var(--red)') +
-        ';opacity:.85;margin-top:2px"></span>';
-      h+='<div class="opp-card'+(isActive?' active':'')+'" onclick="selectOpp(\''+o.id+'\')">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">'
-        +hDot
-        +'<div class="opp-card-name" style="flex:1;min-width:0">'+o.name+'</div>'
-        +(function(){var wp=computeWinProb(o,meetings.filter(function(m){return m.oppId===o.id||(o.meetings||[]).includes(m.id);}),{},{score:0});var col=wp.score>=65?'var(--green)':wp.score>=35?'var(--amber)':'var(--red)';return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+col+'22;color:'+col+';font-family:IBM Plex Mono,monospace;font-weight:700;flex-shrink:0">'+wp.score+'%</span>';}())
-        +'</div>'
-        +'<div class="opp-card-meta">'+(o.agency||'')+(o.value?' · '+o.value:'')+(mtgCount?' · '+mtgCount+'m':'')+(daysSince < 999 ? ' · '+(daysSince===0?'today':daysSince+'d') : '')+'</div>'
-        +'</div>';
-    });
-    h+='</div>';
-  });
-  if (totalPipelineValue > 0 && typeof _fmtVal === 'function') {
-    h += '<div style="padding:8px 10px;border-top:1px solid rgba(26,34,54,.4);display:flex;justify-content:space-between;align-items:center">'
-      + '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:.1em;color:var(--t3)">' + activeCount + ' active</span>'
-      + '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:700;color:var(--gold)">$' + _fmtVal(totalPipelineValue) + ' pipeline</span>'
-      + '</div>';
+
+  // Per-pursuit win probability — cache so we don't recompute when sorting
+  var pwByOpp = {};
+  function pwOf(o){
+    if (pwByOpp[o.id] != null) return pwByOpp[o.id];
+    var wp = computeWinProb(o, meetings.filter(function(m){return m.oppId===o.id||(o.meetings||[]).includes(m.id);}), {}, {score:0});
+    pwByOpp[o.id] = wp.score || 0;
+    return pwByOpp[o.id];
   }
+
+  // Pipeline arithmetic
+  var totalValue = 0, weightedValue = 0, activeCount = 0;
+  var wonCount = 0, lostCount = 0, wonValue = 0;
+  var pwSum = 0, pwCount = 0;
+  filtered.forEach(function(o){
+    var v = typeof _parseVal === 'function' ? _parseVal(o.value) : 0;
+    if (o.stage === 'won')  { wonCount++;  wonValue += v;  weightedValue += v; return; }
+    if (o.stage === 'lost') { lostCount++; return; }
+    activeCount++;
+    totalValue += v;
+    var p = pwOf(o);
+    weightedValue += v * (p/100);
+    pwSum += p; pwCount++;
+  });
+  var avgPW = pwCount > 0 ? Math.round(pwSum/pwCount) : 0;
+  var winRate = (wonCount + lostCount) > 0 ? Math.round((wonCount/(wonCount+lostCount))*100) : null;
+
+  // Urgency = days until next milestone (rfp first, then award)
+  function nextMilestone(o){
+    var rfp = o.rfpDate ? new Date(o.rfpDate).getTime() : 0;
+    var award = o.awardDate ? new Date(o.awardDate).getTime() : 0;
+    if (rfp && rfp >= now.getTime()) return { ts: rfp, lbl: 'RFP' };
+    if (award && award >= now.getTime()) return { ts: award, lbl: 'AWD' };
+    if (rfp || award) { return { ts: Math.max(rfp, award), lbl: rfp >= award ? 'RFP' : 'AWD' }; }
+    return null;
+  }
+
+  function urgencyChip(o){
+    var ms = nextMilestone(o);
+    if (!ms) return '<div class="cop-urgency cop-urgency-stale">— —</div>';
+    var days = Math.ceil((ms.ts - now.getTime()) / DAY);
+    var past = days < 0;
+    var sev = past ? 'past' : days <= 7 ? 'critical' : days <= 30 ? 'warn' : 'ok';
+    var prefix = past ? '+' : '';
+    return '<div class="cop-urgency cop-urgency-' + sev + '">' + prefix + Math.abs(days) + 'D · ' + ms.lbl + '</div>';
+  }
+
+  function stageIdx(key){
+    for (var i=0;i<OPP_STAGES.length;i++) if (OPP_STAGES[i].key===key) return i;
+    return 0;
+  }
+
+  function lifecycleBar(stage){
+    var idx = stageIdx(stage);
+    var dots = '';
+    for (var i=0;i<OPP_STAGES.length;i++){
+      var cls = i < idx ? 'past' : i === idx ? 'current' : 'future';
+      var col = OPP_STAGES[i].color;
+      var style = (cls === 'current' || cls === 'past') ? 'background:' + col + (cls === 'past' ? '55' : '') : '';
+      dots += '<div class="cop-lc-dot cop-lc-' + cls + '" style="' + style + '"></div>';
+    }
+    return '<div class="cop-lifecycle" title="' + (OPP_STAGES[idx]||{}).label + '">' + dots + '</div>';
+  }
+
+  function escH(s){return String(s||'').replace(/[<>&"']/g,function(c){return ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c];});}
+
+  function cardHTML(o){
+    var isActive = currentOpp && currentOpp.id === o.id;
+    var s = oppStageConfig(o.stage) || OPP_STAGES[0];
+    var v = typeof _parseVal === 'function' ? _parseVal(o.value) : 0;
+    var vTxt = (v > 0 && typeof _fmtVal === 'function') ? '$' + _fmtVal(v) : (o.value || '—');
+    var mtgCount = (o.meetings||[]).length;
+    var lastTs = lastMtgByOpp[o.id] || 0;
+    var daysSince = lastTs ? Math.floor((now.getTime() - lastTs) / DAY) : 999;
+    var pw = pwOf(o);
+    var pwCol = pw >= 65 ? 'ok' : pw >= 35 ? 'warn' : 'low';
+    var lead = o.captureLead || o.lead || '';
+    var isClosed = (o.stage === 'won' || o.stage === 'lost');
+
+    return '<div class="cop-card' + (isActive ? ' active' : '') + (isClosed ? ' closed' : '') + '" data-stage="' + s.key + '" style="--stage-c:' + s.color + '" onclick="selectOpp(\'' + o.id + '\')">'
+      + '<div class="cop-card-strip" style="background:' + s.color + '"></div>'
+      + '<div class="cop-card-body">'
+        + '<div class="cop-card-row1">'
+          + '<div class="cop-stage-chip" style="color:' + s.color + ';border-color:' + s.color + '44">' + escH(s.label).toUpperCase() + '</div>'
+          + urgencyChip(o)
+          + '<button class="cop-graph-btn" onclick="event.stopPropagation();if(window._copFocusInGraph)window._copFocusInGraph(\'' + o.id + '\');" title="Focus this pursuit in the entity graph">&#x2197;</button>'
+        + '</div>'
+        + '<div class="cop-card-name">' + escH(o.name) + '</div>'
+        + '<div class="cop-card-agency">' + (o.agency ? escH(o.agency) : '<span class="cop-dim">— AGENCY UNKNOWN</span>') + (o.vehicle ? ' &nbsp;·&nbsp; ' + escH(o.vehicle) : '') + '</div>'
+        + '<div class="cop-card-metrics">'
+          + '<div class="cop-metric"><div class="cop-metric-lbl">VALUE</div><div class="cop-metric-val cop-val">' + escH(vTxt) + '</div></div>'
+          + '<div class="cop-metric"><div class="cop-metric-lbl">PWIN</div><div class="cop-metric-val cop-pw-' + pwCol + '">' + pw + '%</div></div>'
+          + '<div class="cop-metric"><div class="cop-metric-lbl">MTGS</div><div class="cop-metric-val">' + mtgCount + '</div></div>'
+          + '<div class="cop-metric"><div class="cop-metric-lbl">LAST</div><div class="cop-metric-val">' + (lastTs ? (daysSince === 0 ? 'TDY' : daysSince + 'D') : '—') + '</div></div>'
+        + '</div>'
+        + lifecycleBar(o.stage)
+        + (lead ? '<div class="cop-card-lead">CAPTURE LEAD · ' + escH(lead) + '</div>' : '')
+      + '</div>'
+    + '</div>';
+  }
+
+  // Split: active (sorted by urgency soonest→farthest) and closed (recency)
+  var active = filtered.filter(function(o){return o.stage !== 'won' && o.stage !== 'lost';});
+  var closed = filtered.filter(function(o){return o.stage === 'won' || o.stage === 'lost';});
+  active.sort(function(a,b){
+    var ma = nextMilestone(a), mb = nextMilestone(b);
+    var ta = ma ? ma.ts : (Number.MAX_SAFE_INTEGER - 1);
+    var tb = mb ? mb.ts : (Number.MAX_SAFE_INTEGER - 1);
+    if (ta !== tb) return ta - tb;
+    return pwOf(b) - pwOf(a);  // tiebreaker: higher PWIN first
+  });
+  closed.sort(function(a,b){
+    var au = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    var bu = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return bu - au;
+  });
+
+  // Pipeline strip + cards
+  var fmt = function(n){return (typeof _fmtVal === 'function') ? '$' + _fmtVal(n) : ('$' + n);};
+  var h = '';
+  h += '<div class="cop-pipeline-strip">';
+  h +=   '<div class="cop-stat"><div class="cop-stat-lbl">PIPELINE</div><div class="cop-stat-val">' + fmt(totalValue) + '</div></div>';
+  h +=   '<div class="cop-stat cop-stat-key"><div class="cop-stat-lbl">WEIGHTED</div><div class="cop-stat-val">' + fmt(weightedValue) + '</div></div>';
+  h +=   '<div class="cop-stat"><div class="cop-stat-lbl">PWIN AVG</div><div class="cop-stat-val">' + avgPW + '%</div></div>';
+  h +=   '<div class="cop-stat"><div class="cop-stat-lbl">ACTIVE</div><div class="cop-stat-val">' + activeCount + '</div></div>';
+  if (winRate !== null) h += '<div class="cop-stat"><div class="cop-stat-lbl">WIN RATE</div><div class="cop-stat-val">' + winRate + '%</div></div>';
+  h += '</div>';
+
+  if (active.length) {
+    h += '<div class="cop-section-lbl">ACTIVE PURSUITS &nbsp;·&nbsp; BY URGENCY</div>';
+    active.forEach(function(o){ h += cardHTML(o); });
+  }
+  if (closed.length){
+    h += '<div class="cop-section-lbl cop-section-closed">CLOSED &nbsp;·&nbsp; ' + closed.length + '</div>';
+    closed.forEach(function(o){ h += cardHTML(o); });
+  }
+
   list.innerHTML=h;
   renderCalibrationStrip();
 }
@@ -29508,6 +29919,38 @@ window.addEventListener('resize', function() {
   window.addEventListener('resize', function(){ setTimeout(_scheduleHaloRender, 150); });
   // Expose for debugging
   window._corsairRenderHalos = _renderPursuitHalos;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COP → GRAPH BRIDGE
+  // Clicking the ↗ button on a pursuit card switches to the entity graph and
+  // opens the Inspector on the BD-target node — which in turn triggers the
+  // Brain-pattern focus reorganization around that pursuit's constellation.
+  // ═══════════════════════════════════════════════════════════════════════════
+  window._copFocusInGraph = function(oppId){
+    if (!oppId) return;
+    var opps = window.opportunities || [];
+    var opp = null;
+    for (var i=0;i<opps.length;i++) if (opps[i].id === oppId) { opp = opps[i]; break; }
+    if (!opp || !opp.name) return;
+    var nodes = (window._nM && typeof window._nM.data === 'function')
+      ? window._nM.data()
+      : (window.nodes || []);
+    var nameLc = opp.name.toLowerCase();
+    var match = null;
+    for (var j=0;j<nodes.length;j++){
+      var n = nodes[j];
+      if (n.type === 'company' || n.type === 'government'){
+        if ((n.name||'').toLowerCase() === nameLc){ match = n; break; }
+      }
+    }
+    if (typeof window.switchView === 'function') window.switchView('network');
+    if (!match) return;
+    // Wait briefly for the graph view to mount + size, then open the inspector
+    // (which triggers the Brain-pattern focus via the existing wrap).
+    setTimeout(function(){
+      try { if (typeof window.openNetPanel === 'function') window.openNetPanel(match); } catch(e){}
+    }, 260);
+  };
 
   // ═══════════════════════════════════════════════════════════════════════════
   // FOCUS-AND-CONTEXT (The Brain pattern)
