@@ -4703,6 +4703,550 @@ input[type="url"], textarea, select {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   CORSAIR INSPECTOR LAYER — Entity Inspector tab contents
+   Operator-grade rebuild of renderDossier / renderTimeline360 / renderNetConn.
+   Uses the COP detail vocabulary: ink-gradient cards, amber left-rules,
+   mono uppercase section labels, Big Shoulders Display numerals, tabular-nums.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Inspector section card ── */
+.ins-card {
+  background: linear-gradient(170deg, rgba(13,20,38,0.92), rgba(7,13,24,0.96));
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--rule-2);
+  border-radius: 1px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.ins-card--amber  { border-left-color: var(--gold); }
+.ins-card--red    { border-left-color: #b34040; }
+.ins-card--green  { border-left-color: #3a8a5c; }
+.ins-card--blue   { border-left-color: #3b82f6; }
+.ins-card--purple { border-left-color: #8b5cf6; }
+
+/* ── Section header label ── */
+.ins-hdr {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: var(--gold);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+}
+.ins-hdr--red { color: #ff8080; }
+.ins-hdr--blue { color: #9cc5ed; }
+
+/* ── Entity header ── */
+.ins-entity-hdr {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.ins-entity-name {
+  font-family: var(--font-sub);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  color: var(--bone);
+  line-height: 1.15;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.ins-entity-role {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper);
+  margin-bottom: 4px;
+}
+.ins-entity-tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* ── Tag chip (tier, type, govType, pursuit) ── */
+.ins-tag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  border: 1px solid;
+  border-radius: 1px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ins-tag--tier   { color: var(--gold); border-color: rgba(212,130,58,0.45); background: rgba(212,130,58,0.06); }
+.ins-tag--type   { color: var(--paper); border-color: rgba(181,173,159,0.35); background: rgba(181,173,159,0.04); }
+.ins-tag--gov    { color: #9cc5ed; border-color: rgba(91,143,196,0.45); background: rgba(91,143,196,0.06); }
+.ins-tag--opp    { color: #6ed094; border-color: rgba(58,138,92,0.45); background: rgba(58,138,92,0.06); }
+
+/* ── Health gauge (SVG ring + label) ── */
+.ins-gauge { flex-shrink: 0; text-align: center; }
+.ins-gauge svg { display: block; }
+.ins-gauge-lbl {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+/* ── Health status pill ── */
+.ins-health-pill {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  margin-bottom: 12px;
+}
+
+/* ── 4-KPI strip (reuses .board-kpi vocabulary) ── */
+.ins-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  margin-bottom: 12px;
+}
+.ins-kpi {
+  background: rgba(10,16,32,0.85);
+  padding: 10px 10px 8px;
+  text-align: left;
+}
+.ins-kpi-val {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.ins-kpi-lbl {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.20em;
+  color: var(--paper-2);
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+/* ── Health / strength bars ── */
+.ins-bar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.ins-bar-lbl {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-2);
+}
+.ins-bar-val {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ins-bar-track {
+  height: 4px;
+  background: var(--rule);
+  border-radius: 0;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.ins-bar-fill {
+  height: 100%;
+  transition: width 300ms cubic-bezier(.2,.6,.2,1);
+}
+
+/* ── Stance trajectory timeline ── */
+.ins-stance-dot {
+  position: absolute;
+  top: 4px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+}
+.ins-stance-rail {
+  width: 1px;
+  background: var(--rule);
+  align-self: stretch;
+  flex-shrink: 0;
+  margin: 0 5px;
+  position: relative;
+}
+.ins-stance-date {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: var(--paper-2);
+  line-height: 1.2;
+  flex-shrink: 0;
+  width: 40px;
+  text-align: right;
+}
+.ins-stance-text {
+  font-size: 11px;
+  line-height: 1.4;
+  font-style: italic;
+}
+.ins-stance-mtg {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: var(--paper-2);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Inline rows (commitments, questions, risks) ── */
+.ins-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(125,118,105,0.08);
+}
+.ins-row:last-child { border-bottom: none; }
+.ins-row-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.ins-row-body { flex: 1; min-width: 0; }
+.ins-row-task {
+  font-size: 11px;
+  color: var(--bone);
+  line-height: 1.4;
+}
+.ins-row-meta {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: var(--paper-2);
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.ins-row-meta--overdue { color: #ff8080; font-weight: 600; }
+
+/* ── Meeting log items ── */
+.ins-mtg-item {
+  padding: 8px 10px;
+  margin-bottom: 1px;
+  background: rgba(10,16,32,0.6);
+  border-left: 2px solid var(--rule-2);
+  cursor: pointer;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+}
+.ins-mtg-item:hover {
+  background: rgba(20,28,48,0.85);
+  border-left-color: var(--gold);
+}
+.ins-mtg-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+.ins-mtg-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--bone);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.ins-mtg-date {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  color: var(--paper-2);
+  flex-shrink: 0;
+}
+.ins-mtg-stance {
+  font-size: 10px;
+  color: var(--paper);
+  font-style: italic;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ins-mtg-pulse {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 1px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+/* ── Watch flag ── */
+.ins-watch {
+  padding: 10px 12px;
+  background: rgba(212,130,58,0.06);
+  border-left: 2px solid var(--gold);
+  border-radius: 0 1px 1px 0;
+  margin-bottom: 12px;
+}
+.ins-watch-lbl {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 4px;
+}
+.ins-watch-text {
+  font-size: 11px;
+  color: var(--bone);
+  line-height: 1.45;
+}
+.ins-watch-src {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--paper-2);
+  margin-top: 3px;
+}
+
+/* ── Timeline 360 arc card ── */
+.ins-arc-card {
+  padding: 12px 14px;
+  background: linear-gradient(170deg, rgba(13,20,38,0.92), rgba(7,13,24,0.96));
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  margin-bottom: 14px;
+}
+.ins-arc-card--amber { border-left: 2px solid var(--gold); }
+.ins-arc-name {
+  font-family: var(--font-sub);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--bone);
+  margin-bottom: 4px;
+}
+.ins-arc-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--paper-2);
+}
+
+/* ── Timeline 360 event ── */
+.ins-tl-event {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0;
+}
+.ins-tl-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 22px;
+}
+.ins-tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.ins-tl-line {
+  width: 1px;
+  flex: 1;
+  background: var(--rule);
+  min-height: 18px;
+}
+.ins-tl-body {
+  flex: 1;
+  padding: 0 0 14px 8px;
+  min-width: 0;
+}
+.ins-tl-badge {
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 1px;
+}
+.ins-tl-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--bone);
+}
+.ins-tl-title:hover { color: var(--gold); }
+
+/* ── Network connection cards ── */
+.ins-conn-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  margin-bottom: 10px;
+}
+.ins-conn {
+  background: rgba(10,16,32,0.85);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 140ms cubic-bezier(.2,.6,.2,1);
+  border-left: 2px solid var(--rule-2);
+}
+.ins-conn:hover {
+  background: rgba(20,28,48,0.95);
+  border-left-color: var(--gold);
+}
+.ins-conn-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.ins-conn-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bone);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ins-conn-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.ins-conn-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--paper-2);
+}
+.ins-conn-notes {
+  font-size: 11px;
+  width: 100%;
+  min-height: 38px;
+  padding: 5px 8px;
+  margin-top: 6px;
+  background: rgba(7,13,24,0.7);
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  color: var(--bone);
+  font-family: var(--font-body);
+  resize: vertical;
+}
+.ins-conn-notes:focus {
+  border-color: var(--gold);
+  outline: none;
+}
+.ins-conn-rm {
+  background: none;
+  border: 1px solid rgba(179,64,64,0.3);
+  border-radius: 1px;
+  color: var(--paper-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  transition: all 140ms;
+}
+.ins-conn-rm:hover {
+  background: rgba(179,64,64,0.15);
+  border-color: #b34040;
+  color: #ff8080;
+}
+
+/* ── Empty state for Inspector tabs ── */
+.ins-empty {
+  text-align: center;
+  padding: 28px 14px;
+  color: var(--paper-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ins-empty-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--paper-2);
+  margin-top: 8px;
+  opacity: 0.7;
+}
+
+/* ── Prep brief button ── */
+.ins-prep-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--gold);
+  border-radius: 1px;
+  background: transparent;
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+  margin-top: 4px;
+}
+.ins-prep-btn:hover {
+  background: rgba(212,130,58,0.10);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   END CORSAIR INSPECTOR LAYER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
    END CORSAIR DETAIL LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -17213,13 +17757,10 @@ function renderDossier(d){
   var healthScore=computeRelHealth(d.id);
   var healthC=healthColor(healthScore);
   var healthLbl=healthLabel(healthScore,daysAgo);
-  var healthBadge=window._healthBadgeHtml?window._healthBadgeHtml(d.id):'';
 
-  // Extract all structured data for this person across meetings
   var stances=[],myActions=[],myRisks=[],myQs=[],watchItems=[];
   sorted.forEach(function(m){
     var pi=(m.intel.keyPeople||[]).find(function(p){return p.name===d.name;});
-    var ci=(m.intel.companies||[]).find(function(co){return co.name===d.name;});
     if(pi&&pi.stance)stances.push({date:m.meta.date,stance:pi.stance,mtg:m.meta.title,pulse:m.intel.companyPulse,mid:m.id});
     if(pi&&pi.watchFor)watchItems.push({text:pi.watchFor,date:m.meta.date,mtg:m.meta.title});
     (m.intel.actionItems||[]).forEach(function(a){
@@ -17241,110 +17782,122 @@ function renderDossier(d){
   var stNet=getStrength(d.id);
   var latestWatch=watchItems.length?watchItems[watchItems.length-1]:null;
   var now2=new Date();now2.setHours(0,0,0,0);
+  var hasData=nm.length>0;
+
+  var linkedOpps=opportunities.filter(function(o){
+    return o.stage!=='won'&&o.stage!=='lost'&&(
+      (o.contacts||[]).indexOf(d.id)!==-1||
+      nm.some(function(m){return m.oppId===o.id;})
+    );
+  });
 
   var h='';
 
-  // ── HEADER ──────────────────────────────────────────────────
-  h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">';
-  h+='<div><div style="font-size:13px;font-weight:700;color:'+c+'">'+d.name+'</div>';
-  h+='<div style="font-size:11px;color:var(--t2)">'+(d.role||'')+(d.org?' @ '+d.org:'')+'</div>';
-  if(d.govOrg)h+='<div style="margin-top:3px"><span style="font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3);font-family:\'IBM Plex Mono\',monospace">'+d.govOrg+'</span></div>';
-  if(d.govType)h+='<div style="margin-top:3px">'+_govTypeBadge(d.govType)+'</div>';
-  h+='</div>';
-  // Health score ring
-  var circumference=2*Math.PI*14;
-  var hasData=nm.length>0;
-  var displayScore=hasData?healthScore:'–';
-  var ringColor=hasData?healthC:'var(--b2)';
-  var dashLen=hasData?(Math.max(healthScore,0.5)/10)*circumference:0;
-  h+='<div style="text-align:center;flex-shrink:0">';
-  h+='<svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="16" fill="none" stroke="var(--b1)" stroke-width="3.5"/>';
-  if(hasData){h+='<circle cx="22" cy="22" r="16" fill="none" stroke="'+ringColor+'" stroke-width="3.5" stroke-dasharray="'+dashLen+' '+(2*Math.PI*16)+'" stroke-linecap="round" transform="rotate(-90 22 22)"/>';}
-  h+='<text x="22" y="26" text-anchor="middle" font-size="11" font-weight="700" fill="'+ringColor+'" font-family="IBM Plex Mono,monospace">'+displayScore+'</text></svg>';
-  h+='<div style="font-size:8px;color:var(--t3);margin-top:-2px;letter-spacing:0.05em">HEALTH</div></div></div>';
-  h+='<div style="font-size:9px;color:'+(hasData?healthC:'var(--t3)')+';font-family:\'IBM Plex Mono\',monospace;margin-bottom:10px">'+(hasData?healthLbl:'no meetings linked')+'</div>';
+  // ── ENTITY HEADER ───────────────────────────────────────────
+  h+='<div class="ins-entity-hdr">';
+  h+='<div style="flex:1;min-width:0">';
+  h+='<div class="ins-entity-name" style="color:'+c+'">'+d.name+'</div>';
+  if(d.role||d.org)h+='<div class="ins-entity-role">'+(d.role||'')+(d.org?' / '+d.org:'')+'</div>';
+  h+='<div class="ins-entity-tags">';
+  h+='<span class="ins-tag ins-tag--type">'+d.type.toUpperCase()+'</span>';
+  h+='<span class="ins-tag ins-tag--tier">T'+(d.priority||2)+'</span>';
+  if(d.govOrg)h+='<span class="ins-tag ins-tag--gov">'+d.govOrg+'</span>';
+  if(d.govType)h+=_govTypeBadge(d.govType);
+  linkedOpps.slice(0,2).forEach(function(o){h+='<span class="ins-tag ins-tag--opp">'+o.name+'</span>';});
+  h+='</div></div>';
 
-  // ── STATS ────────────────────────────────────────────────────
-  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px">';
-  [{lbl:'Meetings',val:nm.length,c2:c},{lbl:'Actions',val:myActions.length,c2:myActions.length?'var(--amber)':'var(--text)'},{lbl:'Risks',val:myRisks.length,c2:myRisks.length?'var(--red)':'var(--text)'},{lbl:'Open Q',val:myQs.length,c2:myQs.length?'var(--blue)':'var(--text)'}].forEach(function(s){
-    h+='<div class="metric" style="padding:.5rem .3rem;text-align:center"><div style="font-size:15px;font-weight:700;color:'+s.c2+'">'+s.val+'</div><div style="font-size:9px;color:var(--t3)">'+s.lbl+'</div></div>';
+  // Health gauge
+  var circ=2*Math.PI*18;
+  var displayScore=hasData?healthScore:'-';
+  var ringColor=hasData?healthC:'var(--rule-2)';
+  var dashLen=hasData?(Math.max(healthScore,0.5)/10)*circ:0;
+  h+='<div class="ins-gauge">';
+  h+='<svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="18" fill="none" stroke="var(--rule)" stroke-width="3.5"/>';
+  if(hasData)h+='<circle cx="26" cy="26" r="18" fill="none" stroke="'+ringColor+'" stroke-width="3.5" stroke-dasharray="'+dashLen+' '+circ+'" stroke-linecap="round" transform="rotate(-90 26 26)"/>';
+  h+='<text x="26" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="'+ringColor+'" font-family="IBM Plex Mono,monospace">'+displayScore+'</text></svg>';
+  h+='<div class="ins-gauge-lbl">HEALTH</div></div></div>';
+
+  h+='<div class="ins-health-pill" style="color:'+(hasData?healthC:'var(--paper-2)')+'">'+( hasData?healthLbl:'NO MEETINGS LINKED')+'</div>';
+
+  // ── KPI STRIP ────────────────────────────────────────────────
+  h+='<div class="ins-kpi-grid">';
+  [{lbl:'MEETINGS',val:nm.length,c2:c},{lbl:'ACTIONS',val:myActions.length,c2:myActions.length?'var(--gold)':'var(--paper-2)'},{lbl:'RISKS',val:myRisks.length,c2:myRisks.length?'#ff8080':'var(--paper-2)'},{lbl:'OPEN Q',val:myQs.length,c2:myQs.length?'#9cc5ed':'var(--paper-2)'}].forEach(function(s){
+    h+='<div class="ins-kpi"><div class="ins-kpi-val" style="color:'+s.c2+'">'+s.val+'</div><div class="ins-kpi-lbl">'+s.lbl+'</div></div>';
   });
   h+='</div>';
 
-  // Relationship health + network strength
-  h+='<div style="margin-bottom:12px">';
-  h+='<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:10px;color:var(--t3)">Health score</span><span style="font-size:10px;font-weight:600;color:'+healthColor(st)+'">'+st+'/10</span></div>';
-  h+='<div class="strength-bar" style="height:5px;margin-bottom:5px"><div class="strength-fill" style="width:'+st*10+'%;background:'+healthColor(st)+'"></div></div>';
-  h+='<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-size:9px;color:var(--t3)">Network strength</span><span style="font-size:9px;color:var(--t3)">'+stNet+'/10</span></div>';
-  h+='<div class="strength-bar" style="height:3px"><div class="strength-fill" style="width:'+stNet*10+'%;background:'+c+'"></div></div>';
+  // ── HEALTH + NETWORK STRENGTH BARS ──────────────────────────
+  h+='<div style="margin-bottom:14px">';
+  h+='<div class="ins-bar-row"><span class="ins-bar-lbl">HEALTH</span><span class="ins-bar-val" style="color:'+healthColor(st)+'">'+st+'/10</span></div>';
+  h+='<div class="ins-bar-track"><div class="ins-bar-fill" style="width:'+st*10+'%;background:'+healthColor(st)+'"></div></div>';
+  h+='<div class="ins-bar-row"><span class="ins-bar-lbl">NETWORK</span><span class="ins-bar-val" style="color:'+c+'">'+stNet+'/10</span></div>';
+  h+='<div class="ins-bar-track"><div class="ins-bar-fill" style="width:'+stNet*10+'%;background:'+c+'"></div></div>';
   h+='</div>';
 
   // ── STANCE TRAJECTORY ────────────────────────────────────────
   if(stances.length){
-    h+='<div style="margin-bottom:13px">';
-    h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Stance Trajectory ↗</div>';
+    h+='<div class="ins-card ins-card--amber">';
+    h+='<div class="ins-hdr">STANCE TRAJECTORY</div>';
     stances.forEach(function(s,i){
       var isLatest=i===stances.length-1;
       var changed=i>0&&s.stance!==stances[i-1].stance;
-      var dotC=isLatest?c:(changed?'var(--amber)':'var(--b2)');
-      h+='<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid rgba(26,34,54,.35);align-items:flex-start">';
-      h+='<div style="flex-shrink:0;width:38px;text-align:right"><div style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;line-height:1.2">'+s.date.slice(5)+'</div>'+(isLatest?'<div style="font-size:8px;color:'+c+';font-weight:700">NOW</div>':'')+'</div>';
-      h+='<div style="width:1px;background:var(--b1);align-self:stretch;flex-shrink:0;margin:0 4px;position:relative"><div style="position:absolute;top:4px;left:-3px;width:7px;height:7px;border-radius:50%;background:'+dotC+';border:1px solid var(--bg)"></div></div>';
-      h+='<div style="flex:1;min-width:0"><div style="font-size:11px;color:'+(isLatest?'var(--text)':'var(--t2)')+';font-style:italic;line-height:1.4">'+s.stance+'</div>';
-      h+='<div style="font-size:9px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+s.mtg+'</div></div></div>';
+      var dotC=isLatest?c:(changed?'var(--gold)':'var(--rule-2)');
+      h+='<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--rule);align-items:flex-start">';
+      h+='<div class="ins-stance-date">'+s.date.slice(5)+(isLatest?'<div style="font-size:7px;font-weight:700;color:'+c+';letter-spacing:0.2em">NOW</div>':'')+'</div>';
+      h+='<div class="ins-stance-rail"><div class="ins-stance-dot" style="background:'+dotC+'"></div></div>';
+      h+='<div style="flex:1;min-width:0"><div class="ins-stance-text" style="color:'+(isLatest?'var(--bone)':'var(--paper)')+'">'+s.stance+'</div>';
+      h+='<div class="ins-stance-mtg">'+s.mtg+'</div></div></div>';
     });
     h+='</div>';
   }else if(nm.length){
-    h+='<div style="margin-bottom:12px;padding:8px;background:var(--s2);border-radius:var(--rsm);font-size:11px;color:var(--t3);text-align:center">No stance recorded yet across '+nm.length+' meeting'+(nm.length>1?'s':'')+'</div>';
+    h+='<div class="ins-card"><div style="font-size:11px;color:var(--paper-2);text-align:center;padding:6px 0">No stance recorded across '+nm.length+' meeting'+(nm.length>1?'s':'')+'</div></div>';
   }
 
   // ── WATCH FLAG ────────────────────────────────────────────────
   if(latestWatch){
-    h+='<div style="margin-bottom:12px;padding:8px 10px;background:rgba(245,158,11,.07);border-left:2px solid var(--amber);border-radius:0 4px 4px 0">';
-    h+='<div style="font-size:9px;font-weight:600;color:var(--amber);margin-bottom:3px;font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:0.08em">Watch</div>';
-    h+='<div style="font-size:11px;color:var(--text);line-height:1.45">'+latestWatch.text+'</div>';
-    h+='<div style="font-size:9px;color:var(--t3);margin-top:3px">'+latestWatch.date+' — '+latestWatch.mtg+'</div></div>';
+    h+='<div class="ins-watch">';
+    h+='<div class="ins-watch-lbl">WATCH</div>';
+    h+='<div class="ins-watch-text">'+latestWatch.text+'</div>';
+    h+='<div class="ins-watch-src">'+latestWatch.date+' / '+latestWatch.mtg+'</div></div>';
   }
 
-  // ── COMMITMENTS THEY OWN ──────────────────────────────────────
+  // ── COMMITMENTS OWNED ─────────────────────────────────────────
   if(myActions.length){
-    h+='<div style="margin-bottom:13px">';
-    h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Commitments Owned ('+myActions.length+')</div>';
+    h+='<div class="ins-card ins-card--amber">';
+    h+='<div class="ins-hdr">COMMITMENTS OWNED ('+myActions.length+')</div>';
     myActions.slice(0,6).forEach(function(a){
       var dl=a.deadline?new Date(a.deadline+'T00:00:00'):null;
       var overdue=dl&&dl<now2;
-      var dueLbl=a.deadline?(overdue?'OVERDUE: '+a.deadline:'due '+a.deadline):'no deadline';
-      var dueC=overdue?'var(--red)':a.deadline?'var(--t2)':'var(--t3)';
-      h+='<div style="display:flex;gap:7px;padding:5px 0;border-bottom:1px solid rgba(26,34,54,.35);align-items:flex-start">';
-      h+='<div style="width:6px;height:6px;border-radius:50%;background:'+(DS[a.priority]||'var(--t3)')+';flex-shrink:0;margin-top:4px"></div>';
-      h+='<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text);line-height:1.35">'+a.task+'</div>';
-      h+='<div style="font-size:9px;color:'+dueC+';font-family:\'IBM Plex Mono\',monospace;margin-top:1px">'+dueLbl+' · '+a.mtg+'</div></div></div>';
+      var dueLbl=a.deadline?(overdue?'OVERDUE '+a.deadline:'DUE '+a.deadline):'NO DEADLINE';
+      h+='<div class="ins-row">';
+      h+='<div class="ins-row-dot" style="background:'+(DS[a.priority]||'var(--paper-2)')+'"></div>';
+      h+='<div class="ins-row-body"><div class="ins-row-task">'+a.task+'</div>';
+      h+='<div class="ins-row-meta'+(overdue?' ins-row-meta--overdue':'')+'">'+dueLbl+' / '+a.mtg+'</div></div></div>';
     });
-    if(myActions.length>6)h+='<div style="font-size:10px;color:var(--t3);padding-top:4px">+'+(myActions.length-6)+' more</div>';
+    if(myActions.length>6)h+='<div style="font-size:10px;color:var(--paper-2);padding-top:6px">+'+(myActions.length-6)+' more</div>';
     h+='</div>';
   }
 
-  // ── QUESTIONS THEY'RE STILL ASKING ───────────────────────────
+  // ── OPEN QUESTIONS ────────────────────────────────────────────
   if(myQs.length){
-    h+='<div style="margin-bottom:13px">';
-    h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Still Asking ('+myQs.length+')</div>';
+    h+='<div class="ins-card ins-card--blue">';
+    h+='<div class="ins-hdr ins-hdr--blue">STILL ASKING ('+myQs.length+')</div>';
     myQs.slice(0,4).forEach(function(q){
-      h+='<div style="padding:5px 0;border-bottom:1px solid rgba(26,34,54,.35)">';
-      h+='<div style="font-size:11px;color:var(--text);line-height:1.35">'+q.question+'</div>';
-      h+='<div style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;margin-top:1px">'+q.mdate+' · '+q.mtg+'</div></div>';
+      h+='<div class="ins-row"><div class="ins-row-dot" style="background:#9cc5ed"></div>';
+      h+='<div class="ins-row-body"><div class="ins-row-task">'+q.question+'</div>';
+      h+='<div class="ins-row-meta">'+q.mdate+' / '+q.mtg+'</div></div></div>';
     });
     h+='</div>';
   }
 
-  // ── RISKS THEY RAISED ────────────────────────────────────────
+  // ── RISKS RAISED ──────────────────────────────────────────────
   if(myRisks.length){
-    h+='<div style="margin-bottom:13px">';
-    h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Risks Raised</div>';
+    h+='<div class="ins-card ins-card--red">';
+    h+='<div class="ins-hdr ins-hdr--red">RISKS RAISED</div>';
     myRisks.slice(0,4).forEach(function(r){
-      h+='<div style="display:flex;gap:7px;padding:5px 0;border-bottom:1px solid rgba(26,34,54,.35);align-items:flex-start">';
-      h+='<div style="width:6px;height:6px;border-radius:50%;background:'+(DS[r.severity]||'var(--t3)')+';flex-shrink:0;margin-top:4px"></div>';
-      h+='<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text);line-height:1.35">'+r.risk+'</div>';
-      h+='<div style="font-size:9px;color:var(--t3);margin-top:1px">'+r.mdate+' · '+r.mtg+'</div></div></div>';
+      h+='<div class="ins-row"><div class="ins-row-dot" style="background:'+(DS[r.severity]||'var(--paper-2)')+'"></div>';
+      h+='<div class="ins-row-body"><div class="ins-row-task">'+r.risk+'</div>';
+      h+='<div class="ins-row-meta">'+r.mdate+' / '+r.mtg+'</div></div></div>';
     });
     h+='</div>';
   }
@@ -17352,26 +17905,28 @@ function renderDossier(d){
   // ── MEETING LOG ───────────────────────────────────────────────
   if(nm.length){
     var recent8=sorted.slice().reverse().slice(0,8);
-    h+='<div style="margin-bottom:10px">';
-    h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--b1)">Meeting Log ('+nm.length+')</div>';
+    h+='<div class="ins-card">';
+    h+='<div class="ins-hdr">MEETING LOG ('+nm.length+')</div>';
     recent8.forEach(function(m){
       var pi=(m.intel.keyPeople||[]).find(function(p){return p.name===d.name;});
       var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};
-      h+='<div style="padding:6px 0;border-bottom:1px solid rgba(26,34,54,.3);cursor:pointer;transition:background .1s;border-radius:3px" onclick="closeNetPanel();goIntelById('+m.id+')">';
-      h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">';
-      h+='<div style="font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px">'+m.meta.title+'</div>';
-      h+='<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">'+bdg(m.intel.companyPulse||'?',pc2)+'<span style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace">'+m.meta.date.slice(5)+'</span></div></div>';
-      if(pi&&pi.stance)h+='<div style="font-size:10px;color:var(--t2);font-style:italic;line-height:1.3">'+pi.stance.slice(0,90)+(pi.stance.length>90?'...':'')+'</div>';
+      h+='<div class="ins-mtg-item" onclick="closeNetPanel();goIntelById('+m.id+')">';
+      h+='<div class="ins-mtg-hdr"><div class="ins-mtg-title">'+m.meta.title+'</div>';
+      h+='<div style="display:flex;gap:5px;align-items:center"><span class="ins-mtg-pulse" style="background:'+pc2.b+';color:'+pc2.t+';border-color:'+pc2.t+'44">'+(m.intel.companyPulse||'?')+'</span>';
+      h+='<span class="ins-mtg-date">'+m.meta.date.slice(5)+'</span></div></div>';
+      if(pi&&pi.stance)h+='<div class="ins-mtg-stance">'+pi.stance.slice(0,100)+(pi.stance.length>100?'...':'')+'</div>';
       h+='</div>';
     });
-    if(nm.length>8)h+='<div style="font-size:10px;color:var(--t3);text-align:center;padding-top:5px">+'+(nm.length-8)+' older meetings — <span style="cursor:pointer;color:var(--blue);text-decoration:underline" onclick="loadMoreMeetings()">load more</span></div>';
+    if(nm.length>8)h+='<div style="font-size:10px;color:var(--paper-2);text-align:center;padding:8px 0">+'+(nm.length-8)+' older meetings</div>';
     h+='</div>';
   }else{
-    h+='<div style="text-align:center;padding:20px;color:var(--t3);font-size:12px">No meetings logged for this person yet.</div>';
+    h+='<div class="ins-empty">No meetings logged for this entity yet.<div class="ins-empty-hint">Process a meeting where this entity appears and the dossier builds itself.</div></div>';
   }
 
   // ── PREP BRIEF SHORTCUT ──────────────────────────────────────
-  h+='<button onclick="prepForPerson(\''+d.name.replace(/'/g,"\\'")+'\')" style="width:100%;padding:9px;border:1px solid var(--purple);border-radius:var(--rsm);background:transparent;color:var(--purple);font-size:12px;font-weight:500;cursor:pointer;font-family:IBM Plex Sans,sans-serif;transition:all .15s;margin-top:2px" onmouseover="this.style.background=\'rgba(139,92,246,.1)\'" onmouseout="this.style.background=\'transparent\'">⚡ Generate Prep Brief for '+d.name+'</button>';
+  if(d.type==='person'||d.type==='government'){
+    h+='<button class="ins-prep-btn" onclick="prepForPerson(\''+d.name.replace(/'/g,"\\'")+'\')">GENERATE PREP BRIEF</button>';
+  }
 
   document.getElementById('dossier-content').innerHTML=h;
 }
@@ -17385,18 +17940,19 @@ function renderTimeline360(d){
   var sorted=nm.slice().sort(function(a,b){return a.meta.date.localeCompare(b.meta.date);});
 
   if(!sorted.length){
-    document.getElementById('timeline360-content').innerHTML='<div style="text-align:center;padding:30px 10px;color:var(--t3);font-size:12px">No meetings linked to '+d.name+' yet.<br><br>Process meetings where this person appears and the arc will build itself.</div>';
+    document.getElementById('timeline360-content').innerHTML='<div class="ins-empty">No meetings linked to '+d.name+' yet.<div class="ins-empty-hint">Process meetings where this entity appears and the arc builds itself.</div></div>';
     return;
   }
 
   var h='';
-  h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">';
-  h+=sorted.length+' meetings · relationship arc';
-  h+='<button id="rel-narrative-btn" onclick="generateRelNarrative()" style="font-size:10px;padding:3px 9px;border:1px solid rgba(139,92,246,.4);border-radius:var(--rsm);background:transparent;color:var(--purple);cursor:pointer;font-family:IBM Plex Sans,sans-serif">'
-    +(_narrativeCache.has(d.id)?'↺ Refresh':'✦ Summarize')+'</button>';
+
+  // ── Header strip with count + Summarize button ──
+  h+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+  h+='<div class="ins-bar-lbl">'+sorted.length+' MEETINGS / RELATIONSHIP ARC</div>';
+  h+='<button id="rel-narrative-btn" onclick="generateRelNarrative()" style="font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;padding:4px 10px;border:1px solid rgba(139,92,246,.4);border-radius:1px;background:transparent;color:var(--purple);cursor:pointer;transition:all 140ms">'
+    +(_narrativeCache.has(d.id)?'REFRESH':'SUMMARIZE')+'</button>';
   h+='</div>';
 
-  // Show cached narrative if exists
   var narrativeEl=document.getElementById('timeline360-narrative');
   if(narrativeEl){
     var cached=_narrativeCache.get(d.id);
@@ -17404,31 +17960,28 @@ function renderTimeline360(d){
     else{narrativeEl.innerHTML='';narrativeEl.style.display='none';}
   }
 
-  // Calculate relationship arc: started, turning points, current state
   var firstMtg=sorted[0];
   var lastMtg=sorted[sorted.length-1];
   var totalDays=Math.floor((new Date(lastMtg.meta.date)-new Date(firstMtg.meta.date))/86400000);
   var health=computeRelHealth(d.id);
 
-  // Arc summary header
-  h+='<div style="padding:9px 12px;background:var(--s2);border-radius:var(--rsm);margin-bottom:14px;border-left:3px solid '+c+'">';
-  h+='<div style="font-size:12px;font-weight:600;margin-bottom:4px">'+d.name+'</div>';
-  h+='<div style="font-size:10px;color:var(--t2)">First contact '+firstMtg.meta.date+' · '+sorted.length+' meetings over '+(totalDays>0?totalDays+'d':'same day')+'</div>';
-  h+='<div style="margin-top:6px;display:flex;align-items:center;gap:8px">';
-  h+='<div style="flex:1"><div class="strength-bar" style="height:4px"><div class="strength-fill" style="width:'+health*10+'%;background:'+healthColor(health)+'"></div></div></div>';
-  h+='<span style="font-size:10px;font-weight:600;color:'+healthColor(health)+'">'+health+'/10</span>';
+  // ── Arc summary card ──
+  h+='<div class="ins-arc-card ins-arc-card--amber">';
+  h+='<div class="ins-arc-name" style="color:'+c+'">'+d.name+'</div>';
+  h+='<div class="ins-arc-meta">FIRST CONTACT '+firstMtg.meta.date+' / '+sorted.length+' MEETINGS OVER '+(totalDays>0?totalDays+'D':'SAME DAY')+'</div>';
+  h+='<div style="margin-top:8px;display:flex;align-items:center;gap:8px">';
+  h+='<div style="flex:1"><div class="ins-bar-track"><div class="ins-bar-fill" style="width:'+health*10+'%;background:'+healthColor(health)+'"></div></div></div>';
+  h+='<span class="ins-bar-val" style="color:'+healthColor(health)+'">'+health+'/10</span>';
   h+='</div></div>';
 
-  // Chronological events
+  // ── Chronological events ──
   sorted.forEach(function(m,i){
     var pi=(m.intel.keyPeople||[]).find(function(p){return nameSimilarity(p.name,d.name)>=0.8;});
     var prevPi=i>0?(sorted[i-1].intel.keyPeople||[]).find(function(p){return nameSimilarity(p.name,d.name)>=0.8;}):null;
     var stanceChanged=pi&&prevPi&&pi.stance&&prevPi.stance&&pi.stance!==prevPi.stance;
     var isFirst=i===0;
     var isLast=i===sorted.length-1;
-    var pc=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};
 
-    // Timeline dot color: stance-based
     var dotColor=c;
     if(pi&&pi.stance){
       var sl=pi.stance.toLowerCase();
@@ -17437,45 +17990,44 @@ function renderTimeline360(d){
       else if(/negative|cold|blocking|opposed/.test(sl))dotColor='var(--red)';
     }
 
-    h+='<div style="display:flex;gap:0;margin-bottom:0">';
-    // Timeline rail
-    h+='<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:22px">';
-    h+='<div style="width:10px;height:10px;border-radius:50%;border:2px solid '+dotColor+';background:'+(isFirst||isLast?dotColor:'var(--bg)')+';flex-shrink:0;z-index:1"></div>';
-    if(!isLast)h+='<div style="width:1px;flex:1;background:var(--b1);min-height:20px"></div>';
+    h+='<div class="ins-tl-event">';
+    h+='<div class="ins-tl-rail">';
+    h+='<div class="ins-tl-dot" style="border-color:'+dotColor+';background:'+(isFirst||isLast?dotColor:'var(--ink)')+'"></div>';
+    if(!isLast)h+='<div class="ins-tl-line"></div>';
     h+='</div>';
-    // Event content
-    h+='<div style="flex:1;padding:0 0 14px 8px;min-width:0">';
-    h+='<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">';
-    h+='<span style="font-size:9px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;flex-shrink:0">'+m.meta.date+'</span>';
-    if(isFirst)h+='<span style="font-size:8px;padding:0 4px;border-radius:3px;background:'+c+'22;color:'+c+'">FIRST CONTACT</span>';
-    if(isLast&&sorted.length>1)h+='<span style="font-size:8px;padding:0 4px;border-radius:3px;background:'+healthColor(health)+'22;color:'+healthColor(health)+'">MOST RECENT</span>';
-    if(stanceChanged)h+='<span style="font-size:8px;padding:0 4px;border-radius:3px;background:rgba(245,158,11,.15);color:var(--amber)">SHIFT</span>';
+    h+='<div class="ins-tl-body">';
+    h+='<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">';
+    h+='<span class="ins-mtg-date">'+m.meta.date+'</span>';
+    if(isFirst)h+='<span class="ins-tl-badge" style="background:'+c+'22;color:'+c+'">FIRST CONTACT</span>';
+    if(isLast&&sorted.length>1)h+='<span class="ins-tl-badge" style="background:'+healthColor(health)+'22;color:'+healthColor(health)+'">MOST RECENT</span>';
+    if(stanceChanged)h+='<span class="ins-tl-badge" style="background:rgba(212,130,58,.12);color:var(--gold)">SHIFT</span>';
     h+='</div>';
-    h+='<div style="font-size:11px;font-weight:500;cursor:pointer;color:var(--text)" onclick="closeNetPanel();goIntelById('+m.id+')">'+m.meta.title+'</div>';
+    h+='<div class="ins-tl-title" onclick="closeNetPanel();goIntelById('+m.id+')">'+m.meta.title+'</div>';
     if(pi&&pi.stance){
-      h+='<div style="font-size:10px;color:var(--t2);font-style:italic;margin-top:2px;line-height:1.4">'+pi.stance.slice(0,120)+(pi.stance.length>120?'...':'')+'</div>';
+      h+='<div class="ins-stance-text" style="color:var(--paper);margin-top:2px">'+pi.stance.slice(0,120)+(pi.stance.length>120?'...':'')+'</div>';
     }
     if(pi&&pi.watchFor){
-      h+='<div style="font-size:9px;color:var(--amber);margin-top:2px">⚠ '+pi.watchFor+'</div>';
+      h+='<div style="margin-top:3px"><span class="ins-tl-badge" style="background:rgba(212,130,58,.10);color:var(--gold)">WATCH</span> <span style="font-size:9px;color:var(--gold)">'+pi.watchFor+'</span></div>';
     }
-    // Actions from this meeting attributed to this person
     var myActions=(m.intel.actionItems||[]).filter(function(a){return a.owner&&nameSimilarity(a.owner,d.name)>=0.75;});
     if(myActions.length){
       myActions.slice(0,2).forEach(function(a){
-        h+='<div style="font-size:9px;color:var(--t3);margin-top:2px">◦ '+a.task+(a.deadline?' · '+a.deadline:'')+'</div>';
+        h+='<div class="ins-row-meta" style="margin-top:2px">'+a.task+(a.deadline?' / '+a.deadline:'')+'</div>';
       });
     }
     h+='</div></div>';
   });
 
-  // Commitments section
+  // ── Commitments ──
   var nodeCommits=commitments.filter(function(c2){return c2.owner&&nameSimilarity(c2.owner,d.name)>=0.75;});
   if(nodeCommits.length){
-    h+='<div style="margin-top:4px;padding:9px 12px;background:var(--s2);border-radius:var(--rsm)">';
-    h+='<div style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;text-transform:uppercase;color:var(--t3);margin-bottom:6px">Commitments ('+nodeCommits.length+')</div>';
+    h+='<div class="ins-card ins-card--amber" style="margin-top:6px">';
+    h+='<div class="ins-hdr">COMMITMENTS ('+nodeCommits.length+')</div>';
     nodeCommits.slice(0,5).forEach(function(c2){
       var statusConf=COMMIT_STATUS[c2.status]||COMMIT_STATUS.open;
-      h+='<div style="font-size:10px;color:'+statusConf.color+';margin-bottom:3px">'+statusConf.label+' — '+c2.task.slice(0,60)+'</div>';
+      h+='<div class="ins-row"><div class="ins-row-dot" style="background:'+statusConf.color+'"></div>';
+      h+='<div class="ins-row-body"><div class="ins-row-task">'+c2.task.slice(0,80)+'</div>';
+      h+='<div class="ins-row-meta">'+statusConf.label.toUpperCase()+'</div></div></div>';
     });
     h+='</div>';
   }
@@ -17493,7 +18045,58 @@ window.prepForPerson=function(name){
   toast('Ready — add meeting title and generate brief for '+name);
 };
 
-function renderNetConn(d){var ml=links.filter(function(l){var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;return s===d.id||t===d.id;});var h='<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-bottom:8px;font-family:\'IBM Plex Mono\',monospace">Connections ('+ml.length+')</div>';if(ml.length){ml.forEach(function(l){var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;var oid=s===d.id?t:s;var other=nodeMap.get(oid);var ec=es(l.label).c;var sh=getMtgsForNode(d.id).filter(function(m){return getMtgsForNode(oid).some(function(cm){return cm.id===m.id;});}).length;h+='<div style="padding:7px 0;border-bottom:1px solid var(--b1)"><div style="display:flex;align-items:flex-start;gap:5px;padding-bottom:4px"><span style="color:'+ec+';font-size:11px">'+(s===d.id?'->':'<-')+'</span><div style="flex:1"><div style="font-size:12px;font-weight:500;color:'+nc(other||{type:'deal'})+'">'+( other&&other.name||'?')+'</div><div style="font-size:10px;color:var(--t3)">'+(l.label||'')+(sh?' -- '+sh+' shared mtg':'')+'</div>'+(sh>0?'<div class="strength-bar" style="margin-top:2px"><div class="strength-fill" style="width:'+Math.min(sh*20,100)+'%;background:'+ec+'"></div></div>':'')+'</div><button onclick="removeEdge(\''+s+'\',\''+t+'\')" style="background:none;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:0 2px">x</button></div><textarea placeholder="Relationship notes..." style="font-size:11px;min-height:44px;padding:4px 7px;margin-top:2px" onblur="saveEdgeNote(\''+s+'\',\''+t+'\',this.value)">'+(l.notes||'')+'</textarea></div>';});}else h+='<div style="font-size:12px;color:var(--t3)">No connections -- use Connect toolbar</div>';document.getElementById('net-conn-content').innerHTML=h;}
+function renderNetConn(d){
+  var ml=links.filter(function(l){
+    var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;
+    return s===d.id||t===d.id;
+  });
+  var myMtgs=getMtgsForNode(d.id);
+
+  var h='';
+
+  if(ml.length){
+    h+='<div class="ins-hdr">CONNECTIONS ('+ml.length+')</div>';
+    h+='<div class="ins-conn-grid">';
+    ml.forEach(function(l){
+      var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;
+      var oid=s===d.id?t:s;
+      var other=nodeMap.get(oid);
+      var ec=es(l.label).c;
+      var sh=myMtgs.filter(function(m){return getMtgsForNode(oid).some(function(cm){return cm.id===m.id;});}).length;
+      var oName=other&&other.name||'?';
+      var oColor=nc(other||{type:'deal'});
+      var dir=s===d.id?'OUT':'IN';
+
+      h+='<div class="ins-conn" style="border-left-color:'+ec+'" onclick="if(nodeMap.get(\''+oid+'\'))openNetPanel(nodeMap.get(\''+oid+'\'))">';
+      h+='<div class="ins-conn-hdr">';
+      h+='<div class="ins-conn-name" style="color:'+oColor+'">'+oName+'</div>';
+      h+='<span class="ins-conn-label" style="color:'+ec+';border-color:'+ec+'44">'+(l.label||'CONNECTED')+'</span>';
+      h+='</div>';
+
+      h+='<div class="ins-conn-meta">';
+      h+=dir+(sh?' / '+sh+' SHARED MTG'+(sh>1?'S':''):'');
+      if(other&&other.role)h+=' / '+other.role;
+      h+='</div>';
+
+      if(sh>0){
+        h+='<div class="ins-bar-track" style="margin-top:5px"><div class="ins-bar-fill" style="width:'+Math.min(sh*20,100)+'%;background:'+ec+'"></div></div>';
+      }
+
+      h+='<textarea class="ins-conn-notes" placeholder="Relationship notes..." onclick="event.stopPropagation()" onblur="saveEdgeNote(\''+s+'\',\''+t+'\',this.value)">'+(l.notes||'')+'</textarea>';
+
+      h+='<div style="display:flex;justify-content:flex-end;margin-top:4px">';
+      h+='<button class="ins-conn-rm" onclick="event.stopPropagation();removeEdge(\''+s+'\',\''+t+'\')">REMOVE</button>';
+      h+='</div>';
+
+      h+='</div>';
+    });
+    h+='</div>';
+  }else{
+    h+='<div class="ins-empty">No connections yet.<div class="ins-empty-hint">Use the Connect tool in the graph toolbar to link entities.</div></div>';
+  }
+
+  document.getElementById('net-conn-content').innerHTML=h;
+}
 
 async function saveEdgeNote(sid,tid,note){var l=links.find(function(l){var s=l.source&&l.source.id||l.source,t=l.target&&l.target.id||l.target;return s==sid&&t==tid;});if(l){l.notes=note;await saveLink(l);}}
 async function removeEdge(sid,tid){
