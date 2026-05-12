@@ -29139,6 +29139,7 @@ window.addEventListener('resize', function() {
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">G</span> entity graph · fit view</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">C</span> common operating picture</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">+ / −</span> zoom in / out (graph)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">CLICK</span> focus &amp; reorganize around entity</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">RCLICK</span> entity context menu</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">?</span> toggle this overlay</div>
 </div>
@@ -29239,13 +29240,193 @@ window.addEventListener('resize', function() {
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FOCUS-AND-CONTEXT (The Brain pattern)
+  // Clicked node becomes spatial center; 1-hop on inner ring, 2-hop on outer.
+  // Animated via temporary fx/fy pins + simulation reheat + camera transition.
+  // ═══════════════════════════════════════════════════════════════════════════
+  var _focus = { active: false, nodeId: null, touched: new Set(), priorPins: {} };
+
+  function _hopNeighbors(nodeId){
+    var hop1 = new Set();
+    var ls = window.links || [];
+    for (var i=0;i<ls.length;i++){
+      var l = ls[i];
+      var s = l.source && l.source.id || l.source;
+      var t = l.target && l.target.id || l.target;
+      if (String(s) === String(nodeId)) hop1.add(String(t));
+      else if (String(t) === String(nodeId)) hop1.add(String(s));
+    }
+    var hop2 = new Set();
+    hop1.forEach(function(nid){
+      for (var i=0;i<ls.length;i++){
+        var l = ls[i];
+        var s = l.source && l.source.id || l.source;
+        var t = l.target && l.target.id || l.target;
+        var other;
+        if (String(s) === String(nid)) other = String(t);
+        else if (String(t) === String(nid)) other = String(s);
+        else continue;
+        if (other === String(nodeId)) continue;
+        if (hop1.has(other)) continue;
+        hop2.add(other);
+      }
+    });
+    return { hop1: hop1, hop2: hop2 };
+  }
+
+  function _setNodePin(nid, x, y){
+    var nm = window.nodeMap;
+    if (!nm || typeof nm.get !== 'function') return;
+    var n = nm.get(nid);
+    if (!n) return;
+    n.fx = x; n.fy = y;
+  }
+
+  function _releasePin(nid){
+    var nm = window.nodeMap;
+    if (!nm || typeof nm.get !== 'function') return;
+    var n = nm.get(nid);
+    if (!n) return;
+    n.fx = null; n.fy = null;
+  }
+
+  function _snapshotPins(idsArray){
+    var nm = window.nodeMap;
+    var snap = {};
+    if (!nm || typeof nm.get !== 'function') return snap;
+    idsArray.forEach(function(nid){
+      var n = nm.get(nid);
+      if (!n) return;
+      snap[nid] = { fx: n.fx, fy: n.fy, pinned: !!n.pinned };
+    });
+    return snap;
+  }
+
+  function _restorePriorPins(){
+    var nm = window.nodeMap;
+    if (!nm || typeof nm.get !== 'function') return;
+    Object.keys(_focus.priorPins).forEach(function(nid){
+      var n = nm.get(nid);
+      if (!n) return;
+      var p = _focus.priorPins[nid];
+      if (p.pinned){ n.fx = p.fx; n.fy = p.fy; }
+      else { n.fx = null; n.fy = null; }
+    });
+  }
+
+  function _panCameraToCenter(){
+    if (typeof d3 === 'undefined') return;
+    if (!window.svg || !window.zoom || !window.svgEl) return;
+    var W = window.W || window.innerWidth;
+    var H = window.H || window.innerHeight;
+    var curT;
+    try { curT = d3.zoomTransform(window.svgEl); } catch(e){ curT = d3.zoomIdentity; }
+    var k = curT.k || 1;
+    var targetK = Math.min(Math.max(k, 0.78), 1.15);
+    var tx = (W/2) * (1 - targetK);
+    var ty = (H/2) * (1 - targetK);
+    var newT = d3.zoomIdentity.translate(tx, ty).scale(targetK);
+    try {
+      window.svg.transition().duration(540).ease(d3.easeCubicOut).call(window.zoom.transform, newT);
+    } catch(e){}
+  }
+
+  function focusOn(nodeId){
+    if (!nodeId) return;
+    var nm = window.nodeMap;
+    if (!nm || typeof nm.get !== 'function') return;
+    var nodes = window.nodes;
+    if (!nodes || !nodes.length) return;
+
+    // Idempotent: same node already focused
+    if (_focus.active && String(_focus.nodeId) === String(nodeId)) return;
+
+    // If switching focus, release prior pins first
+    if (_focus.active) _restorePriorPins();
+
+    var node = nm.get(nodeId);
+    if (!node) return;
+
+    var W = window.W || window.innerWidth;
+    var H = window.H || window.innerHeight;
+    var cX = W/2, cY = H/2;
+    var radius = Math.min(W, H);
+    var rInner = radius * 0.20;
+    var rOuter = radius * 0.38;
+
+    var hops = _hopNeighbors(nodeId);
+
+    // Cap rings so layout stays readable
+    var arr1 = Array.from(hops.hop1).slice(0, 32);
+    var arr2 = Array.from(hops.hop2).slice(0, 64);
+    var touched = new Set([String(nodeId)].concat(arr1).concat(arr2));
+
+    // Snapshot prior pins for restoration
+    _focus.priorPins = _snapshotPins(Array.from(touched));
+
+    // Pin focused at center
+    _setNodePin(String(nodeId), cX, cY);
+
+    // Distribute hop-1 on inner ring, starting at 12 o'clock
+    var n1 = arr1.length;
+    arr1.forEach(function(nid, i){
+      var ang = (i / Math.max(n1,1)) * 2 * Math.PI - Math.PI/2;
+      _setNodePin(nid, cX + Math.cos(ang) * rInner, cY + Math.sin(ang) * rInner);
+    });
+
+    // Distribute hop-2 on outer ring, offset by half-step so they fall
+    // between hop-1 nodes (visual breathing room)
+    var n2 = arr2.length;
+    var offset2 = n2 > 0 ? (Math.PI / n2) : 0;
+    arr2.forEach(function(nid, i){
+      var ang = (i / Math.max(n2,1)) * 2 * Math.PI - Math.PI/2 + offset2;
+      _setNodePin(nid, cX + Math.cos(ang) * rOuter, cY + Math.sin(ang) * rOuter);
+    });
+
+    _focus.active = true;
+    _focus.nodeId = String(nodeId);
+    _focus.touched = touched;
+
+    // Reheat simulation to animate movement
+    if (window.sim) {
+      try { window.sim.alpha(0.7).restart(); } catch(e){}
+      // After settle window, ease back to low energy so other nodes stop drifting
+      setTimeout(function(){
+        if (window.sim) { try { window.sim.alphaTarget(0); } catch(e){} }
+      }, 680);
+    }
+
+    // Smoothly pan camera so the focused node is centered at user-comfortable zoom
+    _panCameraToCenter();
+  }
+
+  function focusOff(){
+    if (!_focus.active) return;
+    _restorePriorPins();
+    _focus = { active: false, nodeId: null, touched: new Set(), priorPins: {} };
+    if (window.sim) { try { window.sim.alpha(0.25).restart(); } catch(e){} }
+  }
+
+  // Expose for ctx menu actions and debugging
+  window._corsairFocusOn = focusOn;
+  window._corsairFocusOff = focusOff;
+
   // Wrap openNetPanel/closeNetPanel to attach selection visuals
   function hookPanel(){
     if (window.openNetPanel && !window.openNetPanel.__corsair){
       var origOpen = window.openNetPanel;
       var wrappedOpen = function(d){
         var rv = origOpen.apply(this, arguments);
-        try { if (d && d.id) requestAnimationFrame(function(){ applyGraphSelection(d); }); } catch(e){}
+        try {
+          if (d && d.id) {
+            requestAnimationFrame(function(){ applyGraphSelection(d); });
+            // Only Brain-pattern focus when on the graph view
+            if (isGraphView()) {
+              setTimeout(function(){ try { focusOn(d.id); } catch(err){} }, 30);
+            }
+          }
+        } catch(e){}
         return rv;
       };
       wrappedOpen.__corsair = true;
@@ -29255,7 +29436,7 @@ window.addEventListener('resize', function() {
       var origClose = window.closeNetPanel;
       var wrappedClose = function(){
         var rv = origClose.apply(this, arguments);
-        try { clearGraphSelection(); hideContextMenu(); } catch(e){}
+        try { clearGraphSelection(); hideContextMenu(); focusOff(); } catch(e){}
         return rv;
       };
       wrappedClose.__corsair = true;
@@ -29371,10 +29552,18 @@ window.addEventListener('resize', function() {
       hint.style.display = 'none';
     }
     // Bridge: internal nodeClick → openNetPanel(d) bypasses window-wrap,
-    // so we sync visuals from window.selectedNode after the click settles.
+    // so we sync visuals + focus from window.selectedNode after the click settles.
     setTimeout(function(){
-      if (window.selectedNode) applyGraphSelection(window.selectedNode);
-      else clearGraphSelection();
+      if (window.selectedNode) {
+        applyGraphSelection(window.selectedNode);
+        // Only re-focus on graph clicks (not panel/UI clicks elsewhere)
+        if (isGraphView() && e.target.closest && e.target.closest('.node-g')) {
+          try { focusOn(window.selectedNode.id); } catch(err){}
+        }
+      } else {
+        clearGraphSelection();
+        try { focusOff(); } catch(err){}
+      }
     }, 50);
   });
 
