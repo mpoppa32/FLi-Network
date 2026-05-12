@@ -6062,10 +6062,8 @@ input[type="url"], textarea, select {
     <div class="rhythm-body" id="rhythm-body"></div>
   </div>
 
-  <div class="daily-strip" id="daily-strip" style="display:none">
-    <div class="daily-strip-eyebrow">Today</div>
-    <div id="daily-strip-items" style="display:flex;flex:1;overflow-x:auto;scrollbar-width:none"></div>
-  </div>
+  <!-- Daily Strip retired — functionality merged into Morning Briefing -->
+  <div id="daily-strip" style="display:none"></div>
 
   <!-- INTEL VIEW -->
   <div class="intel-view" id="intel-view">
@@ -30477,41 +30475,7 @@ window._buildDailyStripItems = function() {
 
 window._renderDailyStrip = function() {
   var strip = document.getElementById('daily-strip');
-  var container = document.getElementById('daily-strip-items');
-  if (!strip || !container) return;
-  // Only show on app views, not during auth/onboarding
-  var app = document.getElementById('main-app');
-  if (!app || app.style.display === 'none') {
-    strip.style.display = 'none';
-    return;
-  }
-  var items = window._buildDailyStripItems();
-  if (!items.length) {
-    // Show "all clear" state instead of hiding
-    if (typeof meetings === 'undefined' || !meetings || meetings.length === 0) {
-      strip.style.display = 'none';
-      return;
-    }
-    strip.style.display = 'flex';
-    container.innerHTML = '<div class="daily-strip-empty"><span style="color:var(--green);font-size:13px">✓</span><span>All clear — no urgent actions. Stay sharp.</span></div>';
-    return;
-  }
-
-  strip.style.display = 'flex';
-  // Store actions globally so onclick can reach them
-  window._dailyStripActions = items.map(function(i) { return i.action; });
-  var html = '';
-  items.forEach(function(it, idx) {
-    html += '<div class="daily-strip-item" onclick="window._dailyStripActions[' + idx + ']()">';
-    html += '<span class="daily-strip-item-icon" style="color:' + it.color + '">' + it.icon + '</span>';
-    html += '<div class="daily-strip-item-body">';
-    html += '<div class="daily-strip-item-title">' + it.title + '</div>';
-    html += '<div class="daily-strip-item-sub">' + it.sub + '</div>';
-    html += '</div>';
-    html += '<span class="daily-strip-item-arrow">→</span>';
-    html += '</div>';
-  });
-  container.innerHTML = html;
+  if (strip) strip.style.display = 'none';
 };
 
 // Auto-refresh strip every 3 minutes + on data changes
