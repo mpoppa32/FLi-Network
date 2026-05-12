@@ -5947,13 +5947,16 @@ input[type="url"], textarea, select {
       <div class="fld"><div class="lbl">Est. Value</div><input type="text" id="opp-value-inp" placeholder="$2.5M"></div>
       <div class="fld"><div class="lbl">Stage</div>
         <select id="opp-stage-inp">
-          <option value="awareness">Awareness</option>
-          <option value="engaged" selected>Engaged</option>
+          <option value="awareness">Opportunity ID</option>
+          <option value="tracking">Qualify</option>
+          <option value="engaged" selected>Capture Planning</option>
+          <option value="rfp">Bid Decision</option>
           <option value="proposal">Proposal</option>
+          <option value="negotiation">Final Proposal Rev.</option>
           <option value="submitted">Submitted</option>
-          <option value="award">Award Decision</option>
-          <option value="won">Won</option>
-          <option value="lost">Lost / No Bid</option>
+          <option value="award">Evaluation / Award</option>
+          <option value="won">Won — Post-Award</option>
+          <option value="lost">Lost / No-Bid</option>
         </select>
       </div>
     </div>
@@ -5961,6 +5964,7 @@ input[type="url"], textarea, select {
       <div class="fld"><div class="lbl">RFP / Solicitation Date</div><input type="date" id="opp-rfp-inp"></div>
       <div class="fld"><div class="lbl">Award Date</div><input type="date" id="opp-award-inp"></div>
     </div>
+    <div class="fld"><div class="lbl">Capture Lead</div><input type="text" id="opp-lead-inp" placeholder="Person owning this pursuit"></div>
     <div class="fld"><div class="lbl">Notes</div><textarea id="opp-notes-inp" style="min-height:70px" placeholder="Key context, incumbent, competitive landscape..."></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
       <button class="btn btn-sm" onclick="closeModal('new-opp-modal')">Cancel</button>
@@ -10034,6 +10038,8 @@ window.openNewOppModal=function(){
   document.getElementById('opp-stage-inp').value='engaged';
   document.getElementById('opp-rfp-inp').value='';
   document.getElementById('opp-award-inp').value='';
+  var leadInp=document.getElementById('opp-lead-inp');
+  if(leadInp)leadInp.value='';
   document.getElementById('opp-notes-inp').value='';
   document.getElementById('new-opp-modal').style.display='flex';
 };
@@ -10041,6 +10047,7 @@ window.openNewOppModal=function(){
 window.confirmNewOpp=async function(){
   var name=document.getElementById('opp-name-inp').value.trim();
   if(!name){toast('Name required');return;}
+  var leadInp=document.getElementById('opp-lead-inp');
   var opp={
     id:'opp-'+Date.now(),
     name:name,
@@ -10050,6 +10057,7 @@ window.confirmNewOpp=async function(){
     stage:document.getElementById('opp-stage-inp').value,
     rfpDate:document.getElementById('opp-rfp-inp').value,
     awardDate:document.getElementById('opp-award-inp').value,
+    captureLead:leadInp?leadInp.value.trim():'',
     notes:document.getElementById('opp-notes-inp').value.trim(),
     meetings:[],
     created:new Date().toISOString(),
@@ -10952,6 +10960,22 @@ function renderOppDetail(opp){
   });
   h+='</div>';
 
+  // Capture Lead — pursuit ownership at a glance
+  var _lead = opp.captureLead || opp.lead || '';
+  if (_lead) {
+    var _leadInit = _lead.split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+    h+='<div class="card" style="margin-bottom:12px;padding:10px 12px;display:flex;align-items:center;gap:12px">'
+      +'<div style="width:34px;height:34px;border-radius:1px;background:rgba(212,130,58,0.12);border:1px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:0.04em;color:var(--gold);flex-shrink:0">'+_leadInit+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:600;letter-spacing:0.28em;color:var(--t2);text-transform:uppercase;margin-bottom:2px">Capture Lead</div>'
+        +'<div style="font-family:Antonio,IBM Plex Sans,sans-serif;font-size:15px;font-weight:600;color:var(--text);line-height:1.2">'+_lead.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})+'</div>'
+      +'</div>'
+      +'<button onclick="editOppCaptureLead(\''+opp.id+'\')" style="padding:5px 10px;border:1px solid var(--rule);border-radius:1px;background:transparent;color:var(--t2);font-size:10px;font-family:IBM Plex Mono,monospace;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer;flex-shrink:0">Edit</button>'
+    +'</div>';
+  } else {
+    h+='<button onclick="editOppCaptureLead(\''+opp.id+'\')" style="margin-bottom:12px;padding:9px 14px;border:1px dashed var(--rule-2);border-radius:1px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;cursor:pointer;width:100%;text-align:left">+ Assign capture lead</button>';
+  }
+
   // Notes
   if(opp.notes){h+='<div class="card card-ref" style="margin-bottom:12px"><div class="opp-detail-hdr">Context</div><div style="font-size:13px;line-height:1.65;white-space:pre-wrap">'+opp.notes+'</div><button onclick="editOppNotes(\''+opp.id+'\')" style="margin-top:8px;padding:3px 8px;border:1px solid var(--b2);border-radius:4px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer">Edit</button></div>';}
   else{h+='<button onclick="editOppNotes(\''+opp.id+'\')" style="margin-bottom:12px;padding:5px 12px;border:1px dashed var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:12px;cursor:pointer;width:100%">+ Add context / competitive notes</button>';}
@@ -11204,6 +11228,20 @@ window.editOppNotes=async function(id){
   await saveOpp(opp);
   renderOppDetail(opp);
   toast('Notes saved');
+};
+
+window.editOppCaptureLead=async function(id){
+  var opp=opportunities.find(function(o){return o.id===id;});
+  if(!opp)return;
+  var current=opp.captureLead||opp.lead||'';
+  var lead=await showPrompt('Capture Lead',current,{title:'Assign Capture Lead',description:'Who owns this pursuit? First check at every capture review.',confirmLabel:'Assign',rows:1});
+  if(lead===null)return;
+  opp.captureLead=lead.trim();
+  opp.updatedAt=new Date().toISOString();
+  await saveOpp(opp);
+  renderOppDetail(opp);
+  if(typeof renderOppSidebar==='function')renderOppSidebar();
+  toast(opp.captureLead?'Capture lead assigned':'Capture lead cleared');
 };
 
 function updateOppSelectors(){
