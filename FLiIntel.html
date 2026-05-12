@@ -3821,6 +3821,56 @@ input[type="url"], textarea, select {
 }
 .cop-stat-key .cop-stat-val { color: var(--gold); }
 
+/* ── Filter chip bar (MINE ONLY etc.) ── */
+.cop-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+.cop-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 1px solid var(--rule-2);
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding: 5px 10px 5px 9px;
+  border-radius: 1px;
+  cursor: pointer;
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+  font-variant-numeric: tabular-nums;
+}
+.cop-filter-chip:hover {
+  color: var(--text);
+  border-color: var(--gold);
+  background: rgba(212,130,58,0.06);
+}
+.cop-filter-chip.active {
+  color: var(--ink);
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 14px rgba(212,130,58,0.4);
+}
+.cop-filter-chip.active:hover { background: #e69449; }
+.cop-filter-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--paper-2);
+  box-shadow: 0 0 0 1px rgba(125,118,105,0.4);
+  transition: all 140ms cubic-bezier(.2,.6,.2,1);
+}
+.cop-filter-chip.active .cop-filter-dot {
+  background: var(--ink);
+  box-shadow: 0 0 0 1px var(--ink), 0 0 6px var(--ink);
+}
+
 /* ── Section header (ACTIVE PURSUITS · BY URGENCY) ── */
 .cop-section-lbl {
   font-family: var(--font-mono);
@@ -10169,14 +10219,41 @@ function renderOppSidebar(){
   var q=(document.getElementById('opp-search-inp')||{}).value||'';
   _renderOppList(q);
 }
+var _copFilters = window._copFilters || { mineOnly: false };
+window._copFilters = _copFilters;
+
+window._copToggleMineOnly = function(){
+  _copFilters.mineOnly = !_copFilters.mineOnly;
+  if (typeof renderOppSidebar === 'function') renderOppSidebar();
+};
+
+function _copIsMine(o){
+  if (!currentUser) return false;
+  var lead = ((o && (o.captureLead || o.lead)) || '').toLowerCase().trim();
+  if (!lead) return false;
+  var dn = ((currentUser.displayName || '') + '').toLowerCase().trim();
+  var em = ((currentUser.email || '') + '').toLowerCase().trim();
+  return (dn && lead === dn) || (em && lead === em);
+}
+
 function _renderOppList(q){
   var list=document.getElementById('opp-stage-list');
   if(!list)return;
   var filtered=q?opportunities.filter(function(o){
     var s=(o.name+' '+(o.account||'')+' '+(o.agency||'')+' '+(o.stage||'')).toLowerCase();
     return s.indexOf(q.toLowerCase())!==-1;
-  }):opportunities;
-  if(!filtered.length){list.innerHTML='<div style="padding:36px 14px;text-align:center;font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:0.14em;text-transform:uppercase">'+(q?'No matching pursuits':'No pursuits yet')+'</div>';return;}
+  }):opportunities.slice();
+  var mineCount = opportunities.filter(_copIsMine).length;
+  if (_copFilters.mineOnly) filtered = filtered.filter(_copIsMine);
+  if(!filtered.length){
+    var emptyMsg = _copFilters.mineOnly
+      ? 'No pursuits assigned to you' + (q ? ' (matching filter)' : '')
+      : (q ? 'No matching pursuits' : 'No pursuits yet');
+    list.innerHTML='<div style="padding:36px 14px;text-align:center;font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:0.14em;text-transform:uppercase">'+emptyMsg+'</div>';
+    // Still render the filter chip so the operator can toggle MINE ONLY off
+    list.innerHTML = '<div class="cop-filter-bar"><button class="cop-filter-chip' + (_copFilters.mineOnly?' active':'') + '" onclick="_copToggleMineOnly()" type="button"><span class="cop-filter-dot"></span>MINE ONLY' + (mineCount ? ' · ' + mineCount : '') + '</button></div>' + list.innerHTML;
+    return;
+  }
 
   var now = new Date(); now.setHours(0,0,0,0);
   var DAY = 86400000;
@@ -10315,6 +10392,14 @@ function _renderOppList(q){
   h +=   '<div class="cop-stat"><div class="cop-stat-lbl">ACTIVE</div><div class="cop-stat-val">' + activeCount + '</div></div>';
   if (winRate !== null) h += '<div class="cop-stat"><div class="cop-stat-lbl">WIN RATE</div><div class="cop-stat-val">' + winRate + '%</div></div>';
   h += '</div>';
+
+  // Filter chip row — MINE ONLY toggle
+  h += '<div class="cop-filter-bar">'
+    + '<button class="cop-filter-chip' + (_copFilters.mineOnly ? ' active' : '') + '" onclick="_copToggleMineOnly()" type="button">'
+    +   '<span class="cop-filter-dot"></span>'
+    +   'MINE ONLY' + (mineCount ? ' · ' + mineCount : '')
+    + '</button>'
+    + '</div>';
 
   if (active.length) {
     h += '<div class="cop-section-lbl">ACTIVE PURSUITS &nbsp;·&nbsp; BY URGENCY</div>';
