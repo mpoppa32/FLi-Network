@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.2'b</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.2'c</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -8316,6 +8316,14 @@ function updateApiKeyUI(){
 // ── ARRAY REBUILDERS (keep sorted arrays in sync with Maps) ──
 function rebuildMeetingsArray(){
   meetings=Array.from(meetingMap.values()).sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});if(typeof _updateTicker!=="undefined")setTimeout(_updateTicker,80);
+  // Mirror to window so cross-module consumers (DiscoveryEngine3D Phase 3+,
+  // future debugging, future API) see the latest array reference. Module
+  // top-level `var` does not attach to window; explicit assignment required
+  // every time meetings is reassigned. Same fix as nodes/links listeners.
+  window.meetings=meetings;
+  if(window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
+    try { window.DiscoveryEngine3D.loadGraph(window.nodes || nodes, window.links || links || []); } catch(e){ console.warn('[DE3D] live reload (meetings update) failed:', e); }
+  }
   _healthCache.clear(); // invalidate health scores — meeting data changed
   if(window._invalidateEntityGraph)window._invalidateEntityGraph();
   if(window._invalidateMeetingsByEntity)window._invalidateMeetingsByEntity();
