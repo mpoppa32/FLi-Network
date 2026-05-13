@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.4r</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.5p</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34266,8 +34266,10 @@ const DiscoveryEngine3D = (function(){
     instanceScales: null,         // Per-instance visual scale (will be repopulated by 3.2')
     // Micro-step 3.4: gold role-ring torus for decision-makers
     ringMesh: null,               // THREE.InstancedMesh of gold torus rings
-    ringIndexMap: null            // [personGlobalIdx, ...] — for each ring, which person it surrounds
-    // (3.5 team-ring rolled back — see Law 4 rollback; will redo as 3.5')
+    ringIndexMap: null,           // [personGlobalIdx, ...] — for each ring, which person it surrounds
+    // Micro-step 3.5': bone-glow own-team rings (AdditiveBlending)
+    teamRingMesh: null,
+    teamRingIndexMap: null
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34345,12 +34347,12 @@ const DiscoveryEngine3D = (function(){
             }
             state.instancedMesh.instanceMatrix.needsUpdate = true;
 
-            // Micro-step 3.4: write ring matrices from their associated person
-            // positions. Each ring inherits its person's scale so the torus stays
-            // proportional to the (engagement-scaled) sphere it surrounds.
-            if (state.ringMesh && state.ringIndexMap && state.ringIndexMap.length){
-              for (let r = 0; r < state.ringIndexMap.length; r++){
-                const pIdx = state.ringIndexMap[r];
+            // Micro-step 3.4 / 3.5': write ring matrices. Shared helper for
+            // both decision-maker (gold) and own-team (bone-additive) rings.
+            function _writeRingMatrices(ringMesh, idxMap){
+              if (!ringMesh || !idxMap || !idxMap.length) return;
+              for (let r = 0; r < idxMap.length; r++){
+                const pIdx = idxMap[r];
                 if (pIdx >= n) continue;
                 const rx = pos[pIdx*3], ry = pos[pIdx*3+1], rz = pos[pIdx*3+2];
                 const px = Number.isFinite(rx) ? rx : 0;
@@ -34361,10 +34363,12 @@ const DiscoveryEngine3D = (function(){
                 _frameDummy.scale.setScalar(ps);
                 _frameDummy.rotation.set(0, 0, 0);
                 _frameDummy.updateMatrix();
-                state.ringMesh.setMatrixAt(r, _frameDummy.matrix);
+                ringMesh.setMatrixAt(r, _frameDummy.matrix);
               }
-              state.ringMesh.instanceMatrix.needsUpdate = true;
+              ringMesh.instanceMatrix.needsUpdate = true;
             }
+            _writeRingMatrices(state.ringMesh,     state.ringIndexMap);     // gold (3.4)
+            _writeRingMatrices(state.teamRingMesh, state.teamRingIndexMap); // bone (3.5')
 
             const cx = (minX + maxX) * 0.5;
             const cy = (minY + maxY) * 0.5;
@@ -34751,8 +34755,21 @@ const DiscoveryEngine3D = (function(){
     });
     state.ringIndexMap = ringIdxMap;
     console.log('[DiscoveryEngine3D] 3.4 decision-makers: ' + ringIdxMap.length + ' of ' + cleanNodes.length + ' people');
-    // (3.5 own-team detection rolled back — will redo as 3.5' with brighter
-    //  color and larger torus radius after diagnosis)
+
+    // ── Micro-step 3.5': own-team detection (org contains workspace name) ──
+    const wsName = ((window.currentWs && window.currentWs.name) || '').toLowerCase().trim();
+    const dmSet = new Set(ringIdxMap);
+    const teamIdxMap = [];
+    if (wsName){
+      cleanNodes.forEach(function(n, gi){
+        if (dmSet.has(gi)) return;                           // decision-makers keep gold
+        const raw = personOnly[gi];
+        const org = ((raw && raw.org) || '').toLowerCase().trim();
+        if (org && org.indexOf(wsName) !== -1) teamIdxMap.push(gi);
+      });
+    }
+    state.teamRingIndexMap = teamIdxMap;
+    console.log('[DiscoveryEngine3D] 3.5′ own-team (org contains "' + wsName + '", excluding decision-makers): ' + teamIdxMap.length + ' of ' + cleanNodes.length + ' people');
 
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
@@ -34776,13 +34793,19 @@ const DiscoveryEngine3D = (function(){
     if (state.scene) state.scene.add(state.instancedMesh);
     console.log('[DiscoveryEngine3D] loadGraph: built single mesh with', cleanNodes.length, 'instances; worker getting', cleanLinks.length, 'links');
 
-    // Micro-step 3.4: build the gold decision-maker ring InstancedMesh.
-    // Dispose any prior ringMesh first (re-loadGraph case).
+    // Micro-step 3.4 / 3.5': build the role-ring InstancedMeshes.
+    // Dispose any prior ring meshes first (re-loadGraph case).
     if (state.ringMesh){
       if (state.scene) state.scene.remove(state.ringMesh);
       if (state.ringMesh.geometry) state.ringMesh.geometry.dispose();
       if (state.ringMesh.material) state.ringMesh.material.dispose();
       state.ringMesh = null;
+    }
+    if (state.teamRingMesh){
+      if (state.scene) state.scene.remove(state.teamRingMesh);
+      if (state.teamRingMesh.geometry) state.teamRingMesh.geometry.dispose();
+      if (state.teamRingMesh.material) state.teamRingMesh.material.dispose();
+      state.teamRingMesh = null;
     }
     if (ringIdxMap.length){
       const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
@@ -34804,6 +34827,38 @@ const DiscoveryEngine3D = (function(){
       ringMesh.instanceMatrix.needsUpdate = true;
       state.ringMesh = ringMesh;
       if (state.scene) state.scene.add(ringMesh);
+    }
+
+    // Micro-step 3.5': bone-glow own-team rings (AdditiveBlending fix)
+    // KEY DIFFERENCE FROM FAILED 3.5: blending: THREE.AdditiveBlending.
+    // Bone color #f4ede0 was previously invisible because (1) it blended
+    // into the sphere's similar interior tone, and (2) transparent + same-
+    // depth z-order caused sphere pixels to occlude the ring. AdditiveBlending
+    // means the ring's color is ADDED to whatever's behind it, producing a
+    // bright bone-white glow regardless of background or depth order.
+    // Also bumped torus radius 1.15 → 1.3 for clearer separation from the
+    // sphere surface (so even unit-scale spheres show their ring distinctly).
+    if (teamIdxMap.length){
+      const teamGeo = new THREE.TorusGeometry(1.3, 0.05, 8, 28);
+      const teamMat = new THREE.MeshBasicMaterial({
+        color: 0xf4ede0,
+        transparent: true,
+        opacity: 1.0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const teamMesh = new THREE.InstancedMesh(teamGeo, teamMat, teamIdxMap.length);
+      teamMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      teamMesh.frustumCulled = false;
+      const dummy2 = new THREE.Object3D();
+      dummy2.scale.setScalar(0);
+      dummy2.updateMatrix();
+      for (let r = 0; r < teamIdxMap.length; r++){
+        teamMesh.setMatrixAt(r, dummy2.matrix);
+      }
+      teamMesh.instanceMatrix.needsUpdate = true;
+      state.teamRingMesh = teamMesh;
+      if (state.scene) state.scene.add(teamMesh);
     }
 
     // Spawn / reuse worker, send graph
@@ -35106,6 +35161,13 @@ const DiscoveryEngine3D = (function(){
       state.ringMesh = null;
     }
     state.ringIndexMap = null;
+    if (state.teamRingMesh){
+      if (state.scene) state.scene.remove(state.teamRingMesh);
+      if (state.teamRingMesh.geometry) state.teamRingMesh.geometry.dispose();
+      if (state.teamRingMesh.material) state.teamRingMesh.material.dispose();
+      state.teamRingMesh = null;
+    }
+    state.teamRingIndexMap = null;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
