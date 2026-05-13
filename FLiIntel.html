@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.8</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.9</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34840,6 +34840,34 @@ const DiscoveryEngine3D = (function(){
     state.orgWorkerOffset = cleanNodes.length;
     console.log('[DiscoveryEngine3D] 3.7 orgs: ' + orgClean.length + ' of ' + rawNodes.length + ' raw nodes (company-type)');
 
+    // ── Micro-step 3.9: per-instance density (child-entity count) ─────────
+    // For each org, count how many people in personOnly have n.org or
+    // n.govOrg whose lowercase string contains the org's name (substring
+    // match — same heuristic used in 3.5'). Log-normalized to [0,1] so the
+    // shader can drive emissive glow proportional to affiliation count.
+    const orgChildCount = new Array(orgClean.length).fill(0);
+    const orgNameLower = orgClean.map(function(o){ return String(o.name || '').toLowerCase().trim(); });
+    personOnly.forEach(function(p){
+      const pOrg = String((p && (p.org || p.govOrg)) || '').toLowerCase().trim();
+      if (!pOrg) return;
+      for (let i = 0; i < orgNameLower.length; i++){
+        const onm = orgNameLower[i];
+        if (onm && pOrg.indexOf(onm) !== -1) orgChildCount[i]++;
+      }
+    });
+    let maxChild = 0;
+    for (let i = 0; i < orgChildCount.length; i++){
+      if (orgChildCount[i] > maxChild) maxChild = orgChildCount[i];
+    }
+    const orgDensity = new Float32Array(orgClean.length);
+    const logMaxChild = maxChild > 0 ? Math.log(1 + maxChild) : 1;
+    for (let i = 0; i < orgClean.length; i++){
+      orgDensity[i] = maxChild > 0
+        ? Math.log(1 + orgChildCount[i]) / logMaxChild
+        : 0;
+    }
+    console.log('[DiscoveryEngine3D] 3.9 density: maxChildren=' + maxChild + ' for ' + orgClean.length + ' orgs');
+
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
     state.initialFitDone = false;     // re-fit on new dataset
@@ -34981,39 +35009,54 @@ const DiscoveryEngine3D = (function(){
     // child-entity count.
     if (orgClean.length){
       const orgGeo = new THREE.BoxGeometry(2.4, 1.4, 1.4);
+      // Micro-step 3.9: per-instance density attribute drives inner glow.
+      orgGeo.setAttribute('aDensity', new THREE.InstancedBufferAttribute(orgDensity, 1));
       const orgMat = new THREE.ShaderMaterial({
         uniforms: {
-          uBaseColor: { value: new THREE.Color(0xb5ad9f) },
-          uMinAlpha:  { value: 0.08 },
-          uMaxAlpha:  { value: 0.45 },
-          uRimPower:  { value: 1.5 }
+          uBaseColor:     { value: new THREE.Color(0xb5ad9f) },  // paper
+          uGlowColor:     { value: new THREE.Color(0xd4823a) },  // amber
+          uGlowStrength:  { value: 1.0 },
+          uMinAlpha:      { value: 0.08 },
+          uMaxAlpha:      { value: 0.45 },
+          uRimPower:      { value: 1.5 }
         },
         vertexShader: [
+          'attribute float aDensity;',
           'varying vec3 vNormalView;',
           'varying vec3 vViewDir;',
+          'varying float vDensity;',
           'void main() {',
           '  vec4 instPos = instanceMatrix * vec4(position, 1.0);',
           '  vec4 mvPos = modelViewMatrix * instPos;',
           '  vViewDir = -mvPos.xyz;',
           '  mat3 instRot = mat3(instanceMatrix);',
           '  vNormalView = normalize(normalMatrix * instRot * normal);',
+          '  vDensity = aDensity;',
           '  gl_Position = projectionMatrix * mvPos;',
           '}'
         ].join('\n'),
         fragmentShader: [
           'uniform vec3 uBaseColor;',
+          'uniform vec3 uGlowColor;',
+          'uniform float uGlowStrength;',
           'uniform float uMinAlpha;',
           'uniform float uMaxAlpha;',
           'uniform float uRimPower;',
           'varying vec3 vNormalView;',
           'varying vec3 vViewDir;',
+          'varying float vDensity;',
           'void main() {',
           '  vec3 v = normalize(vViewDir);',
           '  vec3 n = normalize(vNormalView);',
           '  float fres = 1.0 - abs(dot(n, v));',
           '  float rim = pow(fres, uRimPower);',
-          '  float alpha = mix(uMinAlpha, uMaxAlpha, rim);',
-          '  gl_FragColor = vec4(uBaseColor, alpha);',
+          '  float center = 1.0 - rim;',
+          // 3.9 inner glow: density modulates amber emissive at face centers.
+          // Rim still does its 3.8 paper-edge job; glow blooms inward.
+          '  float glow = vDensity * center * uGlowStrength;',
+          '  vec3 color = mix(uBaseColor, uGlowColor, clamp(glow, 0.0, 1.0));',
+          '  float alpha = mix(uMinAlpha, uMaxAlpha, rim) + glow * 0.30;',
+          '  gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));',
           '}'
         ].join('\n'),
         transparent: true,
