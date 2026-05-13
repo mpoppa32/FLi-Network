@@ -6105,15 +6105,16 @@ input[type="url"], textarea, select {
       <span id="sync-lbl" style="font-size:10px;color:var(--t3)">connecting...</span>
     </div>
     <button class="nav-btn" id="nav-digest-nav-btn" onclick="switchView('intel');switchIntelTab('board');setTimeout(generateDigest,200)" style="border-color:rgba(212,130,58,.4);color:var(--gold)" title="Generate Weekly Digest">&#9889; Digest</button>
-    <button class="nav-btn" id="nav-export-btn">&#8595; Backup</button>
     <button class="nav-btn" id="nav-share-btn" onclick="exportWorkspaceReport()" style="border-color:rgba(212,130,58,.4);color:var(--gold)">&#8599; Export</button>
-    <button class="nav-btn" id="nav-import-trigger">&#8593; Restore</button>
-    <input type="file" id="nav-import-file" accept=".json" style="display:none">
-    <button class="nav-btn" id="nav-members-btn">&#128100; Members</button>
     <button class="nav-btn" id="nav-alerts-btn" onclick="toggleAlertsPanel()" title="Relationship alerts" style="position:relative">🔔</button>
     <button class="nav-btn" id="nav-reeng-btn" onclick="window.openReengagementPanel()" title="Contacts to re-engage" style="color:var(--amber);border-color:rgba(245,158,11,.35)">◎ Re-engage</button>
-    <button class="tour-nav-btn" id="nav-tour-btn" onclick="window.openTourSelector()" title="Guided tour — learn how Corsair works">⚐ Tour</button>
     <button class="nav-btn" id="nav-brief-btn" style="position:relative;background:linear-gradient(135deg,rgba(212,130,58,.15),rgba(139,92,246,.1));border-color:rgba(212,130,58,.4);color:var(--gold)" onclick="openOnboardingBrief()">&#9889; Brief Me</button>
+    <!-- Hidden buttons preserved for backward-compat (Settings/Tools menu trigger them) -->
+    <button class="nav-btn" id="nav-export-btn" style="display:none"></button>
+    <button class="nav-btn" id="nav-import-trigger" style="display:none"></button>
+    <input type="file" id="nav-import-file" accept=".json" style="display:none">
+    <button class="nav-btn" id="nav-members-btn" style="display:none"></button>
+    <button class="tour-nav-btn" id="nav-tour-btn" onclick="window.openTourSelector()" style="display:none"></button>
     <div class="user-chip" id="user-chip-btn" onclick="if(typeof openModal==='function')openModal('user-modal')" style="cursor:pointer" title="Settings"><img id="user-chip-img" src="" alt=""></div>
     <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()"><svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="currentColor"/><rect y="5" width="16" height="2" rx="1" fill="currentColor"/><rect y="10" width="16" height="2" rx="1" fill="currentColor"/></svg></button>
   </div>
@@ -8552,7 +8553,19 @@ document.getElementById('ws-new-btn').addEventListener('click',function(){docume
 document.getElementById('ws-cancel-btn').addEventListener('click',function(){closeModal('create-ws-modal');document.getElementById('ws-screen').style.display='flex';});
 document.getElementById('ws-create-btn').addEventListener('click',async function(){var name=document.getElementById('ws-name-inp').value.trim();var role=document.getElementById('ws-role-inp').value.trim()||'Member';if(!name){toast('Enter a workspace name');return;}if(!currentUser){toast('Not signed in');return;}var btn=document.getElementById('ws-create-btn');btn.disabled=true;btn.textContent='Creating...';try{var wsId=Date.now().toString();var color=WS_COLORS[Math.floor(Math.random()*WS_COLORS.length)];var ws={id:wsId,name:name,color:color,createdBy:currentUser.uid,created:new Date().toISOString()};var member={uid:currentUser.uid,name:currentUser.displayName,email:currentUser.email,photo:currentUser.photoURL||'',role:role,joined:new Date().toISOString()};await set(ref(db,'workspaces/'+wsId+'/info'),ws);await set(ref(db,'workspaces/'+wsId+'/members/'+currentUser.uid),member);await set(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId),{id:wsId,name:name,color:color,role:role});userWorkspaces.push({id:wsId,name:name,color:color,role:role});closeModal('create-ws-modal');selectWorkspace(wsId);}catch(e){toast('Failed: '+(e.message||'Try again'));btn.disabled=false;btn.textContent='Create Workspace';}});
 
-async function selectWorkspace(wsId){try{currentWsId=wsId;var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView==='function')switchView('graph');},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
+// ── DOM RELOCATION: secondary views need to live inside main-app's flex column ──
+// The original HTML emits team/bdperf/sbir/rfi/library/vehicles/comp/teaming AND
+// our new inspector/rhythm views as siblings of #main-app. Without a flex parent,
+// flex:1 collapses to zero height and the view shows nothing. We move them in.
+function _relocateViewsIntoMainApp(){
+  var mainApp = document.getElementById('main-app');
+  if(!mainApp) return;
+  ['team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.parentElement !== mainApp){ mainApp.appendChild(el); }
+  });
+}
+async function selectWorkspace(wsId){try{currentWsId=wsId;_relocateViewsIntoMainApp();var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView==='function')switchView('graph');},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
@@ -20908,11 +20921,12 @@ window._pushInspectorRecent = function(id){
 
 window._renderInspectorView = function(){
   var body = document.getElementById('inspector-view-body');
-  if(!body) return;
+  if(!body){ console.warn('[Inspector] body element missing'); return; }
   var qEl = document.getElementById('inspector-search-inp');
   var q = (qEl && qEl.value || '').trim().toLowerCase();
 
-  var pool = (nodes || []).slice();
+  var allNodes = (typeof nodes !== 'undefined' && nodes) ? nodes : [];
+  var pool = allNodes.slice();
   if(q){
     pool = pool.filter(function(n){
       return (n.name||'').toLowerCase().indexOf(q)>=0
@@ -20920,28 +20934,46 @@ window._renderInspectorView = function(){
           || (n.role||'').toLowerCase().indexOf(q)>=0;
     });
   }
+  // T1 first, T2 next, others last
+  pool.sort(function(a,b){
+    var pa = a.priority||9, pb = b.priority||9;
+    if(pa!==pb) return pa-pb;
+    return (a.name||'').localeCompare(b.name||'');
+  });
 
-  // Severity score: T1 first, then T2, then by connection count
-  function rank(n){ return (n.priority||9)*1000 - ((window._adjCache && window._adjCache.get && window._adjCache.get(n.id) || []).length || 0); }
-  pool.sort(function(a,b){return rank(a)-rank(b);});
+  // Always-visible top bar — confirms the mode rendered, surfaces totals
+  var typeCount = {person:0, company:0, government:0, other:0};
+  allNodes.forEach(function(n){ typeCount[n.type] != null ? typeCount[n.type]++ : typeCount.other++; });
+  var html = '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:18px;padding:10px 14px;background:linear-gradient(180deg,rgba(7,13,24,.55),rgba(10,16,32,.35));border:1px solid var(--b1);border-radius:2px">';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--gold);font-weight:700">'+allNodes.length+'</span> entities</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--bone);font-weight:700">'+typeCount.person+'</span> people</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--bone);font-weight:700">'+typeCount.company+'</span> orgs</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--bone);font-weight:700">'+typeCount.government+'</span> gov</div>';
+  if(q) html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-left:auto"><span style="font-weight:700">'+pool.length+'</span> matches for "'+q.replace(/</g,'&lt;')+'"</div>';
+  html += '</div>';
 
-  var html = '';
+  if(allNodes.length === 0){
+    html += '<div class="empty-state" style="text-align:center;padding:60px 20px;color:var(--t3)">'+
+      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--bone);margin-bottom:8px">No entities yet</div>'+
+      '<div style="font-size:13px;color:var(--t2);margin-bottom:24px">Build your network by logging a meeting — Corsair extracts every person, organization, and stance automatically.</div>'+
+      '<button class="btn btn-gold btn-sm" onclick="switchView(\'intel\');switchIntelTab&amp;&amp;switchIntelTab(\'log\')">Log First Meeting</button>'+
+      '</div>';
+    body.innerHTML = html;
+    return;
+  }
 
   if(!q){
-    // Recents row
-    var recents = (window._inspectorRecentIds || []).map(function(id){return nodes.find(function(n){return n.id===id;});}).filter(Boolean);
+    // Recents
+    var recents = (window._inspectorRecentIds || []).map(function(id){return allNodes.find(function(n){return n.id===id;});}).filter(Boolean);
     if(recents.length){
       html += '<div style="margin-bottom:22px">';
       html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:4px;height:12px;background:var(--gold);border-radius:1px"></span>Recently Investigated</div>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
-      recents.forEach(function(n){
-        html += _inspectorChip(n);
-      });
+      recents.forEach(function(n){ html += _inspectorChip(n); });
       html += '</div></div>';
     }
 
-    // T1 priority row
-    var t1 = pool.filter(function(n){return n.priority===1;}).slice(0,18);
+    var t1 = pool.filter(function(n){return n.priority===1;}).slice(0,24);
     if(t1.length){
       html += '<div style="margin-bottom:22px">';
       html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:4px;height:12px;background:var(--amber);border-radius:1px"></span>Tier 1 — Decision Makers</div>';
@@ -20950,32 +20982,22 @@ window._renderInspectorView = function(){
       html += '</div></div>';
     }
 
-    // All entities
-    var rest = pool.filter(function(n){return n.priority!==1;}).slice(0,60);
+    // Always show the rest, even if no T1 entities
+    var rest = pool.filter(function(n){return n.priority!==1;}).slice(0,120);
     if(rest.length){
       html += '<div>';
-      html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--t3);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:4px;height:12px;background:var(--t3);border-radius:1px"></span>Network · '+(nodes||[]).length+' Entities</div>';
+      html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--t3);margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="width:4px;height:12px;background:var(--t3);border-radius:1px"></span>'+(t1.length?'All Other Entities':'Network')+' · '+rest.length+'</div>';
       html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">';
       rest.forEach(function(n){ html += _inspectorCard(n); });
       html += '</div></div>';
     }
-
-    if(!recents.length && !t1.length && !rest.length){
-      html = '<div class="empty-state" style="text-align:center;padding:80px 20px;color:var(--t3)">'+
-        '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--bone);margin-bottom:8px">No entities yet</div>'+
-        '<div style="font-size:13px;color:var(--t2);margin-bottom:24px">Build your network by logging a meeting or adding contacts directly.</div>'+
-        '<button class="btn btn-gold btn-sm" onclick="switchView(\'intel\');switchIntelTab&amp;&amp;switchIntelTab(\'log\')">Log First Meeting</button>'+
-        '</div>';
-    }
   } else {
-    // Search results
-    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--t3);margin-bottom:10px">'+pool.length+' match'+(pool.length===1?'':'es')+'</div>';
     if(pool.length){
       html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">';
-      pool.slice(0,80).forEach(function(n){ html += _inspectorCard(n); });
+      pool.slice(0,120).forEach(function(n){ html += _inspectorCard(n); });
       html += '</div>';
     } else {
-      html += '<div style="text-align:center;padding:40px 20px;color:var(--t3);font-size:13px">No entities match that search.</div>';
+      html += '<div style="text-align:center;padding:40px 20px;color:var(--t3);font-size:13px">No entities match "'+q.replace(/</g,'&lt;')+'".</div>';
     }
   }
 
