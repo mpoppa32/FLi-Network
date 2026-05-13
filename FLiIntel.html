@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.2'c</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.3</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34735,12 +34735,52 @@ const DiscoveryEngine3D = (function(){
   }
 
   function _buildPlaceholderInstancedMesh(count){
-    // Micro-step 3.1: solid spheres, MeshBasicMaterial (no shader, no lighting
-    // dependency) so we can confirm geometry + positioning visually before
-    // layering Fresnel rim (3.3), role rings (3.4–3.6), or per-instance scale.
+    // Micro-step 3.3: Fresnel rim ShaderMaterial.
+    // Per-instance scale (3.2') and position (worker) drive the matrix path
+    // unchanged; only the material is upgraded.
+    //
+    // VERTEX:  Three.js auto-injects `attribute mat4 instanceMatrix` for
+    //   InstancedMesh. We apply it manually since this is a custom shader
+    //   (not a built-in material).
+    // FRAGMENT: standard Fresnel — rim = 1 - dot(viewDir, normal). Mix the
+    //   paper base color with amber at high Fresnel for an illuminated-
+    //   holographic-marker look.
     const geo = new THREE.SphereGeometry(1, 16, 12);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xb5ad9f
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uBaseColor: { value: new THREE.Color(0xb5ad9f) },   // paper
+        uRimColor:  { value: new THREE.Color(0xd4823a) },   // amber
+        uRimPower:  { value: 2.3 }                          // higher = thinner rim
+      },
+      vertexShader: [
+        'varying vec3 vNormalView;',
+        'varying vec3 vViewDir;',
+        'void main() {',
+        '  vec4 instPos = instanceMatrix * vec4(position, 1.0);',
+        '  vec4 mvPos = modelViewMatrix * instPos;',
+        '  vViewDir = -mvPos.xyz;',
+        '  mat3 instRot = mat3(instanceMatrix);',
+        '  vNormalView = normalize(normalMatrix * instRot * normal);',
+        '  gl_Position = projectionMatrix * mvPos;',
+        '}'
+      ].join('\n'),
+      fragmentShader: [
+        'uniform vec3 uBaseColor;',
+        'uniform vec3 uRimColor;',
+        'uniform float uRimPower;',
+        'varying vec3 vNormalView;',
+        'varying vec3 vViewDir;',
+        'void main() {',
+        '  vec3 v = normalize(vViewDir);',
+        '  vec3 n = normalize(vNormalView);',
+        '  float fres = 1.0 - max(0.0, dot(n, v));',
+        '  float rim = pow(fres, uRimPower);',
+        '  vec3 color = mix(uBaseColor, uRimColor, rim);',
+        '  gl_FragColor = vec4(color, 0.95);',
+        '}'
+      ].join('\n'),
+      transparent: true,
+      side: THREE.FrontSide
     });
     const mesh = new THREE.InstancedMesh(geo, mat, count);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
