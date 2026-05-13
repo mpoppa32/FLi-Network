@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.2</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.2'</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34255,8 +34255,7 @@ const DiscoveryEngine3D = (function(){
     posBounds: null,              // {minX,maxX,minY,maxY,minZ,maxZ,cx,cy,cz,radius}
     framesSinceFit: 0,            // counter for periodic auto-fit
     initialFitDone: false,        // run an aggressive first fit once positions arrive
-    // Micro-step 3.2: per-instance visual scale (log of connection count → [0.7, 2.4])
-    instanceScales: null          // Float32Array sized to instanceCount, computed in loadGraph
+    instanceScales: null          // Per-instance visual scale (will be repopulated by 3.2')
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34622,41 +34621,69 @@ const DiscoveryEngine3D = (function(){
     }).filter(function(l){ return l && personIdSet.has(l.source) && personIdSet.has(l.target); });
     console.log('[DiscoveryEngine3D] 3.1 people-only filter:', rawNodes.length, 'raw nodes →', cleanNodes.length, 'people /', cleanLinks.length, 'person-to-person links');
 
-    // ── Micro-step 3.2: per-instance scale by log(connection count) ────────
-    // Degree is computed against the FULL rawLinks set (not just person-to-
-    // person), because a person's prominence includes their links to orgs,
-    // government entities, etc. Size encodes total workspace connectivity.
-    const degByPerson = new Map();
-    personOnly.forEach(function(n){ degByPerson.set(String(n.id), 0); });
+    // ── Micro-step 3.2' (replaces 3.2): engagement-based scale ────────────
+    // 3.2 (link-degree only) verified FAIL on workspaces with no graph links
+    // touching people. Engagement combines:
+    //   - link degree from the full rawLinks set (any link with a person endpoint)
+    //   - meeting attendance count (each meeting where this person appears in
+    //     intel.keyPeople by name-similarity to a person node)
+    // Defense BD operators surface people primarily via meetings, not graph
+    // edges. Both signals together better reflect operator-perceived "weight".
+    const engByPerson = new Map();
+    personOnly.forEach(function(n){ engByPerson.set(String(n.id), 0); });
+    // Signal 1: link degree
     (rawLinks || []).forEach(function(l){
       const s = l && l.source ? (l.source.id ? l.source.id : (typeof l.source === 'string' ? l.source : null)) : null;
       const t = l && l.target ? (l.target.id ? l.target.id : (typeof l.target === 'string' ? l.target : null)) : null;
-      if (s != null && degByPerson.has(String(s))) degByPerson.set(String(s), degByPerson.get(String(s)) + 1);
-      if (t != null && degByPerson.has(String(t))) degByPerson.set(String(t), degByPerson.get(String(t)) + 1);
+      if (s != null && engByPerson.has(String(s))) engByPerson.set(String(s), engByPerson.get(String(s)) + 1);
+      if (t != null && engByPerson.has(String(t))) engByPerson.set(String(t), engByPerson.get(String(t)) + 1);
     });
-    let maxDeg = 0, zeroCount = 0;
-    const degArr = cleanNodes.map(function(n){
-      const d = degByPerson.get(n.id) || 0;
-      if (d > maxDeg) maxDeg = d;
-      if (d === 0) zeroCount++;
-      return d;
+    // Signal 2: meeting attendance (loose name match — keyPeople[].name
+    // case-insensitive substring against person node names)
+    const meetingsArr = (window.meetings && window.meetings.length) ? window.meetings : [];
+    const nameToId = new Map();
+    personOnly.forEach(function(n){
+      if (n.name) nameToId.set(String(n.name).toLowerCase().trim(), String(n.id));
+    });
+    let meetingsScanned = 0, meetingHits = 0;
+    meetingsArr.forEach(function(m){
+      if (!m || !m.intel || !Array.isArray(m.intel.keyPeople)) return;
+      meetingsScanned++;
+      // Track each unique person in this meeting so we don't double-count
+      const seenInMeeting = new Set();
+      m.intel.keyPeople.forEach(function(kp){
+        if (!kp || !kp.name) return;
+        const key = String(kp.name).toLowerCase().trim();
+        const matchedId = nameToId.get(key);
+        if (matchedId && !seenInMeeting.has(matchedId)){
+          seenInMeeting.add(matchedId);
+          engByPerson.set(matchedId, (engByPerson.get(matchedId) || 0) + 1);
+          meetingHits++;
+        }
+      });
+    });
+    let maxEng = 0, zeroCount = 0;
+    const engArr = cleanNodes.map(function(n){
+      const e = engByPerson.get(n.id) || 0;
+      if (e > maxEng) maxEng = e;
+      if (e === 0) zeroCount++;
+      return e;
     });
     const SCALE_MIN = 0.7, SCALE_MAX = 2.4, SCALE_RANGE = SCALE_MAX - SCALE_MIN;
-    const logMax = maxDeg > 0 ? Math.log(1 + maxDeg) : 1;
+    const logMax = maxEng > 0 ? Math.log(1 + maxEng) : 1;
     state.instanceScales = new Float32Array(cleanNodes.length);
     for (let i = 0; i < cleanNodes.length; i++){
-      const d = degArr[i];
-      state.instanceScales[i] = maxDeg > 0
-        ? SCALE_MIN + (Math.log(1 + d) / logMax) * SCALE_RANGE
+      const e = engArr[i];
+      state.instanceScales[i] = maxEng > 0
+        ? SCALE_MIN + (Math.log(1 + e) / logMax) * SCALE_RANGE
         : SCALE_MIN;
     }
-    // Diagnostic — confirms variation exists in your data
     const median = (function(){
-      const sorted = degArr.slice().sort(function(a,b){return a-b;});
+      const sorted = engArr.slice().sort(function(a,b){return a-b;});
       const mid = Math.floor(sorted.length/2);
       return sorted.length % 2 ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
     })();
-    console.log('[DiscoveryEngine3D] 3.2 degree distribution: max=' + maxDeg + ' median=' + median + ' zero-degree=' + zeroCount + '/' + cleanNodes.length);
+    console.log('[DiscoveryEngine3D] 3.2′ engagement distribution: max=' + maxEng + ' median=' + median + ' zero-engagement=' + zeroCount + '/' + cleanNodes.length + ' · meetings scanned=' + meetingsScanned + ' hits=' + meetingHits);
 
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
