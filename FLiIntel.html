@@ -19,8 +19,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Antonio:wght@300;400;500;600;700&family=Big+Shoulders+Display:wght@500;600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" onerror="document.getElementById('d3-fallback-msg').style.display='block'"></script>
-<!-- d3-force-3d for DiscoveryEngine3D Phase 2 physics (loaded on main thread for cache warmth; worker re-imports via importScripts) -->
-<script src="https://unpkg.com/d3-force-3d@3.0.6/dist/d3-force-3d.min.js"></script>
+<!-- d3-force-3d is loaded INSIDE the physics worker via importScripts (see PHYSICS_WORKER_SRC).
+     The UMD wrapper expects d3-binarytree, d3-quadtree, d3-octree, d3-dispatch, d3-timer
+     to exist on the d3 global BEFORE it runs — the worker imports those first. -->
 <!-- Three.js + addons for DiscoveryEngine3D (Phase 1: WebGL infrastructure) -->
 <script type="importmap">
 {
@@ -6705,13 +6706,15 @@ input[type="url"], textarea, select {
       </div>
     </div>
     <svg id="net-canvas" style="position:absolute;top:42px;left:220px;right:0;bottom:0"></svg>
-    <!-- DiscoveryEngine3D FPS HUD (Phase 1) — hidden until 3D engine activated -->
+    <!-- DiscoveryEngine3D FPS + diagnostics HUD — hidden until 3D engine activated -->
     <div id="de3d-fps-hud" style="display:none;position:absolute;bottom:14px;right:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none">
       <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
       <span style="color:var(--t3)">DiscoveryEngine3D</span>
       <span style="color:var(--bone);font-weight:700" id="de3d-fps">— FPS</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)">Phase 1 preview</span>
+      <span style="color:var(--bone)" id="de3d-status">init</span>
+      <span style="color:var(--t3)">·</span>
+      <span style="color:var(--gold)" id="de3d-build">P2.fix2</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34283,6 +34286,15 @@ const DiscoveryEngine3D = (function(){
     // Push FPS to HUD if mounted (don't clobber error messages)
     const fpsEl = document.getElementById('de3d-fps');
     if (fpsEl && !fpsEl.dataset.errorPinned) fpsEl.textContent = state.fps + ' FPS';
+    // Push diagnostic status — proves which mode is running
+    const statusEl = document.getElementById('de3d-status');
+    if (statusEl && !statusEl.dataset.errorPinned){
+      if (state.physicsRealData){
+        statusEl.textContent = state.instanceCount + ' nodes · T' + state.physicsTickCount;
+      } else {
+        statusEl.textContent = state.instanceCount + ' placeholder';
+      }
+    }
   }
 
   // ── PHASE 2: PHYSICS WORKER ──────────────────────────────────────────────
@@ -34291,16 +34303,33 @@ const DiscoveryEngine3D = (function(){
   // a Float32Array of positions back to main thread on every tick. Transfer
   // is via the second arg of postMessage so it's zero-copy.
   const PHYSICS_WORKER_SRC = `
-    // Surface import failures explicitly. importScripts throws synchronously
-    // when the URL 404s; without this guard the worker would silently die.
-    try {
-      importScripts('https://unpkg.com/d3-force-3d@3.0.6/dist/d3-force-3d.min.js');
-    } catch (importErr) {
-      self.postMessage({ type: 'error', stage: 'importScripts', message: String(importErr && importErr.message || importErr) });
-      // Continue past — main thread will see the error and fall back to placeholder mode.
+    // d3-force-3d's UMD wrapper expects its 5 dependencies already attached to
+    // the d3 global. Load them in dependency order BEFORE d3-force-3d itself.
+    // importScripts is synchronous and any 404 throws; we wrap each so a single
+    // failure doesn't silently kill the worker.
+    const _depUrls = [
+      'https://unpkg.com/d3-binarytree@1.0.2/dist/d3-binarytree.min.js',
+      'https://unpkg.com/d3-quadtree@3.0.1/dist/d3-quadtree.min.js',
+      'https://unpkg.com/d3-octree@1.1.0/dist/d3-octree.min.js',
+      'https://unpkg.com/d3-dispatch@3.0.1/dist/d3-dispatch.min.js',
+      'https://unpkg.com/d3-timer@3.0.1/dist/d3-timer.min.js',
+      'https://unpkg.com/d3-force-3d@3.0.6/dist/d3-force-3d.min.js'
+    ];
+    for (let _i = 0; _i < _depUrls.length; _i++){
+      try { importScripts(_depUrls[_i]); }
+      catch (importErr) {
+        self.postMessage({ type: 'error', stage: 'importScripts', url: _depUrls[_i], message: String(importErr && importErr.message || importErr) });
+      }
     }
-    if (typeof d3 === 'undefined' || typeof d3.forceSimulation !== 'function'){
-      self.postMessage({ type: 'error', stage: 'd3-missing', message: 'd3-force-3d did not load — d3.forceSimulation is undefined' });
+    // Verify all five expected APIs are on self.d3
+    const _missing = [];
+    if (typeof d3 === 'undefined'){ _missing.push('d3-global'); }
+    else {
+      ['binarytree','quadtree','octree','dispatch','timer','forceSimulation','forceManyBody','forceLink','forceCenter','forceCollide']
+        .forEach(function(fn){ if (typeof d3[fn] !== 'function') _missing.push(fn); });
+    }
+    if (_missing.length){
+      self.postMessage({ type: 'error', stage: 'd3-missing', message: 'Missing d3 APIs: ' + _missing.join(', ') });
     }
 
     let sim = null;
@@ -34424,13 +34453,20 @@ const DiscoveryEngine3D = (function(){
       }
       else if (msg.type === 'error'){
         // Worker failed — surface visibly, fall back to placeholder rotation.
-        console.error('[DiscoveryEngine3D] worker error @', msg.stage, '—', msg.message);
+        console.error('[DiscoveryEngine3D] worker error @', msg.stage, '—', msg.message, msg.url || '');
         const fpsEl = document.getElementById('de3d-fps');
         if (fpsEl){
           fpsEl.style.color = '#ef4444';
           fpsEl.textContent = 'PHYSICS FAIL';
           fpsEl.title = (msg.stage || '') + ': ' + (msg.message || '');
           fpsEl.dataset.errorPinned = '1';
+        }
+        const stEl = document.getElementById('de3d-status');
+        if (stEl){
+          stEl.style.color = '#ef4444';
+          stEl.textContent = (msg.stage || 'error');
+          stEl.title = msg.message || '';
+          stEl.dataset.errorPinned = '1';
         }
         // Reset to placeholder-driven motion so the operator still sees something alive
         state.physicsRealData = false;
@@ -34666,12 +34702,14 @@ const DiscoveryEngine3D = (function(){
     };
     window.addEventListener('resize', state.onResize);
 
-    // Clear any prior error pin on the FPS HUD
+    // Clear any prior error pins on the HUD
     const fpsEl0 = document.getElementById('de3d-fps');
     if (fpsEl0){ fpsEl0.style.color = ''; fpsEl0.title = ''; delete fpsEl0.dataset.errorPinned; fpsEl0.textContent = '— FPS'; }
+    const stEl0 = document.getElementById('de3d-status');
+    if (stEl0){ stEl0.style.color = ''; stEl0.title = ''; delete stEl0.dataset.errorPinned; stEl0.textContent = state.instanceCount + ' placeholder'; }
 
     start();
-    console.log('[DiscoveryEngine3D] Phase 1 scaffold initialized:', state.instanceCount, 'instances');
+    console.log('[DiscoveryEngine3D] initialized:', state.instanceCount, 'instances (placeholder until loadGraph fires)');
   }
 
   function _doResize(){
