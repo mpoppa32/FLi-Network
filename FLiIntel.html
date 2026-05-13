@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.1</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.1b</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34468,13 +34468,21 @@ const DiscoveryEngine3D = (function(){
 
         sim = d3.forceSimulation(nodes, 3)
           .force('charge', d3.forceManyBody().strength(function(d){
-            // T1 nodes repel slightly stronger so they get more space
-            return -36 - (d.priority === 1 ? 24 : d.priority === 2 ? 8 : 0);
+            // Conservative repulsion. Sparse subgraphs (few/no links) need
+            // weak charge so per-node forceX/Y/Z containment can hold the
+            // cluster. Was -36..-60, diverged with 0 links; tuned to -10..-20.
+            return -10 - (d.priority === 1 ? 10 : d.priority === 2 ? 4 : 0);
           }))
           .force('link', d3.forceLink(links).id(function(d){ return d.id; })
             .distance(function(l){ return 8 + (1 - (l.recency || 0.5)) * 14; })
             .strength(0.55))
-          .force('center', d3.forceCenter(0, 0, 0).strength(0.08))
+          // Per-axis pull toward 0 (radial containment). forceCenter only
+          // shifts the centroid — it does NOT prevent symmetric expansion.
+          // forceX/Y/Z pull each node toward the axis-zero plane independently,
+          // yielding actual containment even when links are absent.
+          .force('x', d3.forceX(0).strength(0.06))
+          .force('y', d3.forceY(0).strength(0.06))
+          .force('z', d3.forceZ(0).strength(0.06))
           .force('collide', d3.forceCollide().radius(function(d){
             return d.priority === 1 ? 1.9 : d.priority === 2 ? 1.5 : 1.2;
           }).strength(0.85))
