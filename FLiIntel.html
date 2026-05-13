@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.6</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.7</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34272,7 +34272,13 @@ const DiscoveryEngine3D = (function(){
     teamRingIndexMap: null,
     // Micro-step 3.6: paper rings for all other contacts (not DM, not own-team)
     paperRingMesh: null,
-    paperRingIndexMap: null
+    paperRingIndexMap: null,
+    // Micro-step 3.7: organization nodes as solid BoxGeometry InstancedMesh.
+    // People still drive state.instancedMesh / rings at worker indices 0..N-1.
+    // Orgs occupy worker indices [orgWorkerOffset, orgWorkerOffset+orgInstanceCount).
+    orgMesh: null,
+    orgInstanceCount: 0,
+    orgWorkerOffset: 0
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34373,6 +34379,30 @@ const DiscoveryEngine3D = (function(){
             _writeRingMatrices(state.ringMesh,      state.ringIndexMap);      // gold (3.4)
             _writeRingMatrices(state.teamRingMesh,  state.teamRingIndexMap);  // bone (3.5')
             _writeRingMatrices(state.paperRingMesh, state.paperRingIndexMap); // paper (3.6)
+
+            // Micro-step 3.7: write org box positions from worker indices
+            // [orgWorkerOffset, orgWorkerOffset + orgInstanceCount). Extends
+            // the cluster bounds so the camera frames orgs along with people.
+            if (state.orgMesh && state.orgInstanceCount > 0){
+              const oStart = state.orgWorkerOffset;
+              const oCap = Math.min(state.orgInstanceCount, ((pos.length / 3) | 0) - oStart);
+              for (let j = 0; j < oCap; j++){
+                const widx = oStart + j;
+                const ox = pos[widx*3], oy = pos[widx*3+1], oz = pos[widx*3+2];
+                const x2 = Number.isFinite(ox) ? ox : 0;
+                const y2 = Number.isFinite(oy) ? oy : 0;
+                const z2 = Number.isFinite(oz) ? oz : 0;
+                if (x2 < minX) minX = x2; if (x2 > maxX) maxX = x2;
+                if (y2 < minY) minY = y2; if (y2 > maxY) maxY = y2;
+                if (z2 < minZ) minZ = z2; if (z2 > maxZ) maxZ = z2;
+                _frameDummy.position.set(x2, y2, z2);
+                _frameDummy.scale.set(1, 1, 1);
+                _frameDummy.rotation.set(0, 0, 0);
+                _frameDummy.updateMatrix();
+                state.orgMesh.setMatrixAt(j, _frameDummy.matrix);
+              }
+              state.orgMesh.instanceMatrix.needsUpdate = true;
+            }
 
             const cx = (minX + maxX) * 0.5;
             const cy = (minY + maxY) * 0.5;
@@ -34789,6 +34819,27 @@ const DiscoveryEngine3D = (function(){
     state.paperRingIndexMap = paperIdxMap;
     console.log('[DiscoveryEngine3D] 3.6 paper rings: ' + paperIdxMap.length + ' of ' + cleanNodes.length + ' people');
 
+    // ── Micro-step 3.7: organization nodes (separate typed bucket) ────────
+    // Lifts the people-only worker payload by appending company-type nodes.
+    // 'government' is ambiguous (used as both person and org type elsewhere
+    // in the codebase) so we restrict to strict 'company' for the minimal-
+    // first prime. Orgs occupy worker indices [orgWorkerOffset, ...].
+    // No org-involving links are sent yet — orgs simulate under repulsion +
+    // centering only. Link wiring lands in a later micro-step.
+    const orgRaw = rawNodes.filter(function(n){ return n && n.type === 'company'; });
+    const orgClean = orgRaw.map(function(n){
+      return {
+        id: String(n.id),
+        name: String(n.name || ''),
+        type: 'company',
+        priority: n.priority || 3,
+        oppId: n.oppId || null
+      };
+    });
+    state.orgInstanceCount = orgClean.length;
+    state.orgWorkerOffset = cleanNodes.length;
+    console.log('[DiscoveryEngine3D] 3.7 orgs: ' + orgClean.length + ' of ' + rawNodes.length + ' raw nodes (company-type)');
+
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
     state.initialFitDone = false;     // re-fit on new dataset
@@ -34830,6 +34881,12 @@ const DiscoveryEngine3D = (function(){
       if (state.paperRingMesh.geometry) state.paperRingMesh.geometry.dispose();
       if (state.paperRingMesh.material) state.paperRingMesh.material.dispose();
       state.paperRingMesh = null;
+    }
+    if (state.orgMesh){
+      if (state.scene) state.scene.remove(state.orgMesh);
+      if (state.orgMesh.geometry) state.orgMesh.geometry.dispose();
+      if (state.orgMesh.material) state.orgMesh.material.dispose();
+      state.orgMesh = null;
     }
     if (ringIdxMap.length){
       const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
@@ -34911,9 +34968,35 @@ const DiscoveryEngine3D = (function(){
       if (state.scene) state.scene.add(paperMesh);
     }
 
-    // Spawn / reuse worker, send graph
+    // Micro-step 3.7: build org InstancedMesh (solid placeholder boxes).
+    // BoxGeometry(2.4, 1.4, 1.4) per brief — wider than tall to read as
+    // "card / facility / company block" rather than cube. Paper-2 color
+    // (#7d7669) is darker than the paper-rim people spheres, so orgs read
+    // as distinct ground entities in the same brand palette. Translucent
+    // shader + inner glow come in 3.8 / 3.9.
+    if (orgClean.length){
+      const orgGeo = new THREE.BoxGeometry(2.4, 1.4, 1.4);
+      const orgMat = new THREE.MeshBasicMaterial({ color: 0x7d7669 });
+      const orgMesh = new THREE.InstancedMesh(orgGeo, orgMat, orgClean.length);
+      orgMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      orgMesh.frustumCulled = false;
+      const dummy4 = new THREE.Object3D();
+      dummy4.scale.setScalar(0);  // hidden until first worker tick lands positions
+      dummy4.updateMatrix();
+      for (let r = 0; r < orgClean.length; r++){
+        orgMesh.setMatrixAt(r, dummy4.matrix);
+      }
+      orgMesh.instanceMatrix.needsUpdate = true;
+      state.orgMesh = orgMesh;
+      if (state.scene) state.scene.add(orgMesh);
+    }
+
+    // Spawn / reuse worker, send graph.
+    // Worker payload: people first (so existing index mappings hold), then orgs.
+    // cleanLinks still contains only person-to-person links — no org links yet.
+    const workerNodes = cleanNodes.concat(orgClean);
     const w = _ensurePhysicsWorker();
-    w.postMessage({ type: 'init', nodes: cleanNodes, links: cleanLinks });
+    w.postMessage({ type: 'init', nodes: workerNodes, links: cleanLinks });
   }
 
   // Public: send a pin/unpin to the worker (Phase 5 drag interaction will use this)
@@ -35225,6 +35308,14 @@ const DiscoveryEngine3D = (function(){
       state.paperRingMesh = null;
     }
     state.paperRingIndexMap = null;
+    if (state.orgMesh){
+      if (state.scene) state.scene.remove(state.orgMesh);
+      if (state.orgMesh.geometry) state.orgMesh.geometry.dispose();
+      if (state.orgMesh.material) state.orgMesh.material.dispose();
+      state.orgMesh = null;
+    }
+    state.orgInstanceCount = 0;
+    state.orgWorkerOffset = 0;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
