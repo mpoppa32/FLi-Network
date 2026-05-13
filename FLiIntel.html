@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P2.fix4</span>
+      <span style="color:var(--gold)" id="de3d-build">P2.fix5</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34266,19 +34266,23 @@ const DiscoveryEngine3D = (function(){
   // with the given padding factor.
   function _fitCameraToBounds(b, pad){
     if (!b || !state.camera || !state.controls) return;
-    const radius = Math.max(1, b.radius || 1);
+    // Floor on bounding-sphere radius prevents a degenerate cluster (all
+    // instances at one point) from putting the camera inside itself.
+    const radius = Math.max(15, b.radius || 15);
     const fov = (state.camera.fov || 55) * Math.PI / 180;
     const aspect = state.camera.aspect || 1.6;
     const fitH = radius / Math.sin(fov / 2);
     const fitW = radius / Math.sin(Math.atan(Math.tan(fov / 2) * aspect));
-    const dist = Math.max(fitH, fitW) * (pad || 1.6);
-    // Place camera offset from center toward the +z axis (with slight elevation)
+    // Min camera distance 60, max 4000 — keeps the cluster visible without
+    // ever projecting it to sub-pixel size.
+    const dist = Math.min(4000, Math.max(60, Math.max(fitH, fitW) * (pad || 1.6)));
     state.controls.target.set(b.cx, b.cy, b.cz);
-    state.camera.position.set(b.cx, b.cy + dist * 0.18, b.cz + dist);
+    state.camera.position.set(b.cx, b.cy + dist * 0.22, b.cz + dist);
     state.camera.near = Math.max(0.1, dist * 0.001);
-    state.camera.far  = Math.max(5000, dist * 50);
+    state.camera.far  = Math.max(10000, dist * 50);
     state.camera.updateProjectionMatrix();
     state.controls.update();
+    console.log('[DiscoveryEngine3D] fitCamera: center=(' + b.cx.toFixed(1) + ',' + b.cy.toFixed(1) + ',' + b.cz.toFixed(1) + ') radius=' + radius.toFixed(1) + ' camDist=' + dist.toFixed(1));
   }
   // Public manual fit (called by HUD double-click etc., wired in Phase 5)
   function fitToCluster(){ if (state.posBounds) _fitCameraToBounds(state.posBounds, 1.8); }
@@ -34323,15 +34327,16 @@ const DiscoveryEngine3D = (function(){
             const radius = Math.sqrt(dx*dx + dy*dy + dz*dz) * 0.5;
             state.posBounds = { minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, radius };
 
-            // First-time aggressive fit: the simulation has been running and the
-            // cluster has reached *some* size. Frame it cleanly so the user sees
-            // something regardless of where the equilibrium landed.
-            if (!state.initialFitDone && state.physicsTickCount >= 8 && state.controls && state.camera){
+            // First-time aggressive fit: fire as soon as we have *any* worker
+            // positions. Tick 1 is enough — even seeded positions reveal the
+            // cluster size approximately.
+            if (!state.initialFitDone && state.physicsTickCount >= 1 && state.controls && state.camera){
+              console.log('[DiscoveryEngine3D] first bounds @ T' + state.physicsTickCount + ':', state.posBounds);
               _fitCameraToBounds(state.posBounds, 1.8);
               state.initialFitDone = true;
             }
             // Periodic re-fit while the cluster is still warming up — every 60
-            // frames for the first ~5 seconds, then only if cluster doubles.
+            // frames for the first ~5 seconds.
             state.framesSinceFit = (state.framesSinceFit || 0) + 1;
             if (state.framesSinceFit > 60 && state.physicsTickCount < 240 && state.controls && state.camera){
               _fitCameraToBounds(state.posBounds, 1.6);
@@ -34717,18 +34722,22 @@ const DiscoveryEngine3D = (function(){
     scene.fog = new THREE.Fog(PALETTE.bg, 60, 220);
     state.scene = scene;
 
-    // ── Camera ──
-    const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 5000);
-    camera.position.set(0, 8, 56);
+    // ── Camera ── Wider defaults: starts much farther back with a far plane
+    // that comfortably accommodates clusters up to radius ~3000. Even without
+    // auto-fit running, a typical equilibrium radius is in view.
+    const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 10000);
+    camera.position.set(0, 30, 150);
     camera.lookAt(0, 0, 0);
     state.camera = camera;
 
     // ── Lights ──
-    const ambient = new THREE.AmbientLight(0x6a7488, 0.45);
+    const ambient = new THREE.AmbientLight(0x6a7488, 0.55);
     scene.add(ambient);
     state.ambientLight = ambient;
 
-    const point = new THREE.PointLight(PALETTE.amber, 1.2, 200, 1.6);
+    // Point light reaches farther so spheres in a large cluster still get
+    // amber rim lighting.
+    const point = new THREE.PointLight(PALETTE.amber, 1.4, 800, 1.4);
     point.position.set(0, 0, 0);
     scene.add(point);
     state.pointLight = point;
@@ -34736,6 +34745,26 @@ const DiscoveryEngine3D = (function(){
     const fillKey = new THREE.DirectionalLight(0xc8d6ff, 0.35);
     fillKey.position.set(40, 40, 40);
     scene.add(fillKey);
+
+    // ── World reference markers ── Three tiny amber/cyan/magenta beacons at
+    // unit distance along X/Y/Z. Guarantees something visible at origin even
+    // if the cluster ends up off-screen — a permanent "you are here".
+    const _axesGeo = new THREE.SphereGeometry(0.4, 12, 10);
+    const _axisColors = [0xd4823a, 0x4ecdc4, 0xc792ea]; // amber, cyan, magenta
+    const _axisOffsets = [[6,0,0],[0,6,0],[0,0,6]];
+    for (let _ax = 0; _ax < 3; _ax++){
+      const m = new THREE.Mesh(_axesGeo, new THREE.MeshBasicMaterial({ color: _axisColors[_ax] }));
+      m.position.set(_axisOffsets[_ax][0], _axisOffsets[_ax][1], _axisOffsets[_ax][2]);
+      m.frustumCulled = false;
+      scene.add(m);
+    }
+    // Central origin marker — slightly larger, white, always visible
+    const _originMarker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.6, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xf4ede0 })
+    );
+    _originMarker.frustumCulled = false;
+    scene.add(_originMarker);
 
     // ── Controls (damped orbit) ──
     const controls = new OrbitControls(camera, state.canvas);
