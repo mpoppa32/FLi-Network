@@ -19,6 +19,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Antonio:wght@300;400;500;600;700&family=Big+Shoulders+Display:wght@500;600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" onerror="document.getElementById('d3-fallback-msg').style.display='block'"></script>
+<!-- d3-force-3d for DiscoveryEngine3D Phase 2 physics (loaded on main thread for fallback; worker re-imports via importScripts) -->
+<script src="https://unpkg.com/d3-force-3d@3.0.5/build/d3-force-3d.min.js"></script>
 <!-- Three.js + addons for DiscoveryEngine3D (Phase 1: WebGL infrastructure) -->
 <script type="importmap">
 {
@@ -12134,7 +12136,7 @@ function switchView(v){
 
   if(v==='network'){if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
     // Resume 3D engine if user previously had it active
-    try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active'); } }catch(e){}
+    try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); setTimeout(function(){ if(window.nodes&&window.nodes.length) window.DiscoveryEngine3D.loadGraph(window.nodes, window.links||[]); }, 80); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active'); } }catch(e){}
   }
   if(v==='intel'&&activeIntelTab==='board')renderBoard();
   if(v==='timeline')renderTimeline();
@@ -34224,7 +34226,15 @@ const DiscoveryEngine3D = (function(){
     pointLight: null,
     ambientLight: null,
     clock: null,
-    onResize: null
+    onResize: null,
+    // ── Phase 2: physics worker state ──
+    physicsWorker: null,
+    physicsWorkerUrl: null,
+    physicsNodeIds: [],          // ordered list of node ids (worker keeps same index)
+    physicsPositions: null,       // Float32Array of [x0,y0,z0, x1,y1,z1, ...]
+    physicsTickCount: 0,
+    physicsLastTickAt: 0,
+    physicsRealData: false        // false = placeholder spheres, true = real workspace data
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34241,14 +34251,28 @@ const DiscoveryEngine3D = (function(){
     state.lastFrameTs = now;
   }
 
+  // Reusable per-frame Object3D for matrix math (avoid GC churn)
+  const _frameDummy = new THREE.Object3D();
+
   function _animate(now){
     if (!state.running) return;
     state.rafId = requestAnimationFrame(_animate);
     _sampleFps(now);
 
-    // Idle breathing: gently rotate the placeholder cluster so the operator
-    // can see the engine is alive even with static placeholder data.
-    if (state.instancedMesh){
+    if (state.physicsRealData && state.physicsPositions && state.instancedMesh){
+      // ── Phase 2: drive InstancedMesh from worker position buffer ──
+      const pos = state.physicsPositions;
+      const n = Math.min(state.instanceCount, (pos.length / 3) | 0);
+      for (let i = 0; i < n; i++){
+        _frameDummy.position.set(pos[i*3], pos[i*3+1], pos[i*3+2]);
+        // Uniform scale for Phase 2; Phase 3 will encode entity type/priority into scale
+        _frameDummy.scale.setScalar(1);
+        _frameDummy.updateMatrix();
+        state.instancedMesh.setMatrixAt(i, _frameDummy.matrix);
+      }
+      state.instancedMesh.instanceMatrix.needsUpdate = true;
+    } else if (state.instancedMesh){
+      // Idle breathing for placeholder data only
       state.instancedMesh.rotation.y += 0.0015;
       state.instancedMesh.rotation.x += 0.0006;
     }
@@ -34259,6 +34283,186 @@ const DiscoveryEngine3D = (function(){
     // Push FPS to HUD if mounted
     const fpsEl = document.getElementById('de3d-fps');
     if (fpsEl) fpsEl.textContent = state.fps + ' FPS';
+  }
+
+  // ── PHASE 2: PHYSICS WORKER ──────────────────────────────────────────────
+  // Worker source written as a string template. Worker imports d3-force-3d via
+  // importScripts (UMD), runs charge/link/center/collide forces in 3D, posts
+  // a Float32Array of positions back to main thread on every tick. Transfer
+  // is via the second arg of postMessage so it's zero-copy.
+  const PHYSICS_WORKER_SRC = `
+    importScripts('https://unpkg.com/d3-force-3d@3.0.5/build/d3-force-3d.min.js');
+
+    let sim = null;
+    let nodes = [];
+    let links = [];
+    let posBuf = null;
+    let postScheduled = false;
+
+    function postPositions(){
+      if (!nodes.length) return;
+      if (!posBuf || posBuf.length !== nodes.length * 3){
+        posBuf = new Float32Array(nodes.length * 3);
+      }
+      for (let i = 0; i < nodes.length; i++){
+        const n = nodes[i];
+        posBuf[i*3+0] = n.x || 0;
+        posBuf[i*3+1] = n.y || 0;
+        posBuf[i*3+2] = n.z || 0;
+      }
+      // Send a copy so worker keeps mutating its own buffer in place.
+      const out = new Float32Array(posBuf);
+      self.postMessage({ type: 'positions', positions: out.buffer, count: nodes.length, alpha: sim ? sim.alpha() : 0 }, [out.buffer]);
+    }
+
+    self.onmessage = function(ev){
+      const msg = ev.data;
+
+      if (msg.type === 'init'){
+        // Tear down any existing sim
+        if (sim) { sim.stop(); sim = null; }
+        nodes = msg.nodes.map(function(n, i){
+          // Seed with random sphere shell so initial layout is volumetric, not flat
+          const r = 12 + Math.random() * 6;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          return {
+            id: n.id, idx: i, type: n.type, priority: n.priority || 3, oppId: n.oppId || null,
+            x: r * Math.sin(phi) * Math.cos(theta),
+            y: r * Math.sin(phi) * Math.sin(theta),
+            z: r * Math.cos(phi)
+          };
+        });
+        const idIndex = new Map(nodes.map(function(n){ return [n.id, n.idx]; }));
+        links = (msg.links || []).map(function(l){
+          return { source: idIndex.has(l.source) ? l.source : null,
+                   target: idIndex.has(l.target) ? l.target : null,
+                   recency: typeof l.recency === 'number' ? l.recency : 0.5 };
+        }).filter(function(l){ return l.source && l.target && l.source !== l.target; });
+
+        sim = d3.forceSimulation(nodes, 3)
+          .force('charge', d3.forceManyBody().strength(function(d){
+            // T1 nodes repel slightly stronger so they get more space
+            return -36 - (d.priority === 1 ? 24 : d.priority === 2 ? 8 : 0);
+          }))
+          .force('link', d3.forceLink(links).id(function(d){ return d.id; })
+            .distance(function(l){ return 8 + (1 - (l.recency || 0.5)) * 14; })
+            .strength(0.55))
+          .force('center', d3.forceCenter(0, 0, 0).strength(0.08))
+          .force('collide', d3.forceCollide().radius(function(d){
+            return d.priority === 1 ? 1.9 : d.priority === 2 ? 1.5 : 1.2;
+          }).strength(0.85))
+          .alpha(1).alphaDecay(0.022).velocityDecay(0.42)
+          .on('tick', function(){
+            // Throttle posts to ~60Hz max (the sim sometimes ticks much faster)
+            if (postScheduled) return;
+            postScheduled = true;
+            setTimeout(function(){ postScheduled = false; postPositions(); }, 16);
+          });
+
+        self.postMessage({ type: 'ready', nodeCount: nodes.length, linkCount: links.length });
+      }
+
+      else if (msg.type === 'pin'){
+        const n = nodes.find(function(x){ return x.id === msg.id; });
+        if (n){ n.fx = msg.x; n.fy = msg.y; n.fz = msg.z; if (sim) sim.alpha(0.35).restart(); }
+      }
+      else if (msg.type === 'unpin'){
+        const n = nodes.find(function(x){ return x.id === msg.id; });
+        if (n){ delete n.fx; delete n.fy; delete n.fz; if (sim) sim.alpha(0.35).restart(); }
+      }
+      else if (msg.type === 'reheat'){
+        if (sim) sim.alpha(msg.alpha != null ? msg.alpha : 0.5).restart();
+      }
+      else if (msg.type === 'stop'){
+        if (sim) sim.stop();
+      }
+    };
+  `;
+
+  function _ensurePhysicsWorker(){
+    if (state.physicsWorker) return state.physicsWorker;
+    const blob = new Blob([PHYSICS_WORKER_SRC], { type: 'application/javascript' });
+    state.physicsWorkerUrl = URL.createObjectURL(blob);
+    const w = new Worker(state.physicsWorkerUrl);
+    w.onmessage = function(ev){
+      const msg = ev.data;
+      if (msg.type === 'positions'){
+        state.physicsPositions = new Float32Array(msg.positions);
+        state.physicsTickCount++;
+        state.physicsLastTickAt = performance.now();
+      }
+      else if (msg.type === 'ready'){
+        console.log('[DiscoveryEngine3D] physics worker ready:', msg.nodeCount, 'nodes /', msg.linkCount, 'links');
+        // Center the camera on the cluster once positions start flowing
+        setTimeout(function(){
+          if (state.controls && state.camera){
+            const dist = Math.max(40, Math.min(140, msg.nodeCount * 0.35 + 30));
+            state.camera.position.set(0, dist * 0.18, dist);
+            state.controls.target.set(0, 0, 0);
+            state.controls.update();
+          }
+        }, 200);
+      }
+    };
+    w.onerror = function(e){ console.warn('[DiscoveryEngine3D] worker error:', e.message || e); };
+    state.physicsWorker = w;
+    return w;
+  }
+
+  // Public: load a real graph (workspace nodes + links) into the engine.
+  // Replaces the placeholder InstancedMesh with one sized to the actual node count.
+  function loadGraph(rawNodes, rawLinks){
+    if (!rawNodes || !rawNodes.length){
+      // Nothing to load — keep placeholder spheres
+      console.log('[DiscoveryEngine3D] loadGraph: no nodes; keeping placeholder');
+      return;
+    }
+    const cleanNodes = rawNodes.map(function(n){
+      return {
+        id: String(n.id),
+        type: n.type || 'person',
+        priority: n.priority || 3,
+        oppId: n.oppId || (n.opp && n.opp.id) || null
+      };
+    });
+    const cleanLinks = (rawLinks || []).map(function(l){
+      const s = (l.source && l.source.id) ? l.source.id : (typeof l.source === 'string' ? l.source : null);
+      const t = (l.target && l.target.id) ? l.target.id : (typeof l.target === 'string' ? l.target : null);
+      return s && t ? { source: String(s), target: String(t), recency: l.recency || 0.5 } : null;
+    }).filter(Boolean);
+
+    state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
+    state.physicsRealData = true;
+
+    // Replace InstancedMesh with one sized to actual node count
+    if (state.scene && state.instancedMesh){
+      state.scene.remove(state.instancedMesh);
+      state.instancedMesh.geometry.dispose();
+      state.instancedMesh.material.dispose();
+      state.instancedMesh = null;
+    }
+    state.instanceCount = cleanNodes.length;
+    state.instancedMesh = _buildPlaceholderInstancedMesh(cleanNodes.length);
+    if (state.scene) state.scene.add(state.instancedMesh);
+
+    // Spawn / reuse worker, send graph
+    const w = _ensurePhysicsWorker();
+    w.postMessage({ type: 'init', nodes: cleanNodes, links: cleanLinks });
+  }
+
+  // Public: send a pin/unpin to the worker (Phase 5 drag interaction will use this)
+  function pinNode(id, x, y, z){
+    if (!state.physicsWorker) return;
+    state.physicsWorker.postMessage({ type: 'pin', id: String(id), x: x, y: y, z: z });
+  }
+  function unpinNode(id){
+    if (!state.physicsWorker) return;
+    state.physicsWorker.postMessage({ type: 'unpin', id: String(id) });
+  }
+  function reheat(alpha){
+    if (!state.physicsWorker) return;
+    state.physicsWorker.postMessage({ type: 'reheat', alpha: alpha });
   }
 
   function _buildPlaceholderInstancedMesh(count){
@@ -34446,6 +34650,19 @@ const DiscoveryEngine3D = (function(){
     stop();
     if (state.onResize){ window.removeEventListener('resize', state.onResize); state.onResize = null; }
     if (state.resizeTimer){ clearTimeout(state.resizeTimer); state.resizeTimer = null; }
+    // ── Phase 2: terminate physics worker, free its Blob URL ──
+    if (state.physicsWorker){
+      try { state.physicsWorker.postMessage({ type: 'stop' }); } catch(e){}
+      state.physicsWorker.terminate();
+      state.physicsWorker = null;
+    }
+    if (state.physicsWorkerUrl){
+      URL.revokeObjectURL(state.physicsWorkerUrl);
+      state.physicsWorkerUrl = null;
+    }
+    state.physicsPositions = null;
+    state.physicsNodeIds = [];
+    state.physicsRealData = false;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
@@ -34478,7 +34695,7 @@ const DiscoveryEngine3D = (function(){
   function getState(){ return state; }
   function isRunning(){ return state.running; }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -34495,6 +34712,13 @@ window._toggle3DEngine = function(mode){
   if (mode === '3d'){
     if (svgCanvas) svgCanvas.style.display = 'none';
     DiscoveryEngine3D.init(netView);
+    // Phase 2: feed real workspace data into the physics worker. If nodes
+    // are not yet populated by the Firebase listener, fall back to placeholders.
+    setTimeout(function(){
+      if (window.nodes && window.nodes.length){
+        DiscoveryEngine3D.loadGraph(window.nodes, window.links || []);
+      }
+    }, 80);
     if (fpsHud) fpsHud.style.display = 'flex';
     if (btn2d){ btn2d.classList.remove('active'); }
     if (btn3d){ btn3d.classList.add('active'); }
