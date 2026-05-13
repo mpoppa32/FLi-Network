@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.4</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.5</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -8600,7 +8600,7 @@ function _relocateViewsIntoMainApp(){
     if(el && el.parentElement !== mainApp){ mainApp.appendChild(el); }
   });
 }
-async function selectWorkspace(wsId){try{currentWsId=wsId;_relocateViewsIntoMainApp();var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView==='function')switchView('graph');},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;_relocateViewsIntoMainApp();var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;window.currentWs=ws;window.currentWsId=wsId;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView==='function')switchView('graph');},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
@@ -34266,7 +34266,10 @@ const DiscoveryEngine3D = (function(){
     instanceScales: null,         // Per-instance visual scale (will be repopulated by 3.2')
     // Micro-step 3.4: gold role-ring torus for decision-makers
     ringMesh: null,               // THREE.InstancedMesh of gold torus rings
-    ringIndexMap: null            // [personGlobalIdx, ...] — for each ring, which person it surrounds
+    ringIndexMap: null,           // [personGlobalIdx, ...] — for each ring, which person it surrounds
+    // Micro-step 3.5: bone role-ring for operator's own team
+    teamRingMesh: null,           // THREE.InstancedMesh of bone-colored torus rings
+    teamRingIndexMap: null        // [personGlobalIdx, ...] — for each ring, which person it surrounds
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34344,12 +34347,15 @@ const DiscoveryEngine3D = (function(){
             }
             state.instancedMesh.instanceMatrix.needsUpdate = true;
 
-            // Micro-step 3.4: write ring matrices from their associated person
-            // positions. Each ring inherits its person's scale so the torus stays
-            // proportional to the (engagement-scaled) sphere it surrounds.
-            if (state.ringMesh && state.ringIndexMap && state.ringIndexMap.length){
-              for (let r = 0; r < state.ringIndexMap.length; r++){
-                const pIdx = state.ringIndexMap[r];
+            // Micro-step 3.4 / 3.5: write ring matrices from their associated
+            // person positions. Each ring inherits its person's scale so the
+            // torus stays proportional to the (engagement-scaled) sphere it
+            // surrounds. Shared helper for both decision-maker (gold) and
+            // own-team (bone) ring meshes.
+            function _writeRings(ringMesh, idxMap){
+              if (!ringMesh || !idxMap || !idxMap.length) return;
+              for (let r = 0; r < idxMap.length; r++){
+                const pIdx = idxMap[r];
                 if (pIdx >= n) continue;
                 const rx = pos[pIdx*3], ry = pos[pIdx*3+1], rz = pos[pIdx*3+2];
                 const px = Number.isFinite(rx) ? rx : 0;
@@ -34360,10 +34366,12 @@ const DiscoveryEngine3D = (function(){
                 _frameDummy.scale.setScalar(ps);
                 _frameDummy.rotation.set(0, 0, 0);
                 _frameDummy.updateMatrix();
-                state.ringMesh.setMatrixAt(r, _frameDummy.matrix);
+                ringMesh.setMatrixAt(r, _frameDummy.matrix);
               }
-              state.ringMesh.instanceMatrix.needsUpdate = true;
+              ringMesh.instanceMatrix.needsUpdate = true;
             }
+            _writeRings(state.ringMesh,     state.ringIndexMap);     // gold — decision-makers
+            _writeRings(state.teamRingMesh, state.teamRingIndexMap); // bone — own team
 
             const cx = (minX + maxX) * 0.5;
             const cy = (minY + maxY) * 0.5;
@@ -34751,6 +34759,26 @@ const DiscoveryEngine3D = (function(){
     state.ringIndexMap = ringIdxMap;
     console.log('[DiscoveryEngine3D] 3.4 decision-makers: ' + ringIdxMap.length + ' of ' + cleanNodes.length + ' people');
 
+    // ── Micro-step 3.5: identify operator's own team ─────────────────────
+    // Heuristic: a person is "own team" if their org field contains the
+    // workspace name (case-insensitive substring). Excludes anyone already
+    // matched as a decision-maker so each person carries at most one ring.
+    // A future Phase 9 step can upgrade to authoritative workspace-member
+    // matching against Firebase workspaces/{wsId}/members/.
+    const wsName = ((window.currentWs && window.currentWs.name) || '').toLowerCase().trim();
+    const dmSet = new Set(ringIdxMap);
+    const teamIdxMap = [];
+    if (wsName){
+      cleanNodes.forEach(function(n, gi){
+        if (dmSet.has(gi)) return;                           // decision-makers keep their gold ring
+        const raw = personOnly[gi];
+        const org = ((raw && raw.org) || '').toLowerCase().trim();
+        if (org && org.indexOf(wsName) !== -1) teamIdxMap.push(gi);
+      });
+    }
+    state.teamRingIndexMap = teamIdxMap;
+    console.log('[DiscoveryEngine3D] 3.5 own-team (org contains "' + wsName + '", excluding decision-makers): ' + teamIdxMap.length + ' of ' + cleanNodes.length + ' people');
+
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
     state.initialFitDone = false;     // re-fit on new dataset
@@ -34773,37 +34801,49 @@ const DiscoveryEngine3D = (function(){
     if (state.scene) state.scene.add(state.instancedMesh);
     console.log('[DiscoveryEngine3D] loadGraph: built single mesh with', cleanNodes.length, 'instances; worker getting', cleanLinks.length, 'links');
 
-    // Micro-step 3.4: build the gold decision-maker ring InstancedMesh.
-    // Dispose any prior ringMesh first (re-loadGraph case).
+    // Micro-step 3.4 / 3.5: build the role-ring InstancedMeshes.
+    // Dispose any prior ring meshes first (re-loadGraph case).
     if (state.ringMesh){
       if (state.scene) state.scene.remove(state.ringMesh);
       if (state.ringMesh.geometry) state.ringMesh.geometry.dispose();
       if (state.ringMesh.material) state.ringMesh.material.dispose();
       state.ringMesh = null;
     }
-    if (ringIdxMap.length){
+    if (state.teamRingMesh){
+      if (state.scene) state.scene.remove(state.teamRingMesh);
+      if (state.teamRingMesh.geometry) state.teamRingMesh.geometry.dispose();
+      if (state.teamRingMesh.material) state.teamRingMesh.material.dispose();
+      state.teamRingMesh = null;
+    }
+    // Shared helper: build a torus InstancedMesh sized to indexMap.length
+    function _buildRingMesh(indexMap, hexColor){
       const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
       const ringMat = new THREE.MeshBasicMaterial({
-        color: 0xd4823a,           // amber gold
+        color: hexColor,
         transparent: true,
         opacity: 0.95,
-        depthWrite: false           // play nice with the translucent sphere shader
+        depthWrite: false
       });
-      const ringMesh = new THREE.InstancedMesh(ringGeo, ringMat, ringIdxMap.length);
+      const ringMesh = new THREE.InstancedMesh(ringGeo, ringMat, indexMap.length);
       ringMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       ringMesh.frustumCulled = false;
-      // Seed initial matrices to (0,0,0) scale 0 so the rings are invisible
-      // until the first worker tick places them on top of their person.
       const dummy = new THREE.Object3D();
-      dummy.position.set(0, 0, 0);
       dummy.scale.setScalar(0);
       dummy.updateMatrix();
-      for (let r = 0; r < ringIdxMap.length; r++){
+      for (let r = 0; r < indexMap.length; r++){
         ringMesh.setMatrixAt(r, dummy.matrix);
       }
       ringMesh.instanceMatrix.needsUpdate = true;
-      state.ringMesh = ringMesh;
-      if (state.scene) state.scene.add(ringMesh);
+      return ringMesh;
+    }
+    if (ringIdxMap.length){
+      state.ringMesh = _buildRingMesh(ringIdxMap, 0xd4823a);   // amber gold
+      if (state.scene) state.scene.add(state.ringMesh);
+    }
+    // Micro-step 3.5: build the bone-colored own-team ring InstancedMesh
+    if (teamIdxMap.length){
+      state.teamRingMesh = _buildRingMesh(teamIdxMap, 0xf4ede0); // bone
+      if (state.scene) state.scene.add(state.teamRingMesh);
     }
 
     // Spawn / reuse worker, send graph
@@ -35106,6 +35146,13 @@ const DiscoveryEngine3D = (function(){
       state.ringMesh = null;
     }
     state.ringIndexMap = null;
+    if (state.teamRingMesh){
+      if (state.scene) state.scene.remove(state.teamRingMesh);
+      if (state.teamRingMesh.geometry) state.teamRingMesh.geometry.dispose();
+      if (state.teamRingMesh.material) state.teamRingMesh.material.dispose();
+      state.teamRingMesh = null;
+    }
+    state.teamRingIndexMap = null;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
