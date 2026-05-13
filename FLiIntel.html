@@ -19,6 +19,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Antonio:wght@300;400;500;600;700&family=Big+Shoulders+Display:wght@500;600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" onerror="document.getElementById('d3-fallback-msg').style.display='block'"></script>
+<!-- Three.js + addons for DiscoveryEngine3D (Phase 1: WebGL infrastructure) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 <style>
 /* ═══════════════════════════════════════════════════════════════════════════
    CORSAIR — Defense Capture Operating System
@@ -6532,6 +6541,11 @@ input[type="url"], textarea, select {
       <button class="nb net-overlay-btn" id="ovl-cooling" onclick="window._setNetOverlay('cooling')" style="color:var(--amber);border-color:rgba(245,158,11,.3)" title="Highlight cooling contacts">COOLING</button>
       <button class="nb net-overlay-btn" id="ovl-coverage" onclick="window._setNetOverlay('coverage')" style="color:var(--gold);border-color:rgba(212,130,58,.3)" title="Show opportunity coverage">COVERAGE</button>
       <div class="ntb-sep"></div>
+      <!-- 2D / 3D ENGINE TOGGLE — DiscoveryEngine3D Phase 1 (3D is opt-in preview) -->
+      <div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.08em;white-space:nowrap">ENGINE</div>
+      <button class="nb net-overlay-btn active" id="de3d-toggle-2d" onclick="window._toggle3DEngine('2d')" style="color:var(--bone);border-color:var(--b2);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.08em" title="2D force-directed (D3) — production">2D</button>
+      <button class="nb net-overlay-btn" id="de3d-toggle-3d" onclick="window._toggle3DEngine('3d')" style="color:var(--gold);border-color:rgba(212,130,58,.4);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.08em" title="3D Intelligence Theater (Phase 1 preview — placeholder data)">3D ▸</button>
+      <div class="ntb-sep"></div>
       <button class="nb" id="layout-btn" onclick="toggleLayoutPanel()" style="color:var(--blue);border-color:rgba(59,130,246,.4)" title="Layout tools">⊡ Layout</button>
       <div class="ntb-sep"></div>
       <div style="position:relative" id="add-menu-wrap">
@@ -6689,6 +6703,14 @@ input[type="url"], textarea, select {
       </div>
     </div>
     <svg id="net-canvas" style="position:absolute;top:42px;left:220px;right:0;bottom:0"></svg>
+    <!-- DiscoveryEngine3D FPS HUD (Phase 1) — hidden until 3D engine activated -->
+    <div id="de3d-fps-hud" style="display:none;position:absolute;bottom:14px;right:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none">
+      <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
+      <span style="color:var(--t3)">DiscoveryEngine3D</span>
+      <span style="color:var(--bone);font-weight:700" id="de3d-fps">— FPS</span>
+      <span style="color:var(--t3)">·</span>
+      <span style="color:var(--gold)">Phase 1 preview</span>
+    </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
         <!-- Top row: type label + action buttons -->
@@ -12104,13 +12126,16 @@ function switchView(v){
   }
 
   // Pause simulation when leaving network view to save CPU
-  if(activeView==='network'&&v!=='network'){if(sim)sim.stop();closeNetPanel();}
+  if(activeView==='network'&&v!=='network'){if(sim)sim.stop();closeNetPanel();if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.isRunning())window.DiscoveryEngine3D.stop();}
 
   activeView=v;
   _showOnlyView(v);
   _setActiveMode(_modeKeyForView(v));
 
-  if(v==='network'){if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);}
+  if(v==='network'){if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
+    // Resume 3D engine if user previously had it active
+    try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active'); } }catch(e){}
+  }
   if(v==='intel'&&activeIntelTab==='board')renderBoard();
   if(v==='timeline')renderTimeline();
   if(v==='opps')renderOppSidebar();
@@ -34129,6 +34154,360 @@ window.addEventListener('resize', function() {
     }
   });
 })();
+</script>
+
+<!-- ════════════════════════════════════════════════════════════════════════════
+     DISCOVERYENGINE3D — Phase 1: WebGL Infrastructure
+     ────────────────────────────────────────────────────────────────────────────
+     Scaffold for the 3D Intelligence Theater. This module owns:
+       • Three.js scene/camera/renderer (WebGL2, antialias, pixelRatio cap 2)
+       • OrbitControls with damping
+       • EffectComposer → RenderPass → UnrealBloomPass → FXAA
+       • Placeholder InstancedMesh of 100 spheres (validates instancing path)
+       • Resize handler (debounced 150ms)
+       • requestAnimationFrame loop + FPS sampling
+       • Lifecycle: init(container) / start() / stop() / dispose()
+
+     Phase 1 invariants:
+       - Engine is OPT-IN. The existing D3 graph remains the default Graph mode.
+       - When 3D toggled on, net-canvas SVG hides and de3d-canvas shows.
+       - When 3D toggled off, simulation stops and renderer disposes (no GPU leak).
+     Future phases will: web-worker physics (P2), entity language (P3),
+     edge intelligence (P4), interactions (P5), semantic zoom (P6),
+     ghost edges (P7), data ripples (P8), HUD/COP/Rhythm wiring (P9), polish (P10).
+     ════════════════════════════════════════════════════════════════════════════ -->
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+
+// Expose THREE globally so future phases (and devtools) can introspect
+window.THREE = THREE;
+
+const PALETTE = {
+  bg:       0x070d18,
+  surface:  0x0e1726,
+  rule:     0x25304a,
+  amber:    0xd4823a,
+  bone:     0xf4ede0,
+  paper:    0xb5ad9f,
+  success:  0x3a8a5c,
+  warning:  0xc4862b,
+  danger:   0xb34040
+};
+
+const DiscoveryEngine3D = (function(){
+  // ── Engine state (single instance; init() is idempotent) ──
+  const state = {
+    container: null,
+    canvas: null,
+    renderer: null,
+    scene: null,
+    camera: null,
+    controls: null,
+    composer: null,
+    bloomPass: null,
+    fxaaPass: null,
+    renderPass: null,
+    instancedMesh: null,
+    instanceCount: 100,
+    rafId: null,
+    running: false,
+    lastFrameTs: 0,
+    fpsSamples: [],
+    fps: 0,
+    resizeTimer: null,
+    pointLight: null,
+    ambientLight: null,
+    clock: null,
+    onResize: null
+  };
+
+  // Sample FPS over a rolling 30-frame window
+  function _sampleFps(now){
+    if (state.lastFrameTs){
+      const dt = now - state.lastFrameTs;
+      if (dt > 0){
+        state.fpsSamples.push(1000 / dt);
+        if (state.fpsSamples.length > 30) state.fpsSamples.shift();
+        const sum = state.fpsSamples.reduce((a,b)=>a+b, 0);
+        state.fps = Math.round(sum / state.fpsSamples.length);
+      }
+    }
+    state.lastFrameTs = now;
+  }
+
+  function _animate(now){
+    if (!state.running) return;
+    state.rafId = requestAnimationFrame(_animate);
+    _sampleFps(now);
+
+    // Idle breathing: gently rotate the placeholder cluster so the operator
+    // can see the engine is alive even with static placeholder data.
+    if (state.instancedMesh){
+      state.instancedMesh.rotation.y += 0.0015;
+      state.instancedMesh.rotation.x += 0.0006;
+    }
+
+    state.controls && state.controls.update();
+    state.composer && state.composer.render();
+
+    // Push FPS to HUD if mounted
+    const fpsEl = document.getElementById('de3d-fps');
+    if (fpsEl) fpsEl.textContent = state.fps + ' FPS';
+  }
+
+  function _buildPlaceholderInstancedMesh(count){
+    // Single SphereGeometry instanced N times — one draw call for all spheres.
+    // Validates the instancing path that Phase 3 will scale to thousands.
+    const geo = new THREE.SphereGeometry(0.6, 24, 18);
+    const mat = new THREE.MeshStandardMaterial({
+      color: PALETTE.amber,
+      emissive: PALETTE.amber,
+      emissiveIntensity: 0.55,
+      roughness: 0.45,
+      metalness: 0.15,
+      transparent: true,
+      opacity: 0.92
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+    const dummy = new THREE.Object3D();
+    const colorAttr = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++){
+      // Spherical scatter inside radius ~22
+      const r = 8 + Math.cbrt(Math.random()) * 14;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      dummy.position.set(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi)
+      );
+      const s = 0.7 + Math.random() * 0.9;
+      dummy.scale.set(s, s, s);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+
+      // Per-instance color tint — amber → bone gradient
+      const t = Math.random();
+      colorAttr[i*3+0] = 0.83 + t * 0.13;  // R
+      colorAttr[i*3+1] = 0.51 + t * 0.42;  // G
+      colorAttr[i*3+2] = 0.23 + t * 0.65;  // B
+    }
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
+    mesh.instanceMatrix.needsUpdate = true;
+    return mesh;
+  }
+
+  function init(container){
+    if (!container){ console.warn('[DiscoveryEngine3D] init: no container'); return; }
+    if (state.container === container && state.renderer){
+      // Already initialized in this container — just ensure running
+      start();
+      return;
+    }
+    if (state.renderer){ dispose(); }
+
+    state.container = container;
+
+    // ── Renderer (WebGL2, antialiased, pixelRatio capped at 2.0) ──
+    const w = container.clientWidth || container.offsetWidth || 800;
+    const h = container.clientHeight || container.offsetHeight || 600;
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: 'high-performance'
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
+    renderer.setSize(w, h, false);
+    renderer.setClearColor(PALETTE.bg, 1);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    state.renderer = renderer;
+    state.canvas = renderer.domElement;
+    state.canvas.id = 'de3d-canvas';
+    state.canvas.style.cssText = 'position:absolute;top:42px;left:220px;right:0;bottom:0;width:calc(100% - 220px);height:calc(100% - 42px);z-index:8;display:block;outline:none';
+    container.appendChild(state.canvas);
+
+    // ── Scene ──
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(PALETTE.bg);
+    scene.fog = new THREE.Fog(PALETTE.bg, 60, 220);
+    state.scene = scene;
+
+    // ── Camera ──
+    const camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 5000);
+    camera.position.set(0, 8, 56);
+    camera.lookAt(0, 0, 0);
+    state.camera = camera;
+
+    // ── Lights ──
+    const ambient = new THREE.AmbientLight(0x6a7488, 0.45);
+    scene.add(ambient);
+    state.ambientLight = ambient;
+
+    const point = new THREE.PointLight(PALETTE.amber, 1.2, 200, 1.6);
+    point.position.set(0, 0, 0);
+    scene.add(point);
+    state.pointLight = point;
+
+    const fillKey = new THREE.DirectionalLight(0xc8d6ff, 0.35);
+    fillKey.position.set(40, 40, 40);
+    scene.add(fillKey);
+
+    // ── Controls (damped orbit) ──
+    const controls = new OrbitControls(camera, state.canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.7;
+    controls.zoomSpeed = 0.9;
+    controls.panSpeed = 0.6;
+    controls.minDistance = 4;
+    controls.maxDistance = 400;
+    controls.target.set(0, 0, 0);
+    state.controls = controls;
+
+    // ── Placeholder InstancedMesh ──
+    state.instancedMesh = _buildPlaceholderInstancedMesh(state.instanceCount);
+    scene.add(state.instancedMesh);
+
+    // ── Post-processing chain: RenderPass → UnrealBloomPass → FXAA ──
+    const composer = new EffectComposer(renderer);
+    composer.setSize(w, h);
+
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    state.renderPass = renderPass;
+
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.8, 0.6, 0.85);
+    composer.addPass(bloomPass);
+    state.bloomPass = bloomPass;
+
+    const fxaaPass = new ShaderPass(FXAAShader);
+    fxaaPass.material.uniforms['resolution'].value.set(
+      1 / (w * renderer.getPixelRatio()),
+      1 / (h * renderer.getPixelRatio())
+    );
+    composer.addPass(fxaaPass);
+    state.fxaaPass = fxaaPass;
+
+    state.composer = composer;
+    state.clock = new THREE.Clock();
+
+    // ── Resize handler (debounced 150ms) ──
+    state.onResize = function(){
+      if (state.resizeTimer) clearTimeout(state.resizeTimer);
+      state.resizeTimer = setTimeout(_doResize, 150);
+    };
+    window.addEventListener('resize', state.onResize);
+
+    start();
+    console.log('[DiscoveryEngine3D] Phase 1 scaffold initialized:', state.instanceCount, 'instances');
+  }
+
+  function _doResize(){
+    if (!state.renderer || !state.container) return;
+    const w = state.container.clientWidth || state.container.offsetWidth;
+    const h = state.container.clientHeight || state.container.offsetHeight;
+    if (w < 10 || h < 10) return;
+    const cw = w - 220;  // subtract net-cal sidebar width
+    const ch = h - 42;   // subtract net-toolbar height
+    state.renderer.setSize(cw, ch, false);
+    state.camera.aspect = cw / ch;
+    state.camera.updateProjectionMatrix();
+    state.composer.setSize(cw, ch);
+    if (state.fxaaPass){
+      state.fxaaPass.material.uniforms['resolution'].value.set(
+        1 / (cw * state.renderer.getPixelRatio()),
+        1 / (ch * state.renderer.getPixelRatio())
+      );
+    }
+  }
+
+  function start(){
+    if (state.running) return;
+    state.running = true;
+    state.lastFrameTs = 0;
+    state.fpsSamples = [];
+    state.rafId = requestAnimationFrame(_animate);
+  }
+
+  function stop(){
+    state.running = false;
+    if (state.rafId){ cancelAnimationFrame(state.rafId); state.rafId = null; }
+  }
+
+  function dispose(){
+    stop();
+    if (state.onResize){ window.removeEventListener('resize', state.onResize); state.onResize = null; }
+    if (state.resizeTimer){ clearTimeout(state.resizeTimer); state.resizeTimer = null; }
+    if (state.instancedMesh){
+      state.instancedMesh.geometry.dispose();
+      state.instancedMesh.material.dispose();
+      state.scene.remove(state.instancedMesh);
+      state.instancedMesh = null;
+    }
+    if (state.composer){ state.composer.dispose && state.composer.dispose(); state.composer = null; }
+    if (state.bloomPass && state.bloomPass.dispose) state.bloomPass.dispose();
+    if (state.fxaaPass && state.fxaaPass.dispose) state.fxaaPass.dispose();
+    if (state.renderPass && state.renderPass.dispose) state.renderPass.dispose();
+    if (state.controls){ state.controls.dispose(); state.controls = null; }
+    if (state.renderer){
+      state.renderer.dispose();
+      if (state.canvas && state.canvas.parentElement) state.canvas.parentElement.removeChild(state.canvas);
+      state.renderer = null;
+      state.canvas = null;
+    }
+    state.scene = null;
+    state.camera = null;
+    state.ambientLight = null;
+    state.pointLight = null;
+    state.bloomPass = null;
+    state.fxaaPass = null;
+    state.renderPass = null;
+    state.container = null;
+    console.log('[DiscoveryEngine3D] disposed');
+  }
+
+  function getFps(){ return state.fps; }
+  function getState(){ return state; }
+  function isRunning(){ return state.running; }
+
+  return { init, start, stop, dispose, getFps, getState, isRunning, PALETTE };
+})();
+
+window.DiscoveryEngine3D = DiscoveryEngine3D;
+
+// ── Toggle handler — bridges the existing D3 SVG graph and the new 3D engine ──
+window._toggle3DEngine = function(mode){
+  // mode: '2d' | '3d'
+  const svgCanvas = document.getElementById('net-canvas');
+  const netView = document.getElementById('network-view');
+  const fpsHud = document.getElementById('de3d-fps-hud');
+  const btn2d = document.getElementById('de3d-toggle-2d');
+  const btn3d = document.getElementById('de3d-toggle-3d');
+  if (!netView) return;
+  if (mode === '3d'){
+    if (svgCanvas) svgCanvas.style.display = 'none';
+    DiscoveryEngine3D.init(netView);
+    if (fpsHud) fpsHud.style.display = 'flex';
+    if (btn2d){ btn2d.classList.remove('active'); }
+    if (btn3d){ btn3d.classList.add('active'); }
+    try { localStorage.setItem('corsair-graph-engine', '3d'); } catch(e){}
+  } else {
+    DiscoveryEngine3D.dispose();
+    if (svgCanvas) svgCanvas.style.display = '';
+    if (fpsHud) fpsHud.style.display = 'none';
+    if (btn3d){ btn3d.classList.remove('active'); }
+    if (btn2d){ btn2d.classList.add('active'); }
+    try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
+  }
+};
 </script>
 </body>
 </html>
