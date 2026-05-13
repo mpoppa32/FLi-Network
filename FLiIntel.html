@@ -19,8 +19,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Antonio:wght@300;400;500;600;700&family=Big+Shoulders+Display:wght@500;600;700;800;900&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" onerror="document.getElementById('d3-fallback-msg').style.display='block'"></script>
-<!-- d3-force-3d for DiscoveryEngine3D Phase 2 physics (loaded on main thread for fallback; worker re-imports via importScripts) -->
-<script src="https://unpkg.com/d3-force-3d@3.0.5/build/d3-force-3d.min.js"></script>
+<!-- d3-force-3d for DiscoveryEngine3D Phase 2 physics (loaded on main thread for cache warmth; worker re-imports via importScripts) -->
+<script src="https://unpkg.com/d3-force-3d@3.0.6/dist/d3-force-3d.min.js"></script>
 <!-- Three.js + addons for DiscoveryEngine3D (Phase 1: WebGL infrastructure) -->
 <script type="importmap">
 {
@@ -34280,9 +34280,9 @@ const DiscoveryEngine3D = (function(){
     state.controls && state.controls.update();
     state.composer && state.composer.render();
 
-    // Push FPS to HUD if mounted
+    // Push FPS to HUD if mounted (don't clobber error messages)
     const fpsEl = document.getElementById('de3d-fps');
-    if (fpsEl) fpsEl.textContent = state.fps + ' FPS';
+    if (fpsEl && !fpsEl.dataset.errorPinned) fpsEl.textContent = state.fps + ' FPS';
   }
 
   // ── PHASE 2: PHYSICS WORKER ──────────────────────────────────────────────
@@ -34291,7 +34291,17 @@ const DiscoveryEngine3D = (function(){
   // a Float32Array of positions back to main thread on every tick. Transfer
   // is via the second arg of postMessage so it's zero-copy.
   const PHYSICS_WORKER_SRC = `
-    importScripts('https://unpkg.com/d3-force-3d@3.0.5/build/d3-force-3d.min.js');
+    // Surface import failures explicitly. importScripts throws synchronously
+    // when the URL 404s; without this guard the worker would silently die.
+    try {
+      importScripts('https://unpkg.com/d3-force-3d@3.0.6/dist/d3-force-3d.min.js');
+    } catch (importErr) {
+      self.postMessage({ type: 'error', stage: 'importScripts', message: String(importErr && importErr.message || importErr) });
+      // Continue past — main thread will see the error and fall back to placeholder mode.
+    }
+    if (typeof d3 === 'undefined' || typeof d3.forceSimulation !== 'function'){
+      self.postMessage({ type: 'error', stage: 'd3-missing', message: 'd3-force-3d did not load — d3.forceSimulation is undefined' });
+    }
 
     let sim = null;
     let nodes = [];
@@ -34319,6 +34329,11 @@ const DiscoveryEngine3D = (function(){
       const msg = ev.data;
 
       if (msg.type === 'init'){
+        if (typeof d3 === 'undefined' || typeof d3.forceSimulation !== 'function'){
+          self.postMessage({ type: 'error', stage: 'init', message: 'Cannot run simulation: d3-force-3d not loaded' });
+          return;
+        }
+        try {
         // Tear down any existing sim
         if (sim) { sim.stop(); sim = null; }
         nodes = msg.nodes.map(function(n, i){
@@ -34361,6 +34376,9 @@ const DiscoveryEngine3D = (function(){
           });
 
         self.postMessage({ type: 'ready', nodeCount: nodes.length, linkCount: links.length });
+        } catch (initErr) {
+          self.postMessage({ type: 'error', stage: 'init-throw', message: String(initErr && initErr.message || initErr), stack: String(initErr && initErr.stack || '') });
+        }
       }
 
       else if (msg.type === 'pin'){
@@ -34404,8 +34422,46 @@ const DiscoveryEngine3D = (function(){
           }
         }, 200);
       }
+      else if (msg.type === 'error'){
+        // Worker failed — surface visibly, fall back to placeholder rotation.
+        console.error('[DiscoveryEngine3D] worker error @', msg.stage, '—', msg.message);
+        const fpsEl = document.getElementById('de3d-fps');
+        if (fpsEl){
+          fpsEl.style.color = '#ef4444';
+          fpsEl.textContent = 'PHYSICS FAIL';
+          fpsEl.title = (msg.stage || '') + ': ' + (msg.message || '');
+          fpsEl.dataset.errorPinned = '1';
+        }
+        // Reset to placeholder-driven motion so the operator still sees something alive
+        state.physicsRealData = false;
+        state.physicsPositions = null;
+        // Restore the rotating placeholder cluster
+        if (state.scene && !state.instancedMesh){
+          state.instancedMesh = _buildPlaceholderInstancedMesh(100);
+          state.instanceCount = 100;
+          state.scene.add(state.instancedMesh);
+        } else if (state.scene && state.instancedMesh && state.instanceCount !== 100){
+          state.scene.remove(state.instancedMesh);
+          state.instancedMesh.geometry.dispose();
+          state.instancedMesh.material.dispose();
+          state.instancedMesh = _buildPlaceholderInstancedMesh(100);
+          state.instanceCount = 100;
+          state.scene.add(state.instancedMesh);
+        }
+      }
     };
-    w.onerror = function(e){ console.warn('[DiscoveryEngine3D] worker error:', e.message || e); };
+    w.onerror = function(e){
+      const detail = (e && e.message) ? e.message : (e && e.filename ? (e.filename + ':' + e.lineno) : 'unknown');
+      console.error('[DiscoveryEngine3D] worker onerror:', detail, e);
+      const fpsEl = document.getElementById('de3d-fps');
+      if (fpsEl){
+        fpsEl.style.color = '#ef4444';
+        fpsEl.textContent = 'WORKER FAIL';
+        fpsEl.title = detail;
+        fpsEl.dataset.errorPinned = '1';
+      }
+      state.physicsRealData = false;
+    };
     state.physicsWorker = w;
     return w;
   }
@@ -34609,6 +34665,10 @@ const DiscoveryEngine3D = (function(){
       state.resizeTimer = setTimeout(_doResize, 150);
     };
     window.addEventListener('resize', state.onResize);
+
+    // Clear any prior error pin on the FPS HUD
+    const fpsEl0 = document.getElementById('de3d-fps');
+    if (fpsEl0){ fpsEl0.style.color = ''; fpsEl0.title = ''; delete fpsEl0.dataset.errorPinned; fpsEl0.textContent = '— FPS'; }
 
     start();
     console.log('[DiscoveryEngine3D] Phase 1 scaffold initialized:', state.instanceCount, 'instances');
