@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.1b</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.2</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34254,7 +34254,9 @@ const DiscoveryEngine3D = (function(){
     // Diagnostic + auto-fit state
     posBounds: null,              // {minX,maxX,minY,maxY,minZ,maxZ,cx,cy,cz,radius}
     framesSinceFit: 0,            // counter for periodic auto-fit
-    initialFitDone: false         // run an aggressive first fit once positions arrive
+    initialFitDone: false,        // run an aggressive first fit once positions arrive
+    // Micro-step 3.2: per-instance visual scale (log of connection count → [0.7, 2.4])
+    instanceScales: null          // Float32Array sized to instanceCount, computed in loadGraph
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34324,7 +34326,8 @@ const DiscoveryEngine3D = (function(){
               if (y < minY) minY = y; if (y > maxY) maxY = y;
               if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
               _frameDummy.position.set(x, y, z);
-              _frameDummy.scale.setScalar(1);
+              // Micro-step 3.2: per-instance scale from precomputed array
+              _frameDummy.scale.setScalar(state.instanceScales ? state.instanceScales[i] : 1);
               _frameDummy.rotation.set(0, 0, 0);
               _frameDummy.updateMatrix();
               state.instancedMesh.setMatrixAt(i, _frameDummy.matrix);
@@ -34619,6 +34622,42 @@ const DiscoveryEngine3D = (function(){
     }).filter(function(l){ return l && personIdSet.has(l.source) && personIdSet.has(l.target); });
     console.log('[DiscoveryEngine3D] 3.1 people-only filter:', rawNodes.length, 'raw nodes →', cleanNodes.length, 'people /', cleanLinks.length, 'person-to-person links');
 
+    // ── Micro-step 3.2: per-instance scale by log(connection count) ────────
+    // Degree is computed against the FULL rawLinks set (not just person-to-
+    // person), because a person's prominence includes their links to orgs,
+    // government entities, etc. Size encodes total workspace connectivity.
+    const degByPerson = new Map();
+    personOnly.forEach(function(n){ degByPerson.set(String(n.id), 0); });
+    (rawLinks || []).forEach(function(l){
+      const s = l && l.source ? (l.source.id ? l.source.id : (typeof l.source === 'string' ? l.source : null)) : null;
+      const t = l && l.target ? (l.target.id ? l.target.id : (typeof l.target === 'string' ? l.target : null)) : null;
+      if (s != null && degByPerson.has(String(s))) degByPerson.set(String(s), degByPerson.get(String(s)) + 1);
+      if (t != null && degByPerson.has(String(t))) degByPerson.set(String(t), degByPerson.get(String(t)) + 1);
+    });
+    let maxDeg = 0, zeroCount = 0;
+    const degArr = cleanNodes.map(function(n){
+      const d = degByPerson.get(n.id) || 0;
+      if (d > maxDeg) maxDeg = d;
+      if (d === 0) zeroCount++;
+      return d;
+    });
+    const SCALE_MIN = 0.7, SCALE_MAX = 2.4, SCALE_RANGE = SCALE_MAX - SCALE_MIN;
+    const logMax = maxDeg > 0 ? Math.log(1 + maxDeg) : 1;
+    state.instanceScales = new Float32Array(cleanNodes.length);
+    for (let i = 0; i < cleanNodes.length; i++){
+      const d = degArr[i];
+      state.instanceScales[i] = maxDeg > 0
+        ? SCALE_MIN + (Math.log(1 + d) / logMax) * SCALE_RANGE
+        : SCALE_MIN;
+    }
+    // Diagnostic — confirms variation exists in your data
+    const median = (function(){
+      const sorted = degArr.slice().sort(function(a,b){return a-b;});
+      const mid = Math.floor(sorted.length/2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
+    })();
+    console.log('[DiscoveryEngine3D] 3.2 degree distribution: max=' + maxDeg + ' median=' + median + ' zero-degree=' + zeroCount + '/' + cleanNodes.length);
+
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
     state.initialFitDone = false;     // re-fit on new dataset
@@ -34888,6 +34927,7 @@ const DiscoveryEngine3D = (function(){
     state.physicsPositions = null;
     state.physicsNodeIds = [];
     state.physicsRealData = false;
+    state.instanceScales = null;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
