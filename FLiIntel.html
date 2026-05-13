@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.3</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.4</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34263,7 +34263,10 @@ const DiscoveryEngine3D = (function(){
     posBounds: null,              // {minX,maxX,minY,maxY,minZ,maxZ,cx,cy,cz,radius}
     framesSinceFit: 0,            // counter for periodic auto-fit
     initialFitDone: false,        // run an aggressive first fit once positions arrive
-    instanceScales: null          // Per-instance visual scale (will be repopulated by 3.2')
+    instanceScales: null,         // Per-instance visual scale (will be repopulated by 3.2')
+    // Micro-step 3.4: gold role-ring torus for decision-makers
+    ringMesh: null,               // THREE.InstancedMesh of gold torus rings
+    ringIndexMap: null            // [personGlobalIdx, ...] — for each ring, which person it surrounds
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34340,6 +34343,28 @@ const DiscoveryEngine3D = (function(){
               state.instancedMesh.setMatrixAt(i, _frameDummy.matrix);
             }
             state.instancedMesh.instanceMatrix.needsUpdate = true;
+
+            // Micro-step 3.4: write ring matrices from their associated person
+            // positions. Each ring inherits its person's scale so the torus stays
+            // proportional to the (engagement-scaled) sphere it surrounds.
+            if (state.ringMesh && state.ringIndexMap && state.ringIndexMap.length){
+              for (let r = 0; r < state.ringIndexMap.length; r++){
+                const pIdx = state.ringIndexMap[r];
+                if (pIdx >= n) continue;
+                const rx = pos[pIdx*3], ry = pos[pIdx*3+1], rz = pos[pIdx*3+2];
+                const px = Number.isFinite(rx) ? rx : 0;
+                const py = Number.isFinite(ry) ? ry : 0;
+                const pz = Number.isFinite(rz) ? rz : 0;
+                const ps = state.instanceScales ? state.instanceScales[pIdx] : 1;
+                _frameDummy.position.set(px, py, pz);
+                _frameDummy.scale.setScalar(ps);
+                _frameDummy.rotation.set(0, 0, 0);
+                _frameDummy.updateMatrix();
+                state.ringMesh.setMatrixAt(r, _frameDummy.matrix);
+              }
+              state.ringMesh.instanceMatrix.needsUpdate = true;
+            }
+
             const cx = (minX + maxX) * 0.5;
             const cy = (minY + maxY) * 0.5;
             const cz = (minZ + maxZ) * 0.5;
@@ -34693,6 +34718,39 @@ const DiscoveryEngine3D = (function(){
     })();
     console.log('[DiscoveryEngine3D] 3.2′ engagement distribution: max=' + maxEng + ' median=' + median + ' zero-engagement=' + zeroCount + '/' + cleanNodes.length + ' · meetings scanned=' + meetingsScanned + ' hits=' + meetingHits);
 
+    // ── Micro-step 3.4: identify decision-makers by role keyword ──────────
+    // Match defense-BD decision-maker roles: full phrases plus tight token
+    // matches on common abbreviations. Tokens are split on whitespace and
+    // common punctuation, then compared against an abbreviation whitelist —
+    // this prevents false matches (e.g. "co" inside "company").
+    const DM_PHRASES = [
+      'contracting officer', 'program manager', 'cotr', 'source selection',
+      'deputy program', 'procurement officer', 'capture lead', 'capture manager',
+      'director', 'chief', 'commander', 'head of', 'vice president', 'president',
+      'general', 'admiral', 'colonel', 'secretary', 'undersecretary'
+    ];
+    const DM_TOKENS = new Set(['co', 'pm', 'dpm', 'cotr', 'cor', 'pco', 'aco', 'po', 'ceo', 'cto', 'coo', 'cfo']);
+    function _isDecisionMaker(role){
+      if (!role) return false;
+      const r = String(role).toLowerCase();
+      for (let i = 0; i < DM_PHRASES.length; i++){
+        if (r.indexOf(DM_PHRASES[i]) !== -1) return true;
+      }
+      const tokens = r.split(/[\s,\/;()._\-]+/).filter(Boolean);
+      for (let j = 0; j < tokens.length; j++){
+        if (DM_TOKENS.has(tokens[j])) return true;
+      }
+      return false;
+    }
+    const ringIdxMap = [];
+    cleanNodes.forEach(function(n, gi){
+      // role lives on the original raw node — find it
+      const raw = personOnly[gi];
+      if (raw && _isDecisionMaker(raw.role)) ringIdxMap.push(gi);
+    });
+    state.ringIndexMap = ringIdxMap;
+    console.log('[DiscoveryEngine3D] 3.4 decision-makers: ' + ringIdxMap.length + ' of ' + cleanNodes.length + ' people');
+
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
     state.initialFitDone = false;     // re-fit on new dataset
@@ -34714,6 +34772,39 @@ const DiscoveryEngine3D = (function(){
     state.instancedMesh.updateMatrixWorld(true);
     if (state.scene) state.scene.add(state.instancedMesh);
     console.log('[DiscoveryEngine3D] loadGraph: built single mesh with', cleanNodes.length, 'instances; worker getting', cleanLinks.length, 'links');
+
+    // Micro-step 3.4: build the gold decision-maker ring InstancedMesh.
+    // Dispose any prior ringMesh first (re-loadGraph case).
+    if (state.ringMesh){
+      if (state.scene) state.scene.remove(state.ringMesh);
+      if (state.ringMesh.geometry) state.ringMesh.geometry.dispose();
+      if (state.ringMesh.material) state.ringMesh.material.dispose();
+      state.ringMesh = null;
+    }
+    if (ringIdxMap.length){
+      const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xd4823a,           // amber gold
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false           // play nice with the translucent sphere shader
+      });
+      const ringMesh = new THREE.InstancedMesh(ringGeo, ringMat, ringIdxMap.length);
+      ringMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      ringMesh.frustumCulled = false;
+      // Seed initial matrices to (0,0,0) scale 0 so the rings are invisible
+      // until the first worker tick places them on top of their person.
+      const dummy = new THREE.Object3D();
+      dummy.position.set(0, 0, 0);
+      dummy.scale.setScalar(0);
+      dummy.updateMatrix();
+      for (let r = 0; r < ringIdxMap.length; r++){
+        ringMesh.setMatrixAt(r, dummy.matrix);
+      }
+      ringMesh.instanceMatrix.needsUpdate = true;
+      state.ringMesh = ringMesh;
+      if (state.scene) state.scene.add(ringMesh);
+    }
 
     // Spawn / reuse worker, send graph
     const w = _ensurePhysicsWorker();
@@ -35008,6 +35099,13 @@ const DiscoveryEngine3D = (function(){
     state.physicsNodeIds = [];
     state.physicsRealData = false;
     state.instanceScales = null;
+    if (state.ringMesh){
+      if (state.scene) state.scene.remove(state.ringMesh);
+      if (state.ringMesh.geometry) state.ringMesh.geometry.dispose();
+      if (state.ringMesh.material) state.ringMesh.material.dispose();
+      state.ringMesh = null;
+    }
+    state.ringIndexMap = null;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
