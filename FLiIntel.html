@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.0</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.1</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -8701,6 +8701,14 @@ function connectWorkspace(){
       else{var i=PALETTE.indexOf(n.color);if(i>=colorIdx)colorIdx=i+1;}
     });
     nodes=incoming;
+    // Mirror to window so cross-module consumers (DiscoveryEngine3D, console
+    // debugging, future API) always see the latest array reference. Module
+    // top-level `var` does not attach to window, so this explicit assignment
+    // is required every time nodes is reassigned.
+    window.nodes=nodes;
+    if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
+      try { window.DiscoveryEngine3D.loadGraph(nodes, links || []); } catch(e){ console.warn('[DE3D] live reload failed:', e); }
+    }
     companyByName.clear();
     nodes.forEach(function(n){if(n.type==='company')companyByName.set(n.name.toLowerCase(),n);});
     visibleIds=new Set(nodes.map(function(n){return n.id;}));
@@ -8712,6 +8720,11 @@ function connectWorkspace(){
   var u4=onValue(ref(db,wsPath('links')),function(snap){
     linkMap.clear();
     links=snap.val()?Object.values(snap.val()):[];
+    // Mirror to window (same rationale as nodes listener above)
+    window.links=links;
+    if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
+      try { window.DiscoveryEngine3D.loadGraph(nodes, links); } catch(e){ console.warn('[DE3D] live reload failed:', e); }
+    }
     links.forEach(function(l){linkMap.set(l.id,l);});
     if(window._invalidateEntityGraph)window._invalidateEntityGraph();
     renderNetwork();
@@ -34241,11 +34254,7 @@ const DiscoveryEngine3D = (function(){
     // Diagnostic + auto-fit state
     posBounds: null,              // {minX,maxX,minY,maxY,minZ,maxZ,cx,cy,cz,radius}
     framesSinceFit: 0,            // counter for periodic auto-fit
-    initialFitDone: false,        // run an aggressive first fit once positions arrive
-    // Phase 3: typed-mesh registry
-    typedMeshes: null,            // { person: InstancedMesh, company: ..., government: ..., other: ... }
-    indexMap: null,               // [{type, localIdx, priority}, ...] — global idx → typed mesh slot
-    nodeMetadata: null            // [{type, priority, name}, ...] — keep for HUD / Phase 4+ wiring
+    initialFitDone: false         // run an aggressive first fit once positions arrive
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34297,63 +34306,53 @@ const DiscoveryEngine3D = (function(){
     _sampleFps(now);
 
     try {
-      if (state.physicsRealData){
-        // Real-data mode (Phase 3): route positions into the correct typed mesh
-        if (state.physicsPositions && state.typedMeshes && state.indexMap){
-          const pos = state.physicsPositions;
-          const n = Math.min(state.instanceCount, (pos.length / 3) | 0);
-          let minX = Infinity, maxX = -Infinity;
-          let minY = Infinity, maxY = -Infinity;
-          let minZ = Infinity, maxZ = -Infinity;
-          // Track which meshes touched this frame so we only flag them dirty
-          const touched = Object.create(null);
-          for (let i = 0; i < n; i++){
-            const xr = pos[i*3], yr = pos[i*3+1], zr = pos[i*3+2];
-            const x = Number.isFinite(xr) ? xr : 0;
-            const y = Number.isFinite(yr) ? yr : 0;
-            const z = Number.isFinite(zr) ? zr : 0;
-            if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (y < minY) minY = y; if (y > maxY) maxY = y;
-            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
-            const slot = state.indexMap[i];
-            if (!slot) continue;
-            const mesh = state.typedMeshes[slot.type];
-            if (!mesh) continue;
-            const s = _scaleForPriority(slot.priority);
-            _frameDummy.position.set(x, y, z);
-            _frameDummy.scale.setScalar(s);
-            _frameDummy.rotation.set(0, 0, 0);
-            _frameDummy.updateMatrix();
-            mesh.setMatrixAt(slot.localIdx, _frameDummy.matrix);
-            touched[slot.type] = true;
-          }
-          Object.keys(touched).forEach(function(t){
-            const m = state.typedMeshes[t];
-            if (m) m.instanceMatrix.needsUpdate = true;
-          });
-          // Stash bounds for HUD + camera-fit
-          const cx = (minX + maxX) * 0.5;
-          const cy = (minY + maxY) * 0.5;
-          const cz = (minZ + maxZ) * 0.5;
-          const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
-          const radius = Math.sqrt(dx*dx + dy*dy + dz*dz) * 0.5;
-          state.posBounds = { minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, radius };
+      if (state.instancedMesh){
+        if (state.physicsRealData){
+          // Real-data mode: drive single InstancedMesh from worker positions.
+          if (state.physicsPositions){
+            const pos = state.physicsPositions;
+            const n = Math.min(state.instanceCount, (pos.length / 3) | 0);
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
+            for (let i = 0; i < n; i++){
+              const xr = pos[i*3], yr = pos[i*3+1], zr = pos[i*3+2];
+              const x = Number.isFinite(xr) ? xr : 0;
+              const y = Number.isFinite(yr) ? yr : 0;
+              const z = Number.isFinite(zr) ? zr : 0;
+              if (x < minX) minX = x; if (x > maxX) maxX = x;
+              if (y < minY) minY = y; if (y > maxY) maxY = y;
+              if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+              _frameDummy.position.set(x, y, z);
+              _frameDummy.scale.setScalar(1);
+              _frameDummy.rotation.set(0, 0, 0);
+              _frameDummy.updateMatrix();
+              state.instancedMesh.setMatrixAt(i, _frameDummy.matrix);
+            }
+            state.instancedMesh.instanceMatrix.needsUpdate = true;
+            const cx = (minX + maxX) * 0.5;
+            const cy = (minY + maxY) * 0.5;
+            const cz = (minZ + maxZ) * 0.5;
+            const dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
+            const radius = Math.sqrt(dx*dx + dy*dy + dz*dz) * 0.5;
+            state.posBounds = { minX, maxX, minY, maxY, minZ, maxZ, cx, cy, cz, radius };
 
-          if (!state.initialFitDone && state.physicsTickCount >= 1 && state.controls && state.camera){
-            console.log('[DiscoveryEngine3D] first bounds @ T' + state.physicsTickCount + ':', state.posBounds);
-            _fitCameraToBounds(state.posBounds, 1.8);
-            state.initialFitDone = true;
+            if (!state.initialFitDone && state.physicsTickCount >= 1 && state.controls && state.camera){
+              console.log('[DiscoveryEngine3D] first bounds @ T' + state.physicsTickCount + ':', state.posBounds);
+              _fitCameraToBounds(state.posBounds, 1.8);
+              state.initialFitDone = true;
+            }
+            state.framesSinceFit = (state.framesSinceFit || 0) + 1;
+            if (state.framesSinceFit > 60 && state.physicsTickCount < 240 && state.controls && state.camera){
+              _fitCameraToBounds(state.posBounds, 1.6);
+              state.framesSinceFit = 0;
+            }
           }
-          state.framesSinceFit = (state.framesSinceFit || 0) + 1;
-          if (state.framesSinceFit > 60 && state.physicsTickCount < 240 && state.controls && state.camera){
-            _fitCameraToBounds(state.posBounds, 1.6);
-            state.framesSinceFit = 0;
-          }
+        } else {
+          // Placeholder mode — gentle idle rotation.
+          state.instancedMesh.rotation.y += 0.0015;
+          state.instancedMesh.rotation.x += 0.0006;
         }
-      } else if (state.instancedMesh){
-        // Placeholder mode — gentle idle rotation on the single InstancedMesh.
-        state.instancedMesh.rotation.y += 0.0015;
-        state.instancedMesh.rotation.x += 0.0006;
       }
 
       state.controls && state.controls.update();
@@ -34369,18 +34368,8 @@ const DiscoveryEngine3D = (function(){
     const statusEl = document.getElementById('de3d-status');
     if (statusEl && !statusEl.dataset.errorPinned){
       if (state.physicsRealData){
-        // Phase 3: surface per-type counts
-        let typeStr = '';
-        if (state.typedMeshes){
-          const parts = [];
-          if (state.typedMeshes.person)     parts.push(state.typedMeshes.person.count + 'p');
-          if (state.typedMeshes.company)    parts.push(state.typedMeshes.company.count + 'c');
-          if (state.typedMeshes.government) parts.push(state.typedMeshes.government.count + 'g');
-          if (state.typedMeshes.other)      parts.push(state.typedMeshes.other.count + 'o');
-          typeStr = parts.length ? ' (' + parts.join('/') + ')' : '';
-        }
-        statusEl.textContent = state.instanceCount + ' nodes' + typeStr + ' · T' + state.physicsTickCount;
-        if (state.posBounds){
+        statusEl.textContent = state.instanceCount + ' people · T' + state.physicsTickCount;
+        if (state.posBounds && state.camera && state.controls){
           const b = state.posBounds;
           statusEl.title = 'cluster center (' + b.cx.toFixed(1) + ', ' + b.cy.toFixed(1) + ', ' + b.cz.toFixed(1) + ') radius ' + b.radius.toFixed(1) + ' | cam dist ' + state.camera.position.distanceTo(state.controls.target).toFixed(1);
         }
@@ -34558,9 +34547,6 @@ const DiscoveryEngine3D = (function(){
         // Reset to placeholder-driven motion so the operator still sees something alive
         state.physicsRealData = false;
         state.physicsPositions = null;
-        // Tear down typed meshes (if any) so the single placeholder mesh
-        // is the only thing rendering after a worker failure.
-        _disposeTypedMeshes();
         // Restore the rotating placeholder cluster
         if (state.scene && !state.instancedMesh){
           state.instancedMesh = _buildPlaceholderInstancedMesh(100);
@@ -34600,49 +34586,52 @@ const DiscoveryEngine3D = (function(){
       console.log('[DiscoveryEngine3D] loadGraph: no nodes; keeping placeholder');
       return;
     }
-    const cleanNodes = rawNodes.map(function(n){
+    // ── Micro-step 3.1: PEOPLE ONLY ────────────────────────────────────────
+    // Orgs / government / other entity types will be added in micro-steps
+    // 3.7 (orgs) and 3.11 (contracts). For now, the engine renders only the
+    // person-type subset so we can verify a single entity type cleanly before
+    // layering complexity.
+    const personOnly = rawNodes.filter(function(n){ return n && n.type === 'person'; });
+    const personIdSet = new Set(personOnly.map(function(n){ return String(n.id); }));
+    const cleanNodes = personOnly.map(function(n){
       return {
         id: String(n.id),
         name: String(n.name || ''),
-        type: n.type || 'person',
+        type: 'person',
         priority: n.priority || 3,
         oppId: n.oppId || (n.opp && n.opp.id) || null
       };
     });
+    // Only keep links where BOTH endpoints are people (worker would throw
+    // "node not found" on any link referencing a non-imported node)
     const cleanLinks = (rawLinks || []).map(function(l){
       const s = (l.source && l.source.id) ? l.source.id : (typeof l.source === 'string' ? l.source : null);
       const t = (l.target && l.target.id) ? l.target.id : (typeof l.target === 'string' ? l.target : null);
       return s && t ? { source: String(s), target: String(t), recency: l.recency || 0.5 } : null;
-    }).filter(Boolean);
+    }).filter(function(l){ return l && personIdSet.has(l.source) && personIdSet.has(l.target); });
+    console.log('[DiscoveryEngine3D] 3.1 people-only filter:', rawNodes.length, 'raw nodes →', cleanNodes.length, 'people /', cleanLinks.length, 'person-to-person links');
 
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
     state.physicsRealData = true;
     state.initialFitDone = false;     // re-fit on new dataset
     state.framesSinceFit = 0;
 
-    // Dispose the placeholder single mesh (if present)
+    // Replace single InstancedMesh sized to the actual node count.
     if (state.scene && state.instancedMesh){
       state.scene.remove(state.instancedMesh);
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
       state.instancedMesh = null;
     }
-    // Dispose any prior typed meshes (re-loadGraph case)
-    _disposeTypedMeshes();
-
-    // Phase 3: build typed meshes (one InstancedMesh per entity type)
-    const built = _buildTypedMeshes(cleanNodes);
-    state.typedMeshes = built.meshes;
-    state.indexMap = built.indexMap;
     state.instanceCount = cleanNodes.length;
-    state.nodeMetadata = cleanNodes.map(function(n){ return { type: n.type, priority: n.priority, name: n.name || '' }; });
-
-    let typeSummary = [];
-    Object.keys(state.typedMeshes).forEach(function(t){
-      state.scene.add(state.typedMeshes[t]);
-      typeSummary.push(t + ':' + state.typedMeshes[t].count);
-    });
-    console.log('[DiscoveryEngine3D] loadGraph: typed meshes ready —', typeSummary.join(' / '), '· links', cleanLinks.length);
+    state.instancedMesh = _buildPlaceholderInstancedMesh(cleanNodes.length);
+    state.instancedMesh.position.set(0, 0, 0);
+    state.instancedMesh.rotation.set(0, 0, 0);
+    state.instancedMesh.scale.set(1, 1, 1);
+    state.instancedMesh.updateMatrix();
+    state.instancedMesh.updateMatrixWorld(true);
+    if (state.scene) state.scene.add(state.instancedMesh);
+    console.log('[DiscoveryEngine3D] loadGraph: built single mesh with', cleanNodes.length, 'instances; worker getting', cleanLinks.length, 'links');
 
     // Spawn / reuse worker, send graph
     const w = _ensurePhysicsWorker();
@@ -34664,25 +34653,20 @@ const DiscoveryEngine3D = (function(){
   }
 
   function _buildPlaceholderInstancedMesh(count){
-    // Single SphereGeometry instanced N times — one draw call for all spheres.
-    // Validates the instancing path that Phase 3 will scale to thousands.
-    const geo = new THREE.SphereGeometry(0.6, 24, 18);
-    const mat = new THREE.MeshStandardMaterial({
-      color: PALETTE.amber,
-      emissive: PALETTE.amber,
-      emissiveIntensity: 0.55,
-      roughness: 0.45,
-      metalness: 0.15,
-      transparent: true,
-      opacity: 0.92
+    // Micro-step 3.1: solid spheres, MeshBasicMaterial (no shader, no lighting
+    // dependency) so we can confirm geometry + positioning visually before
+    // layering Fresnel rim (3.3), role rings (3.4–3.6), or per-instance scale.
+    const geo = new THREE.SphereGeometry(1, 16, 12);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xb5ad9f
     });
     const mesh = new THREE.InstancedMesh(geo, mat, count);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     const dummy = new THREE.Object3D();
-    const colorAttr = new Float32Array(count * 3);
     for (let i = 0; i < count; i++){
-      // Spherical scatter inside radius ~22
+      // Spherical scatter inside radius ~22 — seed positions so the mesh is
+      // visible before the first worker tick lands.
       const r = 8 + Math.cbrt(Math.random()) * 14;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
@@ -34691,18 +34675,12 @@ const DiscoveryEngine3D = (function(){
         r * Math.sin(phi) * Math.sin(theta),
         r * Math.cos(phi)
       );
-      const s = 0.7 + Math.random() * 0.9;
-      dummy.scale.set(s, s, s);
+      // Uniform scale 1 per micro-step 3.1; per-instance scale comes in 3.2
+      dummy.scale.set(1, 1, 1);
+      dummy.rotation.set(0, 0, 0);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-
-      // Per-instance color tint — amber → bone gradient
-      const t = Math.random();
-      colorAttr[i*3+0] = 0.83 + t * 0.13;  // R
-      colorAttr[i*3+1] = 0.51 + t * 0.42;  // G
-      colorAttr[i*3+2] = 0.23 + t * 0.65;  // B
     }
-    mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
     mesh.instanceMatrix.needsUpdate = true;
     // CRITICAL: disable frustum culling. Three.js computes the cull bounding
     // sphere from the geometry (radius 0.6 at origin), not from per-instance
@@ -34714,146 +34692,9 @@ const DiscoveryEngine3D = (function(){
     return mesh;
   }
 
-  // ── PHASE 3: ENTITY VISUAL LANGUAGE ───────────────────────────────────────
-  // Each entity type gets its own InstancedMesh with a distinct geometry and
-  // material so people, companies, and government entities are visually
-  // separable in peripheral vision without reading a label.
-  //
-  // Per-instance ENCODING:
-  //   - scale: T1 = 1.7, T2 = 1.25, T3+ = 1.0 (size encodes priority)
-  //   - color (via instanceColor + vertexColors:true on material):
-  //       Person T1 = gold (#d4823a), T2 = sky (#38bdf8), T3 = bone (#f4ede0)
-  //       Company T1 = gold-tint, T2 = teal, T3 = paper
-  //       Government T1 = bright gold, T2 = blue, T3 = muted gold
-  //
-  // Phases 4/5/7 will add: edges between nodes, ghost edges, role rings,
-  // pursuit halos, drag-pin / focus interactions.
-
-  const TYPE_SPEC = {
-    person: {
-      geom: () => new THREE.SphereGeometry(0.6, 22, 16),
-      mat: () => new THREE.MeshStandardMaterial({
-        color: 0xf4ede0, emissive: 0xd4823a, emissiveIntensity: 0.45,
-        roughness: 0.45, metalness: 0.15,
-        transparent: true, opacity: 0.94, vertexColors: true
-      })
-    },
-    company: {
-      geom: () => new THREE.BoxGeometry(1.2, 0.95, 1.2),
-      mat: () => new THREE.MeshStandardMaterial({
-        color: 0xb5ad9f, emissive: 0x38bdf8, emissiveIntensity: 0.35,
-        roughness: 0.32, metalness: 0.45,
-        transparent: true, opacity: 0.92, vertexColors: true
-      })
-    },
-    government: {
-      geom: () => new THREE.OctahedronGeometry(0.85, 0),
-      mat: () => new THREE.MeshStandardMaterial({
-        color: 0xf4ede0, emissive: 0xd4823a, emissiveIntensity: 0.65,
-        roughness: 0.25, metalness: 0.4,
-        transparent: true, opacity: 0.96, vertexColors: true
-      })
-    },
-    other: {
-      geom: () => new THREE.TetrahedronGeometry(0.55, 0),
-      mat: () => new THREE.MeshStandardMaterial({
-        color: 0x7d7669, emissive: 0x7d7669, emissiveIntensity: 0.2,
-        roughness: 0.6, metalness: 0.1,
-        transparent: true, opacity: 0.85, vertexColors: true
-      })
-    }
-  };
-
-  function _scaleForPriority(p){
-    return p === 1 ? 1.7 : p === 2 ? 1.25 : 1.0;
-  }
-  function _colorForNode(type, priority, outRGB){
-    // Returns [r,g,b] in 0..1 range
-    if (priority === 1){
-      // T1 — always gold-ish (decision-makers)
-      outRGB[0] = 0.83; outRGB[1] = 0.51; outRGB[2] = 0.23;
-    } else if (priority === 2){
-      // T2 — sky blue
-      outRGB[0] = 0.22; outRGB[1] = 0.74; outRGB[2] = 0.97;
-    } else if (type === 'government'){
-      outRGB[0] = 0.77; outRGB[1] = 0.53; outRGB[2] = 0.18;
-    } else if (type === 'company'){
-      outRGB[0] = 0.71; outRGB[1] = 0.68; outRGB[2] = 0.62;
-    } else {
-      // bone / paper neutral
-      outRGB[0] = 0.96; outRGB[1] = 0.93; outRGB[2] = 0.88;
-    }
-  }
-
-  // Build the four typed meshes sized to actual node counts, plus the
-  // global-index → (type, localIdx) map the position consumer needs.
-  function _buildTypedMeshes(cleanNodes){
-    // 1. Bucket nodes by type
-    const buckets = { person: [], company: [], government: [], other: [] };
-    const indexMap = new Array(cleanNodes.length);
-    cleanNodes.forEach(function(n, gi){
-      const t = (n.type === 'person' || n.type === 'company' || n.type === 'government') ? n.type : 'other';
-      const local = buckets[t].length;
-      buckets[t].push({ globalIdx: gi, priority: n.priority || 3 });
-      indexMap[gi] = { type: t, localIdx: local, priority: n.priority || 3 };
-    });
-
-    // 2. Build one InstancedMesh per type, sized to that bucket
-    const meshes = {};
-    const dummy = new THREE.Object3D();
-    const tmpColor = [0, 0, 0];
-    Object.keys(buckets).forEach(function(t){
-      const arr = buckets[t];
-      if (!arr.length) return;
-      const spec = TYPE_SPEC[t];
-      const geo = spec.geom();
-      const mat = spec.mat();
-      const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.frustumCulled = false;
-      // Initial random seed positions so the meshes are visible before the
-      // first worker tick lands.
-      const colorAttr = new Float32Array(arr.length * 3);
-      for (let i = 0; i < arr.length; i++){
-        const node = arr[i];
-        const r = 8 + Math.cbrt(Math.random()) * 14;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
-        dummy.position.set(
-          r * Math.sin(phi) * Math.cos(theta),
-          r * Math.sin(phi) * Math.sin(theta),
-          r * Math.cos(phi)
-        );
-        const s = _scaleForPriority(node.priority);
-        dummy.scale.set(s, s, s);
-        dummy.rotation.set(0, 0, 0);
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i, dummy.matrix);
-        _colorForNode(t, node.priority, tmpColor);
-        colorAttr[i*3+0] = tmpColor[0];
-        colorAttr[i*3+1] = tmpColor[1];
-        colorAttr[i*3+2] = tmpColor[2];
-      }
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
-      mesh.instanceMatrix.needsUpdate = true;
-      meshes[t] = mesh;
-    });
-
-    return { meshes, indexMap };
-  }
-
-  function _disposeTypedMeshes(){
-    if (!state.typedMeshes) return;
-    Object.keys(state.typedMeshes).forEach(function(t){
-      const m = state.typedMeshes[t];
-      if (!m) return;
-      if (state.scene) state.scene.remove(m);
-      if (m.geometry) m.geometry.dispose();
-      if (m.material) m.material.dispose();
-    });
-    state.typedMeshes = null;
-    state.indexMap = null;
-  }
+  // ── PHASE 3 (rolled back to clean Phase 2 base) ──────────────────────────
+  // Typed-mesh implementation removed. Phase 3 will be rebuilt as atomic
+  // micro-steps starting from a single InstancedMesh of people-only nodes.
 
   function init(container){
     if (!container){ console.warn('[DiscoveryEngine3D] init: no container'); return; }
@@ -35039,7 +34880,6 @@ const DiscoveryEngine3D = (function(){
     state.physicsPositions = null;
     state.physicsNodeIds = [];
     state.physicsRealData = false;
-    _disposeTypedMeshes();
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
