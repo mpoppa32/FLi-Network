@@ -8148,11 +8148,30 @@ var currentUser=null,currentWs=null,currentWsId=null,currentUserRole='Analyst',u
 var _nodePositionUndo=null,_nodeUndoTimer=null;
 
 // ── Shared Anthropic API fetch helper ────────────────────────
-// Centralizes: 45s timeout, humanized errors, required headers.
+// Centralizes: adaptive timeout, humanized errors, required headers.
 // The browser-direct header is required by Anthropic when calling
 // from a browser without a server proxy — not a security risk.
+//
+// Timeout strategy: defense BD transcripts often run 30K–80K chars
+// (full meeting + auto-capture). At max_tokens=3000 these can take
+// 60–180 seconds end-to-end. Default scales with payload size and
+// caps at 5 minutes. Callers can still override explicitly.
 async function _apiFetch(key,payload,timeoutMs){
-  timeoutMs=timeoutMs||45000;
+  if(!timeoutMs){
+    var bodyLen=0;
+    try{
+      (payload.messages||[]).forEach(function(m){
+        if(typeof m.content==='string')bodyLen+=m.content.length;
+        else if(Array.isArray(m.content))m.content.forEach(function(p){if(p&&p.text)bodyLen+=p.text.length;});
+      });
+      if(payload.system)bodyLen+=String(payload.system).length;
+    }catch(e){}
+    // Base 90s, +12s per 10K chars over 10K, capped at 300s (5 min).
+    var extra=Math.max(0,Math.floor((bodyLen-10000)/10000))*12000;
+    timeoutMs=Math.min(300000,90000+extra);
+  }
+  var elapsed=0;
+  var startedAt=Date.now();
   var ctrl=new AbortController();
   var timer=setTimeout(function(){ctrl.abort();},timeoutMs);
   try{
@@ -8175,7 +8194,11 @@ async function _apiFetch(key,payload,timeoutMs){
     return res;
   }catch(e){
     clearTimeout(timer);
-    if(e.name==='AbortError')throw new Error('Request timed out after 45 seconds — check your connection.');
+    elapsed=Math.round((Date.now()-startedAt)/1000);
+    if(e.name==='AbortError'){
+      var capSec=Math.round(timeoutMs/1000);
+      throw new Error('Request timed out after '+capSec+'s. For very large transcripts, try splitting into two sections, or check your connection.');
+    }
     throw e;
   }
 }
