@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P2.fix2</span>
+      <span style="color:var(--gold)" id="de3d-build">P2.fix3</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34262,26 +34262,42 @@ const DiscoveryEngine3D = (function(){
     state.rafId = requestAnimationFrame(_animate);
     _sampleFps(now);
 
-    if (state.physicsRealData && state.physicsPositions && state.instancedMesh){
-      // ── Phase 2: drive InstancedMesh from worker position buffer ──
-      const pos = state.physicsPositions;
-      const n = Math.min(state.instanceCount, (pos.length / 3) | 0);
-      for (let i = 0; i < n; i++){
-        _frameDummy.position.set(pos[i*3], pos[i*3+1], pos[i*3+2]);
-        // Uniform scale for Phase 2; Phase 3 will encode entity type/priority into scale
-        _frameDummy.scale.setScalar(1);
-        _frameDummy.updateMatrix();
-        state.instancedMesh.setMatrixAt(i, _frameDummy.matrix);
+    try {
+      if (state.instancedMesh){
+        if (state.physicsRealData){
+          // Real-data mode. Do NOT idle-rotate; the mesh stays still until the
+          // worker sends positions. When positions arrive, drive matrices.
+          if (state.physicsPositions){
+            const pos = state.physicsPositions;
+            const n = Math.min(state.instanceCount, (pos.length / 3) | 0);
+            for (let i = 0; i < n; i++){
+              // Sanitize: any NaN/Infinity becomes 0 so a bad sim tick can't
+              // poison the instance matrix and force-cull the whole mesh.
+              const x = pos[i*3],     y = pos[i*3+1], z = pos[i*3+2];
+              _frameDummy.position.set(
+                Number.isFinite(x) ? x : 0,
+                Number.isFinite(y) ? y : 0,
+                Number.isFinite(z) ? z : 0
+              );
+              _frameDummy.scale.setScalar(1);
+              _frameDummy.rotation.set(0, 0, 0);
+              _frameDummy.updateMatrix();
+              state.instancedMesh.setMatrixAt(i, _frameDummy.matrix);
+            }
+            state.instancedMesh.instanceMatrix.needsUpdate = true;
+          }
+        } else {
+          // Placeholder-only idle breathing.
+          state.instancedMesh.rotation.y += 0.0015;
+          state.instancedMesh.rotation.x += 0.0006;
+        }
       }
-      state.instancedMesh.instanceMatrix.needsUpdate = true;
-    } else if (state.instancedMesh){
-      // Idle breathing for placeholder data only
-      state.instancedMesh.rotation.y += 0.0015;
-      state.instancedMesh.rotation.x += 0.0006;
-    }
 
-    state.controls && state.controls.update();
-    state.composer && state.composer.render();
+      state.controls && state.controls.update();
+      state.composer && state.composer.render();
+    } catch (renderErr) {
+      console.error('[DiscoveryEngine3D] render loop error:', renderErr);
+    }
 
     // Push FPS to HUD if mounted (don't clobber error messages)
     const fpsEl = document.getElementById('de3d-fps');
@@ -34536,7 +34552,15 @@ const DiscoveryEngine3D = (function(){
     }
     state.instanceCount = cleanNodes.length;
     state.instancedMesh = _buildPlaceholderInstancedMesh(cleanNodes.length);
+    // Reset transform so any accumulated idle rotation from the previous mesh
+    // can't leak in via shared state.
+    state.instancedMesh.position.set(0, 0, 0);
+    state.instancedMesh.rotation.set(0, 0, 0);
+    state.instancedMesh.scale.set(1, 1, 1);
+    state.instancedMesh.updateMatrix();
+    state.instancedMesh.updateMatrixWorld(true);
     if (state.scene) state.scene.add(state.instancedMesh);
+    console.log('[DiscoveryEngine3D] loadGraph: built mesh with', cleanNodes.length, 'instances; spawning worker with', cleanLinks.length, 'links');
 
     // Spawn / reuse worker, send graph
     const w = _ensurePhysicsWorker();
@@ -34598,6 +34622,13 @@ const DiscoveryEngine3D = (function(){
     }
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
     mesh.instanceMatrix.needsUpdate = true;
+    // CRITICAL: disable frustum culling. Three.js computes the cull bounding
+    // sphere from the geometry (radius 0.6 at origin), not from per-instance
+    // matrices. If any worker position becomes NaN, the bounding sphere goes
+    // NaN and the entire mesh is culled — all instances disappear at once.
+    // For ~79–5000 nodes the cull is cheaper to skip than to compute correctly
+    // per frame.
+    mesh.frustumCulled = false;
     return mesh;
   }
 
