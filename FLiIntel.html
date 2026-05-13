@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.7</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.8</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34968,15 +34968,58 @@ const DiscoveryEngine3D = (function(){
       if (state.scene) state.scene.add(paperMesh);
     }
 
-    // Micro-step 3.7: build org InstancedMesh (solid placeholder boxes).
-    // BoxGeometry(2.4, 1.4, 1.4) per brief — wider than tall to read as
-    // "card / facility / company block" rather than cube. Paper-2 color
-    // (#7d7669) is darker than the paper-rim people spheres, so orgs read
-    // as distinct ground entities in the same brand palette. Translucent
-    // shader + inner glow come in 3.8 / 3.9.
+    // Micro-step 3.7 / 3.8: org InstancedMesh — BoxGeometry, translucent shell.
+    // 3.7 verified the geometry/positions; 3.8 swaps MeshBasicMaterial for a
+    // Fresnel-edge ShaderMaterial:
+    //   - Fresnel = 1 - |dot(n, v)| with DoubleSide rendering (abs() so back
+    //     faces emit Fresnel too)
+    //   - alpha = mix(uMinAlpha, uMaxAlpha, pow(fresnel, uRimPower))
+    //   - depthWrite: false → orgs do not occlude entities behind them
+    //   - side: DoubleSide → see the inside walls when the camera passes through,
+    //     producing the see-through "container" read
+    // Brand: paper #b5ad9f base. 3.9 will add per-instance inner-glow tied to
+    // child-entity count.
     if (orgClean.length){
       const orgGeo = new THREE.BoxGeometry(2.4, 1.4, 1.4);
-      const orgMat = new THREE.MeshBasicMaterial({ color: 0x7d7669 });
+      const orgMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uBaseColor: { value: new THREE.Color(0xb5ad9f) },
+          uMinAlpha:  { value: 0.08 },
+          uMaxAlpha:  { value: 0.45 },
+          uRimPower:  { value: 1.5 }
+        },
+        vertexShader: [
+          'varying vec3 vNormalView;',
+          'varying vec3 vViewDir;',
+          'void main() {',
+          '  vec4 instPos = instanceMatrix * vec4(position, 1.0);',
+          '  vec4 mvPos = modelViewMatrix * instPos;',
+          '  vViewDir = -mvPos.xyz;',
+          '  mat3 instRot = mat3(instanceMatrix);',
+          '  vNormalView = normalize(normalMatrix * instRot * normal);',
+          '  gl_Position = projectionMatrix * mvPos;',
+          '}'
+        ].join('\n'),
+        fragmentShader: [
+          'uniform vec3 uBaseColor;',
+          'uniform float uMinAlpha;',
+          'uniform float uMaxAlpha;',
+          'uniform float uRimPower;',
+          'varying vec3 vNormalView;',
+          'varying vec3 vViewDir;',
+          'void main() {',
+          '  vec3 v = normalize(vViewDir);',
+          '  vec3 n = normalize(vNormalView);',
+          '  float fres = 1.0 - abs(dot(n, v));',
+          '  float rim = pow(fres, uRimPower);',
+          '  float alpha = mix(uMinAlpha, uMaxAlpha, rim);',
+          '  gl_FragColor = vec4(uBaseColor, alpha);',
+          '}'
+        ].join('\n'),
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
       const orgMesh = new THREE.InstancedMesh(orgGeo, orgMat, orgClean.length);
       orgMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       orgMesh.frustumCulled = false;
