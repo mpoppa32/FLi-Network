@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.20</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.1</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally -->
     <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
@@ -34324,7 +34324,13 @@ const DiscoveryEngine3D = (function(){
     signalPulseMat: null,
     signalPulseWriteIdx: 0,
     signalPulseStartTime: null,  // per-slot animation start (Float32Array, 3.19 use)
-    signalPulseCapacity: 200
+    signalPulseCapacity: 200,
+    // Micro-step 4.1: person-person link InstancedMesh + index pairs
+    // linkIndexPairs[i] = [sourceCleanNodeIdx, targetCleanNodeIdx] for fast
+    // per-frame orient + scale from worker positions.
+    linkMesh: null,
+    linkIndexPairs: null,
+    linkCount: 0
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34343,6 +34349,15 @@ const DiscoveryEngine3D = (function(){
 
   // Reusable per-frame Object3D for matrix math (avoid GC churn)
   const _frameDummy = new THREE.Object3D();
+
+  // Micro-step 4.1: reusable link-orientation scratch objects (lazy-init
+  // on first link tick so we don't allocate when the engine isn't used).
+  let _linkDummy = null;
+  let _linkVec   = null;
+  let _linkSrc   = null;
+  let _linkTgt   = null;
+  let _linkAxisY = null;
+  let _linkQuat  = null;
 
   // Fit camera to a bounding sphere (center + radius). Backs the camera off
   // along its current look direction so the entire cluster fits the frustum
@@ -34425,6 +34440,64 @@ const DiscoveryEngine3D = (function(){
             _writeRingMatrices(state.ringMesh,      state.ringIndexMap);      // gold (3.4)
             _writeRingMatrices(state.teamRingMesh,  state.teamRingIndexMap);  // bone (3.5')
             _writeRingMatrices(state.paperRingMesh, state.paperRingIndexMap); // paper (3.6)
+
+            // ── Micro-step 4.1: orient person-person link cylinders ───────
+            // For each link: midpoint position, quaternion from cylinder's
+            // default +Y axis to the source→target direction, Y-scale to
+            // current distance. Reuses _linkDummy / _linkVec / _linkAxisY
+            // to avoid per-link allocation.
+            if (state.linkMesh && state.linkIndexPairs && state.linkIndexPairs.length){
+              if (!_linkDummy){
+                _linkDummy   = new THREE.Object3D();
+                _linkVec     = new THREE.Vector3();
+                _linkSrc     = new THREE.Vector3();
+                _linkTgt     = new THREE.Vector3();
+                _linkAxisY   = new THREE.Vector3(0, 1, 0);
+                _linkQuat    = new THREE.Quaternion();
+              }
+              var lp = state.linkIndexPairs;
+              var nPos = n;  // count of valid person positions written this tick
+              for (var lpi = 0; lpi < lp.length; lpi++){
+                var srcI = lp[lpi][0], tgtI = lp[lpi][1];
+                if (srcI >= nPos || tgtI >= nPos){
+                  // Endpoint not yet available — keep instance hidden
+                  _linkDummy.position.set(0, 0, 0);
+                  _linkDummy.scale.setScalar(0);
+                  _linkDummy.quaternion.identity();
+                  _linkDummy.updateMatrix();
+                  state.linkMesh.setMatrixAt(lpi, _linkDummy.matrix);
+                  continue;
+                }
+                _linkSrc.set(pos[srcI*3], pos[srcI*3+1], pos[srcI*3+2]);
+                _linkTgt.set(pos[tgtI*3], pos[tgtI*3+1], pos[tgtI*3+2]);
+                if (!Number.isFinite(_linkSrc.x) || !Number.isFinite(_linkTgt.x)){
+                  _linkDummy.scale.setScalar(0);
+                  _linkDummy.updateMatrix();
+                  state.linkMesh.setMatrixAt(lpi, _linkDummy.matrix);
+                  continue;
+                }
+                _linkVec.subVectors(_linkTgt, _linkSrc);
+                var dist = _linkVec.length();
+                if (dist < 0.001){
+                  _linkDummy.scale.setScalar(0);
+                  _linkDummy.updateMatrix();
+                  state.linkMesh.setMatrixAt(lpi, _linkDummy.matrix);
+                  continue;
+                }
+                _linkVec.divideScalar(dist);  // normalize
+                _linkQuat.setFromUnitVectors(_linkAxisY, _linkVec);
+                _linkDummy.position.set(
+                  (_linkSrc.x + _linkTgt.x) * 0.5,
+                  (_linkSrc.y + _linkTgt.y) * 0.5,
+                  (_linkSrc.z + _linkTgt.z) * 0.5
+                );
+                _linkDummy.quaternion.copy(_linkQuat);
+                _linkDummy.scale.set(1, dist, 1);  // radius from geo (0.05); Y stretches to span
+                _linkDummy.updateMatrix();
+                state.linkMesh.setMatrixAt(lpi, _linkDummy.matrix);
+              }
+              state.linkMesh.instanceMatrix.needsUpdate = true;
+            }
 
             // Micro-step 3.7: write org box positions from worker indices
             // [orgWorkerOffset, orgWorkerOffset + orgInstanceCount). Extends
@@ -35668,6 +35741,66 @@ const DiscoveryEngine3D = (function(){
       console.warn('[DiscoveryEngine3D] 3.20 count badge element not found — HUD HTML missing?');
     }
 
+    // ── Micro-step 4.1: person-person link InstancedMesh ──────────────────
+    // CylinderGeometry(0.05, 0.05, 1, 6) — tube of radius 0.05, height 1.
+    // Each instance is positioned at the midpoint of its endpoint people,
+    // oriented along the source→target direction, and Y-scaled to the
+    // current distance. Paper-colored MeshBasic (minimal-first).
+    //
+    // linkIndexPairs maps each instance i → [sourceCleanNodeIdx,
+    // targetCleanNodeIdx] for O(1) per-frame lookup. cleanNodes index ==
+    // worker position index, so we read pos[srcIdx*3..] / pos[tgtIdx*3..]
+    // directly in the animation loop.
+    //
+    // Dispose any prior link mesh (re-loadGraph case).
+    if (state.linkMesh){
+      if (state.scene) state.scene.remove(state.linkMesh);
+      if (state.linkMesh.geometry) state.linkMesh.geometry.dispose();
+      if (state.linkMesh.material) state.linkMesh.material.dispose();
+      state.linkMesh = null;
+    }
+    state.linkIndexPairs = null;
+    state.linkCount = 0;
+
+    var idToCleanIdx = {};
+    for (var ci = 0; ci < cleanNodes.length; ci++){
+      idToCleanIdx[cleanNodes[ci].id] = ci;
+    }
+    var linkPairs = [];
+    for (var li = 0; li < cleanLinks.length; li++){
+      var lk = cleanLinks[li];
+      var sIdx = idToCleanIdx[lk.source];
+      var tIdx = idToCleanIdx[lk.target];
+      if (sIdx != null && tIdx != null){
+        linkPairs.push([sIdx, tIdx]);
+      }
+    }
+    state.linkIndexPairs = linkPairs;
+    state.linkCount = linkPairs.length;
+
+    if (linkPairs.length){
+      var linkGeo = new THREE.CylinderGeometry(0.05, 0.05, 1, 6);
+      var linkMat = new THREE.MeshBasicMaterial({
+        color: 0xb5ad9f,           // paper
+        transparent: true,
+        opacity: 0.65,
+        depthWrite: false
+      });
+      var linkMesh = new THREE.InstancedMesh(linkGeo, linkMat, linkPairs.length);
+      linkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      linkMesh.frustumCulled = false;
+      var dummy6 = new THREE.Object3D();
+      dummy6.scale.setScalar(0);  // hidden until first worker tick orients them
+      dummy6.updateMatrix();
+      for (var lmi = 0; lmi < linkPairs.length; lmi++){
+        linkMesh.setMatrixAt(lmi, dummy6.matrix);
+      }
+      linkMesh.instanceMatrix.needsUpdate = true;
+      state.linkMesh = linkMesh;
+      if (state.scene) state.scene.add(linkMesh);
+    }
+    console.log('[DiscoveryEngine3D] 4.1 person-person links: ' + linkPairs.length + ' links rendered');
+
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
     // orgs, then opportunities. cleanLinks still contains only person-to-
@@ -36225,6 +36358,15 @@ const DiscoveryEngine3D = (function(){
     if (state.signalPulseMat){ state.signalPulseMat.dispose(); state.signalPulseMat = null; }
     state.signalPulseStartTime = null;
     state.signalPulseWriteIdx = 0;
+    // 4.1 dispose: link mesh
+    if (state.linkMesh){
+      if (state.scene) state.scene.remove(state.linkMesh);
+      if (state.linkMesh.geometry) state.linkMesh.geometry.dispose();
+      if (state.linkMesh.material) state.linkMesh.material.dispose();
+      state.linkMesh = null;
+    }
+    state.linkIndexPairs = null;
+    state.linkCount = 0;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
