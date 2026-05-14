@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.11</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.12</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -35227,9 +35227,29 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 3.11 contracts/solicitations: ' + oppClean.length + ' opportunities');
 
     if (oppClean.length){
+      // ── Micro-step 3.12: status-encoded color per opportunity ───────────
+      // Reuses the brand taxonomy from _haloStageColor (2D pursuits halos):
+      //   won         → #3a8a5c  (green / closed favorable)
+      //   lost        → #7d7669  (muted bone / closed unfavorable)
+      //   submitted   → #f0a560  (hot amber / decision pending)
+      //   award       → #f0a560
+      //   proposal    → #d4823a  (full amber / in-flight)
+      //   negotiation → #d4823a
+      //   early       → #b86b2a  (dim amber / awareness, tracking, engaged, rfp)
+      // Active/upcoming/closed bucketing drives the diagnostic log line.
+      function _stageColorHex(stage){
+        stage = (stage || '').toLowerCase();
+        if (stage === 'won')                                   return 0x3a8a5c;
+        if (stage === 'lost')                                  return 0x7d7669;
+        if (stage === 'submitted' || stage === 'award')        return 0xf0a560;
+        if (stage === 'proposal'  || stage === 'negotiation')  return 0xd4823a;
+        return 0xb86b2a;
+      }
+      let cActive = 0, cUpcoming = 0, cWon = 0, cLost = 0, cClosed = 0;
+      const _activeSet   = { proposal:1, negotiation:1, submitted:1, award:1 };
+      const _upcomingSet = { awareness:1, tracking:1, engaged:1, rfp:1 };
       const oppGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.3, 6);
       const oppMat = new THREE.MeshBasicMaterial({
-        color: 0x7d8b9c,           // steel-blue paper variant
         transparent: true,
         opacity: 0.92,
         depthWrite: false
@@ -35240,12 +35260,23 @@ const DiscoveryEngine3D = (function(){
       const dummy5 = new THREE.Object3D();
       dummy5.scale.setScalar(0);  // hidden until first worker tick lands positions
       dummy5.updateMatrix();
+      const _stageColor = new THREE.Color();
       for (let r = 0; r < oppClean.length; r++){
         oppMesh.setMatrixAt(r, dummy5.matrix);
+        const stg = (oppClean[r].stage || '').toLowerCase();
+        _stageColor.setHex(_stageColorHex(stg));
+        oppMesh.setColorAt(r, _stageColor);
+        if (stg === 'won') cWon++;
+        else if (stg === 'lost') cLost++;
+        else if (_activeSet[stg]) cActive++;
+        else if (_upcomingSet[stg]) cUpcoming++;
+        else cClosed++;
       }
       oppMesh.instanceMatrix.needsUpdate = true;
+      if (oppMesh.instanceColor) oppMesh.instanceColor.needsUpdate = true;
       state.oppMesh = oppMesh;
       if (state.scene) state.scene.add(oppMesh);
+      console.log('[DiscoveryEngine3D] 3.12 status: active=' + cActive + ' upcoming=' + cUpcoming + ' won=' + cWon + ' lost=' + cLost + ' closed/other=' + cClosed);
     }
 
     // Spawn / reuse worker, send graph.
