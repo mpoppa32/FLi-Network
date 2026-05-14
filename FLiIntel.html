@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.6</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.7</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36368,6 +36368,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.3 directionality: 3:1 taper geometry (radiusTop=0.025, radiusBottom=0.075)');
     console.log('[DiscoveryEngine3D] 4.5 employment edges: ' + _empCount + ' person→org works-at links');
     console.log('[DiscoveryEngine3D] 4.6 pursuit edges: ' + _pursuitEdges + ' person→opp links (across ' + _pursuitOpps + ' opps)');
+    if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.7 link shader: Fresnel side-glow ready (centerAlpha=0.35 rimAlpha=0.88 rimPower=1.4 glowBoost=0.55)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -36381,11 +36382,60 @@ const DiscoveryEngine3D = (function(){
       // Per-instance weight (4.2) scales the whole cylinder; the ratio is
       // preserved so weight modulates magnitude not direction.
       var linkGeo = new THREE.CylinderGeometry(0.025, 0.075, 1, 6);
-      // 4.4: material has no fixed color — instanceColor takes over.
-      var linkMat = new THREE.MeshBasicMaterial({
+      // ── Micro-step 4.7: Fresnel side-glow ShaderMaterial ──────────────
+      // Replaces 4.4's MeshBasic with a custom shader that brightens the
+      // tube along its silhouette and fades softly toward face centers.
+      // Per-instance color (from setColorAt below) is read via the
+      // `instanceColor` attribute THREE auto-binds on InstancedMesh.
+      //
+      // Vertex: standard mvPos transform + pass view-space normal and
+      //   view direction to the fragment. Read instanceColor and forward.
+      // Fragment: fres = 1 - abs(dot(n, v)); rim = pow(fres, uRimPower);
+      //   alpha = mix(uCenterAlpha, uRimAlpha, rim);
+      //   color = vColor * (1 + rim * uGlowBoost);  // emissive boost at rim
+      var linkMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uCenterAlpha: { value: 0.35 },
+          uRimAlpha:    { value: 0.88 },
+          uRimPower:    { value: 1.4 },
+          uGlowBoost:   { value: 0.55 }
+        },
+        vertexShader: [
+          'attribute vec3 instanceColor;',
+          'varying vec3 vColor;',
+          'varying vec3 vNormalView;',
+          'varying vec3 vViewDir;',
+          'void main() {',
+          '  vColor = instanceColor;',
+          '  vec4 instPos = instanceMatrix * vec4(position, 1.0);',
+          '  vec4 mvPos   = modelViewMatrix * instPos;',
+          '  vViewDir = -mvPos.xyz;',
+          '  mat3 instRot = mat3(instanceMatrix);',
+          '  vNormalView = normalize(normalMatrix * instRot * normal);',
+          '  gl_Position = projectionMatrix * mvPos;',
+          '}'
+        ].join('\n'),
+        fragmentShader: [
+          'uniform float uCenterAlpha;',
+          'uniform float uRimAlpha;',
+          'uniform float uRimPower;',
+          'uniform float uGlowBoost;',
+          'varying vec3 vColor;',
+          'varying vec3 vNormalView;',
+          'varying vec3 vViewDir;',
+          'void main() {',
+          '  vec3 v = normalize(vViewDir);',
+          '  vec3 n = normalize(vNormalView);',
+          '  float fres = 1.0 - abs(dot(n, v));',
+          '  float rim = pow(fres, uRimPower);',
+          '  float alpha = mix(uCenterAlpha, uRimAlpha, rim);',
+          '  vec3 color = vColor * (1.0 + rim * uGlowBoost);',
+          '  gl_FragColor = vec4(color, alpha);',
+          '}'
+        ].join('\n'),
         transparent: true,
-        opacity: 0.65,
-        depthWrite: false
+        depthWrite: false,
+        side: THREE.DoubleSide
       });
       var linkMesh = new THREE.InstancedMesh(linkGeo, linkMat, linkPairs.length);
       linkMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
