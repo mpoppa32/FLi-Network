@@ -5441,6 +5441,21 @@ input[type="url"], textarea, select {
   color:var(--t3);font-size:10px;font-style:italic;padding:6px 0;
   text-align:center;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;
 }
+/* 7.2: pursuit health pill */
+.health-pill{
+  display:inline-block;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:9px;font-weight:700;
+  padding:1px 5px;
+  border-radius:2px;
+  letter-spacing:.06em;
+  margin-right:6px;
+  min-width:30px;text-align:center;
+}
+.health-pill.health-hot{background:rgba(58,138,92,.22);color:#5cb87e}
+.health-pill.health-warm{background:rgba(212,130,58,.22);color:var(--gold)}
+.health-pill.health-cold{background:rgba(184,68,68,.20);color:#d27474}
+.health-pill.health-unknown{background:rgba(125,118,105,.18);color:var(--t3)}
 @media (max-width:900px){
   .brief-cols{grid-template-columns:repeat(2,1fr)}
 }
@@ -6843,7 +6858,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P7.1</span>
+      <span style="color:var(--gold)" id="de3d-build">P7.2</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -14438,6 +14453,82 @@ function renderSidebarMtgList(){
 }
 window.goIntelById=function(id){var m=meetingMap.get(id);if(m){currentMeeting=m;renderIntel(m);switchIntelTab('intel');renderSidebarMtgList();}};
 
+// ── Micro-step 7.2: Pursuit Health Score ─────────────────────────────────
+// Returns { score (0-100), status (hot|warm|cold|unknown), factors }.
+// Computed on-demand from in-memory data — no caching, always fresh.
+// Factors:
+//   recency       — days since last tagged meeting (1.0 if ≤7d, 0 if ≥30d)
+//   attendees     — distinct people engaged (1.0 if ≥5, scales linearly)
+//   meetings      — total tagged meeting count (informational)
+//   daysSinceTouch — days since last activity, or null
+// Score = round(100 × (recency × 0.6 + attendeeRatio × 0.4))
+// Thresholds: ≥70 HOT (green) · 40-69 WARM (amber) · 1-39 COLD (red) · 0 UNKNOWN
+window._computePursuitHealth = function(opp, meetingsArg){
+  if (!opp) return { score: 0, status: 'unknown', factors: {} };
+  var mtgs = meetingsArg || (typeof meetings !== 'undefined' && meetings) || window.meetings || [];
+  var nowMs = Date.now();
+  var DAY = 86400000;
+  var oid = String(opp.id);
+  function _ts(m){
+    if (!m) return null;
+    if (m.meta){
+      if (typeof m.meta.ts === 'number') return m.meta.ts;
+      if (m.meta.date){ var t = Date.parse(String(m.meta.date)); if (!isNaN(t)) return t; }
+    }
+    if (typeof m.ts === 'number') return m.ts;
+    if (m.createdAt){ var t2 = Date.parse(String(m.createdAt)); if (!isNaN(t2)) return t2; }
+    return null;
+  }
+  function _names(m){
+    var out = [];
+    if (m && m.meta && Array.isArray(m.meta.attendees)) m.meta.attendees.forEach(function(a){ if(a&&a.name) out.push(String(a.name).toLowerCase().trim()); });
+    if (m && m.intel && Array.isArray(m.intel.keyPeople)) m.intel.keyPeople.forEach(function(p){ if(p&&p.name) out.push(String(p.name).toLowerCase().trim()); });
+    return out;
+  }
+  var lastTouchTs = null;
+  var attendeeSet = {};
+  var mtgCount = 0;
+  for (var i = 0; i < mtgs.length; i++){
+    var m = mtgs[i];
+    if (!m) continue;
+    var tagged = (m.oppId != null && String(m.oppId) === oid)
+              || (Array.isArray(opp.meetings) && opp.meetings.indexOf(m.id) !== -1);
+    if (!tagged) continue;
+    mtgCount++;
+    var ts = _ts(m);
+    if (ts != null && (lastTouchTs == null || ts > lastTouchTs)) lastTouchTs = ts;
+    _names(m).forEach(function(n){ if (n) attendeeSet[n] = 1; });
+  }
+  var attendeeCount = Object.keys(attendeeSet).length;
+  // recency
+  var recency = 0;
+  var daysSince = null;
+  if (lastTouchTs != null){
+    daysSince = Math.floor((nowMs - lastTouchTs) / DAY);
+    if (daysSince <= 7) recency = 1.0;
+    else if (daysSince <= 14) recency = 0.75 - (daysSince - 7) * (0.25 / 7);
+    else if (daysSince <= 30) recency = 0.5 - (daysSince - 14) * (0.5 / 16);
+    else recency = 0;
+  }
+  var attendeeRatio = Math.min(1.0, attendeeCount / 5);
+  var unknown = (lastTouchTs == null && attendeeCount === 0);
+  var score = unknown ? 0 : Math.round(100 * (recency * 0.6 + attendeeRatio * 0.4));
+  var status = unknown ? 'unknown'
+             : score >= 70 ? 'hot'
+             : score >= 40 ? 'warm'
+             : 'cold';
+  return {
+    score: score,
+    status: status,
+    factors: {
+      recency: Math.round(recency * 100) / 100,
+      attendees: attendeeCount,
+      meetings: mtgCount,
+      daysSinceTouch: daysSince
+    }
+  };
+};
+
 // ── Micro-step 7.1: Daily Brief Card render ───────────────────────────────
 // Pulls from in-memory workspace data (no new external calls) and surfaces
 // the four operator priorities at the top of the Log Meeting screen.
@@ -14506,6 +14597,7 @@ function renderDailyBrief(){
   }
 
   // ─── 2. Stale pursuits: active-stage opps without recent meetings ───
+  // 7.2: also attaches pursuit health score per entry.
   var STAGE_ACTIVE = { proposal:1, negotiation:1, submitted:1, award:1, engaged:1, rfp:1 };
   var stale = [];
   for (var oi = 0; oi < opps_.length; oi++){
@@ -14513,7 +14605,6 @@ function renderDailyBrief(){
     if (!o) continue;
     var stg = String(o.stage || '').toLowerCase();
     if (!STAGE_ACTIVE[stg]) continue;
-    // Find latest meeting tagged to this opp (via m.oppId or opp.meetings)
     var oid = String(o.id);
     var latest = null;
     for (var mi = 0; mi < mtgs_.length; mi++){
@@ -14527,10 +14618,21 @@ function renderDailyBrief(){
     }
     var days2 = latest == null ? 9999 : Math.floor((nowMs - latest) / DAY);
     if (days2 >= 14){
-      stale.push({ id: o.id, name: o.name || 'Pursuit', stage: stg.toUpperCase(), days: days2 === 9999 ? null : days2 });
+      var health = (typeof window._computePursuitHealth === 'function')
+                  ? window._computePursuitHealth(o, mtgs_)
+                  : { score: 0, status: 'unknown' };
+      stale.push({
+        id: o.id, name: o.name || 'Pursuit', stage: stg.toUpperCase(),
+        days: days2 === 9999 ? null : days2,
+        health: health
+      });
     }
   }
+  // Sort by health score ascending (worst-health first), then by days desc
   stale.sort(function(a,b){
+    var sa = (a.health && a.health.score) || 0;
+    var sb = (b.health && b.health.score) || 0;
+    if (sa !== sb) return sa - sb;
     var da = a.days == null ? 999999 : a.days;
     var db = b.days == null ? 999999 : b.days;
     return db - da;
@@ -14597,8 +14699,12 @@ function renderDailyBrief(){
            '<span class="brief-item-meta">' + d.days + 'd</span></div>';
   });
   _renderCol('brief-stale-list', 'brief-stale-count', stale, function(s){
+    // 7.2: health pill prefix
+    var h = s.health || { score: 0, status: 'unknown' };
+    var pillTxt = h.status === 'unknown' ? '—' : String(h.score);
+    var pill = '<span class="health-pill health-' + h.status + '" title="Health ' + h.score + ' · ' + (h.factors ? (h.factors.attendees + ' attendees · ' + h.factors.meetings + ' meetings') : '') + '">' + pillTxt + '</span>';
     return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' +
-           '<span class="brief-item-title">' + s.name + '</span>' +
+           '<span class="brief-item-title">' + pill + s.name + '</span>' +
            '<span class="brief-item-meta">' + (s.days == null ? 'never' : s.days + 'd · ' + s.stage) + '</span></div>';
   });
   _renderCol('brief-upcoming-list', 'brief-upcoming-count', upcoming, function(u){
