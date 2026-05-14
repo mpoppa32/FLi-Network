@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.6</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.4</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -34483,7 +34483,42 @@ const DiscoveryEngine3D = (function(){
     // 'stage' values: all | active | upcoming | won | lost
     // 'tier'  values: all | 1 | 2 | 3
     filter: { stage: 'all', tier: 'all' },
-    filterPass: { opps: null }
+    filterPass: { opps: null },
+    // Micro-step 4.5.4: spatial index over entity positions. A flat array
+    // of {x,y,z,kind,instanceId} rebuilt every 30 frames. Linear-scan
+    // findNearest is fine at Atlas scale (~200 entries) and at 10x scale
+    // (~4000). Beyond that we'll upgrade to a real octree behind the same
+    // API. Used by 4.5.8 focal mode for hover/click-without-raycast.
+    spatialIndex: {
+      entries: [],
+      size: 0,
+      lastBuiltTick: 0,
+      findNearest: function(x, y, z, kinds){
+        var best = null, bestD2 = Infinity;
+        var arr = this.entries;
+        for (var i = 0; i < arr.length; i++){
+          var e = arr[i];
+          if (kinds && kinds.indexOf(e.kind) === -1) continue;
+          var dx = e.x - x, dy = e.y - y, dz = e.z - z;
+          var d2 = dx*dx + dy*dy + dz*dz;
+          if (d2 < bestD2){ bestD2 = d2; best = e; }
+        }
+        return best ? { entry: best, dist: Math.sqrt(bestD2) } : null;
+      },
+      findWithinRadius: function(x, y, z, r, kinds){
+        var r2 = r * r, out = [];
+        var arr = this.entries;
+        for (var i = 0; i < arr.length; i++){
+          var e = arr[i];
+          if (kinds && kinds.indexOf(e.kind) === -1) continue;
+          var dx = e.x - x, dy = e.y - y, dz = e.z - z;
+          var d2 = dx*dx + dy*dy + dz*dz;
+          if (d2 <= r2) out.push({ entry: e, dist: Math.sqrt(d2) });
+        }
+        return out;
+      }
+    },
+    _spatialTick: 0
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34907,6 +34942,62 @@ const DiscoveryEngine3D = (function(){
       _applyLod(state.orgLabels);
       _applyLod(state.oppLabels, state.filterPass && state.filterPass.opps);
       _applyLod(state.pursuitNameSprites);
+    }
+
+    // ── Micro-step 4.5.4: spatial index rebuild (every 30 frames) ─────────
+    // Flat array of {x,y,z,kind,instanceId} over all rendered entity
+    // positions. Powers 4.5.8 focal-mode "nearest entity to click point",
+    // and any future "what's near me?" query at scale.
+    state._spatialTick = (state._spatialTick | 0) + 1;
+    if ((state._spatialTick % 30) === 0
+        && state.physicsRealData
+        && state.physicsPositions
+        && state.spatialIndex){
+      var sip = state.physicsPositions;
+      var sipN = (sip.length / 3) | 0;
+      var entries = state.spatialIndex.entries;
+      entries.length = 0;
+      // People: worker indices [0, state.instanceCount)
+      var peopleN = Math.min(state.instanceCount | 0, sipN);
+      for (var sIdx = 0; sIdx < peopleN; sIdx++){
+        var px = sip[sIdx*3], py = sip[sIdx*3+1], pz = sip[sIdx*3+2];
+        if (Number.isFinite(px)){
+          entries.push({ x: px, y: py, z: pz, kind: 'person', instanceId: sIdx });
+        }
+      }
+      // Orgs: worker indices [orgWorkerOffset, +orgInstanceCount)
+      if (state.orgInstanceCount > 0){
+        var oOff = state.orgWorkerOffset | 0;
+        var oN = Math.min(state.orgInstanceCount | 0, sipN - oOff);
+        for (var sIdx2 = 0; sIdx2 < oN; sIdx2++){
+          var w = oOff + sIdx2;
+          var ox = sip[w*3], oy = sip[w*3+1], oz = sip[w*3+2];
+          if (Number.isFinite(ox)){
+            entries.push({ x: ox, y: oy, z: oz, kind: 'org', instanceId: sIdx2 });
+          }
+        }
+      }
+      // Opps: worker indices [oppWorkerOffset, +oppInstanceCount), filter-aware
+      if (state.oppInstanceCount > 0){
+        var pOff = state.oppWorkerOffset | 0;
+        var pN = Math.min(state.oppInstanceCount | 0, sipN - pOff);
+        var oppPass = state.filterPass && state.filterPass.opps;
+        for (var sIdx3 = 0; sIdx3 < pN; sIdx3++){
+          if (oppPass && oppPass[sIdx3] === false) continue;
+          var ww = pOff + sIdx3;
+          var qx = sip[ww*3], qy = sip[ww*3+1], qz = sip[ww*3+2];
+          if (Number.isFinite(qx)){
+            entries.push({ x: qx, y: qy, z: qz, kind: 'opp', instanceId: sIdx3 });
+          }
+        }
+      }
+      state.spatialIndex.size = entries.length;
+      state.spatialIndex.lastBuiltTick = state.physicsTickCount;
+      // Log first build only (avoid log spam every 0.5s)
+      if (!state._spatialFirstLogged){
+        state._spatialFirstLogged = true;
+        console.log('[DiscoveryEngine3D] 4.5.4 spatial index online: ' + entries.length + ' entries (people+orgs+opps), rebuild every 30 frames');
+      }
     }
 
     // ── Micro-step 3.20: persistent count badge update ────────────────────
@@ -36676,6 +36767,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
     console.log('[DiscoveryEngine3D] 4.5.2 sprite LOD: distance=' + (state.labelLodDistance|0) + ' (tune via DiscoveryEngine3D.setLabelDistance(N))');
     console.log('[DiscoveryEngine3D] 4.5.6 filter chips wired (stage + tier dropdowns in count badge)');
+    console.log('[DiscoveryEngine3D] 4.5.4 spatial index ready (rebuild every 30 frames; findNearest/findWithinRadius via getState().spatialIndex)');
 
     // Clear any prior error pins on the HUD
     const fpsEl0 = document.getElementById('de3d-fps');
