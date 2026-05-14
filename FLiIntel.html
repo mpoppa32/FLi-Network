@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.7</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.8</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36540,6 +36540,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.9 focal history wired ([ back / ] forward keys; ◂ ▸ buttons on focal pill)');
     console.log('[DiscoveryEngine3D] 5.4 drag-to-pin wired (Alt+drag entity to translate in XZ plane; release leaves it pinned via worker)');
     console.log('[DiscoveryEngine3D] 5.7 multi-select wired (Shift/Cmd+click extends; SELECTED row shows count + ⚡ pulse-all + × clear)');
+    console.log('[DiscoveryEngine3D] 5.8 keyboard nav wired (Tab/Shift+Tab steps entities; Enter → focal; arrows rotate camera)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37419,6 +37420,72 @@ const DiscoveryEngine3D = (function(){
     state.selected.opp.forEach(   function(i){ out.push({kind:'opp',   instanceId:i}); });
     return out;
   }
+  // ── Micro-step 5.8: keyboard navigation helpers ───────────────────────
+  // Tab advances the "current selection" through people → orgs → opps in
+  // index order, wrapping. Shift+Tab walks backward. Selection is single-
+  // entity (clears prior) — operator can still build multi-select via
+  // Shift+click on the mouse.
+  function _flatEntityList(){
+    var out = [];
+    var np = (state._cleanNodesRef || []).length;
+    var no = (state.orgCleanRef    || []).length;
+    var nq = (state.oppCleanRef    || []).length;
+    for (var i = 0; i < np; i++) out.push({ kind: 'person', instanceId: i });
+    for (var j = 0; j < no; j++) out.push({ kind: 'org',    instanceId: j });
+    for (var k = 0; k < nq; k++) out.push({ kind: 'opp',    instanceId: k });
+    return out;
+  }
+  function _tabNav(direction){
+    var list = _flatEntityList();
+    if (!list.length) return;
+    // Find current anchor — first selected entity
+    var sel = getSelection();
+    var curIdx = -1;
+    if (sel.length){
+      var anchor = sel[0];
+      for (var i = 0; i < list.length; i++){
+        if (list[i].kind === anchor.kind && list[i].instanceId === anchor.instanceId){
+          curIdx = i; break;
+        }
+      }
+    }
+    var nextIdx;
+    if (curIdx === -1){
+      nextIdx = direction > 0 ? 0 : list.length - 1;
+    } else {
+      nextIdx = (curIdx + direction + list.length) % list.length;
+    }
+    var n = list[nextIdx];
+    selectEntity(n.kind, n.instanceId);
+    // Mini-pulse for feedback so the operator sees the step land
+    if (state.physicsPositions){
+      var widx = n.kind === 'person' ? n.instanceId
+               : n.kind === 'org'    ? (state.orgWorkerOffset|0) + n.instanceId
+               : (state.oppWorkerOffset|0) + n.instanceId;
+      var pos = state.physicsPositions;
+      var color = n.kind === 'opp' ? 0xd4823a : n.kind === 'org' ? 0xb5ad9f : 0xf0a560;
+      emit(pos[widx*3+0], pos[widx*3+1], pos[widx*3+2], color);
+    }
+  }
+
+  // Rotate camera around its target by yaw/pitch (radians). Used by
+  // arrow-key navigation. Clamps pitch to avoid gimbal-locking up/down.
+  var _kbdSpherical = null;
+  var _kbdOffset    = null;
+  function _rotateCamera(yaw, pitch){
+    if (!state.camera || !state.controls) return;
+    if (!_kbdSpherical){ _kbdSpherical = new THREE.Spherical(); _kbdOffset = new THREE.Vector3(); }
+    _kbdOffset.subVectors(state.camera.position, state.controls.target);
+    _kbdSpherical.setFromVector3(_kbdOffset);
+    _kbdSpherical.theta -= yaw;
+    _kbdSpherical.phi   -= pitch;
+    _kbdSpherical.phi   = Math.max(0.08, Math.min(Math.PI - 0.08, _kbdSpherical.phi));
+    _kbdOffset.setFromSpherical(_kbdSpherical);
+    state.camera.position.copy(state.controls.target).add(_kbdOffset);
+    state.camera.lookAt(state.controls.target);
+    state.controls.update();
+  }
+
   // ── Micro-step 5.7: batch ops on selection ────────────────────────────
   function pulseSelected(opts){
     var sel = getSelection();
@@ -38158,11 +38225,13 @@ const DiscoveryEngine3D = (function(){
         });
       });
     }
-    // 4.5.8 + 5.5 + 5.9: ESC exits focal/menu; `[` back; `]` forward
+    // 4.5.8 + 5.5 + 5.9 + 5.8: ESC / focal-nav / Tab / Enter / arrow keys
     state.onKeyDown = function(ev){
       // Don't hijack keys while operator is typing in an input
       var tgt = ev.target;
       if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+      // Don't trigger if 3D engine isn't actually mounted
+      if (!state.camera || !state.controls) return;
       if (ev.key === 'Escape'){
         _hideContextMenu();
         if (state.focal) exitFocal();
@@ -38170,6 +38239,23 @@ const DiscoveryEngine3D = (function(){
         if (focalBack()) ev.preventDefault();
       } else if (ev.key === ']'){
         if (focalForward()) ev.preventDefault();
+      } else if (ev.key === 'Tab'){
+        ev.preventDefault();
+        _tabNav(ev.shiftKey ? -1 : 1);
+      } else if (ev.key === 'Enter'){
+        var sel = getSelection();
+        if (sel.length){
+          ev.preventDefault();
+          enterFocal(sel[0].kind, sel[0].instanceId);
+        }
+      } else if (ev.key === 'ArrowLeft'){
+        ev.preventDefault(); _rotateCamera(-0.10, 0);
+      } else if (ev.key === 'ArrowRight'){
+        ev.preventDefault(); _rotateCamera( 0.10, 0);
+      } else if (ev.key === 'ArrowUp'){
+        ev.preventDefault(); _rotateCamera(0, -0.10);
+      } else if (ev.key === 'ArrowDown'){
+        ev.preventDefault(); _rotateCamera(0,  0.10);
       }
     };
     window.addEventListener('keydown', state.onKeyDown);
