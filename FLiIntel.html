@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.3</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.4</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally -->
     <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
@@ -35773,6 +35773,13 @@ const DiscoveryEngine3D = (function(){
     }
     // Micro-step 4.2: per-pair weight (clamped to [0,1]). recency is a
     // reasonable proxy for link strength when no explicit weight is set.
+    // Micro-step 4.4: per-pair link type drives color via instanceColor.
+    //   works-at      → bone   #7d7669  (person→org employment)
+    //   attended      → paper  #b5ad9f  (person→meeting)
+    //   pursuit       → amber  #d4823a  (person→opp)
+    //   knows         → paper  #b5ad9f  (undirected person↔person)
+    //   reports-to    → gold   #f0a560  (directed up the chain)
+    //   default       → amber  #b86b2a  (dim amber for unclassified)
     var linkPairs = [];
     var _wMin = Infinity, _wMax = -Infinity, _wSum = 0;
     for (var li = 0; li < cleanLinks.length; li++){
@@ -35785,7 +35792,8 @@ const DiscoveryEngine3D = (function(){
         if (!Number.isFinite(_wLk)) _wLk = 0.5;
         if (_wLk < 0) _wLk = 0;
         if (_wLk > 1) _wLk = 1;
-        linkPairs.push([sIdx, tIdx, _wLk]);
+        var _tLk = String(lk.type || lk.label || 'knows').toLowerCase();
+        linkPairs.push([sIdx, tIdx, _wLk, _tLk]);
         if (_wLk < _wMin) _wMin = _wLk;
         if (_wLk > _wMax) _wMax = _wLk;
         _wSum += _wLk;
@@ -35809,8 +35817,8 @@ const DiscoveryEngine3D = (function(){
       // Per-instance weight (4.2) scales the whole cylinder; the ratio is
       // preserved so weight modulates magnitude not direction.
       var linkGeo = new THREE.CylinderGeometry(0.025, 0.075, 1, 6);
+      // 4.4: material has no fixed color — instanceColor takes over.
       var linkMat = new THREE.MeshBasicMaterial({
-        color: 0xb5ad9f,           // paper
         transparent: true,
         opacity: 0.65,
         depthWrite: false
@@ -35821,12 +35829,40 @@ const DiscoveryEngine3D = (function(){
       var dummy6 = new THREE.Object3D();
       dummy6.scale.setScalar(0);  // hidden until first worker tick orients them
       dummy6.updateMatrix();
+      var _linkColor = new THREE.Color();
+      // 4.4 type→color taxonomy
+      var _typeToHex = function(t){
+        switch (t) {
+          case 'works-at':
+          case 'works at':
+          case 'employed-by':    return 0x7d7669;  // bone
+          case 'attended':
+          case 'attended-by':    return 0xb5ad9f;  // paper
+          case 'pursuit':
+          case 'on-pursuit':
+          case 'pursuing':       return 0xd4823a;  // amber
+          case 'knows':
+          case 'met':
+          case 'met-with':       return 0xb5ad9f;  // paper
+          case 'reports-to':
+          case 'reports to':     return 0xf0a560;  // gold
+          default:               return 0xb86b2a;  // dim amber
+        }
+      };
+      var _typeCounts = {};
       for (var lmi = 0; lmi < linkPairs.length; lmi++){
         linkMesh.setMatrixAt(lmi, dummy6.matrix);
+        var ltype = linkPairs[lmi][3] || 'knows';
+        _linkColor.setHex(_typeToHex(ltype));
+        linkMesh.setColorAt(lmi, _linkColor);
+        _typeCounts[ltype] = (_typeCounts[ltype] || 0) + 1;
       }
       linkMesh.instanceMatrix.needsUpdate = true;
+      if (linkMesh.instanceColor) linkMesh.instanceColor.needsUpdate = true;
       state.linkMesh = linkMesh;
       if (state.scene) state.scene.add(linkMesh);
+      var _typeSummary = Object.keys(_typeCounts).map(function(k){ return k+'='+_typeCounts[k]; }).join(' ');
+      console.log('[DiscoveryEngine3D] 4.4 link types: ' + _typeSummary);
     }
     console.log('[DiscoveryEngine3D] 4.1 person-person links: ' + linkPairs.length + ' links rendered');
 
