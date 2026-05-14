@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.9</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.10</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6758,6 +6758,8 @@ input[type="url"], textarea, select {
           <span class="de3d-tl-speed" data-speed="4"  style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px">4×</span>
           <span class="de3d-tl-speed" data-speed="16" style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px">16×</span>
           <span class="de3d-tl-speed" data-speed="64" style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px">64×</span>
+          <!-- Micro-step 6.10: loop toggle -->
+          <span id="de3d-tl-loop" style="color:var(--t3);cursor:pointer;padding:0 4px;font-size:12px;margin-left:4px" title="Loop: replay from start when end reached">↻</span>
         </div>
         <span id="de3d-tl-date" style="color:var(--gold,#d4823a);font-weight:700;font-size:10px;letter-spacing:.1em">—</span>
         <span id="de3d-tl-state" style="color:var(--t3);font-size:8px;letter-spacing:.18em">PAUSED</span>
@@ -34624,7 +34626,9 @@ const DiscoveryEngine3D = (function(){
       speed: 1,        // days per real second
       range: { start: null, end: null },
       lastFiredIdx: -1,
-      sortedMeetings: []
+      sortedMeetings: [],
+      // 6.10: loop — when true, playback wraps to range.start at end
+      loop: false
     },
     _timelineLastTickMs: 0,
     // Micro-step 4.5.9: saved views — bookmarked scene state per workspace
@@ -35359,9 +35363,16 @@ const DiscoveryEngine3D = (function(){
         var deltaTime = deltaReal * (state.timeline.speed || 1) * DAY_MS / 1000;
         var newDate = state.timeline.date + deltaTime;
         if (newDate >= state.timeline.range.end){
-          newDate = state.timeline.range.end;
-          state.timeline.playing = false;
-          console.log('[DiscoveryEngine3D] 6.1 timeline reached end — paused');
+          if (state.timeline.loop){
+            // 6.10: wrap to start, reset fire history so meetings refire
+            newDate = state.timeline.range.start;
+            state.timeline.lastFiredIdx = -1;
+            // (no log — would spam every loop)
+          } else {
+            newDate = state.timeline.range.end;
+            state.timeline.playing = false;
+            console.log('[DiscoveryEngine3D] 6.1 timeline reached end — paused');
+          }
         }
         state.timeline.date = newDate;
       }
@@ -36703,6 +36714,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.7 opp lifecycle gate wired (opps with createdAt > timeline.date are hidden)');
     console.log('[DiscoveryEngine3D] 6.8 edge materialization wired (pursuit edges hidden until their first supporting meeting; employment edges always visible)');
     console.log('[DiscoveryEngine3D] 6.9 watch-from-start preset wired (▶▶ button = rewind + 16× + play)');
+    console.log('[DiscoveryEngine3D] 6.10 loop toggle wired (↻ — when ON, playback wraps to start at end + meetings refire)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -39172,6 +39184,17 @@ window._toggle3DEngine = function(mode){
           st.timeline.speed = 16;
           window.DiscoveryEngine3D.playTimeline(16);
           console.log('[DiscoveryEngine3D] 6.9 watch-from-start: rewind + 16× + play');
+        });
+        // 6.10: loop toggle
+        var tlLoop = document.getElementById('de3d-tl-loop');
+        if (tlLoop) tlLoop.addEventListener('click', function(){
+          if (!window.DiscoveryEngine3D) return;
+          var st = window.DiscoveryEngine3D.getState();
+          if (!st || !st.timeline) return;
+          st.timeline.loop = !st.timeline.loop;
+          tlLoop.style.color = st.timeline.loop ? 'var(--gold,#d4823a)' : 'var(--t3)';
+          tlLoop.style.fontWeight = st.timeline.loop ? '700' : '500';
+          console.log('[DiscoveryEngine3D] 6.10 loop:', st.timeline.loop ? 'ON' : 'off');
         });
         if (tlPlay) tlPlay.addEventListener('click', function(){
           if (!window.DiscoveryEngine3D) return;
