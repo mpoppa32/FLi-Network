@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.11</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.1</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34580,6 +34580,24 @@ const DiscoveryEngine3D = (function(){
     // entity, this captures: kind, instanceId, entity id (for worker pin),
     // planeY (XZ plane at entity's current Y), and a Plane for raycast.
     drag: null,
+    // ── Micro-step 6.1: timeline (temporal scrubber + auto-play) ───────
+    // date     — current cursor position (epoch ms)
+    // playing  — boolean (auto-advance via animation tick when true)
+    // speed    — multiplier; how many days of workspace time per real second
+    // range    — { start, end } — computed from earliest/latest meeting
+    // lastFiredIdx — high-water mark in time-sorted meetings to avoid
+    //                refiring on each tick; bumped when date crosses entries
+    // sortedMeetings — meetings sorted by date ascending, with timestamp
+    //                  pre-extracted for fast time-window queries
+    timeline: {
+      date: null,
+      playing: false,
+      speed: 1,        // days per real second
+      range: { start: null, end: null },
+      lastFiredIdx: -1,
+      sortedMeetings: []
+    },
+    _timelineLastTickMs: 0,
     // Micro-step 4.5.9: saved views — bookmarked scene state per workspace
     // (localStorage backed, keyed by workspace id). View shape:
     //   { id, name, created, filter:{stage,tier}, layerVisible:{...},
@@ -35257,6 +35275,27 @@ const DiscoveryEngine3D = (function(){
         state.camera.position.lerpVectors(state.cameraAnim.camFromPos,    state.cameraAnim.camToPos,    aease);
         state.camera.updateProjectionMatrix();
       }
+    }
+
+    // ── Micro-step 6.1: timeline auto-advance ─────────────────────────────
+    // When playing, advance state.timeline.date by (real elapsed ms × speed
+    // days/sec) per tick. Fire-on-cross logic for meetings lands in 6.6;
+    // for 6.1 we just advance the cursor and clamp to range.
+    if (state.timeline && state.timeline.playing && state.timeline.range.end != null){
+      var tlNow = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      if (state._timelineLastTickMs > 0){
+        var deltaReal = tlNow - state._timelineLastTickMs;  // ms of real time
+        var DAY_MS = 86400000;
+        var deltaTime = deltaReal * (state.timeline.speed || 1) * DAY_MS / 1000;
+        var newDate = state.timeline.date + deltaTime;
+        if (newDate >= state.timeline.range.end){
+          newDate = state.timeline.range.end;
+          state.timeline.playing = false;
+          console.log('[DiscoveryEngine3D] 6.1 timeline reached end — paused');
+        }
+        state.timeline.date = newDate;
+      }
+      state._timelineLastTickMs = tlNow;
     }
 
     // ── Micro-step 3.20: persistent count badge update ────────────────────
@@ -36542,9 +36581,12 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.7 multi-select wired (Shift/Cmd+click extends; SELECTED row shows count + ⚡ pulse-all + × clear)');
     console.log('[DiscoveryEngine3D] 5.8 keyboard nav wired (Tab/Shift+Tab steps entities; Enter → focal; arrows rotate camera)');
     console.log('[DiscoveryEngine3D] 5.11 link hover wired (hover any tube → tooltip shows Source → Target · TYPE · weight)');
+    console.log('[DiscoveryEngine3D] 6.1 timeline API ready — setTimelineDate(ts) · playTimeline(speed) · pauseTimeline()');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
+    // 6.1: initialize timeline from current meetings
+    _initTimeline();
 
     if (linkPairs.length){
       // ── Micro-step 4.3: directionality taper ──────────────────────────
@@ -37688,6 +37730,88 @@ const DiscoveryEngine3D = (function(){
     el.style.top  = y + 'px';
   }
 
+  // ── Micro-step 6.1: timeline foundation ────────────────────────────────
+  // Extracts a meeting's timestamp robustly. Different workspaces store
+  // meeting date in different fields: meta.date (string), meta.ts (epoch),
+  // ts, createdAt. Returns epoch ms or null if unparseable.
+  function _meetingTime(m){
+    if (!m) return null;
+    if (m.meta){
+      if (typeof m.meta.ts === 'number') return m.meta.ts;
+      if (m.meta.date){
+        var t = Date.parse(String(m.meta.date));
+        if (!isNaN(t)) return t;
+      }
+    }
+    if (typeof m.ts === 'number') return m.ts;
+    if (m.createdAt){
+      var t2 = Date.parse(String(m.createdAt));
+      if (!isNaN(t2)) return t2;
+    }
+    return null;
+  }
+
+  // Initialize/refresh state.timeline from current window.meetings.
+  // Called from loadGraph after meetings are available.
+  function _initTimeline(){
+    var meetings = window.meetings || [];
+    var sorted = [];
+    for (var i = 0; i < meetings.length; i++){
+      var m = meetings[i];
+      var ts = _meetingTime(m);
+      if (ts != null && Number.isFinite(ts)){
+        sorted.push({ m: m, ts: ts });
+      }
+    }
+    sorted.sort(function(a, b){ return a.ts - b.ts; });
+    state.timeline.sortedMeetings = sorted;
+    if (sorted.length){
+      state.timeline.range.start = sorted[0].ts;
+      state.timeline.range.end   = sorted[sorted.length - 1].ts;
+      // Default date = end (live view) so meetings are all "in the past"
+      if (state.timeline.date == null) state.timeline.date = state.timeline.range.end;
+    } else {
+      state.timeline.range.start = null;
+      state.timeline.range.end   = null;
+      // No meetings — default to "now"
+      state.timeline.date = Date.now();
+    }
+    state.timeline.lastFiredIdx = sorted.length - 1;  // start at end (no auto-fire)
+    var rangeStr = sorted.length
+      ? new Date(state.timeline.range.start).toISOString().slice(0,10) + ' .. ' + new Date(state.timeline.range.end).toISOString().slice(0,10)
+      : '(no dated meetings)';
+    console.log('[DiscoveryEngine3D] 6.1 timeline init: range ' + rangeStr + ' (' + sorted.length + ' meetings)');
+  }
+
+  // Public seekers — clamped to range. Returns final date.
+  function setTimelineDate(ts){
+    var t = Number(ts);
+    if (!Number.isFinite(t)) return state.timeline.date;
+    if (state.timeline.range.start != null && t < state.timeline.range.start) t = state.timeline.range.start;
+    if (state.timeline.range.end   != null && t > state.timeline.range.end)   t = state.timeline.range.end;
+    // Recompute lastFiredIdx so meetings up to t are "already fired"
+    var sm = state.timeline.sortedMeetings;
+    var idx = -1;
+    for (var i = 0; i < sm.length; i++){
+      if (sm[i].ts <= t) idx = i;
+      else break;
+    }
+    state.timeline.lastFiredIdx = idx;
+    state.timeline.date = t;
+    return t;
+  }
+  function playTimeline(speed){
+    if (typeof speed === 'number' && speed > 0) state.timeline.speed = speed;
+    state.timeline.playing = true;
+    state._timelineLastTickMs = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    console.log('[DiscoveryEngine3D] 6.1 timeline play (speed=' + state.timeline.speed + 'd/s)');
+  }
+  function pauseTimeline(){
+    state.timeline.playing = false;
+    state._timelineLastTickMs = 0;
+    console.log('[DiscoveryEngine3D] 6.1 timeline pause');
+  }
+
   // ── Micro-step 4.5.11: entity search ──────────────────────────────────
   // Substring-match query against name fields of cleanNodes / orgClean /
   // oppClean. Renders top results into the #de3d-search-results dropdown
@@ -38740,7 +38864,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, pulseSelected, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, selectionCount, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, pulseSelected, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, selectionCount, setTimelineDate, playTimeline, pauseTimeline, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
