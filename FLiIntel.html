@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.7</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.8</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34502,6 +34502,13 @@ const DiscoveryEngine3D = (function(){
     linkMesh: null,
     linkIndexPairs: null,
     linkCount: 0,
+    // Micro-step 4.8: distance-based LOD — when zoomed out beyond a
+    // threshold ratio of cluster radius, swap tube InstancedMesh for a
+    // thin LineSegments mesh (cheap, draws crisp at far zoom).
+    linkLines: null,
+    linkLinesGeo: null,
+    linkLinesPosAttr: null,
+    _linkLODmode: 'close',  // 'close' (tubes) | 'far' (lines)
     // Micro-step 4.5.5: layer visibility flags (operator toggles)
     layerVisible: {
       people: true,
@@ -35085,6 +35092,48 @@ const DiscoveryEngine3D = (function(){
       if (!state._spatialFirstLogged){
         state._spatialFirstLogged = true;
         console.log('[DiscoveryEngine3D] 4.5.4 spatial index online: ' + entries.length + ' entries (people+orgs+opps), rebuild every 30 frames');
+      }
+    }
+
+    // ── Micro-step 4.8: link LOD decision (tubes vs lines) ────────────────
+    // Switch to lines when camera distance > 3.5× cluster radius; switch
+    // back to tubes when < 2.5×. The 1.0 ratio gap is hysteresis so the
+    // mode doesn't flicker when the operator orbits at threshold.
+    if (state.linkMesh && state.linkLines && state.posBounds
+        && state.camera && state.controls && state.linkIndexPairs){
+      var _clusterR = Math.max(1, state.posBounds.radius || 1);
+      var _camDist  = state.camera.position.distanceTo(state.controls.target);
+      var _ratio    = _camDist / _clusterR;
+      var _curMode  = state._linkLODmode || 'close';
+      var _newMode  = _curMode;
+      if (_curMode === 'close' && _ratio > 3.5) _newMode = 'far';
+      else if (_curMode === 'far' && _ratio < 2.5) _newMode = 'close';
+      if (_newMode !== _curMode){
+        state._linkLODmode = _newMode;
+        state.linkMesh.visible  = (_newMode === 'close') && (state.layerVisible && state.layerVisible.links !== false);
+        state.linkLines.visible = (_newMode === 'far')   && (state.layerVisible && state.layerVisible.links !== false);
+        console.log('[DiscoveryEngine3D] 4.8 link LOD: ' + _newMode + ' (camDist/clusterR=' + _ratio.toFixed(2) + ')');
+      }
+      // While in 'far' mode, update line endpoint positions each frame
+      // from worker positions. Tube orient block runs unconditionally so
+      // a snap-back to 'close' shows correctly oriented tubes immediately.
+      if (state._linkLODmode === 'far' && state.linkLinesPosAttr && state.physicsPositions){
+        var _lpos = state.physicsPositions;
+        var _lipairs = state.linkIndexPairs;
+        var _larr = state.linkLinesPosAttr.array;
+        for (var _lli = 0; _lli < _lipairs.length; _lli++){
+          var _lsi = _lipairs[_lli][0];
+          var _lti = _lipairs[_lli][1];
+          var _lsx = _lpos[_lsi*3], _lsy = _lpos[_lsi*3+1], _lsz = _lpos[_lsi*3+2];
+          var _ltx = _lpos[_lti*3], _lty = _lpos[_lti*3+1], _ltz = _lpos[_lti*3+2];
+          _larr[_lli*6+0] = Number.isFinite(_lsx) ? _lsx : 0;
+          _larr[_lli*6+1] = Number.isFinite(_lsy) ? _lsy : 0;
+          _larr[_lli*6+2] = Number.isFinite(_lsz) ? _lsz : 0;
+          _larr[_lli*6+3] = Number.isFinite(_ltx) ? _ltx : 0;
+          _larr[_lli*6+4] = Number.isFinite(_lty) ? _lty : 0;
+          _larr[_lli*6+5] = Number.isFinite(_ltz) ? _ltz : 0;
+        }
+        state.linkLinesPosAttr.needsUpdate = true;
       }
     }
 
@@ -36369,6 +36418,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.5 employment edges: ' + _empCount + ' person→org works-at links');
     console.log('[DiscoveryEngine3D] 4.6 pursuit edges: ' + _pursuitEdges + ' person→opp links (across ' + _pursuitOpps + ' opps)');
     if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.7 link shader: Fresnel side-glow ready (centerAlpha=0.35 rimAlpha=0.88 rimPower=1.4 glowBoost=0.55)');
+    if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.8 link LOD twin: LineSegments fallback ready (switches at camDist/radius 2.5↔3.5)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -36477,6 +36527,48 @@ const DiscoveryEngine3D = (function(){
       if (state.scene) state.scene.add(linkMesh);
       var _typeSummary = Object.keys(_typeCounts).map(function(k){ return k+'='+_typeCounts[k]; }).join(' ');
       console.log('[DiscoveryEngine3D] 4.4 link types: ' + _typeSummary);
+
+      // ── Micro-step 4.8: LineSegments LOD twin ─────────────────────────
+      // Same N edges, rendered as thin lines instead of tubes. Used when
+      // camera is zoomed out far enough that tube rim-glow is invisible
+      // anyway. Per-vertex colors copy the 4.4 taxonomy; alpha is uniform.
+      // Initially hidden — animation loop's LOD decision flips visibility.
+      if (state.linkLines){
+        if (state.scene) state.scene.remove(state.linkLines);
+        if (state.linkLinesGeo) state.linkLinesGeo.dispose();
+        if (state.linkLines.material) state.linkLines.material.dispose();
+        state.linkLines = null;
+        state.linkLinesGeo = null;
+        state.linkLinesPosAttr = null;
+      }
+      var _lineN = linkPairs.length;
+      var _linePos   = new Float32Array(_lineN * 6);  // 2 verts × 3 coords
+      var _lineColor = new Float32Array(_lineN * 6);  // 2 verts × 3 rgb
+      for (var lli = 0; lli < _lineN; lli++){
+        var lt = linkPairs[lli][3] || 'knows';
+        var lh = _typeToHex(lt);
+        var lr = ((lh >> 16) & 0xff) / 255;
+        var lg = ((lh >>  8) & 0xff) / 255;
+        var lb = ( lh        & 0xff) / 255;
+        _lineColor[lli*6+0] = lr; _lineColor[lli*6+1] = lg; _lineColor[lli*6+2] = lb;
+        _lineColor[lli*6+3] = lr; _lineColor[lli*6+4] = lg; _lineColor[lli*6+5] = lb;
+      }
+      var linkLinesGeo = new THREE.BufferGeometry();
+      linkLinesGeo.setAttribute('position', new THREE.BufferAttribute(_linePos, 3));
+      linkLinesGeo.setAttribute('color',    new THREE.BufferAttribute(_lineColor, 3));
+      var linkLinesMat = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.78,
+        depthWrite: false
+      });
+      var linkLinesObj = new THREE.LineSegments(linkLinesGeo, linkLinesMat);
+      linkLinesObj.frustumCulled = false;
+      linkLinesObj.visible = false;  // LOD reveals when far
+      state.linkLines = linkLinesObj;
+      state.linkLinesGeo = linkLinesGeo;
+      state.linkLinesPosAttr = linkLinesGeo.getAttribute('position');
+      if (state.scene) state.scene.add(linkLinesObj);
     }
     console.log('[DiscoveryEngine3D] 4.1 person-person links: ' + linkPairs.length + ' links rendered');
 
@@ -36685,8 +36777,14 @@ const DiscoveryEngine3D = (function(){
     if (state.oppMesh)        state.oppMesh.visible        = !!lv.opps;
     // Halos: pursuit hull group
     if (state.pursuitHullGroup) state.pursuitHullGroup.visible = !!lv.halos;
-    // Links: link mesh
-    if (state.linkMesh)       state.linkMesh.visible       = !!lv.links;
+    // Links: link mesh + line LOD twin (only one of the two is rendered
+    // at any given time per current LOD mode, but both respect the toggle)
+    if (state.linkMesh){
+      state.linkMesh.visible  = !!lv.links && (state._linkLODmode !== 'far');
+    }
+    if (state.linkLines){
+      state.linkLines.visible = !!lv.links && (state._linkLODmode === 'far');
+    }
     // Labels: all sprite arrays
     var spVisible = !!lv.labels;
     if (state.orgLabels)         state.orgLabels.forEach(function(sp){ sp.visible = spVisible; });
@@ -37686,6 +37784,15 @@ const DiscoveryEngine3D = (function(){
       if (state.linkMesh.material) state.linkMesh.material.dispose();
       state.linkMesh = null;
     }
+    // 4.8 dispose: link lines LOD twin
+    if (state.linkLines){
+      if (state.scene) state.scene.remove(state.linkLines);
+      if (state.linkLines.material) state.linkLines.material.dispose();
+      state.linkLines = null;
+    }
+    if (state.linkLinesGeo){ state.linkLinesGeo.dispose(); state.linkLinesGeo = null; }
+    state.linkLinesPosAttr = null;
+    state._linkLODmode = 'close';
     state.linkIndexPairs = null;
     state.linkCount = 0;
     if (state.instancedMesh){
