@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.6</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.7</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34923,6 +34923,14 @@ const DiscoveryEngine3D = (function(){
                 // 4.5.6: filter pass — hidden if filter rejects this opp
                 var oppPass = !state.filterPass || !state.filterPass.opps || state.filterPass.opps[k] !== false;
                 var qSc = oppPass ? 1 : 0;
+                // 6.7: timeline lifecycle gate — opp hidden if current
+                // timeline date is before its createdAt (didn't exist yet)
+                if (qSc > 0 && state.timeline && state.oppCleanRef && state.oppCleanRef[k]){
+                  var _opCT = state.oppCleanRef[k].createdTs;
+                  if (_opCT != null && Number.isFinite(_opCT) && state.timeline.date < _opCT){
+                    qSc = 0;
+                  }
+                }
                 // 4.5.8 focal dim · 5.1 hover · 5.6 selection
                 if (qSc > 0 && state.focal && state.focal.focalScale && state.focal.focalScale.opps){
                   qSc *= state.focal.focalScale.opps[k];
@@ -35161,7 +35169,25 @@ const DiscoveryEngine3D = (function(){
         }
       };
       _applyLod(state.orgLabels);
-      _applyLod(state.oppLabels, state.filterPass && state.filterPass.opps);
+      // 6.7: build combined opp visibility (filter ∧ lifecycle) for label LOD
+      var _oppVis = null;
+      if (state.oppCleanRef && state.oppCleanRef.length){
+        var _fp = state.filterPass && state.filterPass.opps;
+        var _tl = state.timeline;
+        var needGate = _tl && _tl.date != null;
+        if (_fp || needGate){
+          _oppVis = new Array(state.oppCleanRef.length);
+          for (var ovi = 0; ovi < _oppVis.length; ovi++){
+            if (_fp && _fp[ovi] === false){ _oppVis[ovi] = false; continue; }
+            if (needGate){
+              var ct = state.oppCleanRef[ovi].createdTs;
+              if (ct != null && _tl.date < ct){ _oppVis[ovi] = false; continue; }
+            }
+            _oppVis[ovi] = true;
+          }
+        }
+      }
+      _applyLod(state.oppLabels, _oppVis);
       _applyLod(state.pursuitNameSprites);
     }
 
@@ -36176,6 +36202,18 @@ const DiscoveryEngine3D = (function(){
     const oppClean = oppRaw
       .filter(function(o){ return o && o.id != null; })
       .map(function(o){
+        // 6.7: parse opp creation timestamp robustly. Try common fields:
+        //   createdAt (string/number), created (string), ts (number)
+        var cTs = null;
+        if (o.createdAt != null){
+          var t = typeof o.createdAt === 'number' ? o.createdAt : Date.parse(String(o.createdAt));
+          if (Number.isFinite(t)) cTs = t;
+        }
+        if (cTs == null && o.created != null){
+          var t2 = Date.parse(String(o.created));
+          if (Number.isFinite(t2)) cTs = t2;
+        }
+        if (cTs == null && typeof o.ts === 'number') cTs = o.ts;
         return {
           id: 'opp:' + String(o.id),
           name: String(o.name || 'Opportunity'),
@@ -36183,13 +36221,16 @@ const DiscoveryEngine3D = (function(){
           priority: o.priority || 3,
           stage: o.stage || null,
           value: o.value || null,
-          solicitationNumber: o.solicitationNumber || o.solnbr || null
+          solicitationNumber: o.solicitationNumber || o.solnbr || null,
+          createdTs: cTs  // 6.7: null if not parseable (treated as always-visible)
         };
       });
     state.oppInstanceCount = oppClean.length;
     state.oppWorkerOffset = cleanNodes.length + orgClean.length;
     state.oppCleanRef = oppClean;
+    var _oppsWithCreated = oppClean.filter(function(o){ return o.createdTs != null; }).length;
     console.log('[DiscoveryEngine3D] 3.11 contracts/solicitations: ' + oppClean.length + ' opportunities');
+    console.log('[DiscoveryEngine3D] 6.7 opp lifecycle: ' + _oppsWithCreated + ' of ' + oppClean.length + ' opps have parseable createdAt');
 
     if (oppClean.length){
       // ── Micro-step 3.12: status-encoded color per opportunity ───────────
@@ -36635,6 +36676,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.4 scrubber drag wired (click track to seek; drag for continuous scrub; auto-pause)');
     console.log('[DiscoveryEngine3D] 6.5 activity ribbon: meeting density dots rendered along track');
     console.log('[DiscoveryEngine3D] 6.6 fire-on-cross wired (each meeting pulses its attendees + tagged opp during play; capped 1/frame)');
+    console.log('[DiscoveryEngine3D] 6.7 opp lifecycle gate wired (opps with createdAt > timeline.date are hidden)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
