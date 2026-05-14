@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.8</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.9</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34933,20 +34933,45 @@ const DiscoveryEngine3D = (function(){
             // slot changed, so we don't pay the GPU upload cost on idle.
             if (state.signalPulseGeo && state.signalPulseStartTime){
               var spLifeAttr = state.signalPulseGeo.getAttribute('aLife');
+              var spPosAttr  = state.signalPulseGeo.getAttribute('position');
               if (spLifeAttr){
                 var spArr = spLifeAttr.array;
                 var spStartArr = state.signalPulseStartTime;
                 var nowMs = (typeof performance !== 'undefined') ? performance.now() : Date.now();
-                var DUR = 350;
+                var DUR_PULSE = 350;
+                var DUR_FLOW  = 700;  // 4.9: flow particles travel slower than pulses
                 var anyActive = false;
+                var anyFlow   = false;
+                var spFlowArr = state.signalPulseFlow;
+                var spSrcArr  = state.signalPulseSrc;
+                var spTgtArr  = state.signalPulseTgt;
+                var spPosArr  = spPosAttr ? spPosAttr.array : null;
                 for (var sli = 0; sli < spArr.length; sli++){
                   if (spArr[sli] > 0){
+                    var isFlow = spFlowArr && spFlowArr[sli] === 1;
+                    var dur = isFlow ? DUR_FLOW : DUR_PULSE;
                     var elapsed = nowMs - spStartArr[sli];
-                    if (elapsed >= DUR){
+                    if (elapsed >= dur){
                       spArr[sli] = 0;
+                      // Land flow at target so it doesn't snap visually
+                      if (isFlow && spPosArr && spTgtArr){
+                        spPosArr[sli*3+0] = spTgtArr[sli*3+0];
+                        spPosArr[sli*3+1] = spTgtArr[sli*3+1];
+                        spPosArr[sli*3+2] = spTgtArr[sli*3+2];
+                        anyFlow = true;
+                      }
                     } else {
-                      spArr[sli] = 1 - (elapsed / DUR);
+                      var lifeFrac = 1 - (elapsed / dur);
+                      spArr[sli] = lifeFrac;
                       anyActive = true;
+                      // 4.9: position lerp for flow slots
+                      if (isFlow && spPosArr && spSrcArr && spTgtArr){
+                        var t = 1 - lifeFrac;  // 0 → 1 progress
+                        spPosArr[sli*3+0] = spSrcArr[sli*3+0] + (spTgtArr[sli*3+0] - spSrcArr[sli*3+0]) * t;
+                        spPosArr[sli*3+1] = spSrcArr[sli*3+1] + (spTgtArr[sli*3+1] - spSrcArr[sli*3+1]) * t;
+                        spPosArr[sli*3+2] = spSrcArr[sli*3+2] + (spTgtArr[sli*3+2] - spSrcArr[sli*3+2]) * t;
+                        anyFlow = true;
+                      }
                     }
                   }
                 }
@@ -34954,6 +34979,7 @@ const DiscoveryEngine3D = (function(){
                   spLifeAttr.needsUpdate = true;
                   state._spDirty = anyActive;
                 }
+                if (anyFlow && spPosAttr) spPosAttr.needsUpdate = true;
               }
             }
 
@@ -36205,10 +36231,18 @@ const DiscoveryEngine3D = (function(){
       state.signalPulseMat = null;
     }
     var SP_CAP = state.signalPulseCapacity || 200;
-    var spPos     = new Float32Array(SP_CAP * 3);  // origin xyz per slot
+    var spPos     = new Float32Array(SP_CAP * 3);  // current xyz per slot (mutates for flow slots)
     var spLife    = new Float32Array(SP_CAP);       // 0 = dormant
     var spColor   = new Float32Array(SP_CAP * 3);   // rgb per slot
     var spStart   = new Float32Array(SP_CAP);       // animation start time (ms, set on emit)
+    // ── Micro-step 4.9: flow infrastructure ───────────────────────────────
+    // When spFlow[i] === 1, this slot is in "flow" mode: position lerps
+    // from spSrc[i] → spTgt[i] over the slot's lifetime. Static pulses
+    // (spFlow[i] === 0) keep their fixed spPos. This lets one Points
+    // system render both pulse-at-a-point and particle-along-a-link.
+    var spSrc  = new Float32Array(SP_CAP * 3);
+    var spTgt  = new Float32Array(SP_CAP * 3);
+    var spFlow = new Float32Array(SP_CAP);  // 0 = static pulse, 1 = flow
     // Pre-fill colors with amber so 3.19 emits without color arg look right
     for (var sci = 0; sci < SP_CAP; sci++){
       spColor[sci*3+0] = 0.831;  // 0xd4 / 255
@@ -36266,6 +36300,10 @@ const DiscoveryEngine3D = (function(){
     state.signalPulseGeo = spGeo;
     state.signalPulseMat = spMat;
     state.signalPulseStartTime = spStart;
+    // 4.9: flow arrays
+    state.signalPulseSrc  = spSrc;
+    state.signalPulseTgt  = spTgt;
+    state.signalPulseFlow = spFlow;
     state.signalPulseWriteIdx = 0;
     if (state.scene) state.scene.add(spPoints);
     console.log('[DiscoveryEngine3D] 3.18 signal pulse buffer: ' + SP_CAP + ' slots ready');
@@ -36419,6 +36457,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.6 pursuit edges: ' + _pursuitEdges + ' person→opp links (across ' + _pursuitOpps + ' opps)');
     if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.7 link shader: Fresnel side-glow ready (centerAlpha=0.35 rimAlpha=0.88 rimPower=1.4 glowBoost=0.55)');
     if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.8 link LOD twin: LineSegments fallback ready (switches at camDist/radius 2.5↔3.5)');
+    console.log('[DiscoveryEngine3D] 4.9 signal flow infrastructure ready (700ms src→tgt lerp; emitFlow API in 4.10)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37776,6 +37815,10 @@ const DiscoveryEngine3D = (function(){
     if (state.signalPulseGeo){ state.signalPulseGeo.dispose(); state.signalPulseGeo = null; }
     if (state.signalPulseMat){ state.signalPulseMat.dispose(); state.signalPulseMat = null; }
     state.signalPulseStartTime = null;
+    // 4.9 cleanup: flow arrays
+    state.signalPulseSrc  = null;
+    state.signalPulseTgt  = null;
+    state.signalPulseFlow = null;
     state.signalPulseWriteIdx = 0;
     // 4.1 dispose: link mesh
     if (state.linkMesh){
@@ -37850,6 +37893,8 @@ const DiscoveryEngine3D = (function(){
     posAttr.array[idx*3+2]   = +z || 0;
     lifeAttr.array[idx]      = 1.0;
     state.signalPulseStartTime[idx] = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    // 4.9: clear flow flag so a recycled slot doesn't carry stale flow data
+    if (state.signalPulseFlow) state.signalPulseFlow[idx] = 0;
     if (typeof colorHex === 'number'){
       colorAttr.array[idx*3+0] = ((colorHex >> 16) & 0xff) / 255;
       colorAttr.array[idx*3+1] = ((colorHex >>  8) & 0xff) / 255;
@@ -37862,7 +37907,47 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
+  // ── Micro-step 4.9: internal flow emit (raw xyz endpoints) ─────────────
+  // Allocates a slot in flow mode: stores source + target xyz, sets the
+  // flow flag, kicks animation. The pulse decay loop lerps position from
+  // src → tgt over 700ms while alpha/size fade. 4.10 wraps this in a
+  // public emitFlow(sourceId, targetId, color?) that resolves entity IDs.
+  function _emitFlow(srcX, srcY, srcZ, tgtX, tgtY, tgtZ, colorHex){
+    if (!state.signalPulseGeo || !state.signalPulseStartTime) return -1;
+    if (!state.signalPulseFlow || !state.signalPulseSrc || !state.signalPulseTgt) return -1;
+    var posAttr   = state.signalPulseGeo.getAttribute('position');
+    var lifeAttr  = state.signalPulseGeo.getAttribute('aLife');
+    var colorAttr = state.signalPulseGeo.getAttribute('aColor');
+    if (!posAttr || !lifeAttr || !colorAttr) return -1;
+    var cap = state.signalPulseCapacity || 200;
+    var idx = state.signalPulseWriteIdx % cap;
+    state.signalPulseWriteIdx = (state.signalPulseWriteIdx + 1) % cap;
+    // Start position = source
+    posAttr.array[idx*3+0] = +srcX || 0;
+    posAttr.array[idx*3+1] = +srcY || 0;
+    posAttr.array[idx*3+2] = +srcZ || 0;
+    state.signalPulseSrc[idx*3+0] = +srcX || 0;
+    state.signalPulseSrc[idx*3+1] = +srcY || 0;
+    state.signalPulseSrc[idx*3+2] = +srcZ || 0;
+    state.signalPulseTgt[idx*3+0] = +tgtX || 0;
+    state.signalPulseTgt[idx*3+1] = +tgtY || 0;
+    state.signalPulseTgt[idx*3+2] = +tgtZ || 0;
+    state.signalPulseFlow[idx]    = 1;
+    lifeAttr.array[idx]           = 1.0;
+    state.signalPulseStartTime[idx] = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    if (typeof colorHex === 'number'){
+      colorAttr.array[idx*3+0] = ((colorHex >> 16) & 0xff) / 255;
+      colorAttr.array[idx*3+1] = ((colorHex >>  8) & 0xff) / 255;
+      colorAttr.array[idx*3+2] = ( colorHex        & 0xff) / 255;
+      colorAttr.needsUpdate = true;
+    }
+    posAttr.needsUpdate = true;
+    lifeAttr.needsUpdate = true;
+    state._spDirty = true;
+    return idx;
+  }
+
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, _emitFlow, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
