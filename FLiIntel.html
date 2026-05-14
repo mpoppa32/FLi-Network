@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.9</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.4</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34574,6 +34574,10 @@ const DiscoveryEngine3D = (function(){
     // Each entry is { kind, instanceId }. enterFocal pushes current onto
     // back and clears forward. focalBack/focalForward shuttle between them.
     focalHistory: { back: [], forward: [] },
+    // Micro-step 5.4: drag-to-pin state. When operator Shift+drags an
+    // entity, this captures: kind, instanceId, entity id (for worker pin),
+    // planeY (XZ plane at entity's current Y), and a Plane for raycast.
+    drag: null,
     // Micro-step 4.5.9: saved views — bookmarked scene state per workspace
     // (localStorage backed, keyed by workspace id). View shape:
     //   { id, name, created, filter:{stage,tier}, layerVisible:{...},
@@ -36526,6 +36530,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.5 context menu wired (right-click entity → Inspect / Pulse / Make Focal; ESC or click-outside dismisses)');
     console.log('[DiscoveryEngine3D] 5.6 selection wired (single-click selects + replaces; Shift/Cmd-click toggles; click empty clears; selected entities scale 1.25x)');
     console.log('[DiscoveryEngine3D] 5.9 focal history wired ([ back / ] forward keys; ◂ ▸ buttons on focal pill)');
+    console.log('[DiscoveryEngine3D] 5.4 drag-to-pin wired (Shift+drag entity to translate in XZ plane; release leaves it pinned via worker)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37345,6 +37350,27 @@ const DiscoveryEngine3D = (function(){
     });
   }
 
+  // ── Micro-step 5.4: unpin an entity by kind+instanceId ────────────────
+  // Counterpart to drag-to-pin. Resolves the entity id and calls the
+  // existing unpinNode worker API. Useful from context menu / console.
+  function unpinEntity(kind, instanceId){
+    var id = null;
+    if (kind === 'person'){
+      var p = (state._cleanNodesRef || [])[instanceId];
+      if (p) id = String(p.id);
+    } else if (kind === 'org'){
+      var o = (state.orgCleanRef || [])[instanceId];
+      if (o) id = String(o.id);
+    } else if (kind === 'opp'){
+      var q = (state.oppCleanRef || [])[instanceId];
+      if (q) id = String(q.id);
+    }
+    if (!id) return false;
+    unpinNode(id);
+    console.log('[DiscoveryEngine3D] 5.4 unpinned:', kind, id);
+    return true;
+  }
+
   // ── Micro-step 5.6: selection API ─────────────────────────────────────
   // state.selected is { person:Set, org:Set, opp:Set } of instance indices.
   // Public methods let console or future hooks manipulate selection.
@@ -37881,12 +37907,58 @@ const DiscoveryEngine3D = (function(){
       // unless this turns into a click — pointerup resets either way).
       state._cursorDragging = true;
       if (state.canvas) state.canvas.style.cursor = 'grabbing';
+      // ── 5.4: Shift + click on entity starts drag-to-pin ──────────────
+      if (ev.shiftKey && state.hover && state.physicsPositions){
+        var dragWidx = -1;
+        if (state.hover.kind === 'person') dragWidx = state.hover.instanceId;
+        else if (state.hover.kind === 'org') dragWidx = (state.orgWorkerOffset | 0) + state.hover.instanceId;
+        else if (state.hover.kind === 'opp') dragWidx = (state.oppWorkerOffset | 0) + state.hover.instanceId;
+        if (dragWidx >= 0){
+          // Resolve entity id (worker uses node.id, not worker index)
+          var dragId = null;
+          if (state.hover.kind === 'person'){
+            var p = (state._cleanNodesRef || [])[state.hover.instanceId];
+            if (p) dragId = String(p.id);
+          } else if (state.hover.kind === 'org'){
+            var o = (state.orgCleanRef || [])[state.hover.instanceId];
+            if (o) dragId = String(o.id);
+          } else if (state.hover.kind === 'opp'){
+            var q = (state.oppCleanRef || [])[state.hover.instanceId];
+            if (q) dragId = String(q.id);
+          }
+          if (dragId){
+            var pos = state.physicsPositions;
+            var planeY = pos[dragWidx*3+1];
+            state.drag = {
+              kind:       state.hover.kind,
+              instanceId: state.hover.instanceId,
+              workerIdx:  dragWidx,
+              id:         dragId,
+              planeY:     planeY,
+              dragPlane:  new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY)
+            };
+            // Suspend OrbitControls so it doesn't orbit while we drag
+            if (state.controls) state.controls.enabled = false;
+            if (state.canvas) state.canvas.style.cursor = 'move';
+            ev.preventDefault();
+            console.log('[DiscoveryEngine3D] 5.4 drag start:', state.drag.kind, state.drag.id, '@ planeY=' + planeY.toFixed(2));
+          }
+        }
+      }
     };
     state.onPointerUp = function(ev){
       // 5.3: restore cursor to pointer/grab on release (regardless of click vs drag)
       state._cursorDragging = false;
       if (state.canvas){
         state.canvas.style.cursor = state.hover ? 'pointer' : 'grab';
+      }
+      // ── 5.4: end drag-to-pin if active. Entity stays pinned at release. ─
+      if (state.drag){
+        console.log('[DiscoveryEngine3D] 5.4 drag end (pinned):', state.drag.kind, state.drag.id);
+        state.drag = null;
+        if (state.controls) state.controls.enabled = true;
+        state.rayDownPt = null;  // don't dispatch click after drag
+        return;
       }
       if (!state.rayDownPt) return;
       var dx = ev.clientX - state.rayDownPt.x;
@@ -37978,6 +38050,15 @@ const DiscoveryEngine3D = (function(){
       state.rayMouse.x =  ((ev.clientX - rect.left) / rect.width)  * 2 - 1;
       state.rayMouse.y = -((ev.clientY - rect.top)  / rect.height) * 2 + 1;
       state.raycaster.setFromCamera(state.rayMouse, state.camera);
+      // ── 5.4: dragging? project cursor onto entity's XZ plane and pin ──
+      if (state.drag && state.drag.dragPlane && state.physicsWorker){
+        var hitPt = new THREE.Vector3();
+        if (state.raycaster.ray.intersectPlane(state.drag.dragPlane, hitPt)){
+          // Pin to (hit.x, planeY, hit.z) — keep Y fixed at drag start
+          pinNode(state.drag.id, hitPt.x, state.drag.planeY, hitPt.z);
+        }
+        return;  // skip hover logic while dragging
+      }
       var targets = [];
       if (state.oppMesh)       targets.push({ mesh: state.oppMesh,       kind: 'opp'    });
       if (state.instancedMesh) targets.push({ mesh: state.instancedMesh, kind: 'person' });
@@ -38143,6 +38224,7 @@ const DiscoveryEngine3D = (function(){
     state.onContextMenu = null;
     state.hover = null;
     state._ctxTarget = null;
+    state.drag = null;
     // 4.5.8: detach key listener, clear focal state
     if (state.onKeyDown){ window.removeEventListener('keydown', state.onKeyDown); state.onKeyDown = null; }
     state.focal = null;
@@ -38501,7 +38583,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
