@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.8</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.9</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6751,6 +6751,8 @@ input[type="url"], textarea, select {
           <span style="color:var(--t3);font-weight:700">TIMELINE</span>
           <!-- Micro-step 6.3: transport + speed controls -->
           <span id="de3d-tl-rewind" style="color:var(--paper,#b5ad9f);cursor:pointer;padding:0 4px;font-size:11px" title="Jump to start">⏮</span>
+          <!-- Micro-step 6.9: watch-from-start (rewind + speed 16× + play) -->
+          <span id="de3d-tl-watch"  style="color:var(--gold,#d4823a);cursor:pointer;padding:0 4px;font-size:11px;font-weight:700" title="Watch workspace history from start (16×)">▶▶</span>
           <span id="de3d-tl-play"   style="color:var(--gold,#d4823a);cursor:pointer;padding:0 4px;font-size:13px;font-weight:700" title="Play / Pause">▶</span>
           <span class="de3d-tl-speed" data-speed="1"  style="color:var(--gold,#d4823a);cursor:pointer;padding:1px 5px;border-radius:2px;background:rgba(212,130,58,.16);font-weight:700">1×</span>
           <span class="de3d-tl-speed" data-speed="4"  style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px">4×</span>
@@ -36700,6 +36702,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.6 fire-on-cross wired (each meeting pulses its attendees + tagged opp during play; capped 1/frame)');
     console.log('[DiscoveryEngine3D] 6.7 opp lifecycle gate wired (opps with createdAt > timeline.date are hidden)');
     console.log('[DiscoveryEngine3D] 6.8 edge materialization wired (pursuit edges hidden until their first supporting meeting; employment edges always visible)');
+    console.log('[DiscoveryEngine3D] 6.9 watch-from-start preset wired (▶▶ button = rewind + 16× + play)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -39158,6 +39161,17 @@ window._toggle3DEngine = function(mode){
           if (st && st.timeline && st.timeline.range.start != null){
             window.DiscoveryEngine3D.setTimelineDate(st.timeline.range.start);
           }
+        });
+        // 6.9: watch-from-start (rewind + 16× + play)
+        var tlWatch = document.getElementById('de3d-tl-watch');
+        if (tlWatch) tlWatch.addEventListener('click', function(){
+          if (!window.DiscoveryEngine3D) return;
+          var st = window.DiscoveryEngine3D.getState();
+          if (!st || !st.timeline || st.timeline.range.start == null) return;
+          window.DiscoveryEngine3D.setTimelineDate(st.timeline.range.start);
+          st.timeline.speed = 16;
+          window.DiscoveryEngine3D.playTimeline(16);
+          console.log('[DiscoveryEngine3D] 6.9 watch-from-start: rewind + 16× + play');
         });
         if (tlPlay) tlPlay.addEventListener('click', function(){
           if (!window.DiscoveryEngine3D) return;
