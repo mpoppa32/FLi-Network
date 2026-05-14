@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.5</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.2</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -34342,7 +34342,13 @@ const DiscoveryEngine3D = (function(){
       halos:  true,
       links:  true,
       labels: true
-    }
+    },
+    // Micro-step 4.5.2: sprite label LOD distance threshold (world units)
+    // Sprites beyond this distance from camera are hidden. Tuned for the
+    // Atlas-scale cluster (~24 people + 50 orgs in ~15-unit radius). At
+    // larger workspaces operators can raise this via setLabelDistance().
+    labelLodDistance: 25,
+    _labelLodTick: 0
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34548,9 +34554,9 @@ const DiscoveryEngine3D = (function(){
                   state.orgStripMesh.setMatrixAt(j, _frameDummy.matrix);
                 }
                 // 3.10: position org-name label above the org box
+                // (4.5.2: visibility now owned by the LOD pass at ~10Hz)
                 if (state.orgLabels && state.orgLabels[j]){
                   state.orgLabels[j].position.set(x2, y2 + 1.1, z2);
-                  state.orgLabels[j].visible = true;
                 }
               }
               state.orgMesh.instanceMatrix.needsUpdate = true;
@@ -34577,9 +34583,9 @@ const DiscoveryEngine3D = (function(){
                 _frameDummy.updateMatrix();
                 state.oppMesh.setMatrixAt(k, _frameDummy.matrix);
                 // 3.13: position opp label above the hex disc
+                // (4.5.2: visibility now owned by the LOD pass at ~10Hz)
                 if (state.oppLabels && state.oppLabels[k]){
                   state.oppLabels[k].position.set(x3, y3 + 0.55, z3);
-                  state.oppLabels[k].visible = true;
                 }
               }
               state.oppMesh.instanceMatrix.needsUpdate = true;
@@ -34636,10 +34642,10 @@ const DiscoveryEngine3D = (function(){
                     state.pursuitHullGroup.add(hullMesh);
                   }
                   // 3.17: position the pursuit name sprite at (centroidX, top+1.4, centroidZ)
+                  // (4.5.2: visibility now owned by the LOD pass at ~10Hz)
                   if (state.pursuitNameSprites && state.pursuitNameSprites[si] && cN > 0){
                     var sp = state.pursuitNameSprites[si];
                     sp.position.set(cX / cN, topY + 1.4, cZ / cN);
-                    sp.visible = true;
                   }
                   _hullCount++;
                 } catch (e) {
@@ -34732,6 +34738,36 @@ const DiscoveryEngine3D = (function(){
       } else {
         statusEl.textContent = state.instanceCount + ' placeholder';
       }
+    }
+
+    // ── Micro-step 4.5.2: sprite label LOD (throttled, ~10Hz) ─────────────
+    // For each sprite, compare distance to camera against
+    // state.labelLodDistance. If too far → hide. If LABELS layer is OFF,
+    // keep all hidden. Cheap when sprite count is small (50-200) and
+    // throttled to 10Hz so it never blocks the render thread.
+    state._labelLodTick = (state._labelLodTick | 0) + 1;
+    if (state.camera && (state._labelLodTick % 6) === 0){
+      var lv = state.layerVisible || {};
+      var labelsOn = lv.labels !== false;
+      var thr = (state.labelLodDistance | 0) || 25;
+      var thr2 = thr * thr;  // squared distance, avoid sqrt
+      var camPos = state.camera.position;
+      var _applyLod = function(spriteArr){
+        if (!spriteArr) return;
+        for (var i = 0; i < spriteArr.length; i++){
+          var sp = spriteArr[i];
+          if (!sp) continue;
+          if (!labelsOn){ sp.visible = false; continue; }
+          var dx = sp.position.x - camPos.x;
+          var dy = sp.position.y - camPos.y;
+          var dz = sp.position.z - camPos.z;
+          var d2 = dx*dx + dy*dy + dz*dz;
+          sp.visible = (d2 <= thr2);
+        }
+      };
+      _applyLod(state.orgLabels);
+      _applyLod(state.oppLabels);
+      _applyLod(state.pursuitNameSprites);
     }
 
     // ── Micro-step 3.20: persistent count badge update ────────────────────
@@ -36147,6 +36183,15 @@ const DiscoveryEngine3D = (function(){
     setLayer(layerName, !state.layerVisible[layerName]);
   }
 
+  // Micro-step 4.5.2: tune the sprite label LOD distance at runtime.
+  // Useful for larger workspaces; default 25 fits Atlas-scale clusters.
+  function setLabelDistance(d){
+    var v = Number(d);
+    if (!Number.isFinite(v) || v <= 0) return;
+    state.labelLodDistance = v;
+    console.log('[DiscoveryEngine3D] 4.5.2 label LOD distance set to', v);
+  }
+
   // ── Micro-step 4.5.7: resolve hit → entity → open Inspector ───────────
   // Translates a (kind, instanceId) from the raycaster hit into the right
   // Inspector call. The 3D engine carries only stripped representations
@@ -36442,6 +36487,7 @@ const DiscoveryEngine3D = (function(){
     state.canvas.addEventListener('pointerup',   state.onPointerUp);
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
+    console.log('[DiscoveryEngine3D] 4.5.2 sprite LOD: distance=' + (state.labelLodDistance|0) + ' (tune via DiscoveryEngine3D.setLabelDistance(N))');
 
     // Clear any prior error pins on the HUD
     const fpsEl0 = document.getElementById('de3d-fps');
@@ -36692,7 +36738,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
