@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.5</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.6</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34561,6 +34561,12 @@ const DiscoveryEngine3D = (function(){
     // populates it; position writes scale it up 1.15× for visual feedback.
     hover: null,
     _hoverTick: 0,
+    // Micro-step 5.6: persistent selection state — per-kind Sets of
+    // instance indices. Distinct from hover (transient) and focal
+    // (camera-driven). Selected entities scale 1.25× in position writes.
+    // Single-click clears + selects one; 5.7 will add Shift+click for
+    // multi-select.
+    selected: { person: new Set(), org: new Set(), opp: new Set() },
     // Micro-step 4.5.9: saved views — bookmarked scene state per workspace
     // (localStorage backed, keyed by workspace id). View shape:
     //   { id, name, created, filter:{stage,tier}, layerVisible:{...},
@@ -34682,15 +34688,16 @@ const DiscoveryEngine3D = (function(){
               if (y < minY) minY = y; if (y > maxY) maxY = y;
               if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
               _frameDummy.position.set(x, y, z);
-              // Micro-step 3.2: per-instance scale from precomputed array
-              // 4.5.8: dim non-focal/non-neighbor entities to 0.4× scale
-              // 5.1: hover bump 1.15× on the entity currently under cursor
+              // 3.2 base · 4.5.8 focal dim · 5.1 hover · 5.6 selection
               var pSc = state.instanceScales ? state.instanceScales[i] : 1;
               if (state.focal && state.focal.focalScale && state.focal.focalScale.people){
                 pSc *= state.focal.focalScale.people[i];
               }
               if (state.hover && state.hover.kind === 'person' && state.hover.instanceId === i){
                 pSc *= 1.15;
+              }
+              if (state.selected && state.selected.person.has(i)){
+                pSc *= 1.25;
               }
               _frameDummy.scale.setScalar(pSc);
               _frameDummy.rotation.set(0, 0, 0);
@@ -34805,13 +34812,16 @@ const DiscoveryEngine3D = (function(){
                 if (y2 < minY) minY = y2; if (y2 > maxY) maxY = y2;
                 if (z2 < minZ) minZ = z2; if (z2 > maxZ) maxZ = z2;
                 _frameDummy.position.set(x2, y2, z2);
-                // 4.5.8: focal dim · 5.1: hover bump
+                // 4.5.8 focal dim · 5.1 hover · 5.6 selection
                 var oSc = 1;
                 if (state.focal && state.focal.focalScale && state.focal.focalScale.orgs){
                   oSc = state.focal.focalScale.orgs[j];
                 }
                 if (state.hover && state.hover.kind === 'org' && state.hover.instanceId === j){
                   oSc *= 1.15;
+                }
+                if (state.selected && state.selected.org.has(j)){
+                  oSc *= 1.25;
                 }
                 _frameDummy.scale.set(oSc, oSc, oSc);
                 _frameDummy.rotation.set(0, 0, 0);
@@ -34855,12 +34865,15 @@ const DiscoveryEngine3D = (function(){
                 // 4.5.6: filter pass — hidden if filter rejects this opp
                 var oppPass = !state.filterPass || !state.filterPass.opps || state.filterPass.opps[k] !== false;
                 var qSc = oppPass ? 1 : 0;
-                // 4.5.8: focal dim · 5.1: hover bump
+                // 4.5.8 focal dim · 5.1 hover · 5.6 selection
                 if (qSc > 0 && state.focal && state.focal.focalScale && state.focal.focalScale.opps){
                   qSc *= state.focal.focalScale.opps[k];
                 }
                 if (qSc > 0 && state.hover && state.hover.kind === 'opp' && state.hover.instanceId === k){
                   qSc *= 1.15;
+                }
+                if (qSc > 0 && state.selected && state.selected.opp.has(k)){
+                  qSc *= 1.25;
                 }
                 _frameDummy.scale.set(qSc, qSc, qSc);
                 _frameDummy.rotation.set(0, 0, 0);
@@ -36504,6 +36517,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.3 cursor states: grab → grabbing → pointer (over entity)');
     console.log('[DiscoveryEngine3D] 5.10 pulse-on-click wired (every entity click fires a 350ms feedback pulse)');
     console.log('[DiscoveryEngine3D] 5.5 context menu wired (right-click entity → Inspect / Pulse / Make Focal; ESC or click-outside dismisses)');
+    console.log('[DiscoveryEngine3D] 5.6 selection wired (single-click selects + replaces; Shift/Cmd-click toggles; click empty clears; selected entities scale 1.25x)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37273,6 +37287,46 @@ const DiscoveryEngine3D = (function(){
     });
   }
 
+  // ── Micro-step 5.6: selection API ─────────────────────────────────────
+  // state.selected is { person:Set, org:Set, opp:Set } of instance indices.
+  // Public methods let console or future hooks manipulate selection.
+  function selectEntity(kind, instanceId, opts){
+    if (!state.selected || !state.selected[kind]) return;
+    if (!opts || !opts.add) clearSelection();
+    state.selected[kind].add(instanceId);
+  }
+  function deselectEntity(kind, instanceId){
+    if (!state.selected || !state.selected[kind]) return;
+    state.selected[kind].delete(instanceId);
+  }
+  function toggleSelection(kind, instanceId, opts){
+    if (!state.selected || !state.selected[kind]) return;
+    var has = state.selected[kind].has(instanceId);
+    if (has) {
+      state.selected[kind].delete(instanceId);
+    } else {
+      if (!opts || !opts.add) clearSelection();
+      state.selected[kind].add(instanceId);
+    }
+  }
+  function clearSelection(){
+    if (!state.selected) return;
+    state.selected.person.clear();
+    state.selected.org.clear();
+    state.selected.opp.clear();
+  }
+  function isSelected(kind, instanceId){
+    return !!(state.selected && state.selected[kind] && state.selected[kind].has(instanceId));
+  }
+  function getSelection(){
+    if (!state.selected) return [];
+    var out = [];
+    state.selected.person.forEach(function(i){ out.push({kind:'person',instanceId:i}); });
+    state.selected.org.forEach(   function(i){ out.push({kind:'org',   instanceId:i}); });
+    state.selected.opp.forEach(   function(i){ out.push({kind:'opp',   instanceId:i}); });
+    return out;
+  }
+
   // ── Micro-step 5.5: right-click context menu ──────────────────────────
   // Captures the entity that was right-clicked (from current hover state),
   // shows the floating menu at the cursor position, and dispatches the
@@ -37804,7 +37858,8 @@ const DiscoveryEngine3D = (function(){
         }
       }
       if (!bestHit){
-        // Click on empty space → exit focal mode if active
+        // Click on empty space → clear selection + exit focal mode if active
+        clearSelection();
         if (state.focal) exitFocal();
         return;
       }
@@ -37823,6 +37878,14 @@ const DiscoveryEngine3D = (function(){
                       : bestHit.kind === 'org' ? 0xb5ad9f
                       : 0xf0a560;  // person — gold-hot to differentiate from org paper
         emit(_cp[_clkWidx*3+0], _cp[_clkWidx*3+1], _cp[_clkWidx*3+2], _clkColor);
+      }
+      // 5.6: single-click selects this entity (clears any prior selection).
+      // 5.7 will add Shift+click for additive multi-select.
+      var _multi = ev && (ev.shiftKey || ev.metaKey);
+      if (_multi){
+        toggleSelection(bestHit.kind, bestHit.instanceId, { add: true });
+      } else {
+        selectEntity(bestHit.kind, bestHit.instanceId);
       }
       // 4.5.8: double-click detection (350ms, same entity) → focal mode
       var now = ev.timeStamp || ((typeof performance !== 'undefined') ? performance.now() : Date.now());
@@ -38373,7 +38436,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
