@@ -6714,7 +6714,13 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.8b</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.11</span>
+    </div>
+    <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
+    <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="color:var(--t3);font-weight:700">FIND</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK RESULT → FLY-IN</span></div>
+      <input id="de3d-search-input" type="text" placeholder="type a name..." spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;background:rgba(7,13,24,.95);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 8px;letter-spacing:.04em;text-transform:none;outline:none">
+      <div id="de3d-search-results" style="margin-top:6px;max-height:260px;overflow-y:auto"></div>
     </div>
     <!-- Micro-step 4.5.8: focal mode pill (top-center of canvas) -->
     <div id="de3d-focal-pill" style="display:none;position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:31;background:rgba(7,13,24,.92);border:1px solid var(--gold,#d4823a);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px 6px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper,#b5ad9f);align-items:center;gap:10px;user-select:none;box-shadow:0 4px 18px rgba(212,130,58,.18)">
@@ -36790,6 +36796,69 @@ const DiscoveryEngine3D = (function(){
     pill.querySelector('#de3d-focal-name').textContent = name;
   }
 
+  // ── Micro-step 4.5.11: entity search ──────────────────────────────────
+  // Substring-match query against name fields of cleanNodes / orgClean /
+  // oppClean. Renders top results into the #de3d-search-results dropdown
+  // with kind badge + name. Each row clicks into focal mode.
+  function _performSearch(query){
+    var resultsEl = document.getElementById('de3d-search-results');
+    if (!resultsEl) return;
+    resultsEl.innerHTML = '';
+    var q = String(query || '').toLowerCase().trim();
+    if (!q) return;
+    var hits = [];
+    var people = state._cleanNodesRef || [];
+    var orgs   = state.orgCleanRef    || [];
+    var opps   = state.oppCleanRef    || [];
+    // People (limit early so a common substring doesn't blow the list)
+    for (var i = 0; i < people.length && hits.length < 40; i++){
+      var pn = String(people[i].name || '').toLowerCase();
+      if (pn.indexOf(q) !== -1) hits.push({ kind: 'person', idx: i, name: people[i].name, score: pn.indexOf(q) });
+    }
+    for (var j = 0; j < orgs.length && hits.length < 40; j++){
+      var on = String(orgs[j].name || '').toLowerCase();
+      if (on.indexOf(q) !== -1) hits.push({ kind: 'org', idx: j, name: orgs[j].name, score: on.indexOf(q) });
+    }
+    for (var k = 0; k < opps.length && hits.length < 40; k++){
+      var qn = String(opps[k].name || '').toLowerCase();
+      if (qn.indexOf(q) !== -1) hits.push({ kind: 'opp', idx: k, name: opps[k].name, score: qn.indexOf(q) });
+    }
+    // Sort: prefix matches first, then alphabetical
+    hits.sort(function(a, b){
+      if (a.score !== b.score) return a.score - b.score;
+      return String(a.name).localeCompare(String(b.name));
+    });
+    hits = hits.slice(0, 8);
+    if (hits.length === 0){
+      resultsEl.innerHTML = '<div style="color:var(--t3);padding:6px 4px;font-size:10px;letter-spacing:.06em;text-transform:none">No matches for "' + String(query).slice(0, 24) + '"</div>';
+      return;
+    }
+    hits.forEach(function(h, ordinal){
+      var row = document.createElement('div');
+      row.className = 'de3d-search-row';
+      row.style.cssText = 'cursor:pointer;padding:4px 6px;border-radius:2px;margin-top:2px;display:flex;gap:8px;align-items:center;transition:background 80ms';
+      var kindColor = h.kind === 'opp'    ? '#d4823a'
+                    : h.kind === 'org'    ? '#b5ad9f'
+                    : '#7d7669';
+      var displayName = String(h.name || '(unnamed)');
+      if (displayName.length > 38) displayName = displayName.slice(0, 35) + '…';
+      row.innerHTML =
+        '<span style="color:' + kindColor + ';font-weight:700;width:48px;font-size:9px;letter-spacing:.12em">' + h.kind.toUpperCase() + '</span>' +
+        '<span style="color:var(--paper,#b5ad9f);font-size:11px;text-transform:none;letter-spacing:.02em;font-weight:500;flex:1">' + displayName + '</span>';
+      row.dataset.kind = h.kind;
+      row.dataset.idx  = String(h.idx);
+      row.addEventListener('mouseenter', function(){ row.style.background = 'rgba(212,130,58,.18)'; });
+      row.addEventListener('mouseleave', function(){ row.style.background = 'transparent'; });
+      row.addEventListener('click', function(){
+        enterFocal(h.kind, h.idx);
+        var inp = document.getElementById('de3d-search-input');
+        if (inp){ inp.value = ''; }
+        resultsEl.innerHTML = '';
+      });
+      resultsEl.appendChild(row);
+    });
+  }
+
   // ── Micro-step 4.5.7: resolve hit → entity → open Inspector ───────────
   // Translates a (kind, instanceId) from the raycaster hit into the right
   // Inspector call. The 3D engine carries only stripped representations
@@ -37129,6 +37198,7 @@ const DiscoveryEngine3D = (function(){
     window.addEventListener('keydown', state.onKeyDown);
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
     console.log('[DiscoveryEngine3D] 4.5.8 focal mode wired (double-click any entity to enter, ESC or click-empty to exit)');
+    console.log('[DiscoveryEngine3D] 4.5.11 entity search wired (top-left FIND box — type to filter, click result to fly-in)');
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
     console.log('[DiscoveryEngine3D] 4.5.2 sprite LOD: distance=' + (state.labelLodDistance|0) + ' (tune via DiscoveryEngine3D.setLabelDistance(N))');
     console.log('[DiscoveryEngine3D] 4.5.6 filter chips wired (stage + tier dropdowns in count badge)');
@@ -37386,7 +37456,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -37398,6 +37468,7 @@ window._toggle3DEngine = function(mode){
   const netView = document.getElementById('network-view');
   const fpsHud = document.getElementById('de3d-fps-hud');
   const countBadge = document.getElementById('de3d-count-badge');
+  const searchPanel = document.getElementById('de3d-search-panel');
   const btn2d = document.getElementById('de3d-toggle-2d');
   const btn3d = document.getElementById('de3d-toggle-3d');
   if (!netView) return;
@@ -37456,6 +37527,32 @@ window._toggle3DEngine = function(mode){
         });
       }
     }
+    // Micro-step 4.5.11: show + wire search panel
+    if (searchPanel){
+      searchPanel.style.display = 'block';
+      if (searchPanel.dataset.searchWired !== '1'){
+        searchPanel.dataset.searchWired = '1';
+        var sInput = document.getElementById('de3d-search-input');
+        if (sInput){
+          sInput.addEventListener('input', function(){
+            if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D._performSearch === 'function'){
+              window.DiscoveryEngine3D._performSearch(this.value);
+            }
+          });
+          sInput.addEventListener('keydown', function(ev){
+            if (ev.key === 'Escape'){
+              this.value = '';
+              if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D._performSearch === 'function')
+                window.DiscoveryEngine3D._performSearch('');
+              this.blur();
+            } else if (ev.key === 'Enter'){
+              var firstRow = document.querySelector('#de3d-search-results .de3d-search-row');
+              if (firstRow) firstRow.click();
+            }
+          });
+        }
+      }
+    }
     if (btn2d){ btn2d.classList.remove('active'); }
     if (btn3d){ btn3d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '3d'); } catch(e){}
@@ -37464,6 +37561,7 @@ window._toggle3DEngine = function(mode){
     if (svgCanvas) svgCanvas.style.display = '';
     if (fpsHud) fpsHud.style.display = 'none';
     if (countBadge) countBadge.style.display = 'none';
+    if (searchPanel) searchPanel.style.display = 'none';
     if (btn3d){ btn3d.classList.remove('active'); }
     if (btn2d){ btn2d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
