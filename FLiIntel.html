@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.17</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.18</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34305,7 +34305,17 @@ const DiscoveryEngine3D = (function(){
     // Micro-step 3.16: shared soft alpha falloff ShaderMaterial (membrane)
     pursuitHullMaterial: null,
     // Micro-step 3.17: pursuit-name sprite per active hull
-    pursuitNameSprites: null
+    pursuitNameSprites: null,
+    // Micro-step 3.18: THREE.Points signal-pulse system
+    // Preallocated ring buffer of 200 point particles for transient signal
+    // animations (3.19 will add the scale/alpha animation curve and the
+    // public emit() API).
+    signalPulsePoints: null,
+    signalPulseGeo: null,
+    signalPulseMat: null,
+    signalPulseWriteIdx: 0,
+    signalPulseStartTime: null,  // per-slot animation start (Float32Array, 3.19 use)
+    signalPulseCapacity: 200
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -35496,6 +35506,89 @@ const DiscoveryEngine3D = (function(){
       console.log('[DiscoveryEngine3D] 3.17 pursuit name sprites: 0');
     }
 
+    // ── Micro-step 3.18: THREE.Points signal-pulse system (200 slots) ─────
+    // Preallocated ring buffer of point particles. All slots start dormant
+    // (aLife=0, alpha=0) so the system has no visible effect on its own.
+    // 3.19 will add the public emit(x,y,z) API + animation curve.
+    //
+    // Buffer attributes:
+    //   position (vec3): xyz of the pulse origin (set on emit, frozen after)
+    //   aLife    (float): 1.0 = newborn, decays to 0 over animation lifetime
+    //   aColor   (vec3):  per-slot tint (defaults to amber on emit)
+    //
+    // Shader: round point sprite via gl_PointCoord (distance from center).
+    // Alpha = aLife * (1 - smoothstep(0.45, 0.5, dist)) so dormant slots
+    // (aLife=0) render fully transparent and never write to the framebuffer.
+    if (state.signalPulsePoints){
+      if (state.scene) state.scene.remove(state.signalPulsePoints);
+      if (state.signalPulseGeo) state.signalPulseGeo.dispose();
+      if (state.signalPulseMat) state.signalPulseMat.dispose();
+      state.signalPulsePoints = null;
+      state.signalPulseGeo = null;
+      state.signalPulseMat = null;
+    }
+    var SP_CAP = state.signalPulseCapacity || 200;
+    var spPos     = new Float32Array(SP_CAP * 3);  // origin xyz per slot
+    var spLife    = new Float32Array(SP_CAP);       // 0 = dormant
+    var spColor   = new Float32Array(SP_CAP * 3);   // rgb per slot
+    var spStart   = new Float32Array(SP_CAP);       // animation start time (ms, set on emit)
+    // Pre-fill colors with amber so 3.19 emits without color arg look right
+    for (var sci = 0; sci < SP_CAP; sci++){
+      spColor[sci*3+0] = 0.831;  // 0xd4 / 255
+      spColor[sci*3+1] = 0.510;  // 0x82 / 255
+      spColor[sci*3+2] = 0.227;  // 0x3a / 255
+    }
+    var spGeo = new THREE.BufferGeometry();
+    spGeo.setAttribute('position', new THREE.BufferAttribute(spPos, 3));
+    spGeo.setAttribute('aLife',    new THREE.BufferAttribute(spLife, 1));
+    spGeo.setAttribute('aColor',   new THREE.BufferAttribute(spColor, 3));
+    spGeo.setDrawRange(0, SP_CAP);
+    var spMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uPointSize: { value: 32.0 }  // base point size in pixels at scale=1
+      },
+      vertexShader: [
+        'attribute float aLife;',
+        'attribute vec3  aColor;',
+        'uniform float uPointSize;',
+        'varying float vLife;',
+        'varying vec3  vColor;',
+        'void main() {',
+        '  vLife  = aLife;',
+        '  vColor = aColor;',
+        '  vec4 mvPos = modelViewMatrix * vec4(position, 1.0);',
+        // 3.19 will multiply uPointSize by a scale curve; for 3.18 it is constant.
+        '  gl_PointSize = uPointSize * (300.0 / max(1.0, -mvPos.z)) * max(aLife, 0.0);',
+        '  gl_Position = projectionMatrix * mvPos;',
+        '}'
+      ].join('\n'),
+      fragmentShader: [
+        'varying float vLife;',
+        'varying vec3  vColor;',
+        'void main() {',
+        // Circular sprite via gl_PointCoord distance from center
+        '  vec2 uv = gl_PointCoord - vec2(0.5);',
+        '  float d = length(uv);',
+        '  float disc = 1.0 - smoothstep(0.40, 0.50, d);',
+        '  float alpha = vLife * disc;',
+        '  if (alpha <= 0.001) discard;',
+        '  gl_FragColor = vec4(vColor, alpha);',
+        '}'
+      ].join('\n'),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    var spPoints = new THREE.Points(spGeo, spMat);
+    spPoints.frustumCulled = false;  // origins can be anywhere
+    state.signalPulsePoints = spPoints;
+    state.signalPulseGeo = spGeo;
+    state.signalPulseMat = spMat;
+    state.signalPulseStartTime = spStart;
+    state.signalPulseWriteIdx = 0;
+    if (state.scene) state.scene.add(spPoints);
+    console.log('[DiscoveryEngine3D] 3.18 signal pulse buffer: ' + SP_CAP + ' slots ready');
+
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
     // orgs, then opportunities. cleanLinks still contains only person-to-
@@ -36044,6 +36137,15 @@ const DiscoveryEngine3D = (function(){
     }
     state.pursuitHullSpec = null;
     state.pursuitHullsBuilt = false;
+    // 3.18 dispose: signal pulse points + geo + material
+    if (state.signalPulsePoints){
+      if (state.scene) state.scene.remove(state.signalPulsePoints);
+      state.signalPulsePoints = null;
+    }
+    if (state.signalPulseGeo){ state.signalPulseGeo.dispose(); state.signalPulseGeo = null; }
+    if (state.signalPulseMat){ state.signalPulseMat.dispose(); state.signalPulseMat = null; }
+    state.signalPulseStartTime = null;
+    state.signalPulseWriteIdx = 0;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
