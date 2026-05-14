@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.4d</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.4e</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -35166,26 +35166,28 @@ const DiscoveryEngine3D = (function(){
           .force('link', d3.forceLink(links).id(function(d){ return d.id; })
             .distance(function(l){ return 5 + (1 - (l.recency || 0.5)) * 8; })
             .strength(0.5))
-          // ── P4.5.4d: Y stratification ──────────────────────────────────
+          // ── P4.5.4d/e: Y stratification ────────────────────────────────
           // Three horizontal strata: opps at +6 (top), orgs at 0 (middle),
-          // people at -4 (bottom). Strong Y-pull (0.45) so layers stay
-          // crisp even under per-tick perturbation from links/repulsion.
+          // people at -4 (bottom). P4.5.4e — Y strength 0.45 → 0.60 for
+          // crisper layer separation.
           .force('y', d3.forceY(function(d){
             if (d.type === 'opportunity') return 6;
             if (d.type === 'person')      return -4;
             return 0;  // company / org / default → middle stratum
-          }).strength(0.45))
-          // ── P4.5.4d: per-person X/Z pull to employer org ───────────────
+          }).strength(0.60))
+          // ── P4.5.4d/e: per-person X/Z pull to employer org ─────────────
           // People are pulled toward their org's current X/Z so each org
           // becomes a "column" with its team clustered below it. Other
           // node types fall back to gentle pull toward origin.
+          // P4.5.4e — person pull strengthened 0.32 → 0.45 so columns
+          // stay tighter under repulsion from neighboring teams.
           .force('x', d3.forceX(function(d){
             if (d.type === 'person' && d._orgIdx != null && nodes[d._orgIdx]){
               return nodes[d._orgIdx].x || 0;
             }
             return 0;
           }).strength(function(d){
-            return (d.type === 'person' && d._orgIdx != null) ? 0.32 : 0.08;
+            return (d.type === 'person' && d._orgIdx != null) ? 0.45 : 0.08;
           }))
           .force('z', d3.forceZ(function(d){
             if (d.type === 'person' && d._orgIdx != null && nodes[d._orgIdx]){
@@ -35193,7 +35195,7 @@ const DiscoveryEngine3D = (function(){
             }
             return 0;
           }).strength(function(d){
-            return (d.type === 'person' && d._orgIdx != null) ? 0.32 : 0.08;
+            return (d.type === 'person' && d._orgIdx != null) ? 0.45 : 0.08;
           }))
           .force('collide', d3.forceCollide().radius(function(d){
             // P4.5.4d — collide radius lifted to match larger geometry
