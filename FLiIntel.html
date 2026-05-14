@@ -6714,7 +6714,16 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.19</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.20</span>
+    </div>
+    <!-- Micro-step 3.20: persistent count badge — live entity tally -->
+    <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
+      <div style="color:var(--t3);margin-bottom:4px;font-weight:700">ENTITIES</div>
+      <div><span style="color:var(--t3);display:inline-block;width:62px">PEOPLE</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-people">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:62px">ORGS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-orgs">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:62px">OPPS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-opps">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:62px">HULLS</span><span style="color:var(--gold)" id="de3d-cb-hulls">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:62px">PULSES</span><span style="color:var(--gold)" id="de3d-cb-pulses">0</span></div>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34631,6 +34640,34 @@ const DiscoveryEngine3D = (function(){
         statusEl.textContent = state.instanceCount + ' placeholder';
       }
     }
+
+    // ── Micro-step 3.20: persistent count badge update ────────────────────
+    // Throttled to ~10Hz (every 6th frame at 60fps) — the badge doesn't
+    // need to flicker at 60Hz, and DOM writes are the only non-GPU cost
+    // in this loop. Live pulse count is recomputed (active = aLife > 0).
+    state._cbTick = (state._cbTick | 0) + 1;
+    if ((state._cbTick % 6) === 0){
+      var cbPeople = document.getElementById('de3d-cb-people');
+      var cbOrgs   = document.getElementById('de3d-cb-orgs');
+      var cbOpps   = document.getElementById('de3d-cb-opps');
+      var cbHulls  = document.getElementById('de3d-cb-hulls');
+      var cbPulses = document.getElementById('de3d-cb-pulses');
+      if (cbPeople) cbPeople.textContent = (state.instanceCount | 0);
+      if (cbOrgs)   cbOrgs.textContent   = (state.orgInstanceCount | 0);
+      if (cbOpps)   cbOpps.textContent   = (state.oppInstanceCount | 0);
+      if (cbHulls)  cbHulls.textContent  = (state.pursuitHullGroup ? state.pursuitHullGroup.children.length : 0);
+      if (cbPulses){
+        var activePulses = 0;
+        if (state.signalPulseGeo){
+          var lAttr = state.signalPulseGeo.getAttribute('aLife');
+          if (lAttr){
+            var arr = lAttr.array;
+            for (var ai = 0; ai < arr.length; ai++) if (arr[ai] > 0) activePulses++;
+          }
+        }
+        cbPulses.textContent = activePulses;
+      }
+    }
   }
 
   // ── PHASE 2: PHYSICS WORKER ──────────────────────────────────────────────
@@ -35624,6 +35661,12 @@ const DiscoveryEngine3D = (function(){
     if (state.scene) state.scene.add(spPoints);
     console.log('[DiscoveryEngine3D] 3.18 signal pulse buffer: ' + SP_CAP + ' slots ready');
     console.log('[DiscoveryEngine3D] 3.19 emit() API ready — try DiscoveryEngine3D.emit(0,0,0) in console');
+    // Micro-step 3.20: badge HUD is in the DOM; just confirm visibility once
+    if (document.getElementById('de3d-count-badge')){
+      console.log('[DiscoveryEngine3D] 3.20 count badge mounted (people/orgs/opps/hulls/pulses, updated 10Hz)');
+    } else {
+      console.warn('[DiscoveryEngine3D] 3.20 count badge element not found — HUD HTML missing?');
+    }
 
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
@@ -36260,6 +36303,7 @@ window._toggle3DEngine = function(mode){
   const svgCanvas = document.getElementById('net-canvas');
   const netView = document.getElementById('network-view');
   const fpsHud = document.getElementById('de3d-fps-hud');
+  const countBadge = document.getElementById('de3d-count-badge');
   const btn2d = document.getElementById('de3d-toggle-2d');
   const btn3d = document.getElementById('de3d-toggle-3d');
   if (!netView) return;
@@ -36288,6 +36332,7 @@ window._toggle3DEngine = function(mode){
     };
     setTimeout(_tryLoad, 100);
     if (fpsHud) fpsHud.style.display = 'flex';
+    if (countBadge) countBadge.style.display = 'block';
     if (btn2d){ btn2d.classList.remove('active'); }
     if (btn3d){ btn3d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '3d'); } catch(e){}
@@ -36295,6 +36340,7 @@ window._toggle3DEngine = function(mode){
     DiscoveryEngine3D.dispose();
     if (svgCanvas) svgCanvas.style.display = '';
     if (fpsHud) fpsHud.style.display = 'none';
+    if (countBadge) countBadge.style.display = 'none';
     if (btn3d){ btn3d.classList.remove('active'); }
     if (btn2d){ btn2d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
