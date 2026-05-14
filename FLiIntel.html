@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.11</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.12</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -24915,35 +24915,76 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
       if (!idx.oppsByStage.has(st)) idx.oppsByStage.set(st, []);
       idx.oppsByStage.get(st).push(o);
     }
-    // Meetings
+    // Meetings — P6.12: dual-schema compatibility. Different workspaces
+    // store attendee data under m.meta.attendees, m.intel.keyPeople, or
+    // both. Some workspaces tag meetings via m.oppId, others via
+    // opp.meetings[]. Scan BOTH directions for both fields, dedupe by id.
     var simFn = (typeof window.nameSimilarity === 'function') ? window.nameSimilarity : null;
+    // Build a quick id→meeting map for opp.meetings reverse-walk
+    var _mtgById = {};
+    for (var mzi = 0; mzi < meetings.length; mzi++){
+      var mz = meetings[mzi];
+      if (mz && mz.id != null) _mtgById[String(mz.id)] = mz;
+    }
     for (var mIdx = 0; mIdx < meetings.length; mIdx++){
       var mt = meetings[mIdx];
       if (!mt) continue;
+      // Forward: m.oppId → meeting
       if (mt.oppId != null && mt.oppId !== ''){
         var oid = String(mt.oppId);
         if (!idx.meetingsByOppId.has(oid)) idx.meetingsByOppId.set(oid, []);
         idx.meetingsByOppId.get(oid).push(mt);
       }
-      // Attendee → meeting (name-similarity match against person nodes)
-      var atts = (mt.meta && mt.meta.attendees) || [];
-      if (atts.length && simFn){
-        for (var ai = 0; ai < atts.length; ai++){
-          var att = atts[ai];
-          if (!att || !att.name) continue;
-          for (var ni = 0; ni < nodes.length; ni++){
-            var nn = nodes[ni];
-            if (!nn || nn.type !== 'person' || !nn.name) continue;
-            try {
-              if (simFn(att.name, nn.name) >= 0.72){
-                var pid = String(nn.id);
-                if (!idx.meetingsByAttendee.has(pid)) idx.meetingsByAttendee.set(pid, []);
-                idx.meetingsByAttendee.get(pid).push(mt);
-                break;
-              }
-            } catch (e) {}
+      // P6.12: attendee → meeting via BOTH meta.attendees AND intel.keyPeople
+      // (defense BD workspaces often use intel.keyPeople for the canonical
+      // attendee list; meta.attendees is sometimes empty.)
+      var _atSources = [];
+      if (mt.meta && Array.isArray(mt.meta.attendees)) _atSources.push(mt.meta.attendees);
+      if (mt.intel && Array.isArray(mt.intel.keyPeople)) _atSources.push(mt.intel.keyPeople);
+      if (_atSources.length && simFn){
+        var seenForMtg = {};  // dedupe person matches across both lists
+        for (var asi = 0; asi < _atSources.length; asi++){
+          var atts = _atSources[asi];
+          for (var ai = 0; ai < atts.length; ai++){
+            var att = atts[ai];
+            if (!att || !att.name) continue;
+            for (var ni = 0; ni < nodes.length; ni++){
+              var nn = nodes[ni];
+              if (!nn || nn.type !== 'person' || !nn.name) continue;
+              try {
+                if (simFn(att.name, nn.name) >= 0.72){
+                  var pid = String(nn.id);
+                  if (seenForMtg[pid]) break;
+                  seenForMtg[pid] = 1;
+                  if (!idx.meetingsByAttendee.has(pid)) idx.meetingsByAttendee.set(pid, []);
+                  idx.meetingsByAttendee.get(pid).push(mt);
+                  break;
+                }
+              } catch (e) {}
+            }
           }
         }
+      }
+    }
+    // P6.12: reverse direction — for each opp with a .meetings[] array,
+    // populate meetingsByOppId for meetings not already indexed via m.oppId.
+    for (var roi = 0; roi < opps.length; roi++){
+      var ro = opps[roi];
+      if (!ro || ro.id == null || !Array.isArray(ro.meetings)) continue;
+      var roid = String(ro.id);
+      for (var rmi = 0; rmi < ro.meetings.length; rmi++){
+        var rmId = ro.meetings[rmi];
+        if (rmId == null) continue;
+        var rmm = _mtgById[String(rmId)];
+        if (!rmm) continue;
+        if (!idx.meetingsByOppId.has(roid)) idx.meetingsByOppId.set(roid, []);
+        var existing = idx.meetingsByOppId.get(roid);
+        // Dedupe (in case the meeting was also indexed via m.oppId)
+        var already = false;
+        for (var exi = 0; exi < existing.length; exi++){
+          if (existing[exi] === rmm){ already = true; break; }
+        }
+        if (!already) existing.push(rmm);
       }
     }
     var t1 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
@@ -36642,7 +36683,7 @@ const DiscoveryEngine3D = (function(){
         var perPersonCount   = {};  // personIdx → number of shared meetings
         var perPersonFirstTs = {};  // 6.8: earliest meeting ts per pair
         oMtgs.forEach(function(m){
-          var atts = (m && m.meta && m.meta.attendees) || [];
+          var atts = _meetingAttendees(m);  // P6.12: dual-schema (meta.attendees ∪ intel.keyPeople)
           var mTs  = _meetingTime(m);  // 6.8: capture meeting time
           var seenThisMeeting = {};  // dedupe within a single meeting
           atts.forEach(function(a){
@@ -36681,7 +36722,20 @@ const DiscoveryEngine3D = (function(){
     state.linkIndexPairs = linkPairs;
     state.linkCount = linkPairs.length;
     if (linkPairs.length){
-      console.log('[DiscoveryEngine3D] 4.2 link weights: min=' + _wMin.toFixed(2) + ' max=' + _wMax.toFixed(2) + ' avg=' + (_wSum / linkPairs.length).toFixed(2) + ' over ' + linkPairs.length + ' links');
+      // P6.12: recompute stats across ALL link types (4.2 accumulator only
+      // saw the 0 person-person links; employment + pursuit edges land
+      // after that scan, so min/max were stuck at ±Infinity).
+      var _wMin2 = Infinity, _wMax2 = -Infinity, _wSum2 = 0;
+      for (var lpiW = 0; lpiW < linkPairs.length; lpiW++){
+        var wW = linkPairs[lpiW][2];
+        if (Number.isFinite(wW)){
+          if (wW < _wMin2) _wMin2 = wW;
+          if (wW > _wMax2) _wMax2 = wW;
+          _wSum2 += wW;
+        }
+      }
+      var validW = Number.isFinite(_wMin2);
+      console.log('[DiscoveryEngine3D] 4.2 link weights: min=' + (validW ? _wMin2.toFixed(2) : '—') + ' max=' + (validW ? _wMax2.toFixed(2) : '—') + ' avg=' + (validW ? (_wSum2 / linkPairs.length).toFixed(2) : '—') + ' over ' + linkPairs.length + ' links');
     } else {
       console.log('[DiscoveryEngine3D] 4.2 link weights: 0 links (no weight stats)');
     }
@@ -36716,6 +36770,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.9 watch-from-start preset wired (▶▶ button = rewind + 16× + play)');
     console.log('[DiscoveryEngine3D] 6.10 loop toggle wired (↻ — when ON, playback wraps to start at end + meetings refire)');
     console.log('[DiscoveryEngine3D] 6.11 Rhythm-tab sync wired (goIntelById wrapped — clicking any meeting also seeks 3D timeline)');
+    console.log('[DiscoveryEngine3D] P6.12 data/shader compat: link shader fixed; meeting attendees scan both meta.attendees + intel.keyPeople; opp.meetings[] reverse-walked');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -36750,7 +36805,11 @@ const DiscoveryEngine3D = (function(){
           uGlowBoost:   { value: 0.55 }
         },
         vertexShader: [
-          'attribute vec3 instanceColor;',
+          // P6.12 — DO NOT redeclare instanceColor. THREE auto-injects
+          // `attribute vec3 instanceColor` for InstancedMesh that has
+          // setColorAt called. Declaring it here triggers GLSL
+          // 'redefinition' compile error and the entire shader fails
+          // (links invisible, console floods with INVALID_OPERATION).
           'varying vec3 vColor;',
           'varying vec3 vNormalView;',
           'varying vec3 vViewDir;',
@@ -37224,7 +37283,7 @@ const DiscoveryEngine3D = (function(){
         pmts.forEach(function(m){
           if (m && m.oppId != null && m.oppId !== '') _markOppById(m.oppId);
           // Also mark fellow attendees of those meetings
-          var atts = (m && m.meta && m.meta.attendees) || [];
+          var atts = _meetingAttendees(m);  // P6.12: dual-schema (meta.attendees ∪ intel.keyPeople)
           atts.forEach(function(a){
             if (!a || !a.name) return;
             // name-match against people
@@ -37260,7 +37319,7 @@ const DiscoveryEngine3D = (function(){
       if (idx && idx.meetingsByOppId){
         var qmts = idx.meetingsByOppId.get(rawId) || [];
         qmts.forEach(function(m){
-          var atts = (m && m.meta && m.meta.attendees) || [];
+          var atts = _meetingAttendees(m);  // P6.12: dual-schema (meta.attendees ∪ intel.keyPeople)
           atts.forEach(function(a){
             if (!a || !a.name) return;
             var simFn = window.nameSimilarity;
@@ -37864,6 +37923,18 @@ const DiscoveryEngine3D = (function(){
     el.style.top  = y + 'px';
   }
 
+  // ── P6.12: meeting attendee dual-schema reader ─────────────────────────
+  // Defense BD workspaces store attendees under either m.meta.attendees
+  // (the calendar/meta record), m.intel.keyPeople (extracted from the
+  // notes), or both. Always read both lists — same caller-side semantics.
+  function _meetingAttendees(m){
+    if (!m) return [];
+    var out = [];
+    if (m.meta && Array.isArray(m.meta.attendees))  out = out.concat(m.meta.attendees);
+    if (m.intel && Array.isArray(m.intel.keyPeople)) out = out.concat(m.intel.keyPeople);
+    return out;
+  }
+
   // ── Micro-step 6.1: timeline foundation ────────────────────────────────
   // Extracts a meeting's timestamp robustly. Different workspaces store
   // meeting date in different fields: meta.date (string), meta.ts (epoch),
@@ -37930,7 +38001,7 @@ const DiscoveryEngine3D = (function(){
     var fired = 0;
     var simFn = window.nameSimilarity;
     var people = state._cleanNodesRef || [];
-    var atts   = (m.meta && m.meta.attendees) || [];
+    var atts   = _meetingAttendees(m);  // P6.12: dual-schema (meta.attendees ∪ intel.keyPeople)
     // Track which person indices already pulsed for this meeting to dedupe
     // when multiple attendees match the same node (rare but possible).
     var seen = {};
