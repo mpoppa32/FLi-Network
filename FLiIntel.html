@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.2</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.3</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36494,6 +36494,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.12 count badge: PULSES + FLOWS rows live (10Hz update)');
     console.log('[DiscoveryEngine3D] 5.1 hover wired (pointermove raycast ~30Hz; hovered entity scales 1.15x; cursor → pointer)');
     console.log('[DiscoveryEngine3D] 5.2 hover tooltip wired (kind + name + meta; cursor-tracking with edge flip)');
+    console.log('[DiscoveryEngine3D] 5.3 cursor states: grab → grabbing → pointer (over entity)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37587,7 +37588,7 @@ const DiscoveryEngine3D = (function(){
     state.renderer = renderer;
     state.canvas = renderer.domElement;
     state.canvas.id = 'de3d-canvas';
-    state.canvas.style.cssText = 'position:absolute;top:42px;left:220px;right:0;bottom:0;width:calc(100% - 220px);height:calc(100% - 42px);z-index:8;display:block;outline:none';
+    state.canvas.style.cssText = 'position:absolute;top:42px;left:220px;right:0;bottom:0;width:calc(100% - 220px);height:calc(100% - 42px);z-index:8;display:block;outline:none;cursor:grab';
     container.appendChild(state.canvas);
 
     // ── Scene ──
@@ -37698,8 +37699,17 @@ const DiscoveryEngine3D = (function(){
     state.onPointerDown = function(ev){
       if (ev.button !== 0) return;  // left button only
       state.rayDownPt = { x: ev.clientX, y: ev.clientY, t: ev.timeStamp };
+      // 5.3: grabbing cursor while mouse is held (camera orbit in progress
+      // unless this turns into a click — pointerup resets either way).
+      state._cursorDragging = true;
+      if (state.canvas) state.canvas.style.cursor = 'grabbing';
     };
     state.onPointerUp = function(ev){
+      // 5.3: restore cursor to pointer/grab on release (regardless of click vs drag)
+      state._cursorDragging = false;
+      if (state.canvas){
+        state.canvas.style.cursor = state.hover ? 'pointer' : 'grab';
+      }
       if (!state.rayDownPt) return;
       var dx = ev.clientX - state.rayDownPt.x;
       var dy = ev.clientY - state.rayDownPt.y;
@@ -37785,17 +37795,19 @@ const DiscoveryEngine3D = (function(){
         if (!prev || prev.kind !== best.kind || prev.instanceId !== best.instanceId){
           state.hover = { kind: best.kind, instanceId: best.instanceId };
         }
-        state.canvas.style.cursor = 'pointer';
+        // 5.3: pointer over entity (only if not actively dragging)
+        if (!state._cursorDragging) state.canvas.style.cursor = 'pointer';
       } else {
         if (prev) state.hover = null;
-        state.canvas.style.cursor = '';
+        // 5.3: grab cursor over empty canvas (signals "drag to orbit")
+        if (!state._cursorDragging) state.canvas.style.cursor = 'grab';
       }
       // 5.2: update tooltip every move (content + position)
       _updateHoverTooltip();
     };
     state.onPointerLeave = function(){
       if (state.hover) state.hover = null;
-      if (state.canvas) state.canvas.style.cursor = '';
+      if (state.canvas) state.canvas.style.cursor = '';  // browser default outside canvas
       _updateHoverTooltip();
     };
     state.canvas.addEventListener('pointermove',  state.onPointerMove);
