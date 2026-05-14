@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.6</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.9</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6763,7 +6763,10 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone,#7d7669);font-weight:600" id="de3d-focal-kind">KIND</span>
       <span id="de3d-focal-name" style="color:var(--paper,#b5ad9f);font-weight:700;letter-spacing:.1em;text-transform:none">Name</span>
-      <span style="color:var(--t3);cursor:pointer;font-size:14px;line-height:1;margin-left:4px;padding:0 4px" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.exitFocal)window.DiscoveryEngine3D.exitFocal()" title="Exit focal mode (ESC)">×</span>
+      <!-- Micro-step 5.9: focal history back/forward arrows -->
+      <span id="de3d-focal-back" style="color:var(--paper,#b5ad9f);cursor:pointer;font-size:13px;line-height:1;padding:0 4px;opacity:.25;pointer-events:none" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.focalBack)window.DiscoveryEngine3D.focalBack()" title="No previous focal">◂</span>
+      <span id="de3d-focal-fwd"  style="color:var(--paper,#b5ad9f);cursor:pointer;font-size:13px;line-height:1;padding:0 4px;opacity:.25;pointer-events:none" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.focalForward)window.DiscoveryEngine3D.focalForward()" title="No forward focal">▸</span>
+      <span style="color:var(--t3);cursor:pointer;font-size:14px;line-height:1;margin-left:2px;padding:0 4px" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.exitFocal)window.DiscoveryEngine3D.exitFocal()" title="Exit focal mode (ESC)">×</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -34567,6 +34570,10 @@ const DiscoveryEngine3D = (function(){
     // Single-click clears + selects one; 5.7 will add Shift+click for
     // multi-select.
     selected: { person: new Set(), org: new Set(), opp: new Set() },
+    // Micro-step 5.9: focal history — browser-style back/forward stacks.
+    // Each entry is { kind, instanceId }. enterFocal pushes current onto
+    // back and clears forward. focalBack/focalForward shuttle between them.
+    focalHistory: { back: [], forward: [] },
     // Micro-step 4.5.9: saved views — bookmarked scene state per workspace
     // (localStorage backed, keyed by workspace id). View shape:
     //   { id, name, created, filter:{stage,tier}, layerVisible:{...},
@@ -36518,6 +36525,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.10 pulse-on-click wired (every entity click fires a 350ms feedback pulse)');
     console.log('[DiscoveryEngine3D] 5.5 context menu wired (right-click entity → Inspect / Pulse / Make Focal; ESC or click-outside dismisses)');
     console.log('[DiscoveryEngine3D] 5.6 selection wired (single-click selects + replaces; Shift/Cmd-click toggles; click empty clears; selected entities scale 1.25x)');
+    console.log('[DiscoveryEngine3D] 5.9 focal history wired ([ back / ] forward keys; ◂ ▸ buttons on focal pill)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37100,13 +37108,23 @@ const DiscoveryEngine3D = (function(){
     return { x: x, y: y, z: z };
   }
 
-  function enterFocal(kind, instanceId){
+  function enterFocal(kind, instanceId, opts){
+    opts = opts || {};
     var calc = _computeFocalScales(kind, instanceId);
     if (!calc) return;
     var wp = _entityWorldPos(kind, instanceId);
     if (!wp){
       console.warn('[DiscoveryEngine3D] 4.5.8 cannot focal-enter: no position for', kind, instanceId);
       return;
+    }
+    // ── 5.9: history bookkeeping ──────────────────────────────────────
+    // If this is a fresh focal (not back/forward navigation), push the
+    // current focal onto the back stack and clear forward (new branch).
+    if (!opts._fromHistory && state.focalHistory){
+      if (state.focal && state.focal.kind){
+        state.focalHistory.back.push({ kind: state.focal.kind, instanceId: state.focal.instanceId });
+      }
+      state.focalHistory.forward.length = 0;
     }
     // Camera anim: keep current direction, set new target to entity, new
     // position offset from target by FOCAL_DIST along the current dir.
@@ -37154,6 +37172,46 @@ const DiscoveryEngine3D = (function(){
     pill.querySelector('#de3d-focal-kind').textContent = (kind || '').toUpperCase();
     pill.querySelector('#de3d-focal-kind').style.color = kindColor;
     pill.querySelector('#de3d-focal-name').textContent = name;
+    // 5.9: refresh back/forward button enablement
+    _updateFocalHistoryButtons();
+  }
+  function _updateFocalHistoryButtons(){
+    var h = state.focalHistory || { back: [], forward: [] };
+    var bk = document.getElementById('de3d-focal-back');
+    var fw = document.getElementById('de3d-focal-fwd');
+    if (bk){
+      var on = h.back.length > 0;
+      bk.style.opacity = on ? '0.95' : '0.25';
+      bk.style.pointerEvents = on ? 'auto' : 'none';
+      bk.title = on ? 'Back ([)' : 'No previous focal';
+    }
+    if (fw){
+      var on2 = h.forward.length > 0;
+      fw.style.opacity = on2 ? '0.95' : '0.25';
+      fw.style.pointerEvents = on2 ? 'auto' : 'none';
+      fw.title = on2 ? 'Forward (])' : 'No forward focal';
+    }
+  }
+  // ── 5.9: focal navigation ─────────────────────────────────────────────
+  function focalBack(){
+    var h = state.focalHistory;
+    if (!h || !h.back.length) return false;
+    if (state.focal && state.focal.kind){
+      h.forward.push({ kind: state.focal.kind, instanceId: state.focal.instanceId });
+    }
+    var prev = h.back.pop();
+    enterFocal(prev.kind, prev.instanceId, { _fromHistory: true });
+    return true;
+  }
+  function focalForward(){
+    var h = state.focalHistory;
+    if (!h || !h.forward.length) return false;
+    if (state.focal && state.focal.kind){
+      h.back.push({ kind: state.focal.kind, instanceId: state.focal.instanceId });
+    }
+    var nxt = h.forward.pop();
+    enterFocal(nxt.kind, nxt.instanceId, { _fromHistory: true });
+    return true;
   }
 
   // ── Micro-step 4.5.9: saved views (per-workspace bookmarks) ───────────
@@ -37989,11 +38047,18 @@ const DiscoveryEngine3D = (function(){
         });
       });
     }
-    // 4.5.8 + 5.5: ESC key exits focal mode AND closes context menu
+    // 4.5.8 + 5.5 + 5.9: ESC exits focal/menu; `[` back; `]` forward
     state.onKeyDown = function(ev){
+      // Don't hijack keys while operator is typing in an input
+      var tgt = ev.target;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
       if (ev.key === 'Escape'){
         _hideContextMenu();
         if (state.focal) exitFocal();
+      } else if (ev.key === '['){
+        if (focalBack()) ev.preventDefault();
+      } else if (ev.key === ']'){
+        if (focalForward()) ev.preventDefault();
       }
     };
     window.addEventListener('keydown', state.onKeyDown);
@@ -38436,7 +38501,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
