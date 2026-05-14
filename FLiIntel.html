@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.12</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.13</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34293,7 +34293,9 @@ const DiscoveryEngine3D = (function(){
     oppMesh: null,
     oppInstanceCount: 0,
     oppWorkerOffset: 0,
-    oppCleanRef: null
+    oppCleanRef: null,
+    // Micro-step 3.13: opp value/solicitation sprite labels
+    oppLabels: null
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34452,6 +34454,11 @@ const DiscoveryEngine3D = (function(){
                 _frameDummy.rotation.set(0, 0, 0);
                 _frameDummy.updateMatrix();
                 state.oppMesh.setMatrixAt(k, _frameDummy.matrix);
+                // 3.13: position opp label above the hex disc
+                if (state.oppLabels && state.oppLabels[k]){
+                  state.oppLabels[k].position.set(x3, y3 + 0.55, z3);
+                  state.oppLabels[k].visible = true;
+                }
               }
               state.oppMesh.instanceMatrix.needsUpdate = true;
             }
@@ -34994,6 +35001,15 @@ const DiscoveryEngine3D = (function(){
     state.oppInstanceCount = 0;
     state.oppWorkerOffset = 0;
     state.oppCleanRef = null;
+    // Micro-step 3.13: dispose prior opp value/solicitation label sprites
+    if (state.oppLabels){
+      state.oppLabels.forEach(function(sp){
+        if (state.scene) state.scene.remove(sp);
+        if (sp.material.map) sp.material.map.dispose();
+        sp.material.dispose();
+      });
+      state.oppLabels = null;
+    }
     if (ringIdxMap.length){
       const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
       const ringMat = new THREE.MeshBasicMaterial({
@@ -35277,6 +35293,24 @@ const DiscoveryEngine3D = (function(){
       state.oppMesh = oppMesh;
       if (state.scene) state.scene.add(oppMesh);
       console.log('[DiscoveryEngine3D] 3.12 status: active=' + cActive + ' upcoming=' + cUpcoming + ' won=' + cWon + ' lost=' + cLost + ' closed/other=' + cClosed);
+
+      // ── Micro-step 3.13: opp value / solicitation sprite labels ─────────
+      // One sprite per opp, positioned above the hex disc. Label content
+      // prefers formatted value, then solicitation number, then opp name.
+      var oppLabelArr = [];
+      var nValued = 0, nSoln = 0, nName = 0;
+      for (var pli = 0; pli < oppClean.length; pli++){
+        var labelInfo = _oppLabelText(oppClean[pli]);
+        if (labelInfo.kind === 'valued') nValued++;
+        else if (labelInfo.kind === 'solicitation') nSoln++;
+        else nName++;
+        var psp = _makeOppLabelSprite(labelInfo.text);
+        psp.visible = false;
+        if (state.scene) state.scene.add(psp);
+        oppLabelArr.push(psp);
+      }
+      state.oppLabels = oppLabelArr;
+      console.log('[DiscoveryEngine3D] 3.13 opp labels: ' + oppLabelArr.length + ' sprites (' + nValued + ' valued + ' + nSoln + ' solicitation + ' + nName + ' name-only)');
     }
 
     // Spawn / reuse worker, send graph.
@@ -35332,6 +35366,67 @@ const DiscoveryEngine3D = (function(){
     // Scale: keep aspect ratio, max ~3 world units wide
     var aspect = canvas.width / canvas.height;
     var h = 0.55;
+    sprite.scale.set(h * aspect, h, 1);
+    return sprite;
+  }
+
+  // ── Micro-step 3.13 helpers: opp value formatter + sprite label ───────
+  // Formats opp.value as a compact currency string. Examples:
+  //   1500          → $1.5K
+  //   2400000       → $2.4M
+  //   3500000000    → $3.5B
+  function _formatOppValue(v){
+    var n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return '$' + (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return '$' + n.toFixed(0);
+  }
+
+  // Builds the canonical display text for an opp label: value first, then
+  // solicitation number, else the opp name truncated. Returns the source
+  // category for the diagnostic log.
+  function _oppLabelText(opp){
+    var val = _formatOppValue(opp && opp.value);
+    if (val) return { text: val, kind: 'valued' };
+    if (opp && opp.solicitationNumber){
+      var sn = String(opp.solicitationNumber).trim();
+      if (sn) return { text: sn, kind: 'solicitation' };
+    }
+    var nm = String((opp && opp.name) || 'Opp');
+    if (nm.length > 28) nm = nm.slice(0, 25) + '…';
+    return { text: nm, kind: 'name' };
+  }
+
+  // Creates a sprite for an opp label — amber text, slightly smaller than
+  // org labels so the disc remains the dominant visual.
+  function _makeOppLabelSprite(text){
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    var fontSize = 56;
+    ctx.font = 'bold ' + fontSize + 'px sans-serif';
+    var tw = ctx.measureText(text).width;
+    var pad = 14;
+    canvas.width = Math.min(tw + pad * 2, 1024);
+    canvas.height = fontSize + pad * 2;
+    ctx.font = 'bold ' + fontSize + 'px sans-serif';
+    ctx.fillStyle = '#d4823a';  // amber to echo the active-pursuit color
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, pad, canvas.height / 2);
+    var tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    var mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      sizeAttenuation: true
+    });
+    var sprite = new THREE.Sprite(mat);
+    var aspect = canvas.width / canvas.height;
+    var h = 0.42;
     sprite.scale.set(h * aspect, h, 1);
     return sprite;
   }
@@ -35665,6 +35760,15 @@ const DiscoveryEngine3D = (function(){
     state.oppInstanceCount = 0;
     state.oppWorkerOffset = 0;
     state.oppCleanRef = null;
+    // 3.13 dispose: opp value/solicitation label sprites
+    if (state.oppLabels){
+      state.oppLabels.forEach(function(sp){
+        if (state.scene) state.scene.remove(sp);
+        if (sp.material.map) sp.material.map.dispose();
+        sp.material.dispose();
+      });
+      state.oppLabels = null;
+    }
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
