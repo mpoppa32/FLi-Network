@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.11</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.12</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6770,6 +6770,7 @@ input[type="url"], textarea, select {
       <div class="de3d-layer-row" data-layer="links" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LINKS</span><span style="color:var(--gold)" id="de3d-cb-links">0</span></div>
       <div class="de3d-layer-row" data-layer="labels" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LABELS</span><span style="color:var(--gold)" id="de3d-cb-labels">on</span></div>
       <div style="margin-top:4px"><span style="color:var(--t3);display:inline-block;width:62px">PULSES</span><span style="color:var(--gold)" id="de3d-cb-pulses">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:62px">FLOWS</span><span style="color:var(--gold)" id="de3d-cb-flows">0</span></div>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -35216,21 +35217,30 @@ const DiscoveryEngine3D = (function(){
       var cbHulls  = document.getElementById('de3d-cb-hulls');
       var cbLinks  = document.getElementById('de3d-cb-links');
       var cbPulses = document.getElementById('de3d-cb-pulses');
+      var cbFlows  = document.getElementById('de3d-cb-flows');
       if (cbPeople) cbPeople.textContent = (state.instanceCount | 0);
       if (cbOrgs)   cbOrgs.textContent   = (state.orgInstanceCount | 0);
       if (cbOpps)   cbOpps.textContent   = (state.oppInstanceCount | 0);
       if (cbHulls)  cbHulls.textContent  = (state.pursuitHullGroup ? state.pursuitHullGroup.children.length : 0);
       if (cbLinks)  cbLinks.textContent  = (state.linkCount | 0);
-      if (cbPulses){
-        var activePulses = 0;
+      // 4.12: split active slots into PULSES (flow=0) and FLOWS (flow=1)
+      if (cbPulses || cbFlows){
+        var activePulses = 0, activeFlows = 0;
         if (state.signalPulseGeo){
           var lAttr = state.signalPulseGeo.getAttribute('aLife');
+          var fArr = state.signalPulseFlow;
           if (lAttr){
             var arr = lAttr.array;
-            for (var ai = 0; ai < arr.length; ai++) if (arr[ai] > 0) activePulses++;
+            for (var ai = 0; ai < arr.length; ai++){
+              if (arr[ai] > 0){
+                if (fArr && fArr[ai] === 1) activeFlows++;
+                else activePulses++;
+              }
+            }
           }
         }
-        cbPulses.textContent = activePulses;
+        if (cbPulses) cbPulses.textContent = activePulses;
+        if (cbFlows)  cbFlows.textContent  = activeFlows;
       }
     }
   }
@@ -36460,6 +36470,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.9 signal flow infrastructure ready (700ms src→tgt lerp; emitFlow API in 4.10)');
     console.log('[DiscoveryEngine3D] 4.10 emitFlow() API ready — DiscoveryEngine3D.emitFlow(source, target, colorHex?) accepts worker idx, entity id, or {kind,instanceId}');
     console.log('[DiscoveryEngine3D] 4.11 pulseEntity() API ready — DiscoveryEngine3D.pulseEntity(ref, {color, propagate}) fires pulse + radial flows');
+    console.log('[DiscoveryEngine3D] 4.12 count badge: PULSES + FLOWS rows live (10Hz update)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
