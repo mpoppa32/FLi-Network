@@ -6868,7 +6868,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P7.3</span>
+      <span style="color:var(--gold)" id="de3d-build">P7.4</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6938,6 +6938,8 @@ input[type="url"], textarea, select {
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700">FILTERS</div>
       <div style="margin-bottom:3px"><span style="color:var(--t3);display:inline-block;width:62px">STAGE</span><select id="de3d-flt-stage" style="background:rgba(7,13,24,.9);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;letter-spacing:.1em;text-transform:uppercase"><option value="all">ALL</option><option value="active">ACTIVE</option><option value="upcoming">UPCOMING</option><option value="won">WON</option><option value="lost">LOST</option></select></div>
       <div style="margin-bottom:6px"><span style="color:var(--t3);display:inline-block;width:62px">TIER</span><select id="de3d-flt-tier" style="background:rgba(7,13,24,.9);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;letter-spacing:.1em;text-transform:uppercase"><option value="all">ALL</option><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option></select></div>
+      <!-- Micro-step 7.4: opp color mode toggle -->
+      <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:62px">OPP COLOR</span><span id="de3d-cm-stage" class="de3d-cm-btn" style="color:var(--gold,#d4823a);cursor:pointer;padding:1px 5px;border-radius:2px;background:rgba(212,130,58,.16);font-weight:700">STAGE</span><span id="de3d-cm-health" class="de3d-cm-btn" style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px;font-weight:500">HEALTH</span></div>
       <!-- Micro-step 4.5.9: saved views -->
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>VIEWS</span><span id="de3d-views-save" style="color:var(--gold,#d4823a);cursor:pointer;font-size:9px;letter-spacing:.1em" title="Save current scene as a view">＋ SAVE</span></div>
       <div id="de3d-views-list" style="margin-bottom:6px;max-height:140px;overflow-y:auto"></div>
@@ -35191,6 +35193,10 @@ const DiscoveryEngine3D = (function(){
     // Each entry is { kind, instanceId }. enterFocal pushes current onto
     // back and clears forward. focalBack/focalForward shuttle between them.
     focalHistory: { back: [], forward: [] },
+    // Micro-step 7.4: opp color mode — 'stage' (3.12 default) or 'health'
+    // (7.2 health score). Operator toggles in count badge. When changed,
+    // _recolorOpps() re-runs setColorAt on the InstancedMesh.
+    colorMode: { opps: 'stage' },
     // Micro-step 5.4: drag-to-pin state. When operator Shift+drags an
     // entity, this captures: kind, instanceId, entity id (for worker pin),
     // planeY (XZ plane at entity's current Y), and a Plane for raycast.
@@ -36880,10 +36886,36 @@ const DiscoveryEngine3D = (function(){
       dummy5.scale.setScalar(0);  // hidden until first worker tick lands positions
       dummy5.updateMatrix();
       const _stageColor = new THREE.Color();
+      // 7.4: pre-compute health for each opp; attach _stageHex and
+      // _healthHex so the runtime color toggle (_recolorOpps) can swap
+      // between encodings without recomputing. Health computation needs
+      // the FULL opp record (oppClean is stripped) — look up via raw id.
+      var healthFn = window._computePursuitHealth;
+      var rawOpps  = window.opportunities || [];
+      function _findRawOpp(strippedId){
+        var rid = String(strippedId).replace(/^opp:/, '');
+        for (var i = 0; i < rawOpps.length; i++){
+          if (rawOpps[i] && String(rawOpps[i].id) === rid) return rawOpps[i];
+        }
+        return null;
+      }
       for (let r = 0; r < oppClean.length; r++){
         oppMesh.setMatrixAt(r, dummy5.matrix);
         const stg = (oppClean[r].stage || '').toLowerCase();
-        _stageColor.setHex(_stageColorHex(stg));
+        var stageHex = _stageColorHex(stg);
+        oppClean[r]._stageHex = stageHex;
+        // Compute health from the full opp record (with stage, meetings, etc.)
+        var fullOpp = _findRawOpp(oppClean[r].id) || oppClean[r];
+        var h = (typeof healthFn === 'function')
+              ? healthFn(fullOpp)
+              : { status: 'unknown', score: 0 };
+        oppClean[r]._health = h;
+        oppClean[r]._healthHex = _healthHexFor(h.status);
+        // Initial color from current colorMode (default stage)
+        var initHex = (state.colorMode && state.colorMode.opps === 'health')
+                    ? oppClean[r]._healthHex
+                    : stageHex;
+        _stageColor.setHex(initHex);
         oppMesh.setColorAt(r, _stageColor);
         if (stg === 'won') cWon++;
         else if (stg === 'lost') cLost++;
@@ -37314,6 +37346,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.10 loop toggle wired (↻ — when ON, playback wraps to start at end + meetings refire)');
     console.log('[DiscoveryEngine3D] 6.11 Rhythm-tab sync wired (goIntelById wrapped — clicking any meeting also seeks 3D timeline)');
     console.log('[DiscoveryEngine3D] P6.12 data/shader compat: link shader fixed; meeting attendees scan both meta.attendees + intel.keyPeople; opp.meetings[] reverse-walked');
+    console.log('[DiscoveryEngine3D] 7.4 opp color mode wired (STAGE / HEALTH toggle in count badge — recolors hex prisms per pursuit health)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37722,6 +37755,54 @@ const DiscoveryEngine3D = (function(){
     if (!Number.isFinite(v) || v <= 0) return;
     state.labelLodDistance = v;
     console.log('[DiscoveryEngine3D] 4.5.2 label LOD distance set to', v);
+  }
+
+  // ── Micro-step 7.4: opp color mode helpers ─────────────────────────────
+  // Maps a pursuit health status (from 7.2) to a brand-coherent hex color.
+  // Used by _recolorOpps when state.colorMode.opps === 'health'.
+  function _healthHexFor(status){
+    return status === 'hot'  ? 0x5cb87e   // green (strong)
+         : status === 'warm' ? 0xd4823a   // gold (active but slipping)
+         : status === 'cold' ? 0xd27474   // red (urgent)
+         : 0x7d7669;                      // bone (unknown / not pursued)
+  }
+  // Recolor all opp hex prism instances based on current state.colorMode.
+  // Reads pre-computed _stageHex (3.12) or _healthHex (7.4) attached to
+  // each oppClean entry during loadGraph.
+  function _recolorOpps(){
+    if (!state.oppMesh || !state.oppCleanRef) return;
+    var mode = (state.colorMode && state.colorMode.opps) || 'stage';
+    var c = new THREE.Color();
+    for (var k = 0; k < state.oppCleanRef.length; k++){
+      var o = state.oppCleanRef[k];
+      var hex = (mode === 'health' && o._healthHex != null) ? o._healthHex
+              : (o._stageHex != null ? o._stageHex : 0xb86b2a);
+      c.setHex(hex);
+      state.oppMesh.setColorAt(k, c);
+    }
+    if (state.oppMesh.instanceColor) state.oppMesh.instanceColor.needsUpdate = true;
+    console.log('[DiscoveryEngine3D] 7.4 recolor opps:', mode);
+  }
+  function setOppColorMode(mode){
+    if (mode !== 'stage' && mode !== 'health') return;
+    if (!state.colorMode) state.colorMode = { opps: 'stage' };
+    state.colorMode.opps = mode;
+    _recolorOpps();
+    // Update toggle UI if present
+    var stageBtn = document.getElementById('de3d-cm-stage');
+    var healthBtn = document.getElementById('de3d-cm-health');
+    if (stageBtn){
+      var on = mode === 'stage';
+      stageBtn.style.color = on ? 'var(--gold,#d4823a)' : 'var(--t3)';
+      stageBtn.style.background = on ? 'rgba(212,130,58,.16)' : 'transparent';
+      stageBtn.style.fontWeight = on ? '700' : '500';
+    }
+    if (healthBtn){
+      var on2 = mode === 'health';
+      healthBtn.style.color = on2 ? 'var(--gold,#d4823a)' : 'var(--t3)';
+      healthBtn.style.background = on2 ? 'rgba(212,130,58,.16)' : 'transparent';
+      healthBtn.style.fontWeight = on2 ? '700' : '500';
+    }
   }
 
   // ── Micro-step 4.5.6: filter pass recomputation ────────────────────────
@@ -39733,7 +39814,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, pulseSelected, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, selectionCount, setTimelineDate, playTimeline, pauseTimeline, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, pulseSelected, setLayer, toggleLayer, setLabelDistance, setFilter, setOppColorMode, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, selectionCount, setTimelineDate, playTimeline, pauseTimeline, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -39926,6 +40007,20 @@ window._toggle3DEngine = function(mode){
               window.DiscoveryEngine3D.toggleLayer(L);
             }
           });
+        });
+      }
+      // Micro-step 7.4: wire opp color mode toggle (idempotent)
+      if (countBadge.dataset.colorModeWired !== '1'){
+        countBadge.dataset.colorModeWired = '1';
+        var stageBtn = document.getElementById('de3d-cm-stage');
+        var healthBtn = document.getElementById('de3d-cm-health');
+        if (stageBtn) stageBtn.addEventListener('click', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.setOppColorMode === 'function')
+            window.DiscoveryEngine3D.setOppColorMode('stage');
+        });
+        if (healthBtn) healthBtn.addEventListener('click', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.setOppColorMode === 'function')
+            window.DiscoveryEngine3D.setOppColorMode('health');
         });
       }
       // Micro-step 5.7: wire selection-row buttons (idempotent)
