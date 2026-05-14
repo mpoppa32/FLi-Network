@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.3</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.4</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36613,6 +36613,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.1 timeline API ready — setTimelineDate(ts) · playTimeline(speed) · pauseTimeline()');
     console.log('[DiscoveryEngine3D] 6.2 timeline bar mounted (bottom-center; updates 10Hz with date + range + head position)');
     console.log('[DiscoveryEngine3D] 6.3 transport controls wired (⏮ rewind · ▶/⏸ play-pause · 1×/4×/16×/64× speed)');
+    console.log('[DiscoveryEngine3D] 6.4 scrubber drag wired (click track to seek; drag for continuous scrub; auto-pause)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -39025,6 +39026,45 @@ window._toggle3DEngine = function(mode){
             if (st.timeline.playing) window.DiscoveryEngine3D.playTimeline(st.timeline.speed);
           });
         });
+        // ── Micro-step 6.4: scrubber drag on track ────────────────────────
+        // pointerdown on track → seek + start drag; pointermove on document
+        // → continuous seek; pointerup → release. Auto-pauses on drag start.
+        var tlTrack = document.getElementById('de3d-tl-track');
+        if (tlTrack){
+          tlTrack.style.cursor = 'ew-resize';
+          var _tlDragging = false;
+          var _tlWasPlaying = false;
+          var _seekFromEvent = function(ev){
+            if (!window.DiscoveryEngine3D) return;
+            var st = window.DiscoveryEngine3D.getState();
+            if (!st || !st.timeline || st.timeline.range.start == null || st.timeline.range.end == null) return;
+            var rect = tlTrack.getBoundingClientRect();
+            if (rect.width <= 0) return;
+            var pct = (ev.clientX - rect.left) / rect.width;
+            if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
+            var ts = st.timeline.range.start + pct * (st.timeline.range.end - st.timeline.range.start);
+            window.DiscoveryEngine3D.setTimelineDate(ts);
+          };
+          tlTrack.addEventListener('pointerdown', function(ev){
+            if (ev.button !== 0) return;  // left only
+            ev.preventDefault();
+            _tlDragging = true;
+            _tlWasPlaying = !!(window.DiscoveryEngine3D.getState().timeline.playing);
+            if (_tlWasPlaying) window.DiscoveryEngine3D.pauseTimeline();
+            tlTrack.style.cursor = 'grabbing';
+            _seekFromEvent(ev);
+          });
+          document.addEventListener('pointermove', function(ev){
+            if (!_tlDragging) return;
+            _seekFromEvent(ev);
+          });
+          document.addEventListener('pointerup', function(ev){
+            if (!_tlDragging) return;
+            _tlDragging = false;
+            tlTrack.style.cursor = 'ew-resize';
+            // Note: don't auto-resume. Operator can press play if they want.
+          });
+        }
       }
     }
     if (countBadge){
