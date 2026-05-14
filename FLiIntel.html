@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.4</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.7</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6785,6 +6785,8 @@ input[type="url"], textarea, select {
       <div class="de3d-layer-row" data-layer="halos" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">HALOS</span><span style="color:var(--gold)" id="de3d-cb-hulls">0</span></div>
       <div class="de3d-layer-row" data-layer="links" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LINKS</span><span style="color:var(--gold)" id="de3d-cb-links">0</span></div>
       <div class="de3d-layer-row" data-layer="labels" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LABELS</span><span style="color:var(--gold)" id="de3d-cb-labels">on</span></div>
+      <!-- Micro-step 5.7: selection row (hidden when empty) -->
+      <div id="de3d-cb-selected-row" style="display:none;margin-top:4px;align-items:center"><span style="color:var(--t3);display:inline-block;width:62px">SELECTED</span><span style="color:var(--gold)" id="de3d-cb-selected">0</span><span id="de3d-cb-sel-pulse" style="color:var(--gold,#d4823a);cursor:pointer;margin-left:8px;padding:0 4px" title="Pulse all selected">⚡</span><span id="de3d-cb-sel-clear" style="color:var(--t3);cursor:pointer;margin-left:4px;padding:0 4px" title="Clear selection">×</span></div>
       <div style="margin-top:4px"><span style="color:var(--t3);display:inline-block;width:62px">PULSES</span><span style="color:var(--gold)" id="de3d-cb-pulses">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:62px">FLOWS</span><span style="color:var(--gold)" id="de3d-cb-flows">0</span></div>
     </div>
@@ -35294,6 +35296,12 @@ const DiscoveryEngine3D = (function(){
         if (cbPulses) cbPulses.textContent = activePulses;
         if (cbFlows)  cbFlows.textContent  = activeFlows;
       }
+      // 5.7: selection count row (shown when N > 0)
+      var selN = selectionCount();
+      var selRow = document.getElementById('de3d-cb-selected-row');
+      var selEl  = document.getElementById('de3d-cb-selected');
+      if (selRow) selRow.style.display = selN > 0 ? 'flex' : 'none';
+      if (selEl)  selEl.textContent = selN;
     }
   }
 
@@ -36530,7 +36538,8 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.5 context menu wired (right-click entity → Inspect / Pulse / Make Focal; ESC or click-outside dismisses)');
     console.log('[DiscoveryEngine3D] 5.6 selection wired (single-click selects + replaces; Shift/Cmd-click toggles; click empty clears; selected entities scale 1.25x)');
     console.log('[DiscoveryEngine3D] 5.9 focal history wired ([ back / ] forward keys; ◂ ▸ buttons on focal pill)');
-    console.log('[DiscoveryEngine3D] 5.4 drag-to-pin wired (Shift+drag entity to translate in XZ plane; release leaves it pinned via worker)');
+    console.log('[DiscoveryEngine3D] 5.4 drag-to-pin wired (Alt+drag entity to translate in XZ plane; release leaves it pinned via worker)');
+    console.log('[DiscoveryEngine3D] 5.7 multi-select wired (Shift/Cmd+click extends; SELECTED row shows count + ⚡ pulse-all + × clear)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37410,6 +37419,25 @@ const DiscoveryEngine3D = (function(){
     state.selected.opp.forEach(   function(i){ out.push({kind:'opp',   instanceId:i}); });
     return out;
   }
+  // ── Micro-step 5.7: batch ops on selection ────────────────────────────
+  function pulseSelected(opts){
+    var sel = getSelection();
+    if (!sel.length) return 0;
+    var n = 0;
+    // Stagger by 60ms so the burst feels like a wave rather than one flash
+    sel.forEach(function(s, i){
+      setTimeout(function(){
+        var r = pulseEntity(s, opts);
+        if (r && r.pulses) n++;
+      }, i * 60);
+    });
+    console.log('[DiscoveryEngine3D] 5.7 pulseSelected: firing ' + sel.length + ' entities (staggered 60ms)');
+    return sel.length;
+  }
+  function selectionCount(){
+    if (!state.selected) return 0;
+    return state.selected.person.size + state.selected.org.size + state.selected.opp.size;
+  }
 
   // ── Micro-step 5.5: right-click context menu ──────────────────────────
   // Captures the entity that was right-clicked (from current hover state),
@@ -37907,8 +37935,10 @@ const DiscoveryEngine3D = (function(){
       // unless this turns into a click — pointerup resets either way).
       state._cursorDragging = true;
       if (state.canvas) state.canvas.style.cursor = 'grabbing';
-      // ── 5.4: Shift + click on entity starts drag-to-pin ──────────────
-      if (ev.shiftKey && state.hover && state.physicsPositions){
+      // ── 5.4 / 5.7: Alt + drag on entity starts drag-to-pin ──────────
+      // Shift is reserved for multi-select (5.6/5.7); Alt is the
+      // industry-convention modifier for direct-manipulation drag.
+      if (ev.altKey && state.hover && state.physicsPositions){
         var dragWidx = -1;
         if (state.hover.kind === 'person') dragWidx = state.hover.instanceId;
         else if (state.hover.kind === 'org') dragWidx = (state.orgWorkerOffset | 0) + state.hover.instanceId;
@@ -38583,7 +38613,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, pulseSelected, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, selectionCount, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -38637,6 +38667,20 @@ window._toggle3DEngine = function(mode){
               window.DiscoveryEngine3D.toggleLayer(L);
             }
           });
+        });
+      }
+      // Micro-step 5.7: wire selection-row buttons (idempotent)
+      if (countBadge.dataset.selWired !== '1'){
+        countBadge.dataset.selWired = '1';
+        var selPulseBtn = document.getElementById('de3d-cb-sel-pulse');
+        var selClearBtn = document.getElementById('de3d-cb-sel-clear');
+        if (selPulseBtn) selPulseBtn.addEventListener('click', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.pulseSelected === 'function')
+            window.DiscoveryEngine3D.pulseSelected();
+        });
+        if (selClearBtn) selClearBtn.addEventListener('click', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.clearSelection === 'function')
+            window.DiscoveryEngine3D.clearSelection();
         });
       }
       // Micro-step 4.5.9: wire SAVE button + initial views render (idempotent)
