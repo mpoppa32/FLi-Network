@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.12</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.6</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36307,6 +36307,57 @@ const DiscoveryEngine3D = (function(){
         }
       }
     }
+
+    // ── Micro-step 4.6: person → opp pursuit edges via meeting attendance ──
+    // For each opp, find meetings tagged with it, then for each meeting's
+    // attendees, name-match to cleanNodes and emit a [person, opp] edge.
+    // Deduped per (person, opp) pair — one edge regardless of how many
+    // meetings link them. Weight reflects engagement intensity (count of
+    // shared meetings, log-mapped to [0.4, 1.0]).
+    //
+    // Indices: person = cleanNodes index. Opp = state.oppWorkerOffset + k.
+    // Color (4.4): 'pursuit' → amber #d4823a.
+    var _pursuitEdges = 0;
+    var _pursuitOpps  = 0;
+    if (oppClean.length && window.CorsairIndex && window.CorsairIndex.meetingsByOppId){
+      var simFn = (typeof window.nameSimilarity === 'function') ? window.nameSimilarity : null;
+      for (var ok = 0; ok < oppClean.length; ok++){
+        var op = oppClean[ok];
+        var rawId = String(op.id).replace(/^opp:/, '');
+        var oMtgs = window.CorsairIndex.meetingsByOppId.get(rawId) || [];
+        if (!oMtgs.length) continue;
+        var perPersonCount = {};  // personIdx → number of shared meetings
+        oMtgs.forEach(function(m){
+          var atts = (m && m.meta && m.meta.attendees) || [];
+          var seenThisMeeting = {};  // dedupe within a single meeting
+          atts.forEach(function(a){
+            if (!a || !a.name) return;
+            for (var npi = 0; npi < cleanNodes.length; npi++){
+              if (seenThisMeeting[npi]) continue;
+              var nn = cleanNodes[npi];
+              try {
+                if (simFn && simFn(a.name, nn.name) >= 0.72){
+                  perPersonCount[npi] = (perPersonCount[npi] || 0) + 1;
+                  seenThisMeeting[npi] = 1;
+                  break;
+                }
+              } catch (e) {}
+            }
+          });
+        });
+        var keys = Object.keys(perPersonCount);
+        if (!keys.length) continue;
+        _pursuitOpps++;
+        // Log-map meeting count to weight: 1 meeting = 0.40, 5 = ~0.75, 10 = 1.0
+        keys.forEach(function(k){
+          var cnt = perPersonCount[k];
+          var w = Math.min(1.0, 0.4 + 0.25 * Math.log(1 + cnt));
+          linkPairs.push([Number(k), state.oppWorkerOffset + ok, w, 'pursuit']);
+          _pursuitEdges++;
+        });
+      }
+    }
+
     state.linkIndexPairs = linkPairs;
     state.linkCount = linkPairs.length;
     if (linkPairs.length){
@@ -36316,6 +36367,7 @@ const DiscoveryEngine3D = (function(){
     }
     console.log('[DiscoveryEngine3D] 4.3 directionality: 3:1 taper geometry (radiusTop=0.025, radiusBottom=0.075)');
     console.log('[DiscoveryEngine3D] 4.5 employment edges: ' + _empCount + ' person→org works-at links');
+    console.log('[DiscoveryEngine3D] 4.6 pursuit edges: ' + _pursuitEdges + ' person→opp links (across ' + _pursuitOpps + ' opps)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
