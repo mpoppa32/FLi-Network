@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.7</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally -->
     <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
@@ -35167,6 +35167,8 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 3.9 density: maxChildren=' + maxChild + ' for ' + orgClean.length + ' orgs');
 
     state.physicsNodeIds = cleanNodes.map(function(n){ return n.id; });
+    // Micro-step 4.5.7: keep a reference for click-to-Inspector dispatch
+    state._cleanNodesRef = cleanNodes;
     state.physicsRealData = true;
     state.initialFitDone = false;     // re-fit on new dataset
     state.framesSinceFit = 0;
@@ -36082,6 +36084,44 @@ const DiscoveryEngine3D = (function(){
     return specs;
   }
 
+  // ── Micro-step 4.5.7: resolve hit → entity → open Inspector ───────────
+  // Translates a (kind, instanceId) from the raycaster hit into the right
+  // Inspector call. The 3D engine carries only stripped representations
+  // (cleanNodes, orgClean, oppClean) — for the full record we look up by
+  // id in the global `window.nodes` / `window.opportunities` arrays which
+  // the 2D path uses.
+  function _dispatchInspector(kind, instanceId){
+    try {
+      if (kind === 'person'){
+        var cn = (state._cleanNodesRef || [])[instanceId];
+        if (!cn) return;
+        var full = (window.nodes || []).find(function(n){ return String(n.id) === String(cn.id); });
+        if (full && typeof window.openNetPanel === 'function'){
+          console.log('[DiscoveryEngine3D] 4.5.7 click → person:', full.name);
+          window.openNetPanel(full);
+        }
+      } else if (kind === 'org'){
+        var oc = (state.orgCleanRef || [])[instanceId];
+        if (!oc) return;
+        var fullOrg = (window.nodes || []).find(function(n){ return String(n.id) === String(oc.id); });
+        if (fullOrg && typeof window.openNetPanel === 'function'){
+          console.log('[DiscoveryEngine3D] 4.5.7 click → org:', fullOrg.name);
+          window.openNetPanel(fullOrg);
+        }
+      } else if (kind === 'opp'){
+        var op = (state.oppCleanRef || [])[instanceId];
+        if (!op) return;
+        var rawId = String(op.id).replace(/^opp:/, '');
+        if (typeof window.selectOpp === 'function'){
+          console.log('[DiscoveryEngine3D] 4.5.7 click → opp:', op.name);
+          window.selectOpp(rawId);
+        }
+      }
+    } catch (e) {
+      console.warn('[DiscoveryEngine3D] 4.5.7 inspector dispatch failed:', e);
+    }
+  }
+
   function _buildPlaceholderInstancedMesh(count){
     // Micro-step 3.3: Fresnel rim ShaderMaterial.
     // Per-instance scale (3.2') and position (worker) drive the matrix path
@@ -36291,6 +36331,54 @@ const DiscoveryEngine3D = (function(){
     };
     window.addEventListener('resize', state.onResize);
 
+    // ── Micro-step 4.5.7: click → Inspector dispatch ──────────────────────
+    // Raycast against [people, orgs, opps] InstancedMeshes on pointerdown.
+    // OrbitControls also listens to pointer events for rotate/pan/zoom; we
+    // detect "click" (down+up with minimal movement) so drag-to-orbit is
+    // not hijacked. The 5px movement threshold matches typical UX.
+    // On hit: resolve instanceId → entity record → open existing Inspector.
+    state.raycaster = new THREE.Raycaster();
+    state.rayMouse = new THREE.Vector2();
+    state.rayDownPt = null;
+    state.onPointerDown = function(ev){
+      if (ev.button !== 0) return;  // left button only
+      state.rayDownPt = { x: ev.clientX, y: ev.clientY, t: ev.timeStamp };
+    };
+    state.onPointerUp = function(ev){
+      if (!state.rayDownPt) return;
+      var dx = ev.clientX - state.rayDownPt.x;
+      var dy = ev.clientY - state.rayDownPt.y;
+      var dragged = (dx*dx + dy*dy) > 25;  // 5px threshold²
+      state.rayDownPt = null;
+      if (dragged) return;
+      if (!state.camera || !state.canvas) return;
+      var rect = state.canvas.getBoundingClientRect();
+      state.rayMouse.x =  ((ev.clientX - rect.left) / rect.width)  * 2 - 1;
+      state.rayMouse.y = -((ev.clientY - rect.top)  / rect.height) * 2 + 1;
+      state.raycaster.setFromCamera(state.rayMouse, state.camera);
+      // Targets in priority order: opps first (smallest, most click-precise),
+      // then people, then orgs. First hit wins.
+      var targets = [];
+      if (state.oppMesh)        targets.push({ mesh: state.oppMesh,        kind: 'opp'    });
+      if (state.instancedMesh)  targets.push({ mesh: state.instancedMesh,  kind: 'person' });
+      if (state.orgMesh)        targets.push({ mesh: state.orgMesh,        kind: 'org'    });
+      var bestHit = null;
+      for (var ti = 0; ti < targets.length; ti++){
+        var hits = state.raycaster.intersectObject(targets[ti].mesh, false);
+        if (hits.length){
+          var h = hits[0];
+          if (!bestHit || h.distance < bestHit.distance){
+            bestHit = { dist: h.distance, instanceId: h.instanceId, kind: targets[ti].kind };
+          }
+        }
+      }
+      if (!bestHit) return;
+      _dispatchInspector(bestHit.kind, bestHit.instanceId);
+    };
+    state.canvas.addEventListener('pointerdown', state.onPointerDown);
+    state.canvas.addEventListener('pointerup',   state.onPointerUp);
+    console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
+
     // Clear any prior error pins on the HUD
     const fpsEl0 = document.getElementById('de3d-fps');
     if (fpsEl0){ fpsEl0.style.color = ''; fpsEl0.title = ''; delete fpsEl0.dataset.errorPinned; fpsEl0.textContent = '— FPS'; }
@@ -36342,6 +36430,17 @@ const DiscoveryEngine3D = (function(){
     stop();
     if (state.onResize){ window.removeEventListener('resize', state.onResize); state.onResize = null; }
     if (state.resizeTimer){ clearTimeout(state.resizeTimer); state.resizeTimer = null; }
+    // 4.5.7 dispose: detach pointer listeners
+    if (state.canvas){
+      if (state.onPointerDown) state.canvas.removeEventListener('pointerdown', state.onPointerDown);
+      if (state.onPointerUp)   state.canvas.removeEventListener('pointerup',   state.onPointerUp);
+    }
+    state.onPointerDown = null;
+    state.onPointerUp = null;
+    state.raycaster = null;
+    state.rayMouse = null;
+    state.rayDownPt = null;
+    state._cleanNodesRef = null;
     // ── Phase 2: terminate physics worker, free its Blob URL ──
     if (state.physicsWorker){
       try { state.physicsWorker.postMessage({ type: 'stop' }); } catch(e){}
