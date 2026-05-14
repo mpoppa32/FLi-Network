@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.12</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.1</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34543,6 +34543,11 @@ const DiscoveryEngine3D = (function(){
     _lastClickTs: 0,
     _lastClickKind: null,
     _lastClickInstance: -1,
+    // Micro-step 5.1: hover state — { kind, instanceId } of the entity
+    // currently under the cursor (or null). Throttled pointermove raycast
+    // populates it; position writes scale it up 1.15× for visual feedback.
+    hover: null,
+    _hoverTick: 0,
     // Micro-step 4.5.9: saved views — bookmarked scene state per workspace
     // (localStorage backed, keyed by workspace id). View shape:
     //   { id, name, created, filter:{stage,tier}, layerVisible:{...},
@@ -34666,9 +34671,13 @@ const DiscoveryEngine3D = (function(){
               _frameDummy.position.set(x, y, z);
               // Micro-step 3.2: per-instance scale from precomputed array
               // 4.5.8: dim non-focal/non-neighbor entities to 0.4× scale
+              // 5.1: hover bump 1.15× on the entity currently under cursor
               var pSc = state.instanceScales ? state.instanceScales[i] : 1;
               if (state.focal && state.focal.focalScale && state.focal.focalScale.people){
                 pSc *= state.focal.focalScale.people[i];
+              }
+              if (state.hover && state.hover.kind === 'person' && state.hover.instanceId === i){
+                pSc *= 1.15;
               }
               _frameDummy.scale.setScalar(pSc);
               _frameDummy.rotation.set(0, 0, 0);
@@ -34783,10 +34792,13 @@ const DiscoveryEngine3D = (function(){
                 if (y2 < minY) minY = y2; if (y2 > maxY) maxY = y2;
                 if (z2 < minZ) minZ = z2; if (z2 > maxZ) maxZ = z2;
                 _frameDummy.position.set(x2, y2, z2);
-                // 4.5.8: focal dim
+                // 4.5.8: focal dim · 5.1: hover bump
                 var oSc = 1;
                 if (state.focal && state.focal.focalScale && state.focal.focalScale.orgs){
                   oSc = state.focal.focalScale.orgs[j];
+                }
+                if (state.hover && state.hover.kind === 'org' && state.hover.instanceId === j){
+                  oSc *= 1.15;
                 }
                 _frameDummy.scale.set(oSc, oSc, oSc);
                 _frameDummy.rotation.set(0, 0, 0);
@@ -34830,9 +34842,12 @@ const DiscoveryEngine3D = (function(){
                 // 4.5.6: filter pass — hidden if filter rejects this opp
                 var oppPass = !state.filterPass || !state.filterPass.opps || state.filterPass.opps[k] !== false;
                 var qSc = oppPass ? 1 : 0;
-                // 4.5.8: focal dim
+                // 4.5.8: focal dim · 5.1: hover bump
                 if (qSc > 0 && state.focal && state.focal.focalScale && state.focal.focalScale.opps){
                   qSc *= state.focal.focalScale.opps[k];
+                }
+                if (qSc > 0 && state.hover && state.hover.kind === 'opp' && state.hover.instanceId === k){
+                  qSc *= 1.15;
                 }
                 _frameDummy.scale.set(qSc, qSc, qSc);
                 _frameDummy.rotation.set(0, 0, 0);
@@ -36471,6 +36486,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.10 emitFlow() API ready — DiscoveryEngine3D.emitFlow(source, target, colorHex?) accepts worker idx, entity id, or {kind,instanceId}');
     console.log('[DiscoveryEngine3D] 4.11 pulseEntity() API ready — DiscoveryEngine3D.pulseEntity(ref, {color, propagate}) fires pulse + radial flows');
     console.log('[DiscoveryEngine3D] 4.12 count badge: PULSES + FLOWS rows live (10Hz update)');
+    console.log('[DiscoveryEngine3D] 5.1 hover wired (pointermove raycast ~30Hz; hovered entity scales 1.15x; cursor → pointer)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37635,6 +37651,54 @@ const DiscoveryEngine3D = (function(){
     };
     state.canvas.addEventListener('pointerdown', state.onPointerDown);
     state.canvas.addEventListener('pointerup',   state.onPointerUp);
+    // ── Micro-step 5.1: hover raycast (throttled to ~30Hz) ──────────────
+    // pointermove fires up to 1000Hz on some mice — way too fast for a
+    // raycaster. Throttle to every 33ms (~30Hz) for snappy-but-cheap
+    // hover updates. Sets state.hover = {kind, instanceId} or null.
+    state._lastPointerMoveTs = 0;
+    state._lastPointerPos = { x: 0, y: 0 };
+    state.onPointerMove = function(ev){
+      state._lastPointerPos.x = ev.clientX;
+      state._lastPointerPos.y = ev.clientY;
+      var now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      if (now - state._lastPointerMoveTs < 33) return;
+      state._lastPointerMoveTs = now;
+      if (!state.camera || !state.canvas || !state.raycaster) return;
+      var rect = state.canvas.getBoundingClientRect();
+      state.rayMouse.x =  ((ev.clientX - rect.left) / rect.width)  * 2 - 1;
+      state.rayMouse.y = -((ev.clientY - rect.top)  / rect.height) * 2 + 1;
+      state.raycaster.setFromCamera(state.rayMouse, state.camera);
+      var targets = [];
+      if (state.oppMesh)       targets.push({ mesh: state.oppMesh,       kind: 'opp'    });
+      if (state.instancedMesh) targets.push({ mesh: state.instancedMesh, kind: 'person' });
+      if (state.orgMesh)       targets.push({ mesh: state.orgMesh,       kind: 'org'    });
+      var best = null;
+      for (var ti = 0; ti < targets.length; ti++){
+        var hits = state.raycaster.intersectObject(targets[ti].mesh, false);
+        if (hits.length){
+          var h = hits[0];
+          if (!best || h.distance < best.distance){
+            best = { distance: h.distance, instanceId: h.instanceId, kind: targets[ti].kind };
+          }
+        }
+      }
+      var prev = state.hover;
+      if (best){
+        if (!prev || prev.kind !== best.kind || prev.instanceId !== best.instanceId){
+          state.hover = { kind: best.kind, instanceId: best.instanceId };
+        }
+        state.canvas.style.cursor = 'pointer';
+      } else {
+        if (prev) state.hover = null;
+        state.canvas.style.cursor = '';
+      }
+    };
+    state.onPointerLeave = function(){
+      if (state.hover) state.hover = null;
+      if (state.canvas) state.canvas.style.cursor = '';
+    };
+    state.canvas.addEventListener('pointermove',  state.onPointerMove);
+    state.canvas.addEventListener('pointerleave', state.onPointerLeave);
     // 4.5.8: ESC key exits focal mode
     state.onKeyDown = function(ev){
       if (ev.key === 'Escape' && state.focal) exitFocal();
@@ -37704,13 +37768,18 @@ const DiscoveryEngine3D = (function(){
     stop();
     if (state.onResize){ window.removeEventListener('resize', state.onResize); state.onResize = null; }
     if (state.resizeTimer){ clearTimeout(state.resizeTimer); state.resizeTimer = null; }
-    // 4.5.7 dispose: detach pointer listeners
+    // 4.5.7 + 5.1 dispose: detach pointer listeners
     if (state.canvas){
-      if (state.onPointerDown) state.canvas.removeEventListener('pointerdown', state.onPointerDown);
-      if (state.onPointerUp)   state.canvas.removeEventListener('pointerup',   state.onPointerUp);
+      if (state.onPointerDown)  state.canvas.removeEventListener('pointerdown',  state.onPointerDown);
+      if (state.onPointerUp)    state.canvas.removeEventListener('pointerup',    state.onPointerUp);
+      if (state.onPointerMove)  state.canvas.removeEventListener('pointermove',  state.onPointerMove);
+      if (state.onPointerLeave) state.canvas.removeEventListener('pointerleave', state.onPointerLeave);
     }
     state.onPointerDown = null;
     state.onPointerUp = null;
+    state.onPointerMove = null;
+    state.onPointerLeave = null;
+    state.hover = null;
     // 4.5.8: detach key listener, clear focal state
     if (state.onKeyDown){ window.removeEventListener('keydown', state.onKeyDown); state.onKeyDown = null; }
     state.focal = null;
