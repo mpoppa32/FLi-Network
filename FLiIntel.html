@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.2</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.3</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6746,8 +6746,17 @@ input[type="url"], textarea, select {
     </div>
     <!-- Micro-step 6.2: timeline bar (bottom-center of canvas) -->
     <div id="de3d-timeline" style="display:none;position:absolute;bottom:14px;left:200px;right:200px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 14px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);user-select:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="color:var(--t3);font-weight:700">TIMELINE</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--t3);font-weight:700">TIMELINE</span>
+          <!-- Micro-step 6.3: transport + speed controls -->
+          <span id="de3d-tl-rewind" style="color:var(--paper,#b5ad9f);cursor:pointer;padding:0 4px;font-size:11px" title="Jump to start">⏮</span>
+          <span id="de3d-tl-play"   style="color:var(--gold,#d4823a);cursor:pointer;padding:0 4px;font-size:13px;font-weight:700" title="Play / Pause">▶</span>
+          <span class="de3d-tl-speed" data-speed="1"  style="color:var(--gold,#d4823a);cursor:pointer;padding:1px 5px;border-radius:2px;background:rgba(212,130,58,.16);font-weight:700">1×</span>
+          <span class="de3d-tl-speed" data-speed="4"  style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px">4×</span>
+          <span class="de3d-tl-speed" data-speed="16" style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px">16×</span>
+          <span class="de3d-tl-speed" data-speed="64" style="color:var(--t3);cursor:pointer;padding:1px 5px;border-radius:2px">64×</span>
+        </div>
         <span id="de3d-tl-date" style="color:var(--gold,#d4823a);font-weight:700;font-size:10px;letter-spacing:.1em">—</span>
         <span id="de3d-tl-state" style="color:var(--t3);font-size:8px;letter-spacing:.18em">PAUSED</span>
       </div>
@@ -36603,6 +36612,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.11 link hover wired (hover any tube → tooltip shows Source → Target · TYPE · weight)');
     console.log('[DiscoveryEngine3D] 6.1 timeline API ready — setTimelineDate(ts) · playTimeline(speed) · pauseTimeline()');
     console.log('[DiscoveryEngine3D] 6.2 timeline bar mounted (bottom-center; updates 10Hz with date + range + head position)');
+    console.log('[DiscoveryEngine3D] 6.3 transport controls wired (⏮ rewind · ▶/⏸ play-pause · 1×/4×/16×/64× speed)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37857,10 +37867,23 @@ const DiscoveryEngine3D = (function(){
     var enEl    = document.getElementById('de3d-tl-end');
     var headEl  = document.getElementById('de3d-tl-head');
     if (dEl)  dEl.textContent  = _formatDateLong(tl.date);
-    if (sEl)  sEl.textContent  = tl.playing ? '▶ PLAYING ' + tl.speed + 'd/s' : 'PAUSED';
+    if (sEl)  sEl.textContent  = tl.playing ? 'PLAYING ' + tl.speed + 'd/s' : 'PAUSED';
     if (sEl)  sEl.style.color  = tl.playing ? 'var(--gold,#d4823a)' : 'var(--t3)';
     if (stEl) stEl.textContent = _formatDate(tl.range.start);
     if (enEl) enEl.textContent = _formatDate(tl.range.end);
+    // 6.3: play/pause glyph + active speed highlight
+    var pEl = document.getElementById('de3d-tl-play');
+    if (pEl) pEl.textContent = tl.playing ? '⏸' : '▶';
+    var speedBtns = document.querySelectorAll('.de3d-tl-speed');
+    if (speedBtns){
+      for (var si = 0; si < speedBtns.length; si++){
+        var btn = speedBtns[si];
+        var isActive = Number(btn.dataset.speed) === Number(tl.speed);
+        btn.style.color = isActive ? 'var(--gold,#d4823a)' : 'var(--t3)';
+        btn.style.background = isActive ? 'rgba(212,130,58,.16)' : 'transparent';
+        btn.style.fontWeight = isActive ? '700' : '500';
+      }
+    }
     // Head position: percent along track
     if (headEl && tl.range.start != null && tl.range.end != null && tl.range.end > tl.range.start){
       var pct = (tl.date - tl.range.start) / (tl.range.end - tl.range.start);
@@ -38963,7 +38986,47 @@ window._toggle3DEngine = function(mode){
     };
     setTimeout(_tryLoad, 100);
     if (fpsHud) fpsHud.style.display = 'flex';
-    if (timelineBar) timelineBar.style.display = 'block';
+    if (timelineBar){
+      timelineBar.style.display = 'block';
+      // Micro-step 6.3: wire transport + speed controls (idempotent)
+      if (timelineBar.dataset.tlWired !== '1'){
+        timelineBar.dataset.tlWired = '1';
+        var tlRewind = document.getElementById('de3d-tl-rewind');
+        var tlPlay   = document.getElementById('de3d-tl-play');
+        if (tlRewind) tlRewind.addEventListener('click', function(){
+          if (!window.DiscoveryEngine3D) return;
+          var st = window.DiscoveryEngine3D.getState();
+          if (st && st.timeline && st.timeline.range.start != null){
+            window.DiscoveryEngine3D.setTimelineDate(st.timeline.range.start);
+          }
+        });
+        if (tlPlay) tlPlay.addEventListener('click', function(){
+          if (!window.DiscoveryEngine3D) return;
+          var st = window.DiscoveryEngine3D.getState();
+          if (!st || !st.timeline) return;
+          if (st.timeline.playing){
+            window.DiscoveryEngine3D.pauseTimeline();
+          } else {
+            // If we're at the end, rewind first so play actually goes somewhere
+            if (st.timeline.range.end != null && st.timeline.date >= st.timeline.range.end - 1){
+              window.DiscoveryEngine3D.setTimelineDate(st.timeline.range.start);
+            }
+            window.DiscoveryEngine3D.playTimeline();
+          }
+        });
+        timelineBar.querySelectorAll('.de3d-tl-speed').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            if (!window.DiscoveryEngine3D) return;
+            var st = window.DiscoveryEngine3D.getState();
+            if (!st || !st.timeline) return;
+            st.timeline.speed = Number(this.dataset.speed) || 1;
+            console.log('[DiscoveryEngine3D] 6.3 speed →', st.timeline.speed + 'd/s');
+            // If currently playing, restart play loop so deltaReal calc resets
+            if (st.timeline.playing) window.DiscoveryEngine3D.playTimeline(st.timeline.speed);
+          });
+        });
+      }
+    }
     if (countBadge){
       countBadge.style.display = 'block';
       // Micro-step 4.5.5: wire layer-row clicks (idempotent — dataset flag)
