@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.4</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.5</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36614,6 +36614,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.2 timeline bar mounted (bottom-center; updates 10Hz with date + range + head position)');
     console.log('[DiscoveryEngine3D] 6.3 transport controls wired (⏮ rewind · ▶/⏸ play-pause · 1×/4×/16×/64× speed)');
     console.log('[DiscoveryEngine3D] 6.4 scrubber drag wired (click track to seek; drag for continuous scrub; auto-pause)');
+    console.log('[DiscoveryEngine3D] 6.5 activity ribbon: meeting density dots rendered along track');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37813,6 +37814,32 @@ const DiscoveryEngine3D = (function(){
       ? new Date(state.timeline.range.start).toISOString().slice(0,10) + ' .. ' + new Date(state.timeline.range.end).toISOString().slice(0,10)
       : '(no dated meetings)';
     console.log('[DiscoveryEngine3D] 6.1 timeline init: range ' + rangeStr + ' (' + sorted.length + ' meetings)');
+    // 6.5: render the activity ribbon (one small dot per meeting)
+    _renderTimelineRibbon();
+  }
+
+  // ── Micro-step 6.5: activity ribbon (meeting density along track) ──────
+  // One absolutely-positioned dot per meeting, placed by its date%. Dots
+  // use rgba with low alpha so clusters appear brighter from overlap —
+  // operator sees activity density at a glance.
+  function _renderTimelineRibbon(){
+    var rib = document.getElementById('de3d-tl-ribbon');
+    if (!rib) return;
+    rib.innerHTML = '';
+    var tl = state.timeline;
+    if (!tl || !tl.sortedMeetings || !tl.sortedMeetings.length) return;
+    var span = tl.range.end - tl.range.start;
+    if (!Number.isFinite(span) || span <= 0) return;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < tl.sortedMeetings.length; i++){
+      var ts = tl.sortedMeetings[i].ts;
+      var pct = (ts - tl.range.start) / span;
+      if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
+      var dot = document.createElement('div');
+      dot.style.cssText = 'position:absolute;top:5px;height:8px;width:3px;background:rgba(212,130,58,.55);border-radius:1px;pointer-events:none;left:calc(' + (pct * 100).toFixed(2) + '% - 1px)';
+      frag.appendChild(dot);
+    }
+    rib.appendChild(frag);
   }
 
   // Public seekers — clamped to range. Returns final date.
