@@ -5508,6 +5508,47 @@ input[type="url"], textarea, select {
   text-align:center;color:var(--t3);font-size:11px;padding:30px;
   display:block;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;
 }
+/* 7.6: commitment panel rows */
+.commit-row{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:14px;
+  padding:10px 18px;
+  border-bottom:1px solid rgba(125,118,105,.10);
+  cursor:pointer;
+  transition:background 100ms;
+}
+.commit-row:hover{background:rgba(125,118,105,.06)}
+.commit-row .due-pill{
+  padding:2px 8px;border-radius:2px;font-weight:700;
+  font-size:10px;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;
+  min-width:74px;text-align:center;text-transform:uppercase;
+}
+.commit-row .due-pill.overdue{background:rgba(184,68,68,.22);color:#d27474}
+.commit-row .due-pill.today  {background:rgba(212,130,58,.22);color:var(--gold,#d4823a)}
+.commit-row .due-pill.week   {background:rgba(196,134,43,.18);color:#c4862b}
+.commit-row .due-pill.later  {background:rgba(125,118,105,.18);color:var(--bone,#7d7669)}
+.commit-row .commit-block{display:flex;flex-direction:column;gap:3px;min-width:0}
+.commit-row .commit-task{
+  font-family:'IBM Plex Sans',sans-serif;
+  color:var(--paper,#b5ad9f);font-weight:500;font-size:13px;
+  line-height:1.35;
+}
+.commit-row .commit-meta{
+  color:var(--t3);font-size:10px;letter-spacing:.04em;
+  font-family:'IBM Plex Mono',monospace;
+}
+.commit-row .commit-source{
+  color:var(--t3);font-size:10px;
+  font-family:'IBM Plex Sans',sans-serif;
+  max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-align:right;
+}
+.commit-row.empty{
+  text-align:center;color:var(--t3);font-size:11px;padding:30px;
+  display:block;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;
+}
 @media (max-width:1180px){
   .brief-cols{grid-template-columns:repeat(3,1fr)}
 }
@@ -6379,7 +6420,7 @@ input[type="url"], textarea, select {
               <div class="brief-col-list" id="brief-upcoming-list"><div class="brief-empty">no data</div></div>
             </div>
             <div class="brief-col" data-bucket="commit">
-              <div class="brief-col-hdr"><span>COMMITMENTS DUE</span><span class="brief-count" id="brief-commit-count">0</span></div>
+              <div class="brief-col-hdr" style="cursor:pointer" onclick="if(window.openCommitPanel)window.openCommitPanel()" title="See all open commitments"><span>COMMITMENTS DUE</span><span class="brief-count" id="brief-commit-count">0</span></div>
               <div class="brief-col-list" id="brief-commit-list"><div class="brief-empty">no data</div></div>
             </div>
             <!-- 7.3: Weak Coverage column -->
@@ -6918,13 +6959,28 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P7.5</span>
+      <span style="color:var(--gold)" id="de3d-build">P7.6</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="color:var(--t3);font-weight:700">FIND</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK RESULT → FLY-IN</span></div>
       <input id="de3d-search-input" type="text" placeholder="type a name..." spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;background:rgba(7,13,24,.95);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 8px;letter-spacing:.04em;text-transform:none;outline:none">
       <div id="de3d-search-results" style="margin-top:6px;max-height:260px;overflow-y:auto"></div>
+    </div>
+    <!-- Micro-step 7.6: Commitment Dashboard full-list modal -->
+    <div id="commit-panel" style="display:none;position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:24px">
+      <div style="background:var(--bg,#070d18);border:1px solid var(--bone,#7d7669);border-radius:3px;max-width:820px;width:100%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(125,118,105,.22);font-family:'IBM Plex Mono',monospace">
+        <div style="padding:14px 18px 12px;border-bottom:1px solid var(--b2);display:flex;align-items:center;gap:14px;flex-shrink:0">
+          <span style="color:var(--bone,#7d7669);font-weight:700;letter-spacing:.18em;font-size:11px">◇ OPEN COMMITMENTS</span>
+          <span id="commit-panel-count" style="background:rgba(125,118,105,.22);color:var(--bone,#7d7669);padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px;letter-spacing:.06em">0</span>
+          <span style="flex:1"></span>
+          <span style="color:var(--t3);font-size:9px;letter-spacing:.12em;text-transform:uppercase">click row → source meeting</span>
+          <span onclick="window.closeCommitPanel()" style="color:var(--t3);cursor:pointer;font-size:18px;line-height:1;padding:0 4px" title="Close (ESC)">×</span>
+        </div>
+        <div id="commit-panel-body" style="overflow-y:auto;flex:1;padding:8px 0">
+          <div style="text-align:center;color:var(--t3);padding:30px;font-size:11px;letter-spacing:.06em">loading…</div>
+        </div>
+      </div>
     </div>
     <!-- Micro-step 7.5: Decay Alert full-list modal -->
     <div id="decay-panel" style="display:none;position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:24px">
@@ -14737,6 +14793,120 @@ window.renderDecayPanel = function(){
   document.addEventListener('click', function(ev){
     var panel = document.getElementById('decay-panel');
     if (panel && ev.target === panel) window.closeDecayPanel();
+  });
+})();
+
+// ── Micro-step 7.6: Commitment Dashboard panel ────────────────────────────
+// Modal listing every open commitment with a parseable deadline, sorted by
+// urgency. Row: due-in pill (overdue/today/this week/later), task title,
+// owner + context, source meeting. Click row → navigates to source meeting
+// via existing goIntelById. ESC/backdrop/× close.
+window.openCommitPanel = function(){
+  var panel = document.getElementById('commit-panel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+  window.renderCommitPanel();
+};
+window.closeCommitPanel = function(){
+  var panel = document.getElementById('commit-panel');
+  if (panel) panel.style.display = 'none';
+};
+window.renderCommitPanel = function(){
+  var body = document.getElementById('commit-panel-body');
+  var countEl = document.getElementById('commit-panel-count');
+  if (!body) return;
+  var commits_ = (typeof commitments !== 'undefined' && commitments) ? commitments : (window.commitments || []);
+  var mtgs_    = (typeof meetings !== 'undefined' && meetings) ? meetings : (window.meetings || []);
+  var nowMs = Date.now();
+  var DAY = 86400000;
+  // Build a meeting lookup for source-meeting titles
+  var mtgById = {};
+  for (var mi = 0; mi < mtgs_.length; mi++){
+    if (mtgs_[mi] && mtgs_[mi].id != null) mtgById[String(mtgs_[mi].id)] = mtgs_[mi];
+  }
+  var rows = [];
+  commits_.forEach(function(c){
+    if (!c) return;
+    if (c.done || c.status === 'done' || c.completed) return;
+    var dts = null;
+    if (c.deadline){ var t = Date.parse(String(c.deadline)); if (!isNaN(t)) dts = t; }
+    else if (c.dueAt){ var t2 = Date.parse(String(c.dueAt)); if (!isNaN(t2)) dts = t2; }
+    var days = dts == null ? null : Math.ceil((dts - nowMs) / DAY);
+    var src = c.sourceMtgId != null ? mtgById[String(c.sourceMtgId)] : null;
+    rows.push({
+      id: c.id,
+      task: c.text || c.title || c.what || c.task || 'Commitment',
+      owner: c.owner || '',
+      priority: c.priority || '',
+      context: c.context || '',
+      days: days,
+      dts: dts,
+      sourceMtgId: c.sourceMtgId,
+      sourceTitle: (src && src.meta && src.meta.title) || ''
+    });
+  });
+  // Sort: overdue first (most overdue), then by ascending days, then no-deadline at bottom
+  rows.sort(function(a,b){
+    if (a.days == null && b.days == null) return 0;
+    if (a.days == null) return 1;
+    if (b.days == null) return -1;
+    return a.days - b.days;
+  });
+  if (countEl) countEl.textContent = rows.length;
+  if (!rows.length){
+    body.innerHTML = '<div class="commit-row empty">no open commitments — clear runway</div>';
+    return;
+  }
+  function _bucket(days){
+    if (days == null) return { klass:'later', txt:'no date' };
+    if (days < 0)  return { klass:'overdue', txt:'overdue ' + Math.abs(days) + 'd' };
+    if (days === 0) return { klass:'today', txt:'TODAY' };
+    if (days <= 7)  return { klass:'week',  txt:'in ' + days + 'd' };
+    return { klass:'later', txt:'in ' + days + 'd' };
+  }
+  var html = rows.map(function(r){
+    var b = _bucket(r.days);
+    var taskTxt = String(r.task).slice(0, 200);
+    var metaBits = [];
+    if (r.owner) metaBits.push(r.owner);
+    if (r.priority) metaBits.push(r.priority.toUpperCase());
+    var meta = metaBits.length ? metaBits.join(' · ') : '— no owner —';
+    var srcTxt = r.sourceTitle ? '↗ ' + r.sourceTitle.slice(0, 36) : (r.sourceMtgId ? '↗ source' : '');
+    var clickAttr = r.sourceMtgId ? ('data-mtg="' + r.sourceMtgId + '"') : '';
+    return '<div class="commit-row" ' + clickAttr + '>' +
+             '<span class="due-pill ' + b.klass + '">' + b.txt + '</span>' +
+             '<div class="commit-block">' +
+               '<div class="commit-task">' + taskTxt + '</div>' +
+               '<div class="commit-meta">' + meta + '</div>' +
+             '</div>' +
+             '<div class="commit-source" title="' + (r.sourceTitle || '').replace(/"/g,'&quot;') + '">' + srcTxt + '</div>' +
+           '</div>';
+  }).join('');
+  body.innerHTML = html;
+  body.querySelectorAll('.commit-row').forEach(function(row){
+    var mtgId = row.dataset.mtg;
+    if (!mtgId) return;
+    row.addEventListener('click', function(){
+      window.closeCommitPanel();
+      if (typeof window.goIntelById === 'function') window.goIntelById(mtgId);
+    });
+  });
+  console.log('[Brief] 7.6 commit panel rendered:', rows.length, 'open commitments');
+};
+
+// ESC + backdrop dismissal (one-time wire for commit panel)
+(function(){
+  if (window._commitPanelWired) return;
+  window._commitPanelWired = true;
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape'){
+      var panel = document.getElementById('commit-panel');
+      if (panel && panel.style.display !== 'none') window.closeCommitPanel();
+    }
+  });
+  document.addEventListener('click', function(ev){
+    var panel = document.getElementById('commit-panel');
+    if (panel && ev.target === panel) window.closeCommitPanel();
   });
 })();
 
