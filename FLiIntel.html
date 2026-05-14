@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.3</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.9</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6737,6 +6737,9 @@ input[type="url"], textarea, select {
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700">FILTERS</div>
       <div style="margin-bottom:3px"><span style="color:var(--t3);display:inline-block;width:62px">STAGE</span><select id="de3d-flt-stage" style="background:rgba(7,13,24,.9);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;letter-spacing:.1em;text-transform:uppercase"><option value="all">ALL</option><option value="active">ACTIVE</option><option value="upcoming">UPCOMING</option><option value="won">WON</option><option value="lost">LOST</option></select></div>
       <div style="margin-bottom:6px"><span style="color:var(--t3);display:inline-block;width:62px">TIER</span><select id="de3d-flt-tier" style="background:rgba(7,13,24,.9);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;letter-spacing:.1em;text-transform:uppercase"><option value="all">ALL</option><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option></select></div>
+      <!-- Micro-step 4.5.9: saved views -->
+      <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>VIEWS</span><span id="de3d-views-save" style="color:var(--gold,#d4823a);cursor:pointer;font-size:9px;letter-spacing:.1em" title="Save current scene as a view">＋ SAVE</span></div>
+      <div id="de3d-views-list" style="margin-bottom:6px;max-height:140px;overflow-y:auto"></div>
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>ENTITIES</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK TO TOGGLE</span></div>
       <div class="de3d-layer-row" data-layer="people" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">PEOPLE</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-people">0</span></div>
       <div class="de3d-layer-row" data-layer="orgs" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">ORGS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-orgs">0</span></div>
@@ -34510,6 +34513,14 @@ const DiscoveryEngine3D = (function(){
     _lastClickTs: 0,
     _lastClickKind: null,
     _lastClickInstance: -1,
+    // Micro-step 4.5.9: saved views — bookmarked scene state per workspace
+    // (localStorage backed, keyed by workspace id). View shape:
+    //   { id, name, created, filter:{stage,tier}, layerVisible:{...},
+    //     focal:{kind,instanceId} | null, camera:{target,position} }
+    savedViews: [],
+    // Generic camera animation slot (used by saved-view apply; focal mode
+    // has its own animation inside state.focal so the two don't collide).
+    cameraAnim: null,
     // Micro-step 4.5.4: spatial index over entity positions. A flat array
     // of {x,y,z,kind,instanceId} rebuilt every 30 frames. Linear-scan
     // findNearest is fine at Atlas scale (~200 entries) and at 10x scale
@@ -35072,6 +35083,26 @@ const DiscoveryEngine3D = (function(){
         var ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
         state.controls.target.lerpVectors(state.focal.camFromTarget, state.focal.camToTarget, ease);
         state.camera.position.lerpVectors(state.focal.camFromPos,   state.focal.camToPos,   ease);
+        state.camera.updateProjectionMatrix();
+      }
+    }
+    // ── Micro-step 4.5.9: saved-view camera animation ─────────────────────
+    // Generic camera lerp slot used by applyView. Doesn't conflict with
+    // focal animation (different state slot). If focal anim is running
+    // it has already updated the camera above; the cameraAnim block here
+    // would overwrite it — so skip cameraAnim while focal anim is active.
+    if (state.cameraAnim && state.camera && state.controls
+        && !(state.focal && state.focal.animStart != null)){
+      var anow = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      var at = (anow - state.cameraAnim.animStart) / (state.cameraAnim.animDuration || 700);
+      if (at >= 1){
+        state.controls.target.copy(state.cameraAnim.camToTarget);
+        state.camera.position.copy(state.cameraAnim.camToPos);
+        state.cameraAnim = null;
+      } else if (at > 0){
+        var aease = at < 0.5 ? 4*at*at*at : 1 - Math.pow(-2*at + 2, 3) / 2;
+        state.controls.target.lerpVectors(state.cameraAnim.camFromTarget, state.cameraAnim.camToTarget, aease);
+        state.camera.position.lerpVectors(state.cameraAnim.camFromPos,    state.cameraAnim.camToPos,    aease);
         state.camera.updateProjectionMatrix();
       }
     }
@@ -36804,6 +36835,137 @@ const DiscoveryEngine3D = (function(){
     pill.querySelector('#de3d-focal-name').textContent = name;
   }
 
+  // ── Micro-step 4.5.9: saved views (per-workspace bookmarks) ───────────
+  function _savedViewsKey(){
+    var wsId = window.currentWsId || 'default';
+    return 'corsair-3d-savedViews-' + wsId;
+  }
+  function _loadSavedViews(){
+    try {
+      var raw = localStorage.getItem(_savedViewsKey());
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function _persistSavedViews(){
+    try {
+      localStorage.setItem(_savedViewsKey(), JSON.stringify(state.savedViews || []));
+    } catch (e) { console.warn('[DiscoveryEngine3D] 4.5.9 persist failed:', e); }
+  }
+  function _captureCurrentView(){
+    var f = state.focal;
+    var v = {
+      id: 'view-' + Date.now() + '-' + Math.floor(Math.random()*1000),
+      created: Date.now(),
+      filter: {
+        stage: (state.filter && state.filter.stage) || 'all',
+        tier:  (state.filter && state.filter.tier)  || 'all'
+      },
+      layerVisible: Object.assign({}, state.layerVisible || {}),
+      focal: f ? { kind: f.kind, instanceId: f.instanceId } : null,
+      camera: null
+    };
+    if (state.camera && state.controls){
+      v.camera = {
+        target:   { x: state.controls.target.x,  y: state.controls.target.y,  z: state.controls.target.z },
+        position: { x: state.camera.position.x,  y: state.camera.position.y,  z: state.camera.position.z }
+      };
+    }
+    return v;
+  }
+  function saveView(name){
+    var nm = String(name || '').trim();
+    if (!nm) return null;
+    if (nm.length > 40) nm = nm.slice(0, 40);
+    var v = _captureCurrentView();
+    v.name = nm;
+    if (!Array.isArray(state.savedViews)) state.savedViews = [];
+    state.savedViews.push(v);
+    _persistSavedViews();
+    _renderSavedViewsList();
+    console.log('[DiscoveryEngine3D] 4.5.9 saved view: "' + nm + '" (total ' + state.savedViews.length + ')');
+    return v.id;
+  }
+  function deleteView(viewId){
+    if (!Array.isArray(state.savedViews)) return;
+    var before = state.savedViews.length;
+    state.savedViews = state.savedViews.filter(function(v){ return v.id !== viewId; });
+    if (state.savedViews.length !== before){
+      _persistSavedViews();
+      _renderSavedViewsList();
+      console.log('[DiscoveryEngine3D] 4.5.9 deleted view (remaining ' + state.savedViews.length + ')');
+    }
+  }
+  function applyView(view){
+    if (!view) return;
+    // 1. Filters
+    if (view.filter){
+      if (view.filter.stage) setFilter('stage', view.filter.stage);
+      if (view.filter.tier)  setFilter('tier',  view.filter.tier);
+      // Sync the dropdowns visually
+      var s = document.getElementById('de3d-flt-stage');
+      var t = document.getElementById('de3d-flt-tier');
+      if (s) s.value = view.filter.stage || 'all';
+      if (t) t.value = view.filter.tier  || 'all';
+    }
+    // 2. Layers
+    if (view.layerVisible){
+      Object.keys(view.layerVisible).forEach(function(L){
+        setLayer(L, view.layerVisible[L]);
+      });
+    }
+    // 3. Focal
+    if (view.focal && view.focal.kind && view.focal.instanceId != null){
+      enterFocal(view.focal.kind, view.focal.instanceId);
+    } else if (state.focal){
+      exitFocal();
+    }
+    // 4. Camera — generic animation (not focal slot)
+    if (view.camera && state.camera && state.controls){
+      state.cameraAnim = {
+        camFromTarget: state.controls.target.clone(),
+        camFromPos:    state.camera.position.clone(),
+        camToTarget:   new THREE.Vector3(view.camera.target.x,   view.camera.target.y,   view.camera.target.z),
+        camToPos:      new THREE.Vector3(view.camera.position.x, view.camera.position.y, view.camera.position.z),
+        animStart:     (typeof performance !== 'undefined') ? performance.now() : Date.now(),
+        animDuration:  700
+      };
+    }
+    console.log('[DiscoveryEngine3D] 4.5.9 applied view: "' + view.name + '"');
+  }
+  function applyViewById(viewId){
+    var v = (state.savedViews || []).find(function(x){ return x.id === viewId; });
+    if (v) applyView(v);
+  }
+  function _renderSavedViewsList(){
+    var listEl = document.getElementById('de3d-views-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    var arr = state.savedViews || [];
+    if (!arr.length){
+      listEl.innerHTML = '<div style="color:var(--t3);padding:2px 0;font-size:9px;letter-spacing:.08em">no saved views — click SAVE</div>';
+      return;
+    }
+    arr.forEach(function(v){
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:3px 4px;border-radius:2px;margin-top:2px;transition:background 80ms';
+      var nameEl = document.createElement('span');
+      nameEl.style.cssText = 'color:var(--paper,#b5ad9f);text-transform:none;letter-spacing:.04em;font-weight:500;font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      nameEl.textContent = v.name || '(unnamed)';
+      var delEl = document.createElement('span');
+      delEl.style.cssText = 'color:var(--t3);cursor:pointer;padding:0 5px;font-size:12px;line-height:1;margin-left:6px;visibility:hidden';
+      delEl.textContent = '×';
+      delEl.title = 'Delete view';
+      row.appendChild(nameEl);
+      row.appendChild(delEl);
+      row.addEventListener('mouseenter', function(){ row.style.background = 'rgba(212,130,58,.15)'; delEl.style.visibility = 'visible'; });
+      row.addEventListener('mouseleave', function(){ row.style.background = 'transparent'; delEl.style.visibility = 'hidden'; });
+      nameEl.addEventListener('click', function(){ applyViewById(v.id); });
+      delEl.addEventListener('click', function(ev){ ev.stopPropagation(); deleteView(v.id); });
+      listEl.appendChild(row);
+    });
+  }
+
   // ── Micro-step 4.5.11: entity search ──────────────────────────────────
   // Substring-match query against name fields of cleanNodes / orgClean /
   // oppClean. Renders top results into the #de3d-search-results dropdown
@@ -37208,6 +37370,10 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.5.8 focal mode wired (double-click any entity to enter, ESC or click-empty to exit)');
     console.log('[DiscoveryEngine3D] 4.5.11 entity search wired (top-left FIND box — type to filter, click result to fly-in)');
     console.log('[DiscoveryEngine3D] 4.5.3 pursuit hull throttle: rebuild every 5 frames (12Hz; first build still immediate)');
+    // 4.5.9: load saved views from localStorage and render them
+    state.savedViews = _loadSavedViews();
+    _renderSavedViewsList();
+    console.log('[DiscoveryEngine3D] 4.5.9 saved views: ' + state.savedViews.length + ' bookmark' + (state.savedViews.length === 1 ? '' : 's') + ' loaded for workspace "' + (window.currentWsId || 'default') + '"');
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
     console.log('[DiscoveryEngine3D] 4.5.2 sprite LOD: distance=' + (state.labelLodDistance|0) + ' (tune via DiscoveryEngine3D.setLabelDistance(N))');
     console.log('[DiscoveryEngine3D] 4.5.6 filter chips wired (stage + tier dropdowns in count badge)');
@@ -37465,7 +37631,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -37519,6 +37685,17 @@ window._toggle3DEngine = function(mode){
               window.DiscoveryEngine3D.toggleLayer(L);
             }
           });
+        });
+      }
+      // Micro-step 4.5.9: wire SAVE button + initial views render (idempotent)
+      if (countBadge.dataset.viewsWired !== '1'){
+        countBadge.dataset.viewsWired = '1';
+        var saveBtn = document.getElementById('de3d-views-save');
+        if (saveBtn) saveBtn.addEventListener('click', function(){
+          var nm = window.prompt('Name this view (e.g. "Tuesday review", "OSI focus"):');
+          if (nm && window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.saveView === 'function'){
+            window.DiscoveryEngine3D.saveView(nm);
+          }
         });
       }
       // Micro-step 4.5.6: wire filter chip change handlers (idempotent)
