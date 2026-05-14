@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.2</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.3</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally -->
     <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
@@ -35798,9 +35798,17 @@ const DiscoveryEngine3D = (function(){
     } else {
       console.log('[DiscoveryEngine3D] 4.2 link weights: 0 links (no weight stats)');
     }
+    console.log('[DiscoveryEngine3D] 4.3 directionality: 3:1 taper geometry (radiusTop=0.025, radiusBottom=0.075)');
 
     if (linkPairs.length){
-      var linkGeo = new THREE.CylinderGeometry(0.05, 0.05, 1, 6);
+      // ── Micro-step 4.3: directionality taper ──────────────────────────
+      // Source (bottom) radius = 0.075, target (top) radius = 0.025 — a
+      // 3:1 taper that reads as "flow from source toward target" without
+      // looking like an arrow gimmick. Quaternion orient already places
+      // bottom at source, top at target via setFromUnitVectors((0,1,0), dir).
+      // Per-instance weight (4.2) scales the whole cylinder; the ratio is
+      // preserved so weight modulates magnitude not direction.
+      var linkGeo = new THREE.CylinderGeometry(0.025, 0.075, 1, 6);
       var linkMat = new THREE.MeshBasicMaterial({
         color: 0xb5ad9f,           // paper
         transparent: true,
