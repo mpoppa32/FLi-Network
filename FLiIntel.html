@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.10</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.11</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -8784,10 +8784,16 @@ function connectWorkspace(){
   });
   var u9=onValue(ref(db,wsPath('opportunities')),function(snap){
     opportunities=snap.val()?Object.values(snap.val()):[];
+    // Mirror to window so DiscoveryEngine3D (3.11+) can read opportunities.
+    window.opportunities = opportunities;
     if(window._invalidateEntityGraph)window._invalidateEntityGraph();
     renderOppSidebar();
     updateOppSelectors();
     if(currentOpp){var upd=opportunities.find(function(o){return o.id===currentOpp.id;});if(upd){currentOpp=upd;renderOppDetail(upd);}}
+    // 3.11 live reload hook
+    if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
+      try { window.DiscoveryEngine3D.loadGraph(window.nodes || nodes, window.links || links || []); } catch(e){ console.warn('[DE3D] live reload (opps update) failed:', e); }
+    }
   });
   // ── COMMITMENTS ──
   var u10=onValue(ref(db,wsPath('commitments')),function(snap){
@@ -34282,7 +34288,12 @@ const DiscoveryEngine3D = (function(){
     // Micro-step 3.10: density strip + org-name sprite labels
     orgStripMesh: null,
     orgLabels: null,
-    orgCleanRef: null
+    orgCleanRef: null,
+    // Micro-step 3.11: contract/solicitation hex prisms
+    oppMesh: null,
+    oppInstanceCount: 0,
+    oppWorkerOffset: 0,
+    oppCleanRef: null
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34420,6 +34431,29 @@ const DiscoveryEngine3D = (function(){
               }
               state.orgMesh.instanceMatrix.needsUpdate = true;
               if (state.orgStripMesh) state.orgStripMesh.instanceMatrix.needsUpdate = true;
+            }
+
+            // Micro-step 3.11: write opportunity hex-prism positions from
+            // worker indices [oppWorkerOffset, oppWorkerOffset+oppInstanceCount).
+            if (state.oppMesh && state.oppInstanceCount > 0){
+              const pStart = state.oppWorkerOffset;
+              const pCap = Math.min(state.oppInstanceCount, ((pos.length / 3) | 0) - pStart);
+              for (let k = 0; k < pCap; k++){
+                const widx = pStart + k;
+                const ox3 = pos[widx*3], oy3 = pos[widx*3+1], oz3 = pos[widx*3+2];
+                const x3 = Number.isFinite(ox3) ? ox3 : 0;
+                const y3 = Number.isFinite(oy3) ? oy3 : 0;
+                const z3 = Number.isFinite(oz3) ? oz3 : 0;
+                if (x3 < minX) minX = x3; if (x3 > maxX) maxX = x3;
+                if (y3 < minY) minY = y3; if (y3 > maxY) maxY = y3;
+                if (z3 < minZ) minZ = z3; if (z3 > maxZ) maxZ = z3;
+                _frameDummy.position.set(x3, y3, z3);
+                _frameDummy.scale.set(1, 1, 1);
+                _frameDummy.rotation.set(0, 0, 0);
+                _frameDummy.updateMatrix();
+                state.oppMesh.setMatrixAt(k, _frameDummy.matrix);
+              }
+              state.oppMesh.instanceMatrix.needsUpdate = true;
             }
 
             const cx = (minX + maxX) * 0.5;
@@ -34950,6 +34984,16 @@ const DiscoveryEngine3D = (function(){
       state.orgLabels = null;
     }
     state.orgCleanRef = null;
+    // Micro-step 3.11: dispose prior opportunity hex prisms
+    if (state.oppMesh){
+      if (state.scene) state.scene.remove(state.oppMesh);
+      if (state.oppMesh.geometry) state.oppMesh.geometry.dispose();
+      if (state.oppMesh.material) state.oppMesh.material.dispose();
+      state.oppMesh = null;
+    }
+    state.oppInstanceCount = 0;
+    state.oppWorkerOffset = 0;
+    state.oppCleanRef = null;
     if (ringIdxMap.length){
       const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
       const ringMat = new THREE.MeshBasicMaterial({
@@ -35155,10 +35199,60 @@ const DiscoveryEngine3D = (function(){
       console.log('[DiscoveryEngine3D] 3.10 org labels: ' + orgLabelArr.length + ' sprites + density strips');
     }
 
+    // ── Micro-step 3.11: contract/solicitation hex prisms ─────────────────
+    // Opportunities live in window.opportunities (mirrored from the
+    // Firebase listener at u9). Each becomes a flat hexagonal prism
+    // (CylinderGeometry radius 0.6, height 0.3, 6 radial segments).
+    // Minimal-first: MeshBasicMaterial steel-blue tint #7d8b9c so the
+    // bucket is visually distinct from people (paper spheres) and orgs
+    // (paper boxes). 3.12 will swap in a status-encoded shader.
+    // Worker indices: [oppWorkerOffset, oppWorkerOffset + oppInstanceCount).
+    const oppRaw = Array.isArray(window.opportunities) ? window.opportunities : [];
+    const oppClean = oppRaw
+      .filter(function(o){ return o && o.id != null; })
+      .map(function(o){
+        return {
+          id: 'opp:' + String(o.id),
+          name: String(o.name || 'Opportunity'),
+          type: 'opportunity',
+          priority: o.priority || 3,
+          stage: o.stage || null,
+          value: o.value || null,
+          solicitationNumber: o.solicitationNumber || o.solnbr || null
+        };
+      });
+    state.oppInstanceCount = oppClean.length;
+    state.oppWorkerOffset = cleanNodes.length + orgClean.length;
+    state.oppCleanRef = oppClean;
+    console.log('[DiscoveryEngine3D] 3.11 contracts/solicitations: ' + oppClean.length + ' opportunities');
+
+    if (oppClean.length){
+      const oppGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.3, 6);
+      const oppMat = new THREE.MeshBasicMaterial({
+        color: 0x7d8b9c,           // steel-blue paper variant
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false
+      });
+      const oppMesh = new THREE.InstancedMesh(oppGeo, oppMat, oppClean.length);
+      oppMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      oppMesh.frustumCulled = false;
+      const dummy5 = new THREE.Object3D();
+      dummy5.scale.setScalar(0);  // hidden until first worker tick lands positions
+      dummy5.updateMatrix();
+      for (let r = 0; r < oppClean.length; r++){
+        oppMesh.setMatrixAt(r, dummy5.matrix);
+      }
+      oppMesh.instanceMatrix.needsUpdate = true;
+      state.oppMesh = oppMesh;
+      if (state.scene) state.scene.add(oppMesh);
+    }
+
     // Spawn / reuse worker, send graph.
-    // Worker payload: people first (so existing index mappings hold), then orgs.
-    // cleanLinks still contains only person-to-person links — no org links yet.
-    const workerNodes = cleanNodes.concat(orgClean);
+    // Worker payload: people first (so existing index mappings hold), then
+    // orgs, then opportunities. cleanLinks still contains only person-to-
+    // person links — no org/opp links yet (those land in later micro-steps).
+    const workerNodes = cleanNodes.concat(orgClean).concat(oppClean);
     const w = _ensurePhysicsWorker();
     w.postMessage({ type: 'init', nodes: workerNodes, links: cleanLinks });
   }
@@ -35530,6 +35624,16 @@ const DiscoveryEngine3D = (function(){
       state.orgLabels = null;
     }
     state.orgCleanRef = null;
+    // 3.11 dispose: opportunity hex prisms
+    if (state.oppMesh){
+      if (state.scene) state.scene.remove(state.oppMesh);
+      if (state.oppMesh.geometry) state.oppMesh.geometry.dispose();
+      if (state.oppMesh.material) state.oppMesh.material.dispose();
+      state.oppMesh = null;
+    }
+    state.oppInstanceCount = 0;
+    state.oppWorkerOffset = 0;
+    state.oppCleanRef = null;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
