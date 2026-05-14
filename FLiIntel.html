@@ -6959,7 +6959,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P7.6</span>
+      <span style="color:var(--gold)" id="de3d-build">P7.7</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -16043,6 +16043,51 @@ async function generateDigest(){
   wMtgs.forEach(function(m){(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).forEach(function(r){recentRisks.push(r.risk+' ('+m.meta.title+')');});});
   recentRisks.slice(0,5).forEach(function(r){context+='- '+r+'\n';});
 
+  // ── Micro-step 7.7: enrich digest context with pursuit health + coverage ──
+  // Feed the 7.2 (pursuit health) and 7.3 (account coverage) signals into
+  // the LLM context so the directive brief can weave them into the
+  // narrative naturally. Surfaces both the worst-health pursuits and the
+  // DARK/SPARSE accounts that need attention this week.
+  if (typeof window._computePursuitHealth === 'function'){
+    var activeOpps = opportunities.filter(function(o){
+      var s = String(o.stage || '').toLowerCase();
+      return s !== 'won' && s !== 'lost';
+    });
+    var healthScored = activeOpps.map(function(o){
+      var h = window._computePursuitHealth(o);
+      return { name: o.name, stage: o.stage, agency: o.agency || '', score: h.score, status: h.status, factors: h.factors };
+    });
+    healthScored.sort(function(a,b){ return a.score - b.score; });
+    if (healthScored.length){
+      var urgent = healthScored.filter(function(x){ return x.status === 'cold' || x.score < 40; });
+      if (urgent.length){
+        context += '\nPURSUITS BY HEALTH — most urgent first (health 0-100, ≤40 is COLD):\n';
+        urgent.slice(0,8).forEach(function(x){
+          var dt = x.factors && x.factors.daysSinceTouch != null ? x.factors.daysSinceTouch + 'd silent' : 'never engaged';
+          context += '- [HEALTH ' + x.score + ' · ' + x.status.toUpperCase() + '] ' + x.name + ' ['+x.stage+']' + (x.agency ? ' @ '+x.agency : '') + ' — ' + dt + ', ' + (x.factors.attendees||0) + ' engaged contacts\n';
+        });
+      }
+    }
+  }
+  if (typeof window._computeAccountCoverage === 'function'){
+    var orgsAll = nodes.filter(function(n){ return n && n.type === 'company'; });
+    var covGaps = [];
+    orgsAll.forEach(function(org){
+      var cov = window._computeAccountCoverage(org);
+      if (cov.factors.oppCount > 0 && cov.score < 40){
+        covGaps.push({ name: org.name, score: cov.score, status: cov.status, factors: cov.factors });
+      }
+    });
+    covGaps.sort(function(a,b){ return a.score - b.score; });
+    if (covGaps.length){
+      context += '\nACCOUNT COVERAGE GAPS — pursued accounts with weak/no contacts:\n';
+      covGaps.slice(0,6).forEach(function(g){
+        var label = g.status === 'dark' ? '[DARK — pursuing with ZERO engaged contacts]' : '[COVERAGE '+g.score+' — '+g.factors.engagedRecent+'/'+(g.factors.oppCount*2)+']';
+        context += '- ' + label + ' ' + g.name + ' (' + g.factors.oppCount + ' opp' + (g.factors.oppCount===1?'':'s') + ', ' + g.factors.peopleAtOrg + ' known contacts)\n';
+      });
+    }
+  }
+
   // G3: Pre-fetch cached intelligence to enrich the digest
   var externalIntelSection = '';
   if(_pulseCache){
@@ -16066,7 +16111,10 @@ OVERDUE ACTIONS
 List every overdue commitment with owner and recommended action. Format: "[Task] — [Owner] — [days late] — [recommended action]".
 
 STALLED OPPORTUNITIES
-For each opportunity with no recent activity, state what's blocking it and the single best next move.
+For each opportunity with no recent activity, state what's blocking it and the single best next move. Cite the PURSUITS BY HEALTH section — focus on COLD pursuits (health ≤40). Recommend specific contacts to make.
+
+COVERAGE GAPS
+For any DARK accounts (pursuing but zero engaged contacts), recommend a specific path-in: who to introduce, what entry-point event/conference to use, or what's the cold-outreach play. Prioritize DARK over SPARSE.
 
 WATCH LIST
 2-3 things that aren't urgent yet but will become critical if ignored this week.
