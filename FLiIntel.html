@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.14</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.15</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34469,45 +34469,69 @@ const DiscoveryEngine3D = (function(){
               state.oppMesh.instanceMatrix.needsUpdate = true;
             }
 
-            // ── Micro-step 3.14: build pursuit halo hulls (latch once) ────
-            // On tick >= 5 (positions stable enough), construct one
-            // ConvexGeometry mesh per qualifying active opp using current
-            // person positions. Static for 3.14; 3.15 will recompute per tick.
-            if (!state.pursuitHullsBuilt
-                && state.pursuitHullSpec
+            // ── Micro-step 3.14 / 3.15: pursuit halo hulls (dynamic) ──────
+            // On tick >= 5 (positions stable enough), build OR rebuild one
+            // ConvexGeometry per qualifying active opp using current person
+            // positions.
+            //
+            // 3.14 was latch-once (built one time, then static).
+            // 3.15 rebuilds the geometry every tick so hulls flex with the
+            // physics simulation. Mesh objects themselves are created once
+            // and reused; only the .geometry is swapped (old disposed).
+            //
+            // Cost note: ConvexGeometry runs QuickHull on each call. For
+            // a handful of pursuit hulls (typically < 5) with < 30 points
+            // each, this is well under 1ms/frame — fine for live recompute.
+            // 3.16 will swap MeshBasicMaterial for a soft alpha-falloff
+            // shader; 3.17 will add pursuit name sprites.
+            if (state.pursuitHullSpec
                 && state.pursuitHullSpec.length
                 && state.pursuitHullGroup
                 && state.physicsTickCount >= 5){
-              var _hullBuilt = 0;
-              state.pursuitHullSpec.forEach(function(spec){
+              var _hullCount = 0;
+              for (var si = 0; si < state.pursuitHullSpec.length; si++){
+                var spec = state.pursuitHullSpec[si];
                 try {
                   var pts = [];
-                  spec.personIndices.forEach(function(idx){
+                  for (var pi = 0; pi < spec.personIndices.length; pi++){
+                    var idx = spec.personIndices[pi];
                     var px = pos[idx*3], py = pos[idx*3+1], pz = pos[idx*3+2];
                     if (Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz)){
                       pts.push(new THREE.Vector3(px, py, pz));
                     }
-                  });
+                  }
                   // ConvexGeometry requires >= 4 non-coplanar points
-                  if (pts.length < 4) return;
-                  var hullGeo = new ConvexGeometry(pts);
-                  var hullMat = new THREE.MeshBasicMaterial({
-                    color: 0xd4823a,        // amber
-                    transparent: true,
-                    opacity: 0.12,
-                    depthWrite: false,
-                    side: THREE.DoubleSide
-                  });
-                  var hullMesh = new THREE.Mesh(hullGeo, hullMat);
-                  hullMesh.userData = { oppIndex: spec.oppIndex, personIndices: spec.personIndices };
-                  state.pursuitHullGroup.add(hullMesh);
-                  _hullBuilt++;
+                  if (pts.length < 4) continue;
+                  var newGeo = new ConvexGeometry(pts);
+                  var existingMesh = state.pursuitHullGroup.children[_hullCount];
+                  if (existingMesh){
+                    // Reuse the mesh: swap geometry, dispose the old one.
+                    if (existingMesh.geometry) existingMesh.geometry.dispose();
+                    existingMesh.geometry = newGeo;
+                  } else {
+                    var hullMat = new THREE.MeshBasicMaterial({
+                      color: 0xd4823a,        // amber
+                      transparent: true,
+                      opacity: 0.12,
+                      depthWrite: false,
+                      side: THREE.DoubleSide
+                    });
+                    var hullMesh = new THREE.Mesh(newGeo, hullMat);
+                    hullMesh.userData = { oppIndex: spec.oppIndex, personIndices: spec.personIndices };
+                    state.pursuitHullGroup.add(hullMesh);
+                  }
+                  _hullCount++;
                 } catch (e) {
-                  console.warn('[DiscoveryEngine3D] 3.14 hull build failed for opp', spec.oppName, e);
+                  if (!state.pursuitHullsBuilt){
+                    console.warn('[DiscoveryEngine3D] 3.15 hull build failed for opp', spec.oppName, e);
+                  }
                 }
-              });
-              state.pursuitHullsBuilt = true;
-              console.log('[DiscoveryEngine3D] 3.14 hulls built: ' + _hullBuilt + ' meshes @ T' + state.physicsTickCount);
+              }
+              // One-time success log on the first successful build pass.
+              if (!state.pursuitHullsBuilt && _hullCount > 0){
+                state.pursuitHullsBuilt = true;
+                console.log('[DiscoveryEngine3D] 3.15 hulls live: ' + _hullCount + ' meshes recomputing each tick @ T' + state.physicsTickCount);
+              }
             }
 
             const cx = (minX + maxX) * 0.5;
