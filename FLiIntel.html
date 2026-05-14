@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.15</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.16</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34301,7 +34301,9 @@ const DiscoveryEngine3D = (function(){
     // Micro-step 3.14: pursuit halos (ConvexGeometry hulls)
     pursuitHullGroup: null,
     pursuitHullSpec: null,
-    pursuitHullsBuilt: false
+    pursuitHullsBuilt: false,
+    // Micro-step 3.16: shared soft alpha falloff ShaderMaterial (membrane)
+    pursuitHullMaterial: null
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34509,14 +34511,9 @@ const DiscoveryEngine3D = (function(){
                     if (existingMesh.geometry) existingMesh.geometry.dispose();
                     existingMesh.geometry = newGeo;
                   } else {
-                    var hullMat = new THREE.MeshBasicMaterial({
-                      color: 0xd4823a,        // amber
-                      transparent: true,
-                      opacity: 0.12,
-                      depthWrite: false,
-                      side: THREE.DoubleSide
-                    });
-                    var hullMesh = new THREE.Mesh(newGeo, hullMat);
+                    // 3.16: all hulls share state.pursuitHullMaterial (Fresnel
+                    // soft-alpha membrane). Built in loadGraph; never per-mesh.
+                    var hullMesh = new THREE.Mesh(newGeo, state.pursuitHullMaterial);
                     hullMesh.userData = { oppIndex: spec.oppIndex, personIndices: spec.personIndices };
                     state.pursuitHullGroup.add(hullMesh);
                   }
@@ -35384,27 +35381,79 @@ const DiscoveryEngine3D = (function(){
       console.log('[DiscoveryEngine3D] 3.13 opp labels: ' + oppLabelArr.length + ' sprites (' + nValued + ' valued + ' + nSoln + ' solicitation + ' + nName + ' name-only)');
     }
 
-    // ── Micro-step 3.14: pursuit halo spec + container group ──────────────
+    // ── Micro-step 3.14 / 3.15 / 3.16: pursuit halo spec + group + shader ─
     // For each active pursuit with >= 3 matched people, build a convex
-    // hull from their positions. The actual hull mesh is built in the
-    // animation loop once positions stabilize (state.physicsTickCount>=5).
+    // hull from their positions. The hull mesh is built in the animation
+    // loop once positions stabilize (state.physicsTickCount>=5), and
+    // recomputed every tick (3.15). All hulls share a single soft-alpha
+    // Fresnel ShaderMaterial (3.16) which renders them as translucent
+    // amber membranes — opaque at grazing angles, near-invisible at center.
     state.pursuitHullSpec = _computePursuitHullSpec(oppClean, cleanNodes);
     state.pursuitHullsBuilt = false;
     if (state.pursuitHullGroup){
       if (state.scene) state.scene.remove(state.pursuitHullGroup);
+      // Only dispose geometries here. Material is shared across all hulls
+      // and lives on state.pursuitHullMaterial — disposed separately below.
       state.pursuitHullGroup.children.forEach(function(c){
         if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
       });
       state.pursuitHullGroup = null;
     }
+    if (state.pursuitHullMaterial){
+      state.pursuitHullMaterial.dispose();
+      state.pursuitHullMaterial = null;
+    }
     state.pursuitHullGroup = new THREE.Group();
     if (state.scene) state.scene.add(state.pursuitHullGroup);
+
+    // Micro-step 3.16: soft alpha falloff ShaderMaterial (membrane).
+    // Fresnel rim term: rim = 1 - abs(dot(n,v)) — abs() so DoubleSide back
+    // faces also generate a rim. Mix center alpha (~0.04, near-invisible)
+    // toward rim alpha (~0.30, faint amber glow) via pow(rim, uRimPower).
+    state.pursuitHullMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor:        { value: new THREE.Color(0xd4823a) },  // amber
+        uRimPower:     { value: 1.6 },
+        uCenterAlpha:  { value: 0.04 },
+        uRimAlpha:     { value: 0.30 }
+      },
+      vertexShader: [
+        'varying vec3 vNormalView;',
+        'varying vec3 vViewDir;',
+        'void main() {',
+        '  vec4 mvPos = modelViewMatrix * vec4(position, 1.0);',
+        '  vViewDir = -mvPos.xyz;',
+        '  vNormalView = normalize(normalMatrix * normal);',
+        '  gl_Position = projectionMatrix * mvPos;',
+        '}'
+      ].join('\n'),
+      fragmentShader: [
+        'uniform vec3 uColor;',
+        'uniform float uRimPower;',
+        'uniform float uCenterAlpha;',
+        'uniform float uRimAlpha;',
+        'varying vec3 vNormalView;',
+        'varying vec3 vViewDir;',
+        'void main() {',
+        '  vec3 v = normalize(vViewDir);',
+        '  vec3 n = normalize(vNormalView);',
+        '  float fres = 1.0 - abs(dot(n, v));',
+        '  float rim = pow(fres, uRimPower);',
+        '  float alpha = mix(uCenterAlpha, uRimAlpha, rim);',
+        '  gl_FragColor = vec4(uColor, alpha);',
+        '}'
+      ].join('\n'),
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+
     var _activeOppCount = oppClean.filter(function(o){
       var s = (o.stage||'').toLowerCase();
       return s==='proposal'||s==='negotiation'||s==='submitted'||s==='award';
     }).length;
     console.log('[DiscoveryEngine3D] 3.14 pursuit halos: ' + state.pursuitHullSpec.length + ' of ' + _activeOppCount + ' active opps qualify (>=3 people via meeting attendees)');
+    console.log('[DiscoveryEngine3D] 3.16 hull material: Fresnel soft-alpha membrane shader ready');
 
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
@@ -35930,14 +35979,18 @@ const DiscoveryEngine3D = (function(){
       });
       state.oppLabels = null;
     }
-    // 3.14 dispose: pursuit halo hulls
+    // 3.14 / 3.16 dispose: pursuit halo hulls + shared shader material
     if (state.pursuitHullGroup){
       if (state.scene) state.scene.remove(state.pursuitHullGroup);
+      // Only dispose per-mesh geometry. Shared material disposed once below.
       state.pursuitHullGroup.children.forEach(function(c){
         if (c.geometry) c.geometry.dispose();
-        if (c.material) c.material.dispose();
       });
       state.pursuitHullGroup = null;
+    }
+    if (state.pursuitHullMaterial){
+      state.pursuitHullMaterial.dispose();
+      state.pursuitHullMaterial = null;
     }
     state.pursuitHullSpec = null;
     state.pursuitHullsBuilt = false;
