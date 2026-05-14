@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.11</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.3</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34822,10 +34822,18 @@ const DiscoveryEngine3D = (function(){
             // each, this is well under 1ms/frame — fine for live recompute.
             // 3.16 will swap MeshBasicMaterial for a soft alpha-falloff
             // shader; 3.17 will add pursuit name sprites.
+            // 4.5.3: throttle to every 5 frames (12Hz). ConvexGeometry's
+            // QuickHull is the main per-frame cost when many hulls are
+            // active. At Atlas scale this is invisible; at company scale
+            // (50+ active pursuits) it's a 5× CPU win. First build still
+            // happens immediately (one-time latch on _pursuitHullsBuilt).
+            state._hullTick = (state._hullTick | 0) + 1;
+            var _hullSkip = state.pursuitHullsBuilt && (state._hullTick % 5) !== 0;
             if (state.pursuitHullSpec
                 && state.pursuitHullSpec.length
                 && state.pursuitHullGroup
-                && state.physicsTickCount >= 5){
+                && state.physicsTickCount >= 5
+                && !_hullSkip){
               var _hullCount = 0;
               for (var si = 0; si < state.pursuitHullSpec.length; si++){
                 var spec = state.pursuitHullSpec[si];
@@ -37199,6 +37207,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
     console.log('[DiscoveryEngine3D] 4.5.8 focal mode wired (double-click any entity to enter, ESC or click-empty to exit)');
     console.log('[DiscoveryEngine3D] 4.5.11 entity search wired (top-left FIND box — type to filter, click result to fly-in)');
+    console.log('[DiscoveryEngine3D] 4.5.3 pursuit hull throttle: rebuild every 5 frames (12Hz; first build still immediate)');
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
     console.log('[DiscoveryEngine3D] 4.5.2 sprite LOD: distance=' + (state.labelLodDistance|0) + ' (tune via DiscoveryEngine3D.setLabelDistance(N))');
     console.log('[DiscoveryEngine3D] 4.5.6 filter chips wired (stage + tier dropdowns in count badge)');
