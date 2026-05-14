@@ -5365,6 +5365,88 @@ input[type="url"], textarea, select {
 
 /* ── Header eyebrow + title input ── */
 .cap-header { margin-bottom: 16px; }
+
+/* ── Micro-step 7.1: Daily Brief Card ──────────────────────────────────── */
+.daily-brief-card{
+  background:linear-gradient(180deg,rgba(7,13,24,.55),rgba(7,13,24,.25));
+  border:1px solid var(--b2);
+  border-radius:3px;
+  padding:10px 14px 12px;
+  margin-bottom:16px;
+  font-family:'IBM Plex Mono',monospace;
+}
+.brief-card-header{
+  color:var(--t3);
+  font-size:9px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  font-weight:700;
+  margin-bottom:8px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+.brief-card-header .brief-date{color:var(--gold);font-weight:700}
+.brief-cols{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+}
+.brief-col{
+  background:rgba(125,118,105,.04);
+  border:1px solid rgba(125,118,105,.08);
+  border-radius:2px;
+  padding:8px 10px;
+  min-height:80px;
+  transition:border-color 120ms;
+}
+.brief-col:hover{border-color:rgba(212,130,58,.25)}
+.brief-col-hdr{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:9px;letter-spacing:.14em;font-weight:700;
+  color:var(--t3);text-transform:uppercase;
+  margin-bottom:6px;padding-bottom:5px;
+  border-bottom:1px solid rgba(125,118,105,.12);
+}
+.brief-col[data-bucket="decay"] .brief-col-hdr{color:#c4862b}
+.brief-col[data-bucket="stale"] .brief-col-hdr{color:#b86b2a}
+.brief-col[data-bucket="upcoming"] .brief-col-hdr{color:var(--gold)}
+.brief-col[data-bucket="commit"]   .brief-col-hdr{color:var(--bone)}
+.brief-count{
+  background:rgba(212,130,58,.18);color:var(--gold);
+  padding:1px 6px;border-radius:8px;font-weight:700;
+  font-size:9px;letter-spacing:.05em;min-width:18px;text-align:center;
+}
+.brief-col[data-bucket="decay"] .brief-count{background:rgba(196,134,43,.18);color:#c4862b}
+.brief-col[data-bucket="stale"] .brief-count{background:rgba(184,107,42,.18);color:#b86b2a}
+.brief-col[data-bucket="commit"] .brief-count{background:rgba(125,118,105,.20);color:var(--bone)}
+.brief-col-list{
+  font-family:'IBM Plex Sans',sans-serif;
+  font-size:11px;color:var(--paper,#b5ad9f);
+  line-height:1.4;
+}
+.brief-item{
+  padding:4px 0;border-bottom:1px dashed rgba(125,118,105,.10);
+  cursor:pointer;display:flex;justify-content:space-between;gap:8px;
+  transition:color 120ms;
+}
+.brief-item:last-child{border-bottom:none}
+.brief-item:hover{color:var(--gold)}
+.brief-item-title{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-weight:500;
+}
+.brief-item-meta{
+  color:var(--t3);font-size:10px;font-family:'IBM Plex Mono',monospace;
+  letter-spacing:.04em;white-space:nowrap;
+}
+.brief-empty{
+  color:var(--t3);font-size:10px;font-style:italic;padding:6px 0;
+  text-align:center;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;
+}
+@media (max-width:900px){
+  .brief-cols{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:560px){
+  .brief-cols{grid-template-columns:1fr}
+}
 .cap-eyebrow {
   display: flex;
   align-items: center;
@@ -6207,6 +6289,31 @@ input[type="url"], textarea, select {
     </div>
     <div class="intel-main">
       <div id="itab-log">
+        <!-- ── Micro-step 7.1: Daily Brief Card ─────────────────── -->
+        <div id="brief-card" class="daily-brief-card">
+          <div class="brief-card-header">
+            <span>◆ TODAY · OPERATOR BRIEF</span>
+            <span class="brief-date" id="brief-date">—</span>
+          </div>
+          <div class="brief-cols">
+            <div class="brief-col" data-bucket="decay">
+              <div class="brief-col-hdr"><span>DECAY ALERTS</span><span class="brief-count" id="brief-decay-count">0</span></div>
+              <div class="brief-col-list" id="brief-decay-list"><div class="brief-empty">no data</div></div>
+            </div>
+            <div class="brief-col" data-bucket="stale">
+              <div class="brief-col-hdr"><span>STALE PURSUITS</span><span class="brief-count" id="brief-stale-count">0</span></div>
+              <div class="brief-col-list" id="brief-stale-list"><div class="brief-empty">no data</div></div>
+            </div>
+            <div class="brief-col" data-bucket="upcoming">
+              <div class="brief-col-hdr"><span>UPCOMING 7d</span><span class="brief-count" id="brief-upcoming-count">0</span></div>
+              <div class="brief-col-list" id="brief-upcoming-list"><div class="brief-empty">no data</div></div>
+            </div>
+            <div class="brief-col" data-bucket="commit">
+              <div class="brief-col-hdr"><span>COMMITMENTS DUE</span><span class="brief-count" id="brief-commit-count">0</span></div>
+              <div class="brief-col-list" id="brief-commit-list"><div class="brief-empty">no data</div></div>
+            </div>
+          </div>
+        </div>
         <!-- ── CAPTURE HEADER ──────────────────────────────────── -->
         <div class="cap-header">
           <div class="cap-eyebrow">
@@ -6736,7 +6843,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.12</span>
+      <span style="color:var(--gold)" id="de3d-build">P7.1</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -12251,6 +12358,9 @@ function switchView(v){
   // Normalize sacred-mode aliases (graph→network, cop→opps)
   if(_CORSAIR_MODE_ALIAS[v])v=_CORSAIR_MODE_ALIAS[v];
 
+  // 7.1: render Daily Brief Card when entering Intel view
+  if(v==='intel' && typeof renderDailyBrief==='function'){ try { renderDailyBrief(); } catch(e){} }
+
   // Ask Corsair: shortcut to Intel Station → Ask Corsair tab
   if(v==='askfli'){
     _setActiveMode('ask');
@@ -14327,6 +14437,186 @@ function renderSidebarMtgList(){
   }).join('');
 }
 window.goIntelById=function(id){var m=meetingMap.get(id);if(m){currentMeeting=m;renderIntel(m);switchIntelTab('intel');renderSidebarMtgList();}};
+
+// ── Micro-step 7.1: Daily Brief Card render ───────────────────────────────
+// Pulls from in-memory workspace data (no new external calls) and surfaces
+// the four operator priorities at the top of the Log Meeting screen.
+//   Decay:     people not engaged in 30+ days (last attended meeting)
+//   Stale:     active-stage pursuits with no meeting activity in 14+ days
+//   Upcoming:  meetings dated within the next 7 days
+//   Commits:   open commitments with deadline within 14 days
+function renderDailyBrief(){
+  var card = document.getElementById('brief-card');
+  if (!card) return;
+  var dateEl = document.getElementById('brief-date');
+  if (dateEl){
+    var d = new Date();
+    var months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    dateEl.textContent = d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  var nowMs = Date.now();
+  var DAY = 86400000;
+  var nodes_    = (typeof nodes !== 'undefined' && nodes) ? nodes : (window.nodes || []);
+  var mtgs_     = (typeof meetings !== 'undefined' && meetings) ? meetings : (window.meetings || []);
+  var opps_     = (typeof opportunities !== 'undefined' && opportunities) ? opportunities : (window.opportunities || []);
+  var commits_  = (typeof commitments !== 'undefined' && commitments) ? commitments : (window.commitments || []);
+  var simFn     = (typeof nameSimilarity === 'function') ? nameSimilarity : null;
+
+  // Helpers
+  function _mtgTime(m){
+    if (!m) return null;
+    if (m.meta){
+      if (typeof m.meta.ts === 'number') return m.meta.ts;
+      if (m.meta.date){ var t = Date.parse(String(m.meta.date)); if (!isNaN(t)) return t; }
+    }
+    if (typeof m.ts === 'number') return m.ts;
+    if (m.createdAt){ var t2 = Date.parse(String(m.createdAt)); if (!isNaN(t2)) return t2; }
+    return null;
+  }
+  function _attendeeNamesOf(m){
+    var out = [];
+    if (m && m.meta && Array.isArray(m.meta.attendees)) m.meta.attendees.forEach(function(a){ if(a&&a.name) out.push(a.name); });
+    if (m && m.intel && Array.isArray(m.intel.keyPeople)) m.intel.keyPeople.forEach(function(p){ if(p&&p.name) out.push(p.name); });
+    return out;
+  }
+
+  // ─── 1. Decay alerts: people not touched in 30+ days ─────────────────
+  // Compute last-touched per person via name-similarity match to attendees.
+  // Sort by oldest. Skip people with no matched meeting (never engaged).
+  var decay = [];
+  if (simFn){
+    var people = nodes_.filter(function(n){ return n && n.type === 'person'; });
+    people.forEach(function(p){
+      var lastTs = null;
+      for (var i = 0; i < mtgs_.length; i++){
+        var m = mtgs_[i];
+        var ts = _mtgTime(m);
+        if (ts == null) continue;
+        var names = _attendeeNamesOf(m);
+        for (var k = 0; k < names.length; k++){
+          try { if (simFn(names[k], p.name) >= 0.72){ if (lastTs == null || ts > lastTs) lastTs = ts; break; } } catch (e) {}
+        }
+      }
+      if (lastTs != null){
+        var daysSince = Math.floor((nowMs - lastTs) / DAY);
+        if (daysSince >= 30) decay.push({ id: p.id, name: p.name, org: p.org || p.govOrg || '', days: daysSince });
+      }
+    });
+    decay.sort(function(a,b){ return b.days - a.days; });
+  }
+
+  // ─── 2. Stale pursuits: active-stage opps without recent meetings ───
+  var STAGE_ACTIVE = { proposal:1, negotiation:1, submitted:1, award:1, engaged:1, rfp:1 };
+  var stale = [];
+  for (var oi = 0; oi < opps_.length; oi++){
+    var o = opps_[oi];
+    if (!o) continue;
+    var stg = String(o.stage || '').toLowerCase();
+    if (!STAGE_ACTIVE[stg]) continue;
+    // Find latest meeting tagged to this opp (via m.oppId or opp.meetings)
+    var oid = String(o.id);
+    var latest = null;
+    for (var mi = 0; mi < mtgs_.length; mi++){
+      var mm = mtgs_[mi];
+      if (!mm) continue;
+      var tagged = (mm.oppId != null && String(mm.oppId) === oid)
+                || (Array.isArray(o.meetings) && o.meetings.indexOf(mm.id) !== -1);
+      if (!tagged) continue;
+      var ts2 = _mtgTime(mm);
+      if (ts2 != null && (latest == null || ts2 > latest)) latest = ts2;
+    }
+    var days2 = latest == null ? 9999 : Math.floor((nowMs - latest) / DAY);
+    if (days2 >= 14){
+      stale.push({ id: o.id, name: o.name || 'Pursuit', stage: stg.toUpperCase(), days: days2 === 9999 ? null : days2 });
+    }
+  }
+  stale.sort(function(a,b){
+    var da = a.days == null ? 999999 : a.days;
+    var db = b.days == null ? 999999 : b.days;
+    return db - da;
+  });
+
+  // ─── 3. Upcoming: meetings in the next 7 days ───────────────────────
+  var upcoming = [];
+  var horizon = nowMs + 7 * DAY;
+  for (var ui = 0; ui < mtgs_.length; ui++){
+    var um = mtgs_[ui];
+    if (!um) continue;
+    var uts = _mtgTime(um);
+    if (uts == null) continue;
+    if (uts > nowMs && uts <= horizon){
+      upcoming.push({
+        id: um.id,
+        title: (um.meta && um.meta.title) || 'Untitled',
+        ts: uts,
+        when: Math.ceil((uts - nowMs) / DAY)
+      });
+    }
+  }
+  upcoming.sort(function(a,b){ return a.ts - b.ts; });
+
+  // ─── 4. Commitments due in 14 days ──────────────────────────────────
+  var commitDue = [];
+  var cHorizon = nowMs + 14 * DAY;
+  for (var ci = 0; ci < commits_.length; ci++){
+    var c = commits_[ci];
+    if (!c) continue;
+    if (c.done || c.status === 'done' || c.completed) continue;
+    var dts = null;
+    if (c.deadline){ var dt = Date.parse(String(c.deadline)); if (!isNaN(dt)) dts = dt; }
+    else if (c.dueAt){ var dt2 = Date.parse(String(c.dueAt)); if (!isNaN(dt2)) dts = dt2; }
+    if (dts == null) continue;
+    if (dts <= cHorizon){
+      var dd = Math.ceil((dts - nowMs) / DAY);
+      commitDue.push({
+        id: c.id,
+        title: c.text || c.title || c.what || c.task || 'Commitment',
+        owner: c.owner || '',
+        days: dd
+      });
+    }
+  }
+  commitDue.sort(function(a,b){ return a.days - b.days; });
+
+  // Render helpers
+  function _renderCol(listId, countId, items, formatter){
+    var listEl  = document.getElementById(listId);
+    var countEl = document.getElementById(countId);
+    if (countEl) countEl.textContent = items.length;
+    if (!listEl) return;
+    if (!items.length){
+      listEl.innerHTML = '<div class="brief-empty">— clear —</div>';
+      return;
+    }
+    listEl.innerHTML = items.slice(0, 3).map(formatter).join('');
+  }
+  _renderCol('brief-decay-list', 'brief-decay-count', decay, function(d){
+    var orgStr = d.org ? ' · ' + String(d.org).slice(0, 16) : '';
+    return '<div class="brief-item" onclick="if(window._openLogForContact)window._openLogForContact(\'' + (d.name||'').replace(/\'/g,'') + '\')">' +
+           '<span class="brief-item-title">' + (d.name || '(unnamed)') + orgStr + '</span>' +
+           '<span class="brief-item-meta">' + d.days + 'd</span></div>';
+  });
+  _renderCol('brief-stale-list', 'brief-stale-count', stale, function(s){
+    return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' +
+           '<span class="brief-item-title">' + s.name + '</span>' +
+           '<span class="brief-item-meta">' + (s.days == null ? 'never' : s.days + 'd · ' + s.stage) + '</span></div>';
+  });
+  _renderCol('brief-upcoming-list', 'brief-upcoming-count', upcoming, function(u){
+    var when = u.when === 0 ? 'today' : u.when === 1 ? 'tomorrow' : '+' + u.when + 'd';
+    return '<div class="brief-item" onclick="if(window.goIntelById)window.goIntelById(\'' + u.id + '\')">' +
+           '<span class="brief-item-title">' + u.title + '</span>' +
+           '<span class="brief-item-meta">' + when + '</span></div>';
+  });
+  _renderCol('brief-commit-list', 'brief-commit-count', commitDue, function(c){
+    var when = c.days <= 0 ? 'overdue' : c.days === 1 ? 'tomorrow' : 'in ' + c.days + 'd';
+    var ownerStr = c.owner ? ' · ' + String(c.owner).slice(0, 14) : '';
+    return '<div class="brief-item">' +
+           '<span class="brief-item-title">' + c.title.slice(0, 60) + ownerStr + '</span>' +
+           '<span class="brief-item-meta">' + when + '</span></div>';
+  });
+  console.log('[Brief] 7.1 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length);
+}
+window.renderDailyBrief = renderDailyBrief;
 
 function updateCC(){
   var val=document.getElementById('m-notes').value;
@@ -25012,6 +25302,14 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
   window._invalidateEntityGraph = function(){
     if (typeof prevInvalidate === 'function') prevInvalidate();
     scheduleRebuild();
+    // 7.1: also refresh the Daily Brief Card on any data change
+    if (typeof window.renderDailyBrief === 'function'){
+      // Debounce — let CorsairIndex rebuild settle first
+      if (window._briefRedrawTimer) clearTimeout(window._briefRedrawTimer);
+      window._briefRedrawTimer = setTimeout(function(){
+        try { window.renderDailyBrief(); } catch (e) {}
+      }, 200);
+    }
   };
 
   // Initial kickoff — schedule one rebuild. Firebase fan-out will trigger
