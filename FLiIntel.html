@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.4b</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.4c</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -34476,7 +34476,7 @@ const DiscoveryEngine3D = (function(){
     // Sprites beyond this distance from camera are hidden. Tuned for the
     // Atlas-scale cluster (~24 people + 50 orgs in ~15-unit radius). At
     // larger workspaces operators can raise this via setLabelDistance().
-    labelLodDistance: 25,
+    labelLodDistance: 50,  // P4.5.4c — was 25; labels visible from farther
     _labelLodTick: 0,
     // Micro-step 4.5.6: operator filters. Currently scoping opps only —
     // people and orgs don't have the same density problem at Atlas scale.
@@ -34571,7 +34571,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] fitCamera: center=(' + b.cx.toFixed(1) + ',' + b.cy.toFixed(1) + ',' + b.cz.toFixed(1) + ') radius=' + radius.toFixed(1) + ' camDist=' + dist.toFixed(1));
   }
   // Public manual fit (called by HUD double-click etc., wired in Phase 5)
-  function fitToCluster(){ if (state.posBounds) _fitCameraToBounds(state.posBounds, 1.8); }
+  function fitToCluster(){ if (state.posBounds) _fitCameraToBounds(state.posBounds, 1.4); }
 
   function _animate(now){
     if (!state.running) return;
@@ -34718,15 +34718,17 @@ const DiscoveryEngine3D = (function(){
 
                 // 3.10: position density strip below the org box
                 if (state.orgStripMesh){
-                  _frameDummy.position.set(x2, y2 - 0.75, z2);
+                  // P4.5.4c — strip Y offset matches new box height (2.0)
+                  _frameDummy.position.set(x2, y2 - 1.05, z2);
                   _frameDummy.scale.set(1, 1, 1);
                   _frameDummy.updateMatrix();
                   state.orgStripMesh.setMatrixAt(j, _frameDummy.matrix);
                 }
                 // 3.10: position org-name label above the org box
                 // (4.5.2: visibility now owned by the LOD pass at ~10Hz)
+                // (4.5.4c: lifted to clear bigger box)
                 if (state.orgLabels && state.orgLabels[j]){
-                  state.orgLabels[j].position.set(x2, y2 + 1.1, z2);
+                  state.orgLabels[j].position.set(x2, y2 + 1.6, z2);
                 }
               }
               state.orgMesh.instanceMatrix.needsUpdate = true;
@@ -34756,8 +34758,9 @@ const DiscoveryEngine3D = (function(){
                 state.oppMesh.setMatrixAt(k, _frameDummy.matrix);
                 // 3.13: position opp label above the hex disc
                 // (4.5.2: visibility now owned by the LOD pass at ~10Hz)
+                // (4.5.4c: lifted to clear bigger hex)
                 if (state.oppLabels && state.oppLabels[k]){
-                  state.oppLabels[k].position.set(x3, y3 + 0.55, z3);
+                  state.oppLabels[k].position.set(x3, y3 + 0.85, z3);
                 }
               }
               state.oppMesh.instanceMatrix.needsUpdate = true;
@@ -34817,7 +34820,8 @@ const DiscoveryEngine3D = (function(){
                   // (4.5.2: visibility now owned by the LOD pass at ~10Hz)
                   if (state.pursuitNameSprites && state.pursuitNameSprites[si] && cN > 0){
                     var sp = state.pursuitNameSprites[si];
-                    sp.position.set(cX / cN, topY + 1.4, cZ / cN);
+                    // P4.5.4c — lifted to clear bigger sphere people
+                    sp.position.set(cX / cN, topY + 2.0, cZ / cN);
                   }
                   _hullCount++;
                 } catch (e) {
@@ -34873,12 +34877,14 @@ const DiscoveryEngine3D = (function(){
 
             if (!state.initialFitDone && state.physicsTickCount >= 1 && state.controls && state.camera){
               console.log('[DiscoveryEngine3D] first bounds @ T' + state.physicsTickCount + ':', state.posBounds);
-              _fitCameraToBounds(state.posBounds, 1.8);
+              // P4.5.4c — tighter framing (1.8 → 1.4)
+              _fitCameraToBounds(state.posBounds, 1.4);
               state.initialFitDone = true;
             }
             state.framesSinceFit = (state.framesSinceFit || 0) + 1;
             if (state.framesSinceFit > 60 && state.physicsTickCount < 240 && state.controls && state.camera){
-              _fitCameraToBounds(state.posBounds, 1.6);
+              // P4.5.4c — tighter re-fit (1.6 → 1.3)
+              _fitCameraToBounds(state.posBounds, 1.3);
               state.framesSinceFit = 0;
             }
           }
@@ -35320,7 +35326,9 @@ const DiscoveryEngine3D = (function(){
       if (e === 0) zeroCount++;
       return e;
     });
-    const SCALE_MIN = 0.7, SCALE_MAX = 2.4, SCALE_RANGE = SCALE_MAX - SCALE_MIN;
+    // P4.5.4c — engagement scale range raised (floor 0.7→0.9 so cold
+    // people are still readable; ceiling 2.4→2.6)
+    const SCALE_MIN = 0.9, SCALE_MAX = 2.6, SCALE_RANGE = SCALE_MAX - SCALE_MIN;
     const logMax = maxEng > 0 ? Math.log(1 + maxEng) : 1;
     state.instanceScales = new Float32Array(cleanNodes.length);
     for (let i = 0; i < cleanNodes.length; i++){
@@ -35533,7 +35541,8 @@ const DiscoveryEngine3D = (function(){
       state.oppLabels = null;
     }
     if (ringIdxMap.length){
-      const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
+      // P4.5.4c — ring scales with new sphere (1.15→1.6, tube 0.04→0.06)
+      const ringGeo = new THREE.TorusGeometry(1.6, 0.06, 6, 24);
       const ringMat = new THREE.MeshBasicMaterial({
         color: 0xd4823a,           // amber gold
         transparent: true,
@@ -35564,7 +35573,8 @@ const DiscoveryEngine3D = (function(){
     // Also bumped torus radius 1.15 → 1.3 for clearer separation from the
     // sphere surface (so even unit-scale spheres show their ring distinctly).
     if (teamIdxMap.length){
-      const teamGeo = new THREE.TorusGeometry(1.3, 0.05, 8, 28);
+      // P4.5.4c — team ring scaled (1.3→1.8, tube 0.05→0.07)
+      const teamGeo = new THREE.TorusGeometry(1.8, 0.07, 8, 28);
       const teamMat = new THREE.MeshBasicMaterial({
         color: 0xf4ede0,
         transparent: true,
@@ -35591,7 +35601,8 @@ const DiscoveryEngine3D = (function(){
     // at coordinated visual scales: gold 1.15 (sharp), paper 1.15 (subtle),
     // bone 1.3 (additive glow). Color #b5ad9f matches the paper token.
     if (paperIdxMap.length){
-      const paperGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
+      // P4.5.4c — paper ring scaled to match (1.15→1.6, tube 0.04→0.06)
+      const paperGeo = new THREE.TorusGeometry(1.6, 0.06, 6, 24);
       const paperMat = new THREE.MeshBasicMaterial({
         color: 0xb5ad9f,
         transparent: true,
@@ -35624,7 +35635,8 @@ const DiscoveryEngine3D = (function(){
     // Brand: paper #b5ad9f base. 3.9 will add per-instance inner-glow tied to
     // child-entity count.
     if (orgClean.length){
-      const orgGeo = new THREE.BoxGeometry(2.4, 1.4, 1.4);
+      // P4.5.4c — org box ×1.4 (2.4×1.4×1.4 → 3.4×2.0×2.0)
+      const orgGeo = new THREE.BoxGeometry(3.4, 2.0, 2.0);
       // Micro-step 3.9: per-instance density attribute drives inner glow.
       orgGeo.setAttribute('aDensity', new THREE.InstancedBufferAttribute(orgDensity, 1));
       const orgMat = new THREE.ShaderMaterial({
@@ -35697,7 +35709,8 @@ const DiscoveryEngine3D = (function(){
       // paper (#b5ad9f) to amber (#d4823a) based on orgDensity[i].
       // Provides an at-a-glance density readout even when the glow shader
       // is subtle.
-      var stripGeo = new THREE.BoxGeometry(2.2, 0.08, 1.42);
+      // P4.5.4c — density strip matches new org box
+      var stripGeo = new THREE.BoxGeometry(3.1, 0.12, 2.0);
       var stripMat = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0.90,
@@ -35786,7 +35799,8 @@ const DiscoveryEngine3D = (function(){
       let cActive = 0, cUpcoming = 0, cWon = 0, cLost = 0, cClosed = 0;
       const _activeSet   = { proposal:1, negotiation:1, submitted:1, award:1 };
       const _upcomingSet = { awareness:1, tracking:1, engaged:1, rfp:1 };
-      const oppGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.3, 6);
+      // P4.5.4c — hex prism ×1.5 (r=0.6→0.9, h=0.3→0.45)
+      const oppGeo = new THREE.CylinderGeometry(0.9, 0.9, 0.45, 6);
       const oppMat = new THREE.MeshBasicMaterial({
         transparent: true,
         opacity: 0.92,
@@ -36211,13 +36225,14 @@ const DiscoveryEngine3D = (function(){
   function _makeOrgLabelSprite(text){
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
-    var fontSize = 64;
-    ctx.font = fontSize + 'px sans-serif';
+    // P4.5.4c — bump font 64→88 (crisper) and sprite scale 0.55→0.95
+    var fontSize = 88;
+    ctx.font = 'bold ' + fontSize + 'px sans-serif';
     var tw = ctx.measureText(text).width;
-    var pad = 16;
-    canvas.width = Math.min(tw + pad * 2, 1024);
+    var pad = 18;
+    canvas.width = Math.min(tw + pad * 2, 1400);
     canvas.height = fontSize + pad * 2;
-    ctx.font = fontSize + 'px sans-serif';
+    ctx.font = 'bold ' + fontSize + 'px sans-serif';
     ctx.fillStyle = '#b5ad9f';  // paper
     ctx.textBaseline = 'middle';
     ctx.fillText(text, pad, canvas.height / 2);
@@ -36232,9 +36247,8 @@ const DiscoveryEngine3D = (function(){
       sizeAttenuation: true
     });
     var sprite = new THREE.Sprite(mat);
-    // Scale: keep aspect ratio, max ~3 world units wide
     var aspect = canvas.width / canvas.height;
-    var h = 0.55;
+    var h = 0.95;  // P4.5.4c — was 0.55
     sprite.scale.set(h * aspect, h, 1);
     return sprite;
   }
@@ -36273,11 +36287,12 @@ const DiscoveryEngine3D = (function(){
   function _makeOppLabelSprite(text){
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
-    var fontSize = 56;
+    // P4.5.4c — bump font 56→80 and sprite scale 0.42→0.75
+    var fontSize = 80;
     ctx.font = 'bold ' + fontSize + 'px sans-serif';
     var tw = ctx.measureText(text).width;
-    var pad = 14;
-    canvas.width = Math.min(tw + pad * 2, 1024);
+    var pad = 16;
+    canvas.width = Math.min(tw + pad * 2, 1400);
     canvas.height = fontSize + pad * 2;
     ctx.font = 'bold ' + fontSize + 'px sans-serif';
     ctx.fillStyle = '#d4823a';  // amber to echo the active-pursuit color
@@ -36295,7 +36310,7 @@ const DiscoveryEngine3D = (function(){
     });
     var sprite = new THREE.Sprite(mat);
     var aspect = canvas.width / canvas.height;
-    var h = 0.42;
+    var h = 0.75;  // P4.5.4c — was 0.42
     sprite.scale.set(h * aspect, h, 1);
     return sprite;
   }
@@ -36520,7 +36535,8 @@ const DiscoveryEngine3D = (function(){
     // FRAGMENT: standard Fresnel — rim = 1 - dot(viewDir, normal). Mix the
     //   paper base color with amber at high Fresnel for an illuminated-
     //   holographic-marker look.
-    const geo = new THREE.SphereGeometry(1, 16, 12);
+    // P4.5.4c — sphere radius 1.0 → 1.4 (theater proportions)
+    const geo = new THREE.SphereGeometry(1.4, 16, 12);
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uBaseColor: { value: new THREE.Color(0xb5ad9f) },   // paper
