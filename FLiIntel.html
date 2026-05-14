@@ -6736,13 +6736,31 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.1</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.2</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="color:var(--t3);font-weight:700">FIND</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK RESULT → FLY-IN</span></div>
       <input id="de3d-search-input" type="text" placeholder="type a name..." spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;background:rgba(7,13,24,.95);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 8px;letter-spacing:.04em;text-transform:none;outline:none">
       <div id="de3d-search-results" style="margin-top:6px;max-height:260px;overflow-y:auto"></div>
+    </div>
+    <!-- Micro-step 6.2: timeline bar (bottom-center of canvas) -->
+    <div id="de3d-timeline" style="display:none;position:absolute;bottom:14px;left:200px;right:200px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 14px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);user-select:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="color:var(--t3);font-weight:700">TIMELINE</span>
+        <span id="de3d-tl-date" style="color:var(--gold,#d4823a);font-weight:700;font-size:10px;letter-spacing:.1em">—</span>
+        <span id="de3d-tl-state" style="color:var(--t3);font-size:8px;letter-spacing:.18em">PAUSED</span>
+      </div>
+      <div id="de3d-tl-track" style="position:relative;height:18px;background:rgba(125,118,105,.12);border-radius:1px;cursor:default">
+        <!-- 6.5: activity ribbon (one dot per meeting) will live here -->
+        <div id="de3d-tl-ribbon" style="position:absolute;inset:0;pointer-events:none"></div>
+        <!-- current-time head -->
+        <div id="de3d-tl-head" style="position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--gold,#d4823a);box-shadow:0 0 8px rgba(212,130,58,.7);border-radius:1px;pointer-events:none;left:100%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:8px;letter-spacing:.14em">
+        <span id="de3d-tl-start" style="color:var(--t3)">—</span>
+        <span id="de3d-tl-end"   style="color:var(--t3)">—</span>
+      </div>
     </div>
     <!-- Micro-step 5.5: right-click context menu -->
     <div id="de3d-ctx-menu" style="display:none;position:fixed;z-index:34;background:rgba(7,13,24,.96);border:1px solid var(--b2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:2px;padding:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:180px;box-shadow:0 6px 20px rgba(0,0,0,.5);user-select:none">
@@ -35341,6 +35359,8 @@ const DiscoveryEngine3D = (function(){
       var selEl  = document.getElementById('de3d-cb-selected');
       if (selRow) selRow.style.display = selN > 0 ? 'flex' : 'none';
       if (selEl)  selEl.textContent = selN;
+      // 6.2: refresh timeline bar
+      _renderTimelineUI();
     }
   }
 
@@ -36582,6 +36602,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.8 keyboard nav wired (Tab/Shift+Tab steps entities; Enter → focal; arrows rotate camera)');
     console.log('[DiscoveryEngine3D] 5.11 link hover wired (hover any tube → tooltip shows Source → Target · TYPE · weight)');
     console.log('[DiscoveryEngine3D] 6.1 timeline API ready — setTimelineDate(ts) · playTimeline(speed) · pauseTimeline()');
+    console.log('[DiscoveryEngine3D] 6.2 timeline bar mounted (bottom-center; updates 10Hz with date + range + head position)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37812,6 +37833,42 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.1 timeline pause');
   }
 
+  // ── Micro-step 6.2: timeline bar render ───────────────────────────────
+  // Called from animation loop (throttled). Positions the current-time head
+  // proportionally along the track based on (date - start) / (end - start).
+  // Updates date label, state label, range bounds.
+  function _formatDate(ts){
+    if (ts == null || !Number.isFinite(ts)) return '—';
+    var d = new Date(ts);
+    return d.toISOString().slice(0, 10);  // YYYY-MM-DD
+  }
+  function _formatDateLong(ts){
+    if (ts == null || !Number.isFinite(ts)) return '—';
+    var d = new Date(ts);
+    var months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    return d.getUTCDate() + ' ' + months[d.getUTCMonth()] + ' ' + d.getUTCFullYear();
+  }
+  function _renderTimelineUI(){
+    var tl = state.timeline;
+    if (!tl) return;
+    var dEl     = document.getElementById('de3d-tl-date');
+    var sEl     = document.getElementById('de3d-tl-state');
+    var stEl    = document.getElementById('de3d-tl-start');
+    var enEl    = document.getElementById('de3d-tl-end');
+    var headEl  = document.getElementById('de3d-tl-head');
+    if (dEl)  dEl.textContent  = _formatDateLong(tl.date);
+    if (sEl)  sEl.textContent  = tl.playing ? '▶ PLAYING ' + tl.speed + 'd/s' : 'PAUSED';
+    if (sEl)  sEl.style.color  = tl.playing ? 'var(--gold,#d4823a)' : 'var(--t3)';
+    if (stEl) stEl.textContent = _formatDate(tl.range.start);
+    if (enEl) enEl.textContent = _formatDate(tl.range.end);
+    // Head position: percent along track
+    if (headEl && tl.range.start != null && tl.range.end != null && tl.range.end > tl.range.start){
+      var pct = (tl.date - tl.range.start) / (tl.range.end - tl.range.start);
+      if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
+      headEl.style.left = (pct * 100) + '%';
+    }
+  }
+
   // ── Micro-step 4.5.11: entity search ──────────────────────────────────
   // Substring-match query against name fields of cleanNodes / orgClean /
   // oppClean. Renders top results into the #de3d-search-results dropdown
@@ -38877,6 +38934,7 @@ window._toggle3DEngine = function(mode){
   const fpsHud = document.getElementById('de3d-fps-hud');
   const countBadge = document.getElementById('de3d-count-badge');
   const searchPanel = document.getElementById('de3d-search-panel');
+  const timelineBar = document.getElementById('de3d-timeline');
   const btn2d = document.getElementById('de3d-toggle-2d');
   const btn3d = document.getElementById('de3d-toggle-3d');
   if (!netView) return;
@@ -38905,6 +38963,7 @@ window._toggle3DEngine = function(mode){
     };
     setTimeout(_tryLoad, 100);
     if (fpsHud) fpsHud.style.display = 'flex';
+    if (timelineBar) timelineBar.style.display = 'block';
     if (countBadge){
       countBadge.style.display = 'block';
       // Micro-step 4.5.5: wire layer-row clicks (idempotent — dataset flag)
@@ -38999,6 +39058,7 @@ window._toggle3DEngine = function(mode){
     if (hoverTip){ hoverTip.style.display = 'none'; hoverTip.style.opacity = '0'; }
     var ctxMenu  = document.getElementById('de3d-ctx-menu');
     if (ctxMenu) ctxMenu.style.display = 'none';
+    if (timelineBar) timelineBar.style.display = 'none';
     if (btn3d){ btn3d.classList.remove('active'); }
     if (btn2d){ btn2d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
