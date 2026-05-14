@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.5</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.6</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -35324,6 +35324,25 @@ const DiscoveryEngine3D = (function(){
       }
       state._timelineLastTickMs = tlNow;
     }
+    // ── Micro-step 6.6: fire-on-cross — pulse attendees + opp when the ──
+    // timeline crosses a meeting's date during play. Capped to 1 meeting
+    // per frame to avoid swamping the 200-slot pulse buffer at high speeds.
+    // Seeking via scrubber doesn't fire (setTimelineDate updates the
+    // high-water mark silently).
+    if (state.timeline && state.timeline.playing && state.timeline.sortedMeetings){
+      var sm6 = state.timeline.sortedMeetings;
+      var lf6 = state.timeline.lastFiredIdx;
+      if (lf6 + 1 < sm6.length && sm6[lf6 + 1].ts <= state.timeline.date){
+        state.timeline.lastFiredIdx = lf6 + 1;
+        var entry6 = sm6[lf6 + 1];
+        var fired6 = _fireMeetingPulses(entry6.m, entry6.ts);
+        // Only log at low speeds to avoid console spam at 64x
+        if ((state.timeline.speed | 0) <= 4){
+          console.log('[DiscoveryEngine3D] 6.6 meeting crossed:', new Date(entry6.ts).toISOString().slice(0,10),
+                      '→', fired6, 'attendee pulse(s)');
+        }
+      }
+    }
 
     // ── Micro-step 3.20: persistent count badge update ────────────────────
     // Throttled to ~10Hz (every 6th frame at 60fps) — the badge doesn't
@@ -36615,6 +36634,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.3 transport controls wired (⏮ rewind · ▶/⏸ play-pause · 1×/4×/16×/64× speed)');
     console.log('[DiscoveryEngine3D] 6.4 scrubber drag wired (click track to seek; drag for continuous scrub; auto-pause)');
     console.log('[DiscoveryEngine3D] 6.5 activity ribbon: meeting density dots rendered along track');
+    console.log('[DiscoveryEngine3D] 6.6 fire-on-cross wired (each meeting pulses its attendees + tagged opp during play; capped 1/frame)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37816,6 +37836,52 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.1 timeline init: range ' + rangeStr + ' (' + sorted.length + ' meetings)');
     // 6.5: render the activity ribbon (one small dot per meeting)
     _renderTimelineRibbon();
+  }
+
+  // ── Micro-step 6.6: fire pulses for a meeting's attendees + opp ────────
+  // Called from the animation loop's fire-on-cross logic. For each
+  // attendee in meeting.meta.attendees, name-match to cleanNodes (same
+  // 0.72 sim threshold used elsewhere) and pulse the person. If the
+  // meeting has an oppId, also pulse the opp. propagate:false so we don't
+  // flood the flow buffer at high playback speeds.
+  function _fireMeetingPulses(m, ts){
+    if (!m) return 0;
+    var fired = 0;
+    var simFn = window.nameSimilarity;
+    var people = state._cleanNodesRef || [];
+    var atts   = (m.meta && m.meta.attendees) || [];
+    // Track which person indices already pulsed for this meeting to dedupe
+    // when multiple attendees match the same node (rare but possible).
+    var seen = {};
+    for (var ai = 0; ai < atts.length; ai++){
+      var a = atts[ai];
+      if (!a || !a.name || typeof simFn !== 'function') continue;
+      for (var pi = 0; pi < people.length; pi++){
+        if (seen[pi]) continue;
+        try {
+          if (simFn(a.name, people[pi].name) >= 0.72){
+            pulseEntity({ kind: 'person', instanceId: pi }, { propagate: false });
+            seen[pi] = 1;
+            fired++;
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+    // If meeting is tagged to an opp, pulse the opp too — visually links
+    // "this meeting happened" to "this is the pursuit it advanced".
+    if (m.oppId != null && m.oppId !== ''){
+      var rawId = String(m.oppId);
+      var opps  = state.oppCleanRef || [];
+      for (var qi = 0; qi < opps.length; qi++){
+        var oid = String(opps[qi].id).replace(/^opp:/, '');
+        if (oid === rawId){
+          pulseEntity({ kind: 'opp', instanceId: qi }, { propagate: false });
+          break;
+        }
+      }
+    }
+    return fired;
   }
 
   // ── Micro-step 6.5: activity ribbon (meeting density along track) ──────
