@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.4</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally -->
     <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
@@ -34456,7 +34456,10 @@ const DiscoveryEngine3D = (function(){
                 _linkQuat    = new THREE.Quaternion();
               }
               var lp = state.linkIndexPairs;
-              var nPos = n;  // count of valid person positions written this tick
+              // 4.5: cap is total worker node count (people + orgs + opps),
+              // not just people, because employment/pursuit edges reference
+              // orgs/opps at worker indices >= cleanNodes.length.
+              var nPos = (pos.length / 3) | 0;
               for (var lpi = 0; lpi < lp.length; lpi++){
                 var srcI = lp[lpi][0], tgtI = lp[lpi][1];
                 if (srcI >= nPos || tgtI >= nPos){
@@ -35799,6 +35802,32 @@ const DiscoveryEngine3D = (function(){
         _wSum += _wLk;
       }
     }
+    // ── Micro-step 4.5: person → org employment edges ─────────────────────
+    // For each person with a non-empty .org or .govOrg field, find any org
+    // whose lowercased name is a substring match. Each match adds an edge
+    // [personWorkerIdx, orgWorkerIdx, weight=1.0, type='works-at']. Worker
+    // index for person = cleanNodes index. Worker index for org = state.
+    // orgWorkerOffset + j. Same substring heuristic the team-ring filter
+    // (3.5') uses, so behavior stays consistent across the engine.
+    var _empCount = 0;
+    if (orgClean.length){
+      var orgLowerNames = orgClean.map(function(o){
+        return String(o.name || '').toLowerCase().trim();
+      });
+      for (var pi = 0; pi < personOnly.length; pi++){
+        var p = personOnly[pi];
+        var pOrgRaw = String((p && (p.org || p.govOrg)) || '').toLowerCase().trim();
+        if (!pOrgRaw) continue;
+        for (var oj = 0; oj < orgLowerNames.length; oj++){
+          var onm = orgLowerNames[oj];
+          if (onm && pOrgRaw.indexOf(onm) !== -1){
+            linkPairs.push([pi, state.orgWorkerOffset + oj, 1.0, 'works-at']);
+            _empCount++;
+            break;  // one employment per person — first match wins
+          }
+        }
+      }
+    }
     state.linkIndexPairs = linkPairs;
     state.linkCount = linkPairs.length;
     if (linkPairs.length){
@@ -35807,6 +35836,7 @@ const DiscoveryEngine3D = (function(){
       console.log('[DiscoveryEngine3D] 4.2 link weights: 0 links (no weight stats)');
     }
     console.log('[DiscoveryEngine3D] 4.3 directionality: 3:1 taper geometry (radiusTop=0.025, radiusBottom=0.075)');
+    console.log('[DiscoveryEngine3D] 4.5 employment edges: ' + _empCount + ' person→org works-at links');
 
     if (linkPairs.length){
       // ── Micro-step 4.3: directionality taper ──────────────────────────
