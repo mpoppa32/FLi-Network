@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.4c</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.4d</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -35106,18 +35106,50 @@ const DiscoveryEngine3D = (function(){
         // Tear down any existing sim
         if (sim) { sim.stop(); sim = null; }
         nodes = msg.nodes.map(function(n, i){
-          // Seed with random sphere shell so initial layout is volumetric, not flat
-          const r = 12 + Math.random() * 6;
-          const theta = Math.random() * Math.PI * 2;
-          const phi = Math.acos(2 * Math.random() - 1);
+          // P4.5.4d — layered seed: opps Y=+6, orgs Y=0, people Y=-4.
+          // XZ ring random so the cluster fills out horizontally; small Y
+          // jitter so collide can resolve without flicker. Simulation forces
+          // below pull each type to its stratum.
+          const baseY = (n.type === 'opportunity') ? 6
+                      : (n.type === 'person')      ? -4
+                      : 0;
+          const rXZ = 8 + Math.random() * 4;
+          const thetaXZ = Math.random() * Math.PI * 2;
           return {
-            id: n.id, idx: i, type: n.type, priority: n.priority || 3, oppId: n.oppId || null,
-            x: r * Math.sin(phi) * Math.cos(theta),
-            y: r * Math.sin(phi) * Math.sin(theta),
-            z: r * Math.cos(phi)
+            id: n.id, idx: i, name: n.name || '', type: n.type,
+            priority: n.priority || 3, oppId: n.oppId || null,
+            org: n.org || '',
+            x: rXZ * Math.cos(thetaXZ),
+            y: baseY + (Math.random() - 0.5) * 1.5,
+            z: rXZ * Math.sin(thetaXZ)
           };
         });
         const idIndex = new Map(nodes.map(function(n){ return [n.id, n.idx]; }));
+
+        // P4.5.4d — build org-name → node-index map, then for each person
+        // resolve their employer org index via substring match against
+        // n.org. Stored on the node as _orgIdx; X/Z forces below read
+        // nodes[_orgIdx].x / .z each tick so people follow their org.
+        const orgIdxByName = {};
+        for (let _oi = 0; _oi < nodes.length; _oi++){
+          if (nodes[_oi].type === 'company'){
+            const _nm = String(nodes[_oi].name || '').toLowerCase().trim();
+            if (_nm) orgIdxByName[_nm] = _oi;
+          }
+        }
+        let _personOrgMatches = 0;
+        for (let _pi = 0; _pi < nodes.length; _pi++){
+          const _p = nodes[_pi];
+          if (_p.type === 'person' && _p.org){
+            for (const _orgNm in orgIdxByName){
+              if (_orgNm && _p.org.indexOf(_orgNm) !== -1){
+                _p._orgIdx = orgIdxByName[_orgNm];
+                _personOrgMatches++;
+                break;
+              }
+            }
+          }
+        }
         links = (msg.links || []).map(function(l){
           return { source: idIndex.has(l.source) ? l.source : null,
                    target: idIndex.has(l.target) ? l.target : null,
@@ -35126,24 +35158,47 @@ const DiscoveryEngine3D = (function(){
 
         sim = d3.forceSimulation(nodes, 3)
           .force('charge', d3.forceManyBody().strength(function(d){
-            // P4.5.4b — repulsion halved. With 200+ entities (people+orgs+
-            // opps) the cluster was expanding faster than centering could
-            // contain. Was -10..-20; now -5..-10. Pairs with stronger
-            // forceX/Y/Z below to produce a denser, more readable cluster.
-            return -5 - (d.priority === 1 ? 5 : d.priority === 2 ? 2 : 0);
+            // P4.5.4d — stratification supplies most structure; lighter
+            // repulsion just keeps within-layer entities from overlapping.
+            // Was -5..-10 (P4.5.4b); now -3..-5.
+            return -3 - (d.priority === 1 ? 2 : d.priority === 2 ? 1 : 0);
           }))
           .force('link', d3.forceLink(links).id(function(d){ return d.id; })
-            .distance(function(l){ return 6 + (1 - (l.recency || 0.5)) * 10; })
-            .strength(0.55))
-          // P4.5.4b — radial containment ×3 (0.06 → 0.18). forceX/Y/Z pull
-          // each node toward the axis-zero plane; previously too weak to
-          // hold the larger entity payload. Cluster radius now ~40-50%
-          // smaller without changing entity ratios.
-          .force('x', d3.forceX(0).strength(0.18))
-          .force('y', d3.forceY(0).strength(0.18))
-          .force('z', d3.forceZ(0).strength(0.18))
+            .distance(function(l){ return 5 + (1 - (l.recency || 0.5)) * 8; })
+            .strength(0.5))
+          // ── P4.5.4d: Y stratification ──────────────────────────────────
+          // Three horizontal strata: opps at +6 (top), orgs at 0 (middle),
+          // people at -4 (bottom). Strong Y-pull (0.45) so layers stay
+          // crisp even under per-tick perturbation from links/repulsion.
+          .force('y', d3.forceY(function(d){
+            if (d.type === 'opportunity') return 6;
+            if (d.type === 'person')      return -4;
+            return 0;  // company / org / default → middle stratum
+          }).strength(0.45))
+          // ── P4.5.4d: per-person X/Z pull to employer org ───────────────
+          // People are pulled toward their org's current X/Z so each org
+          // becomes a "column" with its team clustered below it. Other
+          // node types fall back to gentle pull toward origin.
+          .force('x', d3.forceX(function(d){
+            if (d.type === 'person' && d._orgIdx != null && nodes[d._orgIdx]){
+              return nodes[d._orgIdx].x || 0;
+            }
+            return 0;
+          }).strength(function(d){
+            return (d.type === 'person' && d._orgIdx != null) ? 0.32 : 0.08;
+          }))
+          .force('z', d3.forceZ(function(d){
+            if (d.type === 'person' && d._orgIdx != null && nodes[d._orgIdx]){
+              return nodes[d._orgIdx].z || 0;
+            }
+            return 0;
+          }).strength(function(d){
+            return (d.type === 'person' && d._orgIdx != null) ? 0.32 : 0.08;
+          }))
           .force('collide', d3.forceCollide().radius(function(d){
-            return d.priority === 1 ? 1.9 : d.priority === 2 ? 1.5 : 1.2;
+            // P4.5.4d — collide radius lifted to match larger geometry
+            // (P4.5.4c). Was 1.2-1.9; now 1.6-2.4.
+            return d.priority === 1 ? 2.4 : d.priority === 2 ? 2.0 : 1.6;
           }).strength(0.85))
           .alpha(1).alphaDecay(0.022).velocityDecay(0.42)
           .on('tick', function(){
@@ -35153,7 +35208,7 @@ const DiscoveryEngine3D = (function(){
             setTimeout(function(){ postScheduled = false; postPositions(); }, 16);
           });
 
-        self.postMessage({ type: 'ready', nodeCount: nodes.length, linkCount: links.length });
+        self.postMessage({ type: 'ready', nodeCount: nodes.length, linkCount: links.length, personOrgMatches: _personOrgMatches });
         } catch (initErr) {
           self.postMessage({ type: 'error', stage: 'init-throw', message: String(initErr && initErr.message || initErr), stack: String(initErr && initErr.stack || '') });
         }
@@ -35189,7 +35244,7 @@ const DiscoveryEngine3D = (function(){
         state.physicsLastTickAt = performance.now();
       }
       else if (msg.type === 'ready'){
-        console.log('[DiscoveryEngine3D] physics worker ready:', msg.nodeCount, 'nodes /', msg.linkCount, 'links');
+        console.log('[DiscoveryEngine3D] physics worker ready:', msg.nodeCount, 'nodes /', msg.linkCount, 'links / ' + (msg.personOrgMatches|0) + ' person→org matches (P4.5.4d layered)');
         // Reset auto-fit flag so the first burst of positions triggers fit-to-cluster
         state.initialFitDone = false;
         state.framesSinceFit = 0;
@@ -35266,7 +35321,9 @@ const DiscoveryEngine3D = (function(){
         name: String(n.name || ''),
         type: 'person',
         priority: n.priority || 3,
-        oppId: n.oppId || (n.opp && n.opp.id) || null
+        oppId: n.oppId || (n.opp && n.opp.id) || null,
+        // P4.5.4d — employer org for layered-layout pull
+        org: String(n.org || n.govOrg || '').toLowerCase().trim()
       };
     });
     // Only keep links where BOTH endpoints are people (worker would throw
