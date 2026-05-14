@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.4</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.4b</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -35120,21 +35120,22 @@ const DiscoveryEngine3D = (function(){
 
         sim = d3.forceSimulation(nodes, 3)
           .force('charge', d3.forceManyBody().strength(function(d){
-            // Conservative repulsion. Sparse subgraphs (few/no links) need
-            // weak charge so per-node forceX/Y/Z containment can hold the
-            // cluster. Was -36..-60, diverged with 0 links; tuned to -10..-20.
-            return -10 - (d.priority === 1 ? 10 : d.priority === 2 ? 4 : 0);
+            // P4.5.4b — repulsion halved. With 200+ entities (people+orgs+
+            // opps) the cluster was expanding faster than centering could
+            // contain. Was -10..-20; now -5..-10. Pairs with stronger
+            // forceX/Y/Z below to produce a denser, more readable cluster.
+            return -5 - (d.priority === 1 ? 5 : d.priority === 2 ? 2 : 0);
           }))
           .force('link', d3.forceLink(links).id(function(d){ return d.id; })
-            .distance(function(l){ return 8 + (1 - (l.recency || 0.5)) * 14; })
+            .distance(function(l){ return 6 + (1 - (l.recency || 0.5)) * 10; })
             .strength(0.55))
-          // Per-axis pull toward 0 (radial containment). forceCenter only
-          // shifts the centroid — it does NOT prevent symmetric expansion.
-          // forceX/Y/Z pull each node toward the axis-zero plane independently,
-          // yielding actual containment even when links are absent.
-          .force('x', d3.forceX(0).strength(0.06))
-          .force('y', d3.forceY(0).strength(0.06))
-          .force('z', d3.forceZ(0).strength(0.06))
+          // P4.5.4b — radial containment ×3 (0.06 → 0.18). forceX/Y/Z pull
+          // each node toward the axis-zero plane; previously too weak to
+          // hold the larger entity payload. Cluster radius now ~40-50%
+          // smaller without changing entity ratios.
+          .force('x', d3.forceX(0).strength(0.18))
+          .force('y', d3.forceY(0).strength(0.18))
+          .force('z', d3.forceZ(0).strength(0.18))
           .force('collide', d3.forceCollide().radius(function(d){
             return d.priority === 1 ? 1.9 : d.priority === 2 ? 1.5 : 1.2;
           }).strength(0.85))
