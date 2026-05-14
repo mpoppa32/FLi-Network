@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.7</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.8</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -34842,10 +34842,18 @@ const DiscoveryEngine3D = (function(){
                   (_linkSrc.z + _linkTgt.z) * 0.5
                 );
                 _linkDummy.quaternion.copy(_linkQuat);
-                // 4.2: radius scales 0.04..0.16 from weight (geo radius=0.05;
-                // multiplier 0.8..3.2). Y still stretches to endpoint distance.
+                // 4.2: radius scales 0.04..0.16 from weight
+                // 6.8: timeline gate — hide pursuit edges whose firstSeenTs > date
                 var w = lp[lpi][2];
                 if (!Number.isFinite(w)) w = 0.5;
+                var fst6 = lp[lpi][4];
+                var gated6 = (state.timeline && Number.isFinite(fst6) && state.timeline.date < fst6);
+                if (gated6){
+                  _linkDummy.scale.setScalar(0);
+                  _linkDummy.updateMatrix();
+                  state.linkMesh.setMatrixAt(lpi, _linkDummy.matrix);
+                  continue;
+                }
                 var radMul = 0.8 + 2.4 * w;
                 _linkDummy.scale.set(radMul, dist, radMul);
                 _linkDummy.updateMatrix();
@@ -35276,6 +35284,13 @@ const DiscoveryEngine3D = (function(){
         for (var _lli = 0; _lli < _lipairs.length; _lli++){
           var _lsi = _lipairs[_lli][0];
           var _lti = _lipairs[_lli][1];
+          // 6.8: timeline gate — collapse to (0,0,0) → (0,0,0) to hide
+          var _lfst = _lipairs[_lli][4];
+          if (state.timeline && Number.isFinite(_lfst) && state.timeline.date < _lfst){
+            _larr[_lli*6+0] = 0; _larr[_lli*6+1] = 0; _larr[_lli*6+2] = 0;
+            _larr[_lli*6+3] = 0; _larr[_lli*6+4] = 0; _larr[_lli*6+5] = 0;
+            continue;
+          }
           var _lsx = _lpos[_lsi*3], _lsy = _lpos[_lsi*3+1], _lsz = _lpos[_lsi*3+2];
           var _ltx = _lpos[_lti*3], _lty = _lpos[_lti*3+1], _ltz = _lpos[_lti*3+2];
           _larr[_lli*6+0] = Number.isFinite(_lsx) ? _lsx : 0;
@@ -36611,9 +36626,11 @@ const DiscoveryEngine3D = (function(){
         var rawId = String(op.id).replace(/^opp:/, '');
         var oMtgs = window.CorsairIndex.meetingsByOppId.get(rawId) || [];
         if (!oMtgs.length) continue;
-        var perPersonCount = {};  // personIdx → number of shared meetings
+        var perPersonCount   = {};  // personIdx → number of shared meetings
+        var perPersonFirstTs = {};  // 6.8: earliest meeting ts per pair
         oMtgs.forEach(function(m){
           var atts = (m && m.meta && m.meta.attendees) || [];
+          var mTs  = _meetingTime(m);  // 6.8: capture meeting time
           var seenThisMeeting = {};  // dedupe within a single meeting
           atts.forEach(function(a){
             if (!a || !a.name) return;
@@ -36623,6 +36640,10 @@ const DiscoveryEngine3D = (function(){
               try {
                 if (simFn && simFn(a.name, nn.name) >= 0.72){
                   perPersonCount[npi] = (perPersonCount[npi] || 0) + 1;
+                  // 6.8: track earliest ts
+                  if (mTs != null && (perPersonFirstTs[npi] == null || mTs < perPersonFirstTs[npi])){
+                    perPersonFirstTs[npi] = mTs;
+                  }
                   seenThisMeeting[npi] = 1;
                   break;
                 }
@@ -36637,7 +36658,8 @@ const DiscoveryEngine3D = (function(){
         keys.forEach(function(k){
           var cnt = perPersonCount[k];
           var w = Math.min(1.0, 0.4 + 0.25 * Math.log(1 + cnt));
-          linkPairs.push([Number(k), state.oppWorkerOffset + ok, w, 'pursuit']);
+          // 6.8: [srcIdx, tgtIdx, weight, type, firstSeenTs]
+          linkPairs.push([Number(k), state.oppWorkerOffset + ok, w, 'pursuit', perPersonFirstTs[k] != null ? perPersonFirstTs[k] : null]);
           _pursuitEdges++;
         });
       }
@@ -36677,6 +36699,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.5 activity ribbon: meeting density dots rendered along track');
     console.log('[DiscoveryEngine3D] 6.6 fire-on-cross wired (each meeting pulses its attendees + tagged opp during play; capped 1/frame)');
     console.log('[DiscoveryEngine3D] 6.7 opp lifecycle gate wired (opps with createdAt > timeline.date are hidden)');
+    console.log('[DiscoveryEngine3D] 6.8 edge materialization wired (pursuit edges hidden until their first supporting meeting; employment edges always visible)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
