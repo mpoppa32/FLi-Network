@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.2</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.1</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -24759,6 +24759,131 @@ function _ensureEntityGraph() {
 }
 
 window._invalidateEntityGraph = function() { window._entityGraph = null; };
+
+// ── Micro-step 4.5.1: in-memory indexes for fast lookup at scale ──────
+// Single namespace window.CorsairIndex with Map indexes rebuilt whenever
+// the underlying Firebase data changes. Replaces O(N) full-array scans
+// across nodes/meetings/opportunities with O(1) lookups by id/org/stage.
+// Rebuild is debounced (~150ms) so a Firebase burst (initial dataset
+// fan-out) causes one rebuild not 50. Wraps the existing
+// _invalidateEntityGraph hook so every existing call site is covered.
+(function(){
+  window.CorsairIndex = {
+    byId:               new Map(),  // id → node (full record)
+    byType:             new Map(),  // type → array of nodes
+    peopleByOrg:        new Map(),  // lowercased org → array of people nodes
+    meetingsByOppId:    new Map(),  // raw opp id → array of meetings tagged with it
+    meetingsByAttendee: new Map(),  // person id → array of meetings (via attendee name match)
+    oppsByStage:        new Map(),  // stage → array of opps
+    oppsById:           new Map(),  // raw opp id → opp
+    lastRebuildTs:      0,
+    rebuildCount:       0
+  };
+  var _pending = null;
+  var _scheduled = false;
+
+  function _doRebuild(){
+    _scheduled = false;
+    var idx = window.CorsairIndex;
+    var t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    var nodes    = window.nodes        || [];
+    var meetings = window.meetings     || [];
+    var opps     = window.opportunities|| [];
+    idx.byId.clear();
+    idx.byType.clear();
+    idx.peopleByOrg.clear();
+    idx.meetingsByOppId.clear();
+    idx.meetingsByAttendee.clear();
+    idx.oppsByStage.clear();
+    idx.oppsById.clear();
+    // Nodes
+    for (var i = 0; i < nodes.length; i++){
+      var n = nodes[i];
+      if (!n || n.id == null) continue;
+      var sid = String(n.id);
+      idx.byId.set(sid, n);
+      var t = String(n.type || 'unknown');
+      if (!idx.byType.has(t)) idx.byType.set(t, []);
+      idx.byType.get(t).push(n);
+      if (n.type === 'person' && (n.org || n.govOrg)){
+        var orgKey = String(n.org || n.govOrg).toLowerCase().trim();
+        if (orgKey){
+          if (!idx.peopleByOrg.has(orgKey)) idx.peopleByOrg.set(orgKey, []);
+          idx.peopleByOrg.get(orgKey).push(n);
+        }
+      }
+    }
+    // Opportunities
+    for (var j = 0; j < opps.length; j++){
+      var o = opps[j];
+      if (!o || o.id == null) continue;
+      idx.oppsById.set(String(o.id), o);
+      var st = String(o.stage || '').toLowerCase();
+      if (!idx.oppsByStage.has(st)) idx.oppsByStage.set(st, []);
+      idx.oppsByStage.get(st).push(o);
+    }
+    // Meetings
+    var simFn = (typeof window.nameSimilarity === 'function') ? window.nameSimilarity : null;
+    for (var mIdx = 0; mIdx < meetings.length; mIdx++){
+      var mt = meetings[mIdx];
+      if (!mt) continue;
+      if (mt.oppId != null && mt.oppId !== ''){
+        var oid = String(mt.oppId);
+        if (!idx.meetingsByOppId.has(oid)) idx.meetingsByOppId.set(oid, []);
+        idx.meetingsByOppId.get(oid).push(mt);
+      }
+      // Attendee → meeting (name-similarity match against person nodes)
+      var atts = (mt.meta && mt.meta.attendees) || [];
+      if (atts.length && simFn){
+        for (var ai = 0; ai < atts.length; ai++){
+          var att = atts[ai];
+          if (!att || !att.name) continue;
+          for (var ni = 0; ni < nodes.length; ni++){
+            var nn = nodes[ni];
+            if (!nn || nn.type !== 'person' || !nn.name) continue;
+            try {
+              if (simFn(att.name, nn.name) >= 0.72){
+                var pid = String(nn.id);
+                if (!idx.meetingsByAttendee.has(pid)) idx.meetingsByAttendee.set(pid, []);
+                idx.meetingsByAttendee.get(pid).push(mt);
+                break;
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    }
+    var t1 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    idx.lastRebuildTs = Date.now();
+    idx.rebuildCount++;
+    console.log('[CorsairIndex] 4.5.1 indexes rebuilt #' + idx.rebuildCount + ': ' +
+                idx.byId.size + ' nodes, ' + idx.oppsById.size + ' opps, ' +
+                idx.meetingsByOppId.size + ' opps-w-mtgs, ' +
+                idx.meetingsByAttendee.size + ' people-w-mtgs (' + (t1 - t0).toFixed(0) + 'ms)');
+  }
+
+  function scheduleRebuild(){
+    if (_scheduled) return;
+    _scheduled = true;
+    if (_pending) clearTimeout(_pending);
+    _pending = setTimeout(_doRebuild, 150);
+  }
+
+  window.CorsairIndex.rebuild = _doRebuild;
+  window.CorsairIndex.scheduleRebuild = scheduleRebuild;
+
+  // Wrap _invalidateEntityGraph so every existing Firebase-listener call
+  // site automatically triggers our rebuild too.
+  var prevInvalidate = window._invalidateEntityGraph;
+  window._invalidateEntityGraph = function(){
+    if (typeof prevInvalidate === 'function') prevInvalidate();
+    scheduleRebuild();
+  };
+
+  // Initial kickoff — schedule one rebuild. Firebase fan-out will trigger
+  // more as data arrives, but they'll coalesce into a single rebuild.
+  scheduleRebuild();
+})();
 
 window.getEntity = function(id) {
   return _ensureEntityGraph().entities.get(String(id));
