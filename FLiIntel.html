@@ -6714,7 +6714,15 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.4f</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.8</span>
+    </div>
+    <!-- Micro-step 4.5.8: focal mode pill (top-center of canvas) -->
+    <div id="de3d-focal-pill" style="display:none;position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:31;background:rgba(7,13,24,.92);border:1px solid var(--gold,#d4823a);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px 6px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper,#b5ad9f);align-items:center;gap:10px;user-select:none;box-shadow:0 4px 18px rgba(212,130,58,.18)">
+      <span style="color:var(--gold,#d4823a);font-weight:700">◎ FOCAL</span>
+      <span style="color:var(--t3)">·</span>
+      <span style="color:var(--bone,#7d7669);font-weight:600" id="de3d-focal-kind">KIND</span>
+      <span id="de3d-focal-name" style="color:var(--paper,#b5ad9f);font-weight:700;letter-spacing:.1em;text-transform:none">Name</span>
+      <span style="color:var(--t3);cursor:pointer;font-size:14px;line-height:1;margin-left:4px;padding:0 4px" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.exitFocal)window.DiscoveryEngine3D.exitFocal()" title="Exit focal mode (ESC)">×</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
@@ -34484,6 +34492,18 @@ const DiscoveryEngine3D = (function(){
     // 'tier'  values: all | 1 | 2 | 3
     filter: { stage: 'all', tier: 'all' },
     filterPass: { opps: null },
+    // Micro-step 4.5.8: focal mode — operator focuses on one entity, its
+    // 1-hop neighborhood stays visible at full size, rest of scene dims to
+    // 0.4× scale. Camera flies to focal entity over ~600ms. Triggered by
+    // double-click; exited via ESC or × on HUD pill.
+    //   { kind, instanceId, name,
+    //     focalScale: { people: Float32Array, orgs:..., opps:... },
+    //     camFromTarget, camFromPosition, camToTarget, camToPosition,
+    //     animStart  }
+    focal: null,
+    _lastClickTs: 0,
+    _lastClickKind: null,
+    _lastClickInstance: -1,
     // Micro-step 4.5.4: spatial index over entity positions. A flat array
     // of {x,y,z,kind,instanceId} rebuilt every 30 frames. Linear-scan
     // findNearest is fine at Atlas scale (~200 entries) and at 10x scale
@@ -34598,7 +34618,12 @@ const DiscoveryEngine3D = (function(){
               if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
               _frameDummy.position.set(x, y, z);
               // Micro-step 3.2: per-instance scale from precomputed array
-              _frameDummy.scale.setScalar(state.instanceScales ? state.instanceScales[i] : 1);
+              // 4.5.8: dim non-focal/non-neighbor entities to 0.4× scale
+              var pSc = state.instanceScales ? state.instanceScales[i] : 1;
+              if (state.focal && state.focal.focalScale && state.focal.focalScale.people){
+                pSc *= state.focal.focalScale.people[i];
+              }
+              _frameDummy.scale.setScalar(pSc);
               _frameDummy.rotation.set(0, 0, 0);
               _frameDummy.updateMatrix();
               state.instancedMesh.setMatrixAt(i, _frameDummy.matrix);
@@ -34711,7 +34736,12 @@ const DiscoveryEngine3D = (function(){
                 if (y2 < minY) minY = y2; if (y2 > maxY) maxY = y2;
                 if (z2 < minZ) minZ = z2; if (z2 > maxZ) maxZ = z2;
                 _frameDummy.position.set(x2, y2, z2);
-                _frameDummy.scale.set(1, 1, 1);
+                // 4.5.8: focal dim
+                var oSc = 1;
+                if (state.focal && state.focal.focalScale && state.focal.focalScale.orgs){
+                  oSc = state.focal.focalScale.orgs[j];
+                }
+                _frameDummy.scale.set(oSc, oSc, oSc);
                 _frameDummy.rotation.set(0, 0, 0);
                 _frameDummy.updateMatrix();
                 state.orgMesh.setMatrixAt(j, _frameDummy.matrix);
@@ -34752,7 +34782,12 @@ const DiscoveryEngine3D = (function(){
                 _frameDummy.position.set(x3, y3, z3);
                 // 4.5.6: filter pass — hidden if filter rejects this opp
                 var oppPass = !state.filterPass || !state.filterPass.opps || state.filterPass.opps[k] !== false;
-                _frameDummy.scale.set(oppPass ? 1 : 0, oppPass ? 1 : 0, oppPass ? 1 : 0);
+                var qSc = oppPass ? 1 : 0;
+                // 4.5.8: focal dim
+                if (qSc > 0 && state.focal && state.focal.focalScale && state.focal.focalScale.opps){
+                  qSc *= state.focal.focalScale.opps[k];
+                }
+                _frameDummy.scale.set(qSc, qSc, qSc);
                 _frameDummy.rotation.set(0, 0, 0);
                 _frameDummy.updateMatrix();
                 state.oppMesh.setMatrixAt(k, _frameDummy.matrix);
@@ -35003,6 +35038,27 @@ const DiscoveryEngine3D = (function(){
       if (!state._spatialFirstLogged){
         state._spatialFirstLogged = true;
         console.log('[DiscoveryEngine3D] 4.5.4 spatial index online: ' + entries.length + ' entries (people+orgs+opps), rebuild every 30 frames');
+      }
+    }
+
+    // ── Micro-step 4.5.8: focal camera animation ──────────────────────────
+    // Lerps controls.target and camera.position from "from" to "to" over
+    // focal.animDuration ms. Uses ease-in-out cubic for a smooth feel.
+    // After animation completes the camera stays where it is; operator can
+    // freely orbit/pan/zoom from the new viewpoint until exiting focal mode.
+    if (state.focal && state.focal.animStart != null && state.camera && state.controls){
+      var fnow = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+      var t = (fnow - state.focal.animStart) / (state.focal.animDuration || 600);
+      if (t >= 1){
+        state.controls.target.copy(state.focal.camToTarget);
+        state.camera.position.copy(state.focal.camToPos);
+        state.focal.animStart = null;  // animation done; let user orbit freely
+      } else if (t > 0){
+        // ease-in-out cubic
+        var ease = t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+        state.controls.target.lerpVectors(state.focal.camFromTarget, state.focal.camToTarget, ease);
+        state.camera.position.lerpVectors(state.focal.camFromPos,   state.focal.camToPos,   ease);
+        state.camera.updateProjectionMatrix();
       }
     }
 
@@ -36545,6 +36601,195 @@ const DiscoveryEngine3D = (function(){
     _recomputeFilters();
   }
 
+  // ── Micro-step 4.5.8: focal mode helpers ──────────────────────────────
+  // Compute the 1-hop neighborhood of (kind, instanceId). Returns three
+  // boolean-indexed Float32Arrays (scale factor 1.0 for focal/neighbor,
+  // 0.4 for dimmed) sized to instance counts. Uses CorsairIndex (4.5.1)
+  // for O(1) cross-entity lookups.
+  function _computeFocalScales(kind, instanceId){
+    var nP = (state._cleanNodesRef || []).length;
+    var nO = (state.orgCleanRef    || []).length;
+    var nQ = (state.oppCleanRef    || []).length;
+    var sP = new Float32Array(nP); sP.fill(0.4);
+    var sO = new Float32Array(nO); sO.fill(0.4);
+    var sQ = new Float32Array(nQ); sQ.fill(0.4);
+    var idx = window.CorsairIndex;
+    var people = state._cleanNodesRef || [];
+    var orgs   = state.orgCleanRef    || [];
+    var opps   = state.oppCleanRef    || [];
+
+    // Helper: mark a person by id
+    function _markPersonId(pid){
+      for (var i = 0; i < people.length; i++){
+        if (String(people[i].id) === String(pid)){ sP[i] = 1; return i; }
+      }
+      return -1;
+    }
+    // Helper: mark an org by name substring match (same heuristic as 3.5'/4.5)
+    function _markOrgByName(orgName){
+      var ln = String(orgName || '').toLowerCase().trim();
+      if (!ln) return -1;
+      for (var j = 0; j < orgs.length; j++){
+        var on = String(orgs[j].name || '').toLowerCase().trim();
+        if (on && ln.indexOf(on) !== -1){ sO[j] = 1; return j; }
+      }
+      return -1;
+    }
+    // Helper: mark an opp by raw id
+    function _markOppById(rawId){
+      var rid = String(rawId);
+      for (var k = 0; k < opps.length; k++){
+        if (String(opps[k].id).replace(/^opp:/, '') === rid){ sQ[k] = 1; return k; }
+      }
+      return -1;
+    }
+
+    var focalName = '';
+    if (kind === 'person'){
+      sP[instanceId] = 1;
+      var p = people[instanceId];
+      if (!p) return null;
+      focalName = p.name || 'Person';
+      // Their employer org
+      _markOrgByName(p.org);
+      // Opps via meetings they attended
+      if (idx && idx.meetingsByAttendee){
+        var pmts = idx.meetingsByAttendee.get(String(p.id)) || [];
+        pmts.forEach(function(m){
+          if (m && m.oppId != null && m.oppId !== '') _markOppById(m.oppId);
+          // Also mark fellow attendees of those meetings
+          var atts = (m && m.meta && m.meta.attendees) || [];
+          atts.forEach(function(a){
+            if (!a || !a.name) return;
+            // name-match against people
+            var simFn = window.nameSimilarity;
+            if (typeof simFn === 'function'){
+              for (var pi = 0; pi < people.length; pi++){
+                try { if (simFn(a.name, people[pi].name) >= 0.72){ sP[pi] = 1; break; } } catch (e) {}
+              }
+            }
+          });
+        });
+      }
+    } else if (kind === 'org'){
+      sO[instanceId] = 1;
+      var o = orgs[instanceId];
+      if (!o) return null;
+      focalName = o.name || 'Org';
+      // Employees: people whose org substring matches this org's name
+      var orgLN = String(o.name || '').toLowerCase().trim();
+      if (orgLN){
+        for (var pi2 = 0; pi2 < people.length; pi2++){
+          var pOrg = String(people[pi2].org || '').toLowerCase().trim();
+          if (pOrg && pOrg.indexOf(orgLN) !== -1) sP[pi2] = 1;
+        }
+      }
+    } else if (kind === 'opp'){
+      sQ[instanceId] = 1;
+      var q = opps[instanceId];
+      if (!q) return null;
+      focalName = q.name || 'Pursuit';
+      // Find meetings tied to this opp, mark their attendees
+      var rawId = String(q.id).replace(/^opp:/, '');
+      if (idx && idx.meetingsByOppId){
+        var qmts = idx.meetingsByOppId.get(rawId) || [];
+        qmts.forEach(function(m){
+          var atts = (m && m.meta && m.meta.attendees) || [];
+          atts.forEach(function(a){
+            if (!a || !a.name) return;
+            var simFn = window.nameSimilarity;
+            if (typeof simFn === 'function'){
+              for (var pi3 = 0; pi3 < people.length; pi3++){
+                try { if (simFn(a.name, people[pi3].name) >= 0.72){
+                  sP[pi3] = 1;
+                  // Also their org
+                  _markOrgByName(people[pi3].org);
+                  break;
+                } } catch (e) {}
+              }
+            }
+          });
+        });
+      }
+    }
+    var neighbors = 0;
+    for (var ai = 0; ai < sP.length; ai++) if (sP[ai] === 1) neighbors++;
+    for (var aj = 0; aj < sO.length; aj++) if (sO[aj] === 1) neighbors++;
+    for (var ak = 0; ak < sQ.length; ak++) if (sQ[ak] === 1) neighbors++;
+    return { scales: { people: sP, orgs: sO, opps: sQ }, name: focalName, neighborCount: neighbors - 1 };
+  }
+
+  // Returns the current world position of (kind, instanceId) by reading
+  // physicsPositions at the right worker index.
+  function _entityWorldPos(kind, instanceId){
+    var pos = state.physicsPositions;
+    if (!pos) return null;
+    var widx = -1;
+    if (kind === 'person')   widx = instanceId;
+    else if (kind === 'org') widx = state.orgWorkerOffset + instanceId;
+    else if (kind === 'opp') widx = state.oppWorkerOffset + instanceId;
+    if (widx < 0) return null;
+    var x = pos[widx*3], y = pos[widx*3+1], z = pos[widx*3+2];
+    if (!Number.isFinite(x)) return null;
+    return { x: x, y: y, z: z };
+  }
+
+  function enterFocal(kind, instanceId){
+    var calc = _computeFocalScales(kind, instanceId);
+    if (!calc) return;
+    var wp = _entityWorldPos(kind, instanceId);
+    if (!wp){
+      console.warn('[DiscoveryEngine3D] 4.5.8 cannot focal-enter: no position for', kind, instanceId);
+      return;
+    }
+    // Camera anim: keep current direction, set new target to entity, new
+    // position offset from target by FOCAL_DIST along the current dir.
+    var FOCAL_DIST = 9;
+    var cam = state.camera, ctrl = state.controls;
+    var camFromTarget = ctrl ? ctrl.target.clone() : new THREE.Vector3();
+    var camFromPos    = cam ? cam.position.clone() : new THREE.Vector3();
+    var dir = camFromPos.clone().sub(camFromTarget).normalize();
+    if (!Number.isFinite(dir.x) || dir.lengthSq() < 0.001) dir.set(0, 0.2, 1).normalize();
+    var camToTarget = new THREE.Vector3(wp.x, wp.y, wp.z);
+    var camToPos    = camToTarget.clone().add(dir.multiplyScalar(FOCAL_DIST));
+
+    state.focal = {
+      kind: kind, instanceId: instanceId,
+      name: calc.name,
+      focalScale: calc.scales,
+      camFromTarget: camFromTarget, camFromPos: camFromPos,
+      camToTarget:   camToTarget,   camToPos:   camToPos,
+      animStart: (typeof performance !== 'undefined') ? performance.now() : Date.now(),
+      animDuration: 600
+    };
+    console.log('[DiscoveryEngine3D] 4.5.8 focal entered: ' + kind + ' "' + calc.name + '" with ' + calc.neighborCount + ' neighbors');
+    _renderFocalPill(calc.name, kind);
+  }
+
+  function exitFocal(){
+    if (!state.focal) return;
+    var nm = state.focal.name;
+    state.focal = null;
+    console.log('[DiscoveryEngine3D] 4.5.8 focal exited: "' + nm + '"');
+    _renderFocalPill(null);
+  }
+
+  function _renderFocalPill(name, kind){
+    var pill = document.getElementById('de3d-focal-pill');
+    if (!pill) return;
+    if (!name){
+      pill.style.display = 'none';
+      return;
+    }
+    pill.style.display = 'flex';
+    var kindColor = kind === 'opp' ? 'var(--amber,#d4823a)'
+                  : kind === 'org' ? 'var(--paper,#b5ad9f)'
+                  : 'var(--bone,#7d7669)';
+    pill.querySelector('#de3d-focal-kind').textContent = (kind || '').toUpperCase();
+    pill.querySelector('#de3d-focal-kind').style.color = kindColor;
+    pill.querySelector('#de3d-focal-name').textContent = name;
+  }
+
   // ── Micro-step 4.5.7: resolve hit → entity → open Inspector ───────────
   // Translates a (kind, instanceId) from the raycaster hit into the right
   // Inspector call. The 3D engine carries only stripped representations
@@ -36834,12 +37079,34 @@ const DiscoveryEngine3D = (function(){
           }
         }
       }
-      if (!bestHit) return;
-      _dispatchInspector(bestHit.kind, bestHit.instanceId);
+      if (!bestHit){
+        // Click on empty space → exit focal mode if active
+        if (state.focal) exitFocal();
+        return;
+      }
+      // 4.5.8: double-click detection (350ms, same entity) → focal mode
+      var now = ev.timeStamp || ((typeof performance !== 'undefined') ? performance.now() : Date.now());
+      var isDouble = (now - state._lastClickTs < 350)
+                  && state._lastClickKind === bestHit.kind
+                  && state._lastClickInstance === bestHit.instanceId;
+      state._lastClickTs = now;
+      state._lastClickKind = bestHit.kind;
+      state._lastClickInstance = bestHit.instanceId;
+      if (isDouble){
+        enterFocal(bestHit.kind, bestHit.instanceId);
+      } else {
+        _dispatchInspector(bestHit.kind, bestHit.instanceId);
+      }
     };
     state.canvas.addEventListener('pointerdown', state.onPointerDown);
     state.canvas.addEventListener('pointerup',   state.onPointerUp);
+    // 4.5.8: ESC key exits focal mode
+    state.onKeyDown = function(ev){
+      if (ev.key === 'Escape' && state.focal) exitFocal();
+    };
+    window.addEventListener('keydown', state.onKeyDown);
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
+    console.log('[DiscoveryEngine3D] 4.5.8 focal mode wired (double-click any entity to enter, ESC or click-empty to exit)');
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
     console.log('[DiscoveryEngine3D] 4.5.2 sprite LOD: distance=' + (state.labelLodDistance|0) + ' (tune via DiscoveryEngine3D.setLabelDistance(N))');
     console.log('[DiscoveryEngine3D] 4.5.6 filter chips wired (stage + tier dropdowns in count badge)');
@@ -36903,6 +37170,9 @@ const DiscoveryEngine3D = (function(){
     }
     state.onPointerDown = null;
     state.onPointerUp = null;
+    // 4.5.8: detach key listener, clear focal state
+    if (state.onKeyDown){ window.removeEventListener('keydown', state.onKeyDown); state.onKeyDown = null; }
+    state.focal = null;
     state.raycaster = null;
     state.rayMouse = null;
     state.rayDownPt = null;
@@ -37094,7 +37364,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
