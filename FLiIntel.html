@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.13</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.14</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34216,6 +34216,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+// Micro-step 3.14: ConvexGeometry for pursuit halo hulls
+import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
 
 // Expose THREE globally so future phases (and devtools) can introspect
 window.THREE = THREE;
@@ -34295,7 +34297,11 @@ const DiscoveryEngine3D = (function(){
     oppWorkerOffset: 0,
     oppCleanRef: null,
     // Micro-step 3.13: opp value/solicitation sprite labels
-    oppLabels: null
+    oppLabels: null,
+    // Micro-step 3.14: pursuit halos (ConvexGeometry hulls)
+    pursuitHullGroup: null,
+    pursuitHullSpec: null,
+    pursuitHullsBuilt: false
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34461,6 +34467,47 @@ const DiscoveryEngine3D = (function(){
                 }
               }
               state.oppMesh.instanceMatrix.needsUpdate = true;
+            }
+
+            // ── Micro-step 3.14: build pursuit halo hulls (latch once) ────
+            // On tick >= 5 (positions stable enough), construct one
+            // ConvexGeometry mesh per qualifying active opp using current
+            // person positions. Static for 3.14; 3.15 will recompute per tick.
+            if (!state.pursuitHullsBuilt
+                && state.pursuitHullSpec
+                && state.pursuitHullSpec.length
+                && state.pursuitHullGroup
+                && state.physicsTickCount >= 5){
+              var _hullBuilt = 0;
+              state.pursuitHullSpec.forEach(function(spec){
+                try {
+                  var pts = [];
+                  spec.personIndices.forEach(function(idx){
+                    var px = pos[idx*3], py = pos[idx*3+1], pz = pos[idx*3+2];
+                    if (Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz)){
+                      pts.push(new THREE.Vector3(px, py, pz));
+                    }
+                  });
+                  // ConvexGeometry requires >= 4 non-coplanar points
+                  if (pts.length < 4) return;
+                  var hullGeo = new ConvexGeometry(pts);
+                  var hullMat = new THREE.MeshBasicMaterial({
+                    color: 0xd4823a,        // amber
+                    transparent: true,
+                    opacity: 0.12,
+                    depthWrite: false,
+                    side: THREE.DoubleSide
+                  });
+                  var hullMesh = new THREE.Mesh(hullGeo, hullMat);
+                  hullMesh.userData = { oppIndex: spec.oppIndex, personIndices: spec.personIndices };
+                  state.pursuitHullGroup.add(hullMesh);
+                  _hullBuilt++;
+                } catch (e) {
+                  console.warn('[DiscoveryEngine3D] 3.14 hull build failed for opp', spec.oppName, e);
+                }
+              });
+              state.pursuitHullsBuilt = true;
+              console.log('[DiscoveryEngine3D] 3.14 hulls built: ' + _hullBuilt + ' meshes @ T' + state.physicsTickCount);
             }
 
             const cx = (minX + maxX) * 0.5;
@@ -35313,6 +35360,28 @@ const DiscoveryEngine3D = (function(){
       console.log('[DiscoveryEngine3D] 3.13 opp labels: ' + oppLabelArr.length + ' sprites (' + nValued + ' valued + ' + nSoln + ' solicitation + ' + nName + ' name-only)');
     }
 
+    // ── Micro-step 3.14: pursuit halo spec + container group ──────────────
+    // For each active pursuit with >= 3 matched people, build a convex
+    // hull from their positions. The actual hull mesh is built in the
+    // animation loop once positions stabilize (state.physicsTickCount>=5).
+    state.pursuitHullSpec = _computePursuitHullSpec(oppClean, cleanNodes);
+    state.pursuitHullsBuilt = false;
+    if (state.pursuitHullGroup){
+      if (state.scene) state.scene.remove(state.pursuitHullGroup);
+      state.pursuitHullGroup.children.forEach(function(c){
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+      });
+      state.pursuitHullGroup = null;
+    }
+    state.pursuitHullGroup = new THREE.Group();
+    if (state.scene) state.scene.add(state.pursuitHullGroup);
+    var _activeOppCount = oppClean.filter(function(o){
+      var s = (o.stage||'').toLowerCase();
+      return s==='proposal'||s==='negotiation'||s==='submitted'||s==='award';
+    }).length;
+    console.log('[DiscoveryEngine3D] 3.14 pursuit halos: ' + state.pursuitHullSpec.length + ' of ' + _activeOppCount + ' active opps qualify (>=3 people via meeting attendees)');
+
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
     // orgs, then opportunities. cleanLinks still contains only person-to-
@@ -35429,6 +35498,74 @@ const DiscoveryEngine3D = (function(){
     var h = 0.42;
     sprite.scale.set(h * aspect, h, 1);
     return sprite;
+  }
+
+  // ── Micro-step 3.14 helper: compute pursuit hull spec ─────────────────
+  // For each active opportunity, find people who attended meetings tagged
+  // with that opp.id (meeting.oppId === raw opp id). Match attendee names
+  // to cleanNodes via window.nameSimilarity (defined in the non-module
+  // script block at line 8362), falling back to a lowercased substring
+  // compare if it's not on window for any reason.
+  //
+  // Output: array of { oppIndex, oppName, stage, personIndices[] } for
+  // every opp that has >= 3 matched person indices.
+  function _computePursuitHullSpec(oppClean, cleanNodes){
+    var meetings = window.meetings || [];
+    var simFn = (typeof window.nameSimilarity === 'function')
+      ? window.nameSimilarity
+      : function(a, b){
+          var la = String(a||'').toLowerCase().trim();
+          var lb = String(b||'').toLowerCase().trim();
+          return (la && lb && (la === lb || la.indexOf(lb) >= 0 || lb.indexOf(la) >= 0)) ? 1 : 0;
+        };
+    var SIM = 0.72;
+    var activeSet = { proposal:1, negotiation:1, submitted:1, award:1 };
+    var specs = [];
+    for (var i = 0; i < oppClean.length; i++){
+      var opp = oppClean[i];
+      var stg = (opp.stage || '').toLowerCase();
+      if (!activeSet[stg]) continue;
+      var rawOppId = String(opp.id).replace(/^opp:/, '');
+      var tied = [];
+      for (var mi = 0; mi < meetings.length; mi++){
+        var m = meetings[mi];
+        if (!m) continue;
+        if (m.oppId !== undefined && m.oppId !== null && String(m.oppId) === rawOppId){
+          tied.push(m);
+        }
+      }
+      if (!tied.length) continue;
+      // Collect attendee + keyPeople names from all tied meetings
+      var names = {};
+      tied.forEach(function(m){
+        var atts = (m.meta && m.meta.attendees) || [];
+        atts.forEach(function(a){ if (a && a.name) names[a.name] = 1; });
+        var kp = (m.intel && m.intel.keyPeople) || [];
+        kp.forEach(function(p){ if (p && p.name) names[p.name] = 1; });
+      });
+      // Match attendee names to cleanNodes (person worker indices [0..N))
+      var indices = {};
+      Object.keys(names).forEach(function(attName){
+        for (var ni = 0; ni < cleanNodes.length; ni++){
+          try {
+            if (simFn(cleanNodes[ni].name, attName) >= SIM){
+              indices[ni] = 1;
+              break;
+            }
+          } catch (e) {}
+        }
+      });
+      var idxArr = Object.keys(indices).map(Number);
+      if (idxArr.length >= 3){
+        specs.push({
+          oppIndex: i,
+          oppName: opp.name,
+          stage: stg,
+          personIndices: idxArr
+        });
+      }
+    }
+    return specs;
   }
 
   function _buildPlaceholderInstancedMesh(count){
@@ -35769,6 +35906,17 @@ const DiscoveryEngine3D = (function(){
       });
       state.oppLabels = null;
     }
+    // 3.14 dispose: pursuit halo hulls
+    if (state.pursuitHullGroup){
+      if (state.scene) state.scene.remove(state.pursuitHullGroup);
+      state.pursuitHullGroup.children.forEach(function(c){
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+      });
+      state.pursuitHullGroup = null;
+    }
+    state.pursuitHullSpec = null;
+    state.pursuitHullsBuilt = false;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
