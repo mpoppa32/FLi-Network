@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.16</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.17</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34303,7 +34303,9 @@ const DiscoveryEngine3D = (function(){
     pursuitHullSpec: null,
     pursuitHullsBuilt: false,
     // Micro-step 3.16: shared soft alpha falloff ShaderMaterial (membrane)
-    pursuitHullMaterial: null
+    pursuitHullMaterial: null,
+    // Micro-step 3.17: pursuit-name sprite per active hull
+    pursuitNameSprites: null
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34495,11 +34497,15 @@ const DiscoveryEngine3D = (function(){
                 var spec = state.pursuitHullSpec[si];
                 try {
                   var pts = [];
+                  // 3.17: track centroid + AABB top while we iterate
+                  var cX = 0, cY = 0, cZ = 0, topY = -Infinity, cN = 0;
                   for (var pi = 0; pi < spec.personIndices.length; pi++){
                     var idx = spec.personIndices[pi];
                     var px = pos[idx*3], py = pos[idx*3+1], pz = pos[idx*3+2];
                     if (Number.isFinite(px) && Number.isFinite(py) && Number.isFinite(pz)){
                       pts.push(new THREE.Vector3(px, py, pz));
+                      cX += px; cY += py; cZ += pz; cN++;
+                      if (py > topY) topY = py;
                     }
                   }
                   // ConvexGeometry requires >= 4 non-coplanar points
@@ -34516,6 +34522,12 @@ const DiscoveryEngine3D = (function(){
                     var hullMesh = new THREE.Mesh(newGeo, state.pursuitHullMaterial);
                     hullMesh.userData = { oppIndex: spec.oppIndex, personIndices: spec.personIndices };
                     state.pursuitHullGroup.add(hullMesh);
+                  }
+                  // 3.17: position the pursuit name sprite at (centroidX, top+1.4, centroidZ)
+                  if (state.pursuitNameSprites && state.pursuitNameSprites[si] && cN > 0){
+                    var sp = state.pursuitNameSprites[si];
+                    sp.position.set(cX / cN, topY + 1.4, cZ / cN);
+                    sp.visible = true;
                   }
                   _hullCount++;
                 } catch (e) {
@@ -35455,6 +35467,35 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 3.14 pursuit halos: ' + state.pursuitHullSpec.length + ' of ' + _activeOppCount + ' active opps qualify (>=3 people via meeting attendees)');
     console.log('[DiscoveryEngine3D] 3.16 hull material: Fresnel soft-alpha membrane shader ready');
 
+    // ── Micro-step 3.17: pursuit-name sprite labels ───────────────────────
+    // One bold amber sprite per qualifying pursuit, positioned each tick at
+    // the centroid of its member people. Reuses _makeOppLabelSprite for
+    // visual consistency with the opp-disc value labels.
+    if (state.pursuitNameSprites){
+      state.pursuitNameSprites.forEach(function(sp){
+        if (state.scene) state.scene.remove(sp);
+        if (sp.material.map) sp.material.map.dispose();
+        sp.material.dispose();
+      });
+      state.pursuitNameSprites = null;
+    }
+    if (state.pursuitHullSpec && state.pursuitHullSpec.length){
+      var nameSprites = [];
+      for (var psi = 0; psi < state.pursuitHullSpec.length; psi++){
+        var pname = String(state.pursuitHullSpec[psi].oppName || 'Pursuit');
+        if (pname.length > 28) pname = pname.slice(0, 25) + '…';
+        var nsp = _makeOppLabelSprite(pname);
+        nsp.visible = false;  // shown once first centroid is computed
+        if (state.scene) state.scene.add(nsp);
+        nameSprites.push(nsp);
+      }
+      state.pursuitNameSprites = nameSprites;
+      console.log('[DiscoveryEngine3D] 3.17 pursuit name sprites: ' + nameSprites.length);
+    } else {
+      state.pursuitNameSprites = [];
+      console.log('[DiscoveryEngine3D] 3.17 pursuit name sprites: 0');
+    }
+
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
     // orgs, then opportunities. cleanLinks still contains only person-to-
@@ -35991,6 +36032,15 @@ const DiscoveryEngine3D = (function(){
     if (state.pursuitHullMaterial){
       state.pursuitHullMaterial.dispose();
       state.pursuitHullMaterial = null;
+    }
+    // 3.17 dispose: pursuit name sprites
+    if (state.pursuitNameSprites){
+      state.pursuitNameSprites.forEach(function(sp){
+        if (state.scene) state.scene.remove(sp);
+        if (sp.material.map) sp.material.map.dispose();
+        sp.material.dispose();
+      });
+      state.pursuitNameSprites = null;
     }
     state.pursuitHullSpec = null;
     state.pursuitHullsBuilt = false;
