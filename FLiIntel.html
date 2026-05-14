@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.18</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.19</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34553,6 +34553,37 @@ const DiscoveryEngine3D = (function(){
               }
             }
 
+            // ── Micro-step 3.19: signal pulse aLife decay ─────────────────
+            // For each slot with aLife > 0, compute elapsed/350ms and set
+            // aLife = max(0, 1 - elapsed/duration). Slots reaching 0 return
+            // to dormant. Only flip the needsUpdate flag if at least one
+            // slot changed, so we don't pay the GPU upload cost on idle.
+            if (state.signalPulseGeo && state.signalPulseStartTime){
+              var spLifeAttr = state.signalPulseGeo.getAttribute('aLife');
+              if (spLifeAttr){
+                var spArr = spLifeAttr.array;
+                var spStartArr = state.signalPulseStartTime;
+                var nowMs = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+                var DUR = 350;
+                var anyActive = false;
+                for (var sli = 0; sli < spArr.length; sli++){
+                  if (spArr[sli] > 0){
+                    var elapsed = nowMs - spStartArr[sli];
+                    if (elapsed >= DUR){
+                      spArr[sli] = 0;
+                    } else {
+                      spArr[sli] = 1 - (elapsed / DUR);
+                      anyActive = true;
+                    }
+                  }
+                }
+                if (anyActive || state._spDirty){
+                  spLifeAttr.needsUpdate = true;
+                  state._spDirty = anyActive;
+                }
+              }
+            }
+
             const cx = (minX + maxX) * 0.5;
             const cy = (minY + maxY) * 0.5;
             const cz = (minZ + maxZ) * 0.5;
@@ -35557,8 +35588,12 @@ const DiscoveryEngine3D = (function(){
         '  vLife  = aLife;',
         '  vColor = aColor;',
         '  vec4 mvPos = modelViewMatrix * vec4(position, 1.0);',
-        // 3.19 will multiply uPointSize by a scale curve; for 3.18 it is constant.
-        '  gl_PointSize = uPointSize * (300.0 / max(1.0, -mvPos.z)) * max(aLife, 0.0);',
+        // 3.19: scale curve peaks 8x mid-animation. aLife decays 1→0 linearly
+        // over the 350ms window. (1 - aLife) ∈ [0,1] = animation progress t.
+        // scale = 1 + 7*sin(π*t) so size ramps 1→8→1 while alpha fades 1→0.
+        '  float t = clamp(1.0 - aLife, 0.0, 1.0);',
+        '  float scale = 1.0 + 7.0 * sin(3.14159265 * t);',
+        '  gl_PointSize = uPointSize * (300.0 / max(1.0, -mvPos.z)) * scale * step(0.0001, aLife);',
         '  gl_Position = projectionMatrix * mvPos;',
         '}'
       ].join('\n'),
@@ -35588,6 +35623,7 @@ const DiscoveryEngine3D = (function(){
     state.signalPulseWriteIdx = 0;
     if (state.scene) state.scene.add(spPoints);
     console.log('[DiscoveryEngine3D] 3.18 signal pulse buffer: ' + SP_CAP + ' slots ready');
+    console.log('[DiscoveryEngine3D] 3.19 emit() API ready — try DiscoveryEngine3D.emit(0,0,0) in console');
 
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
@@ -36178,7 +36214,42 @@ const DiscoveryEngine3D = (function(){
   function getState(){ return state; }
   function isRunning(){ return state.running; }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, PALETTE };
+  // ── Micro-step 3.19: public signal-pulse emit API ─────────────────────
+  // Pops a single pulse from the 200-slot ring buffer at world position
+  // (x, y, z). Optional colorHex (e.g. 0xd4823a) overrides the default
+  // amber tint. Returns the slot index used, or -1 if the system isn't
+  // initialized yet. Slots cycle round-robin; if all 200 are active,
+  // the oldest is overwritten.
+  //
+  // Example: DiscoveryEngine3D.emit(0, 0, 0)  → amber pulse at origin
+  //          DiscoveryEngine3D.emit(10, 5, 0, 0x3a8a5c)  → green pulse
+  function emit(x, y, z, colorHex){
+    if (!state.signalPulseGeo || !state.signalPulseStartTime) return -1;
+    var posAttr   = state.signalPulseGeo.getAttribute('position');
+    var lifeAttr  = state.signalPulseGeo.getAttribute('aLife');
+    var colorAttr = state.signalPulseGeo.getAttribute('aColor');
+    if (!posAttr || !lifeAttr || !colorAttr) return -1;
+    var cap = state.signalPulseCapacity || 200;
+    var idx = state.signalPulseWriteIdx % cap;
+    state.signalPulseWriteIdx = (state.signalPulseWriteIdx + 1) % cap;
+    posAttr.array[idx*3+0]   = +x || 0;
+    posAttr.array[idx*3+1]   = +y || 0;
+    posAttr.array[idx*3+2]   = +z || 0;
+    lifeAttr.array[idx]      = 1.0;
+    state.signalPulseStartTime[idx] = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    if (typeof colorHex === 'number'){
+      colorAttr.array[idx*3+0] = ((colorHex >> 16) & 0xff) / 255;
+      colorAttr.array[idx*3+1] = ((colorHex >>  8) & 0xff) / 255;
+      colorAttr.array[idx*3+2] = ( colorHex        & 0xff) / 255;
+      colorAttr.needsUpdate = true;
+    }
+    posAttr.needsUpdate = true;
+    lifeAttr.needsUpdate = true;
+    state._spDirty = true;
+    return idx;
+  }
+
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
