@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.3</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.10</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36495,6 +36495,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.1 hover wired (pointermove raycast ~30Hz; hovered entity scales 1.15x; cursor → pointer)');
     console.log('[DiscoveryEngine3D] 5.2 hover tooltip wired (kind + name + meta; cursor-tracking with edge flip)');
     console.log('[DiscoveryEngine3D] 5.3 cursor states: grab → grabbing → pointer (over entity)');
+    console.log('[DiscoveryEngine3D] 5.10 pulse-on-click wired (every entity click fires a 350ms feedback pulse)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37743,6 +37744,21 @@ const DiscoveryEngine3D = (function(){
         return;
       }
       console.log('[DiscoveryEngine3D] 4.5.7 hit:', bestHit.kind, '#' + bestHit.instanceId, '(dist=' + bestHit.dist.toFixed(1) + ')');
+      // ── Micro-step 5.10: pulse-on-click ──────────────────────────────
+      // Instant 350ms feedback pulse at the clicked entity's position.
+      // Color by kind matches the brand taxonomy: amber for opps (events),
+      // paper for orgs (institutions), gold-hot for people (relationships).
+      var _clkWidx = -1;
+      if (bestHit.kind === 'person') _clkWidx = bestHit.instanceId;
+      else if (bestHit.kind === 'org') _clkWidx = (state.orgWorkerOffset | 0) + bestHit.instanceId;
+      else if (bestHit.kind === 'opp') _clkWidx = (state.oppWorkerOffset | 0) + bestHit.instanceId;
+      if (_clkWidx >= 0 && state.physicsPositions){
+        var _cp = state.physicsPositions;
+        var _clkColor = bestHit.kind === 'opp' ? 0xd4823a
+                      : bestHit.kind === 'org' ? 0xb5ad9f
+                      : 0xf0a560;  // person — gold-hot to differentiate from org paper
+        emit(_cp[_clkWidx*3+0], _cp[_clkWidx*3+1], _cp[_clkWidx*3+2], _clkColor);
+      }
       // 4.5.8: double-click detection (350ms, same entity) → focal mode
       var now = ev.timeStamp || ((typeof performance !== 'undefined') ? performance.now() : Date.now());
       var isDouble = (now - state._lastClickTs < 350)
