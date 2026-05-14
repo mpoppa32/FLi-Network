@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.10</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.11</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36459,6 +36459,7 @@ const DiscoveryEngine3D = (function(){
     if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.8 link LOD twin: LineSegments fallback ready (switches at camDist/radius 2.5↔3.5)');
     console.log('[DiscoveryEngine3D] 4.9 signal flow infrastructure ready (700ms src→tgt lerp; emitFlow API in 4.10)');
     console.log('[DiscoveryEngine3D] 4.10 emitFlow() API ready — DiscoveryEngine3D.emitFlow(source, target, colorHex?) accepts worker idx, entity id, or {kind,instanceId}');
+    console.log('[DiscoveryEngine3D] 4.11 pulseEntity() API ready — DiscoveryEngine3D.pulseEntity(ref, {color, propagate}) fires pulse + radial flows');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37973,6 +37974,50 @@ const DiscoveryEngine3D = (function(){
     );
   }
 
+  // ── Micro-step 4.11: pulse propagation ────────────────────────────────
+  // pulseEntity(ref, opts?) fires a static pulse at the entity's current
+  // position AND, if opts.propagate !== false, fires a flow along every
+  // link incident to that entity. Bidirectional: incoming links also get
+  // flows (entity → other endpoint) so the signal radiates outward
+  // regardless of edge directionality. Returns { pulses, flows }.
+  //
+  // Usage:
+  //   DiscoveryEngine3D.pulseEntity({kind:'person', instanceId:3})
+  //   DiscoveryEngine3D.pulseEntity('opp:123', { color: 0x3a8a5c })
+  //   DiscoveryEngine3D.pulseEntity(0, { propagate: false })  // pulse only
+  function pulseEntity(ref, opts){
+    opts = opts || {};
+    var colorHex   = opts.color;
+    var propagate  = opts.propagate !== false;
+    var workerIdx = _resolveEntityToWorkerIdx(ref);
+    if (workerIdx < 0) return { pulses: 0, flows: 0 };
+    var pos = state.physicsPositions;
+    if (!pos) return { pulses: 0, flows: 0 };
+    var total = (pos.length / 3) | 0;
+    if (workerIdx >= total) return { pulses: 0, flows: 0 };
+    var px = pos[workerIdx*3+0], py = pos[workerIdx*3+1], pz = pos[workerIdx*3+2];
+    if (!Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pz)){
+      return { pulses: 0, flows: 0 };
+    }
+    // 1. Fire the static pulse at the entity's location
+    emit(px, py, pz, colorHex);
+    var pulseCount = 1, flowCount = 0;
+    // 2. Propagate flows along every incident link
+    if (propagate && Array.isArray(state.linkIndexPairs)){
+      var pairs = state.linkIndexPairs;
+      for (var i = 0; i < pairs.length; i++){
+        var s = pairs[i][0], t = pairs[i][1];
+        var otherWidx = -1;
+        if (s === workerIdx) otherWidx = t;
+        else if (t === workerIdx) otherWidx = s;
+        if (otherWidx < 0) continue;
+        if (emitFlow(workerIdx, otherWidx, colorHex) >= 0) flowCount++;
+      }
+    }
+    console.log('[DiscoveryEngine3D] 4.11 pulseEntity: 1 pulse + ' + flowCount + ' flows from worker idx ' + workerIdx);
+    return { pulses: pulseCount, flows: flowCount };
+  }
+
   // ── Micro-step 4.9: internal flow emit (raw xyz endpoints) ─────────────
   // Allocates a slot in flow mode: stores source + target xyz, sets the
   // flow flag, kicks animation. The pulse decay loop lerps position from
@@ -38013,7 +38058,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
