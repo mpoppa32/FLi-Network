@@ -6736,13 +6736,20 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.10</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.5</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="color:var(--t3);font-weight:700">FIND</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK RESULT → FLY-IN</span></div>
       <input id="de3d-search-input" type="text" placeholder="type a name..." spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;background:rgba(7,13,24,.95);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 8px;letter-spacing:.04em;text-transform:none;outline:none">
       <div id="de3d-search-results" style="margin-top:6px;max-height:260px;overflow-y:auto"></div>
+    </div>
+    <!-- Micro-step 5.5: right-click context menu -->
+    <div id="de3d-ctx-menu" style="display:none;position:fixed;z-index:34;background:rgba(7,13,24,.96);border:1px solid var(--b2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:2px;padding:4px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:180px;box-shadow:0 6px 20px rgba(0,0,0,.5);user-select:none">
+      <div id="de3d-ctx-header" style="color:var(--t3);padding:4px 8px 6px;font-size:8.5px;letter-spacing:.16em;border-bottom:1px solid var(--b2);margin-bottom:3px"><span id="de3d-ctx-kind" style="color:var(--gold,#d4823a);font-weight:700">KIND</span> · <span id="de3d-ctx-name" style="text-transform:none;letter-spacing:.04em;color:var(--paper,#b5ad9f);font-weight:600">Name</span></div>
+      <div class="de3d-ctx-item" data-action="inspect" style="cursor:pointer;padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:8px"><span style="color:var(--t3);width:14px;text-align:center">◧</span><span>Inspect</span></div>
+      <div class="de3d-ctx-item" data-action="pulse" style="cursor:pointer;padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:8px"><span style="color:var(--t3);width:14px;text-align:center">◎</span><span>Pulse + Propagate</span></div>
+      <div class="de3d-ctx-item" data-action="focal" style="cursor:pointer;padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:8px"><span style="color:var(--t3);width:14px;text-align:center">◉</span><span>Make Focal</span></div>
     </div>
     <!-- Micro-step 5.2: hover tooltip (cursor-tracking) -->
     <div id="de3d-hover-tooltip" style="display:none;position:fixed;z-index:33;background:rgba(7,13,24,.94);border:1px solid var(--b2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:2px;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;max-width:280px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.4);transition:opacity 80ms ease;opacity:0">
@@ -36496,6 +36503,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.2 hover tooltip wired (kind + name + meta; cursor-tracking with edge flip)');
     console.log('[DiscoveryEngine3D] 5.3 cursor states: grab → grabbing → pointer (over entity)');
     console.log('[DiscoveryEngine3D] 5.10 pulse-on-click wired (every entity click fires a 350ms feedback pulse)');
+    console.log('[DiscoveryEngine3D] 5.5 context menu wired (right-click entity → Inspect / Pulse / Make Focal; ESC or click-outside dismisses)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37265,6 +37273,63 @@ const DiscoveryEngine3D = (function(){
     });
   }
 
+  // ── Micro-step 5.5: right-click context menu ──────────────────────────
+  // Captures the entity that was right-clicked (from current hover state),
+  // shows the floating menu at the cursor position, and dispatches the
+  // chosen action. Outside-click and ESC dismiss. Sized smartly to avoid
+  // running off the bottom/right of the viewport.
+  function _showContextMenu(ev, hoverRef){
+    var menu = document.getElementById('de3d-ctx-menu');
+    if (!menu || !hoverRef) return;
+    // Capture target entity for the action handlers
+    state._ctxTarget = { kind: hoverRef.kind, instanceId: hoverRef.instanceId };
+    // Populate header
+    var kEl = document.getElementById('de3d-ctx-kind');
+    var nEl = document.getElementById('de3d-ctx-name');
+    var name = '(unnamed)';
+    if (hoverRef.kind === 'person'){
+      var p = (state._cleanNodesRef || [])[hoverRef.instanceId];
+      if (p) name = p.name || name;
+    } else if (hoverRef.kind === 'org'){
+      var o = (state.orgCleanRef || [])[hoverRef.instanceId];
+      if (o) name = o.name || name;
+    } else if (hoverRef.kind === 'opp'){
+      var q = (state.oppCleanRef || [])[hoverRef.instanceId];
+      if (q) name = q.name || name;
+    }
+    if (kEl) kEl.textContent = hoverRef.kind.toUpperCase();
+    if (nEl) nEl.textContent = name.length > 32 ? name.slice(0, 29) + '…' : name;
+    // Show + position (smart edge flip)
+    menu.style.display = 'block';
+    var w = menu.offsetWidth  || 200;
+    var h = menu.offsetHeight || 130;
+    var x = ev.clientX;
+    var y = ev.clientY;
+    if (x + w > window.innerWidth)  x = window.innerWidth  - w - 6;
+    if (y + h > window.innerHeight) y = window.innerHeight - h - 6;
+    if (x < 4) x = 4;
+    if (y < 4) y = 4;
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+  }
+  function _hideContextMenu(){
+    var menu = document.getElementById('de3d-ctx-menu');
+    if (menu) menu.style.display = 'none';
+    state._ctxTarget = null;
+  }
+  function _dispatchContextAction(action){
+    var t = state._ctxTarget;
+    if (!t) return;
+    if (action === 'inspect'){
+      _dispatchInspector(t.kind, t.instanceId);
+    } else if (action === 'pulse'){
+      pulseEntity({ kind: t.kind, instanceId: t.instanceId });
+    } else if (action === 'focal'){
+      enterFocal(t.kind, t.instanceId);
+    }
+    _hideContextMenu();
+  }
+
   // ── Micro-step 5.2: hover tooltip ──────────────────────────────────────
   // Updates the floating tooltip element to reflect state.hover. Called
   // from pointermove (whenever cursor moves) and from hover transitions.
@@ -37828,9 +37893,45 @@ const DiscoveryEngine3D = (function(){
     };
     state.canvas.addEventListener('pointermove',  state.onPointerMove);
     state.canvas.addEventListener('pointerleave', state.onPointerLeave);
-    // 4.5.8: ESC key exits focal mode
+    // ── Micro-step 5.5: right-click context menu ─────────────────────────
+    // contextmenu fires after pointerup. Use current state.hover to decide
+    // whether to show the entity menu. If no hover, let the browser/OrbitControls
+    // handle right-click normally (panning, etc.).
+    state.onContextMenu = function(ev){
+      if (state.hover){
+        ev.preventDefault();
+        _showContextMenu(ev, state.hover);
+      } else {
+        _hideContextMenu();
+      }
+    };
+    state.canvas.addEventListener('contextmenu', state.onContextMenu);
+    // Outside-click dismissal
+    state.onDocClick = function(ev){
+      var menu = document.getElementById('de3d-ctx-menu');
+      if (!menu || menu.style.display === 'none') return;
+      if (!menu.contains(ev.target)) _hideContextMenu();
+    };
+    document.addEventListener('click', state.onDocClick, true);
+    // Wire menu item clicks (idempotent)
+    var ctxMenuEl = document.getElementById('de3d-ctx-menu');
+    if (ctxMenuEl && ctxMenuEl.dataset.wired !== '1'){
+      ctxMenuEl.dataset.wired = '1';
+      ctxMenuEl.querySelectorAll('.de3d-ctx-item').forEach(function(row){
+        row.addEventListener('mouseenter', function(){ row.style.background = 'rgba(212,130,58,.20)'; });
+        row.addEventListener('mouseleave', function(){ row.style.background = 'transparent'; });
+        row.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          _dispatchContextAction(row.dataset.action);
+        });
+      });
+    }
+    // 4.5.8 + 5.5: ESC key exits focal mode AND closes context menu
     state.onKeyDown = function(ev){
-      if (ev.key === 'Escape' && state.focal) exitFocal();
+      if (ev.key === 'Escape'){
+        _hideContextMenu();
+        if (state.focal) exitFocal();
+      }
     };
     window.addEventListener('keydown', state.onKeyDown);
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
@@ -37897,18 +37998,23 @@ const DiscoveryEngine3D = (function(){
     stop();
     if (state.onResize){ window.removeEventListener('resize', state.onResize); state.onResize = null; }
     if (state.resizeTimer){ clearTimeout(state.resizeTimer); state.resizeTimer = null; }
-    // 4.5.7 + 5.1 dispose: detach pointer listeners
+    // 4.5.7 + 5.1 + 5.5 dispose: detach pointer & context-menu listeners
     if (state.canvas){
       if (state.onPointerDown)  state.canvas.removeEventListener('pointerdown',  state.onPointerDown);
       if (state.onPointerUp)    state.canvas.removeEventListener('pointerup',    state.onPointerUp);
       if (state.onPointerMove)  state.canvas.removeEventListener('pointermove',  state.onPointerMove);
       if (state.onPointerLeave) state.canvas.removeEventListener('pointerleave', state.onPointerLeave);
+      if (state.onContextMenu)  state.canvas.removeEventListener('contextmenu',  state.onContextMenu);
     }
+    if (state.onDocClick){ document.removeEventListener('click', state.onDocClick, true); state.onDocClick = null; }
+    _hideContextMenu();
     state.onPointerDown = null;
     state.onPointerUp = null;
     state.onPointerMove = null;
     state.onPointerLeave = null;
+    state.onContextMenu = null;
     state.hover = null;
+    state._ctxTarget = null;
     // 4.5.8: detach key listener, clear focal state
     if (state.onKeyDown){ window.removeEventListener('keydown', state.onKeyDown); state.onKeyDown = null; }
     state.focal = null;
@@ -38386,6 +38492,8 @@ window._toggle3DEngine = function(mode){
     if (searchPanel) searchPanel.style.display = 'none';
     var hoverTip = document.getElementById('de3d-hover-tooltip');
     if (hoverTip){ hoverTip.style.display = 'none'; hoverTip.style.opacity = '0'; }
+    var ctxMenu  = document.getElementById('de3d-ctx-menu');
+    if (ctxMenu) ctxMenu.style.display = 'none';
     if (btn3d){ btn3d.classList.remove('active'); }
     if (btn2d){ btn2d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
