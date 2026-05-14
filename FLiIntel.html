@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.1</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.2</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally -->
     <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
@@ -34492,7 +34492,12 @@ const DiscoveryEngine3D = (function(){
                   (_linkSrc.z + _linkTgt.z) * 0.5
                 );
                 _linkDummy.quaternion.copy(_linkQuat);
-                _linkDummy.scale.set(1, dist, 1);  // radius from geo (0.05); Y stretches to span
+                // 4.2: radius scales 0.04..0.16 from weight (geo radius=0.05;
+                // multiplier 0.8..3.2). Y still stretches to endpoint distance.
+                var w = lp[lpi][2];
+                if (!Number.isFinite(w)) w = 0.5;
+                var radMul = 0.8 + 2.4 * w;
+                _linkDummy.scale.set(radMul, dist, radMul);
                 _linkDummy.updateMatrix();
                 state.linkMesh.setMatrixAt(lpi, _linkDummy.matrix);
               }
@@ -35766,17 +35771,33 @@ const DiscoveryEngine3D = (function(){
     for (var ci = 0; ci < cleanNodes.length; ci++){
       idToCleanIdx[cleanNodes[ci].id] = ci;
     }
+    // Micro-step 4.2: per-pair weight (clamped to [0,1]). recency is a
+    // reasonable proxy for link strength when no explicit weight is set.
     var linkPairs = [];
+    var _wMin = Infinity, _wMax = -Infinity, _wSum = 0;
     for (var li = 0; li < cleanLinks.length; li++){
       var lk = cleanLinks[li];
       var sIdx = idToCleanIdx[lk.source];
       var tIdx = idToCleanIdx[lk.target];
       if (sIdx != null && tIdx != null){
-        linkPairs.push([sIdx, tIdx]);
+        var _wLk = Number(lk.weight);
+        if (!Number.isFinite(_wLk)) _wLk = Number(lk.recency);
+        if (!Number.isFinite(_wLk)) _wLk = 0.5;
+        if (_wLk < 0) _wLk = 0;
+        if (_wLk > 1) _wLk = 1;
+        linkPairs.push([sIdx, tIdx, _wLk]);
+        if (_wLk < _wMin) _wMin = _wLk;
+        if (_wLk > _wMax) _wMax = _wLk;
+        _wSum += _wLk;
       }
     }
     state.linkIndexPairs = linkPairs;
     state.linkCount = linkPairs.length;
+    if (linkPairs.length){
+      console.log('[DiscoveryEngine3D] 4.2 link weights: min=' + _wMin.toFixed(2) + ' max=' + _wMax.toFixed(2) + ' avg=' + (_wSum / linkPairs.length).toFixed(2) + ' over ' + linkPairs.length + ' links');
+    } else {
+      console.log('[DiscoveryEngine3D] 4.2 link weights: 0 links (no weight stats)');
+    }
 
     if (linkPairs.length){
       var linkGeo = new THREE.CylinderGeometry(0.05, 0.05, 1, 6);
