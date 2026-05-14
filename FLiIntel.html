@@ -5458,6 +5458,56 @@ input[type="url"], textarea, select {
 .health-pill.health-warm{background:rgba(212,130,58,.22);color:var(--gold)}
 .health-pill.health-cold{background:rgba(184,68,68,.20);color:#d27474}
 .health-pill.health-unknown{background:rgba(125,118,105,.18);color:var(--t3)}
+/* 7.5: decay panel rows */
+.decay-row{
+  display:grid;
+  grid-template-columns:auto 1fr auto auto;
+  align-items:center;
+  gap:14px;
+  padding:10px 18px;
+  border-bottom:1px solid rgba(125,118,105,.10);
+  cursor:pointer;
+  transition:background 100ms;
+}
+.decay-row:hover{background:rgba(212,130,58,.06)}
+.decay-row .days-pill{
+  background:rgba(196,134,43,.18);color:#c4862b;
+  padding:2px 8px;border-radius:2px;font-weight:700;
+  font-size:10px;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;
+  min-width:48px;text-align:center;
+}
+.decay-row .days-pill.critical{background:rgba(184,68,68,.22);color:#d27474}
+.decay-row .name-block{display:flex;flex-direction:column;gap:2px;min-width:0}
+.decay-row .name-line{
+  font-family:'IBM Plex Sans',sans-serif;
+  color:var(--paper,#b5ad9f);font-weight:600;font-size:13px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.decay-row .meta-line{
+  color:var(--t3);font-size:10px;letter-spacing:.04em;
+  font-family:'IBM Plex Mono',monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.decay-row .last-meeting{
+  color:var(--t3);font-size:10px;
+  font-family:'IBM Plex Sans',sans-serif;
+  max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.decay-row .followup-btn{
+  background:rgba(212,130,58,.14);
+  color:var(--gold,#d4823a);
+  border:1px solid rgba(212,130,58,.4);
+  padding:4px 10px;border-radius:2px;
+  font-family:'IBM Plex Mono',monospace;
+  font-size:9px;font-weight:700;letter-spacing:.12em;
+  cursor:pointer;text-transform:uppercase;
+  transition:background 100ms;
+}
+.decay-row .followup-btn:hover{background:rgba(212,130,58,.26)}
+.decay-row.empty{
+  text-align:center;color:var(--t3);font-size:11px;padding:30px;
+  display:block;font-family:'IBM Plex Mono',monospace;letter-spacing:.06em;
+}
 @media (max-width:1180px){
   .brief-cols{grid-template-columns:repeat(3,1fr)}
 }
@@ -6317,7 +6367,7 @@ input[type="url"], textarea, select {
           </div>
           <div class="brief-cols">
             <div class="brief-col" data-bucket="decay">
-              <div class="brief-col-hdr"><span>DECAY ALERTS</span><span class="brief-count" id="brief-decay-count">0</span></div>
+              <div class="brief-col-hdr" style="cursor:pointer" onclick="if(window.openDecayPanel)window.openDecayPanel()" title="See all contacts going cold"><span>DECAY ALERTS</span><span class="brief-count" id="brief-decay-count">0</span></div>
               <div class="brief-col-list" id="brief-decay-list"><div class="brief-empty">no data</div></div>
             </div>
             <div class="brief-col" data-bucket="stale">
@@ -6868,13 +6918,28 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P7.4</span>
+      <span style="color:var(--gold)" id="de3d-build">P7.5</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="color:var(--t3);font-weight:700">FIND</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK RESULT → FLY-IN</span></div>
       <input id="de3d-search-input" type="text" placeholder="type a name..." spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;background:rgba(7,13,24,.95);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 8px;letter-spacing:.04em;text-transform:none;outline:none">
       <div id="de3d-search-results" style="margin-top:6px;max-height:260px;overflow-y:auto"></div>
+    </div>
+    <!-- Micro-step 7.5: Decay Alert full-list modal -->
+    <div id="decay-panel" style="display:none;position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:24px">
+      <div style="background:var(--bg,#070d18);border:1px solid var(--gold,#d4823a);border-radius:3px;max-width:760px;width:100%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(212,130,58,.18);font-family:'IBM Plex Mono',monospace">
+        <div style="padding:14px 18px 12px;border-bottom:1px solid var(--b2);display:flex;align-items:center;gap:14px;flex-shrink:0">
+          <span style="color:var(--gold,#d4823a);font-weight:700;letter-spacing:.18em;font-size:11px">◉ CONTACTS GOING COLD</span>
+          <span id="decay-panel-count" style="background:rgba(196,134,43,.22);color:#c4862b;padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px;letter-spacing:.06em">0</span>
+          <span style="flex:1"></span>
+          <span style="color:var(--t3);font-size:9px;letter-spacing:.12em;text-transform:uppercase">click row → log follow-up</span>
+          <span onclick="window.closeDecayPanel()" style="color:var(--t3);cursor:pointer;font-size:18px;line-height:1;padding:0 4px" title="Close (ESC)">×</span>
+        </div>
+        <div id="decay-panel-body" style="overflow-y:auto;flex:1;padding:8px 0">
+          <div style="text-align:center;color:var(--t3);padding:30px;font-size:11px;letter-spacing:.06em">loading…</div>
+        </div>
+      </div>
     </div>
     <!-- Micro-step 6.2: timeline bar (bottom-center of canvas) -->
     <div id="de3d-timeline" style="display:none;position:absolute;bottom:14px;left:200px;right:200px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 14px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);user-select:none">
@@ -14540,6 +14605,140 @@ window._computePursuitHealth = function(opp, meetingsArg){
     }
   };
 };
+
+// ── Micro-step 7.5: Decay Alert full-list panel ───────────────────────────
+// Modal overlay listing every contact whose last-touched is ≥30 days. Each
+// row: days-cold pill, name+org, last meeting title/date, one-click "Log
+// Follow-up" button (calls existing _openLogForContact). ESC + backdrop +
+// × button close.
+window.openDecayPanel = function(){
+  var panel = document.getElementById('decay-panel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+  window.renderDecayPanel();
+};
+window.closeDecayPanel = function(){
+  var panel = document.getElementById('decay-panel');
+  if (panel) panel.style.display = 'none';
+};
+window.renderDecayPanel = function(){
+  var body = document.getElementById('decay-panel-body');
+  var countEl = document.getElementById('decay-panel-count');
+  if (!body) return;
+  var nodes_ = (typeof nodes !== 'undefined' && nodes) ? nodes : (window.nodes || []);
+  var mtgs_  = (typeof meetings !== 'undefined' && meetings) ? meetings : (window.meetings || []);
+  var simFn  = (typeof nameSimilarity === 'function') ? nameSimilarity : null;
+  var nowMs = Date.now();
+  var DAY = 86400000;
+  function _ts(m){
+    if (!m) return null;
+    if (m.meta){
+      if (typeof m.meta.ts === 'number') return m.meta.ts;
+      if (m.meta.date){ var t = Date.parse(String(m.meta.date)); if (!isNaN(t)) return t; }
+    }
+    if (typeof m.ts === 'number') return m.ts;
+    return null;
+  }
+  function _names(m){
+    var out = [];
+    if (m && m.meta && Array.isArray(m.meta.attendees))   m.meta.attendees.forEach(function(a){ if(a&&a.name) out.push(a.name); });
+    if (m && m.intel && Array.isArray(m.intel.keyPeople)) m.intel.keyPeople.forEach(function(p){ if(p&&p.name) out.push(p.name); });
+    return out;
+  }
+  var rows = [];
+  if (simFn){
+    var people = nodes_.filter(function(n){ return n && n.type === 'person'; });
+    people.forEach(function(p){
+      var lastTs = null;
+      var lastMtg = null;
+      for (var i = 0; i < mtgs_.length; i++){
+        var m = mtgs_[i];
+        var ts = _ts(m);
+        if (ts == null) continue;
+        var nm = _names(m);
+        for (var k = 0; k < nm.length; k++){
+          try {
+            if (simFn(nm[k], p.name) >= 0.72){
+              if (lastTs == null || ts > lastTs){ lastTs = ts; lastMtg = m; }
+              break;
+            }
+          } catch (e) {}
+        }
+      }
+      if (lastTs == null) return;
+      var days = Math.floor((nowMs - lastTs) / DAY);
+      if (days < 30) return;
+      rows.push({
+        id: p.id,
+        name: p.name || '(unnamed)',
+        org: p.org || p.govOrg || '',
+        role: p.role || '',
+        days: days,
+        lastTs: lastTs,
+        lastMtgTitle: (lastMtg && lastMtg.meta && lastMtg.meta.title) || '',
+        lastMtgId: lastMtg && lastMtg.id
+      });
+    });
+    rows.sort(function(a,b){ return b.days - a.days; });
+  }
+  if (countEl) countEl.textContent = rows.length;
+  if (!rows.length){
+    body.innerHTML = '<div class="decay-row empty">no contacts going cold — clean network</div>';
+    return;
+  }
+  var html = rows.map(function(r){
+    var lastDate = new Date(r.lastTs).toISOString().slice(0,10);
+    var meta = (r.role ? r.role : '') + (r.role && r.org ? ' · ' : '') + (r.org ? r.org : '');
+    var critical = r.days >= 90 ? ' critical' : '';
+    var escName = String(r.name).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    return '<div class="decay-row" data-name="' + escName + '">' +
+             '<span class="days-pill' + critical + '">' + r.days + 'd</span>' +
+             '<div class="name-block">' +
+               '<div class="name-line">' + r.name + '</div>' +
+               '<div class="meta-line">' + (meta || '— no role/org —') + '</div>' +
+             '</div>' +
+             '<div class="last-meeting" title="' + (r.lastMtgTitle || '') + '">last · ' + lastDate + (r.lastMtgTitle ? ' · ' + r.lastMtgTitle.slice(0, 30) : '') + '</div>' +
+             '<button class="followup-btn" data-name="' + escName + '">Log Follow-up</button>' +
+           '</div>';
+  }).join('');
+  body.innerHTML = html;
+  // Wire button clicks
+  body.querySelectorAll('.followup-btn').forEach(function(btn){
+    btn.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var name = this.dataset.name;
+      window.closeDecayPanel();
+      if (typeof window._openLogForContact === 'function') window._openLogForContact(name);
+    });
+  });
+  // Click anywhere on row also triggers follow-up
+  body.querySelectorAll('.decay-row').forEach(function(row){
+    row.addEventListener('click', function(){
+      var name = this.dataset.name;
+      if (!name) return;
+      window.closeDecayPanel();
+      if (typeof window._openLogForContact === 'function') window._openLogForContact(name);
+    });
+  });
+  console.log('[Brief] 7.5 decay panel rendered:', rows.length, 'contacts ≥30d cold');
+};
+
+// ESC + backdrop dismissal (one-time wire)
+(function(){
+  if (window._decayPanelWired) return;
+  window._decayPanelWired = true;
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape'){
+      var panel = document.getElementById('decay-panel');
+      if (panel && panel.style.display !== 'none') window.closeDecayPanel();
+    }
+  });
+  // Backdrop click (only when the click is on the overlay itself, not the card)
+  document.addEventListener('click', function(ev){
+    var panel = document.getElementById('decay-panel');
+    if (panel && ev.target === panel) window.closeDecayPanel();
+  });
+})();
 
 // ── Micro-step 7.3: Account Coverage Score ────────────────────────────────
 // Returns { score (0-100), status, factors } for an org node.
