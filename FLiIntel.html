@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P3.9</span>
+      <span style="color:var(--gold)" id="de3d-build">P3.10</span>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34278,7 +34278,11 @@ const DiscoveryEngine3D = (function(){
     // Orgs occupy worker indices [orgWorkerOffset, orgWorkerOffset+orgInstanceCount).
     orgMesh: null,
     orgInstanceCount: 0,
-    orgWorkerOffset: 0
+    orgWorkerOffset: 0,
+    // Micro-step 3.10: density strip + org-name sprite labels
+    orgStripMesh: null,
+    orgLabels: null,
+    orgCleanRef: null
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34400,8 +34404,22 @@ const DiscoveryEngine3D = (function(){
                 _frameDummy.rotation.set(0, 0, 0);
                 _frameDummy.updateMatrix();
                 state.orgMesh.setMatrixAt(j, _frameDummy.matrix);
+
+                // 3.10: position density strip below the org box
+                if (state.orgStripMesh){
+                  _frameDummy.position.set(x2, y2 - 0.75, z2);
+                  _frameDummy.scale.set(1, 1, 1);
+                  _frameDummy.updateMatrix();
+                  state.orgStripMesh.setMatrixAt(j, _frameDummy.matrix);
+                }
+                // 3.10: position org-name label above the org box
+                if (state.orgLabels && state.orgLabels[j]){
+                  state.orgLabels[j].position.set(x2, y2 + 1.1, z2);
+                  state.orgLabels[j].visible = true;
+                }
               }
               state.orgMesh.instanceMatrix.needsUpdate = true;
+              if (state.orgStripMesh) state.orgStripMesh.instanceMatrix.needsUpdate = true;
             }
 
             const cx = (minX + maxX) * 0.5;
@@ -34916,6 +34934,22 @@ const DiscoveryEngine3D = (function(){
       if (state.orgMesh.material) state.orgMesh.material.dispose();
       state.orgMesh = null;
     }
+    // Micro-step 3.10: dispose prior density strip + org labels
+    if (state.orgStripMesh){
+      if (state.scene) state.scene.remove(state.orgStripMesh);
+      if (state.orgStripMesh.geometry) state.orgStripMesh.geometry.dispose();
+      if (state.orgStripMesh.material) state.orgStripMesh.material.dispose();
+      state.orgStripMesh = null;
+    }
+    if (state.orgLabels){
+      state.orgLabels.forEach(function(sp){
+        if (state.scene) state.scene.remove(sp);
+        if (sp.material.map) sp.material.map.dispose();
+        sp.material.dispose();
+      });
+      state.orgLabels = null;
+    }
+    state.orgCleanRef = null;
     if (ringIdxMap.length){
       const ringGeo = new THREE.TorusGeometry(1.15, 0.04, 6, 24);
       const ringMat = new THREE.MeshBasicMaterial({
@@ -35075,6 +35109,50 @@ const DiscoveryEngine3D = (function(){
       orgMesh.instanceMatrix.needsUpdate = true;
       state.orgMesh = orgMesh;
       if (state.scene) state.scene.add(orgMesh);
+
+      // ── Micro-step 3.10a: density indicator strip (MeshBasicMaterial) ────
+      // Thin horizontal bar at the bottom of each org box. Color lerps from
+      // paper (#b5ad9f) to amber (#d4823a) based on orgDensity[i].
+      // Provides an at-a-glance density readout even when the glow shader
+      // is subtle.
+      var stripGeo = new THREE.BoxGeometry(2.2, 0.08, 1.42);
+      var stripMat = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.90,
+        depthWrite: false
+      });
+      var stripMesh = new THREE.InstancedMesh(stripGeo, stripMat, orgClean.length);
+      stripMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      stripMesh.frustumCulled = false;
+      var paperC = new THREE.Color(0xb5ad9f);
+      var amberC = new THREE.Color(0xd4823a);
+      var tmpC = new THREE.Color();
+      for (var si = 0; si < orgClean.length; si++){
+        tmpC.copy(paperC).lerp(amberC, orgDensity[si]);
+        stripMesh.setColorAt(si, tmpC);
+        dummy4.position.set(0, 0, 0);
+        dummy4.scale.setScalar(0);
+        dummy4.updateMatrix();
+        stripMesh.setMatrixAt(si, dummy4.matrix);
+      }
+      stripMesh.instanceColor.needsUpdate = true;
+      stripMesh.instanceMatrix.needsUpdate = true;
+      state.orgStripMesh = stripMesh;
+      if (state.scene) state.scene.add(stripMesh);
+
+      // ── Micro-step 3.10b: org-name sprite labels ────────────────────────
+      // One sprite per org, positioned above the box. Updated each frame
+      // alongside orgMesh instances. Stored in state.orgLabels[].
+      var orgLabelArr = [];
+      for (var li = 0; li < orgClean.length; li++){
+        var sp = _makeOrgLabelSprite(orgClean[li].name || '?');
+        sp.visible = false;  // hidden until first worker tick places them
+        if (state.scene) state.scene.add(sp);
+        orgLabelArr.push(sp);
+      }
+      state.orgLabels = orgLabelArr;
+      state.orgCleanRef = orgClean;
+      console.log('[DiscoveryEngine3D] 3.10 org labels: ' + orgLabelArr.length + ' sprites + density strips');
     }
 
     // Spawn / reuse worker, send graph.
@@ -35097,6 +35175,40 @@ const DiscoveryEngine3D = (function(){
   function reheat(alpha){
     if (!state.physicsWorker) return;
     state.physicsWorker.postMessage({ type: 'reheat', alpha: alpha });
+  }
+
+  // ── Micro-step 3.10 helper: org-name sprite label ─────────────────────
+  // Creates a THREE.Sprite with a CanvasTexture showing the org name.
+  // Paper-colored text, transparent background, scaled to world units.
+  function _makeOrgLabelSprite(text){
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    var fontSize = 64;
+    ctx.font = fontSize + 'px sans-serif';
+    var tw = ctx.measureText(text).width;
+    var pad = 16;
+    canvas.width = Math.min(tw + pad * 2, 1024);
+    canvas.height = fontSize + pad * 2;
+    ctx.font = fontSize + 'px sans-serif';
+    ctx.fillStyle = '#b5ad9f';  // paper
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, pad, canvas.height / 2);
+    var tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    var mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      sizeAttenuation: true
+    });
+    var sprite = new THREE.Sprite(mat);
+    // Scale: keep aspect ratio, max ~3 world units wide
+    var aspect = canvas.width / canvas.height;
+    var h = 0.55;
+    sprite.scale.set(h * aspect, h, 1);
+    return sprite;
   }
 
   function _buildPlaceholderInstancedMesh(count){
@@ -35402,6 +35514,22 @@ const DiscoveryEngine3D = (function(){
     }
     state.orgInstanceCount = 0;
     state.orgWorkerOffset = 0;
+    // 3.10 dispose: density strip + org labels
+    if (state.orgStripMesh){
+      if (state.scene) state.scene.remove(state.orgStripMesh);
+      if (state.orgStripMesh.geometry) state.orgStripMesh.geometry.dispose();
+      if (state.orgStripMesh.material) state.orgStripMesh.material.dispose();
+      state.orgStripMesh = null;
+    }
+    if (state.orgLabels){
+      state.orgLabels.forEach(function(sp){
+        if (state.scene) state.scene.remove(sp);
+        if (sp.material.map) sp.material.map.dispose();
+        sp.material.dispose();
+      });
+      state.orgLabels = null;
+    }
+    state.orgCleanRef = null;
     if (state.instancedMesh){
       state.instancedMesh.geometry.dispose();
       state.instancedMesh.material.dispose();
