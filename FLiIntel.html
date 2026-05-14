@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P6.10</span>
+      <span style="color:var(--gold)" id="de3d-build">P6.11</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36715,6 +36715,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 6.8 edge materialization wired (pursuit edges hidden until their first supporting meeting; employment edges always visible)');
     console.log('[DiscoveryEngine3D] 6.9 watch-from-start preset wired (▶▶ button = rewind + 16× + play)');
     console.log('[DiscoveryEngine3D] 6.10 loop toggle wired (↻ — when ON, playback wraps to start at end + meetings refire)');
+    console.log('[DiscoveryEngine3D] 6.11 Rhythm-tab sync wired (goIntelById wrapped — clicking any meeting also seeks 3D timeline)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -39122,6 +39123,42 @@ const DiscoveryEngine3D = (function(){
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
+
+// ── Micro-step 6.11: Rhythm-tab sync ──────────────────────────────────────
+// Wrap window.goIntelById (the canonical "open meeting X" handler used by
+// every meeting list in the app, including the Rhythm sacred tab) so that
+// when the operator clicks a meeting AND the 3D engine is active, the
+// timeline seeks to that meeting's date. Single point of integration —
+// no per-list edits required.
+(function(){
+  var _orig = window.goIntelById;
+  function _seek3DToMeeting(id){
+    if (!window.DiscoveryEngine3D || !window.DiscoveryEngine3D.isRunning || !window.DiscoveryEngine3D.isRunning()) return;
+    var mtgs = window.meetings || [];
+    var m = null;
+    for (var i = 0; i < mtgs.length; i++){
+      if (mtgs[i] && mtgs[i].id === id){ m = mtgs[i]; break; }
+    }
+    if (!m) return;
+    // Extract timestamp (same precedence as the engine's _meetingTime)
+    var ts = null;
+    if (m.meta){
+      if (typeof m.meta.ts === 'number') ts = m.meta.ts;
+      else if (m.meta.date){ var t = Date.parse(String(m.meta.date)); if (!isNaN(t)) ts = t; }
+    }
+    if (ts == null && typeof m.ts === 'number') ts = m.ts;
+    if (ts == null && m.createdAt){ var t2 = Date.parse(String(m.createdAt)); if (!isNaN(t2)) ts = t2; }
+    if (ts != null){
+      window.DiscoveryEngine3D.setTimelineDate(ts);
+      console.log('[DiscoveryEngine3D] 6.11 timeline seek →', new Date(ts).toISOString().slice(0,10), '(from meeting click)');
+    }
+  }
+  window.goIntelById = function(id){
+    if (typeof _orig === 'function') _orig.call(this, id);
+    try { _seek3DToMeeting(id); } catch (e) {}
+  };
+  window._seek3DToMeeting = _seek3DToMeeting;  // public exposure for direct calls
+})();
 
 // ── Toggle handler — bridges the existing D3 SVG graph and the new 3D engine ──
 window._toggle3DEngine = function(mode){
