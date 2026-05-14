@@ -6736,13 +6736,19 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.1</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.2</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="color:var(--t3);font-weight:700">FIND</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK RESULT → FLY-IN</span></div>
       <input id="de3d-search-input" type="text" placeholder="type a name..." spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;background:rgba(7,13,24,.95);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 8px;letter-spacing:.04em;text-transform:none;outline:none">
       <div id="de3d-search-results" style="margin-top:6px;max-height:260px;overflow-y:auto"></div>
+    </div>
+    <!-- Micro-step 5.2: hover tooltip (cursor-tracking) -->
+    <div id="de3d-hover-tooltip" style="display:none;position:fixed;z-index:33;background:rgba(7,13,24,.94);border:1px solid var(--b2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:2px;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;max-width:280px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.4);transition:opacity 80ms ease;opacity:0">
+      <div style="display:flex;align-items:center;gap:6px"><span id="de3d-hover-kind" style="font-weight:700;letter-spacing:.16em">KIND</span></div>
+      <div id="de3d-hover-name" style="color:var(--paper,#b5ad9f);text-transform:none;letter-spacing:.04em;font-weight:600;font-size:11px;margin-top:2px">Name</div>
+      <div id="de3d-hover-meta" style="color:var(--t3);text-transform:none;letter-spacing:.04em;font-size:9.5px;margin-top:2px"></div>
     </div>
     <!-- Micro-step 4.5.8: focal mode pill (top-center of canvas) -->
     <div id="de3d-focal-pill" style="display:none;position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:31;background:rgba(7,13,24,.92);border:1px solid var(--gold,#d4823a);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px 6px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper,#b5ad9f);align-items:center;gap:10px;user-select:none;box-shadow:0 4px 18px rgba(212,130,58,.18)">
@@ -36487,6 +36493,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.11 pulseEntity() API ready — DiscoveryEngine3D.pulseEntity(ref, {color, propagate}) fires pulse + radial flows');
     console.log('[DiscoveryEngine3D] 4.12 count badge: PULSES + FLOWS rows live (10Hz update)');
     console.log('[DiscoveryEngine3D] 5.1 hover wired (pointermove raycast ~30Hz; hovered entity scales 1.15x; cursor → pointer)');
+    console.log('[DiscoveryEngine3D] 5.2 hover tooltip wired (kind + name + meta; cursor-tracking with edge flip)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37256,6 +37263,97 @@ const DiscoveryEngine3D = (function(){
     });
   }
 
+  // ── Micro-step 5.2: hover tooltip ──────────────────────────────────────
+  // Updates the floating tooltip element to reflect state.hover. Called
+  // from pointermove (whenever cursor moves) and from hover transitions.
+  // Content varies by kind: person shows org/role; org shows employee
+  // count; opp shows stage/value.
+  function _formatOppValueShort(v){
+    var n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    if (n >= 1e9) return '$' + (n/1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (n >= 1e6) return '$' + (n/1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return '$' + (n/1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return '$' + n.toFixed(0);
+  }
+  function _updateHoverTooltip(){
+    var el = document.getElementById('de3d-hover-tooltip');
+    if (!el) return;
+    var h = state.hover;
+    if (!h){
+      el.style.opacity = '0';
+      el.style.display = 'none';
+      return;
+    }
+    var kEl = document.getElementById('de3d-hover-kind');
+    var nEl = document.getElementById('de3d-hover-name');
+    var mEl = document.getElementById('de3d-hover-meta');
+    var kindLabel = h.kind.toUpperCase();
+    var kindColor = h.kind === 'opp'    ? '#d4823a'
+                  : h.kind === 'org'    ? '#b5ad9f'
+                  : '#7d7669';
+    var name = '(unnamed)';
+    var meta = '';
+    if (h.kind === 'person'){
+      var people = state._cleanNodesRef || [];
+      var p = people[h.instanceId];
+      if (p){
+        name = p.name || '(unnamed)';
+        // Look up full record for richer meta
+        var full = (window.nodes || []).find(function(n){ return String(n.id) === String(p.id); });
+        var parts = [];
+        if (full && full.role) parts.push(full.role);
+        if (full && (full.org || full.govOrg)) parts.push(full.org || full.govOrg);
+        meta = parts.join(' · ');
+      }
+    } else if (h.kind === 'org'){
+      var orgs = state.orgCleanRef || [];
+      var o = orgs[h.instanceId];
+      if (o){
+        name = o.name || '(unnamed)';
+        // Employee count: use CorsairIndex.peopleByOrg substring match
+        if (window.CorsairIndex && window.CorsairIndex.peopleByOrg){
+          var onm = String(o.name || '').toLowerCase().trim();
+          var emp = 0;
+          window.CorsairIndex.peopleByOrg.forEach(function(arr, key){
+            if (key && key.indexOf(onm) !== -1) emp += arr.length;
+          });
+          if (emp > 0) meta = emp + ' employee' + (emp === 1 ? '' : 's');
+        }
+      }
+    } else if (h.kind === 'opp'){
+      var opps = state.oppCleanRef || [];
+      var q = opps[h.instanceId];
+      if (q){
+        name = q.name || '(unnamed)';
+        var partsQ = [];
+        if (q.stage) partsQ.push(String(q.stage).toUpperCase());
+        var fv = _formatOppValueShort(q.value);
+        if (fv) partsQ.push(fv);
+        if (q.solicitationNumber) partsQ.push(String(q.solicitationNumber).slice(0, 20));
+        meta = partsQ.join(' · ');
+      }
+    }
+    if (kEl){ kEl.textContent = kindLabel; kEl.style.color = kindColor; }
+    if (nEl) nEl.textContent = name;
+    if (mEl) mEl.textContent = meta || ' ';  // non-breaking space to keep layout
+    el.style.display = 'block';
+    el.style.opacity = '1';
+    // Position: 16px offset from cursor, flip to left/above near edges
+    var pp = state._lastPointerPos || { x: 0, y: 0 };
+    var pad = 16;
+    var w = el.offsetWidth  || 200;
+    var h_ = el.offsetHeight || 60;
+    var x = pp.x + pad;
+    var y = pp.y + pad;
+    if (x + w > window.innerWidth)  x = pp.x - w - pad;
+    if (y + h_ > window.innerHeight) y = pp.y - h_ - pad;
+    if (x < 4) x = 4;
+    if (y < 4) y = 4;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+  }
+
   // ── Micro-step 4.5.11: entity search ──────────────────────────────────
   // Substring-match query against name fields of cleanNodes / orgClean /
   // oppClean. Renders top results into the #de3d-search-results dropdown
@@ -37692,10 +37790,13 @@ const DiscoveryEngine3D = (function(){
         if (prev) state.hover = null;
         state.canvas.style.cursor = '';
       }
+      // 5.2: update tooltip every move (content + position)
+      _updateHoverTooltip();
     };
     state.onPointerLeave = function(){
       if (state.hover) state.hover = null;
       if (state.canvas) state.canvas.style.cursor = '';
+      _updateHoverTooltip();
     };
     state.canvas.addEventListener('pointermove',  state.onPointerMove);
     state.canvas.addEventListener('pointerleave', state.onPointerLeave);
@@ -38255,6 +38356,8 @@ window._toggle3DEngine = function(mode){
     if (fpsHud) fpsHud.style.display = 'none';
     if (countBadge) countBadge.style.display = 'none';
     if (searchPanel) searchPanel.style.display = 'none';
+    var hoverTip = document.getElementById('de3d-hover-tooltip');
+    if (hoverTip){ hoverTip.style.display = 'none'; hoverTip.style.opacity = '0'; }
     if (btn3d){ btn3d.classList.remove('active'); }
     if (btn2d){ btn2d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
