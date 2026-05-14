@@ -6714,16 +6714,19 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.7</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.5</span>
     </div>
-    <!-- Micro-step 3.20: persistent count badge — live entity tally -->
-    <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7">
-      <div style="color:var(--t3);margin-bottom:4px;font-weight:700">ENTITIES</div>
-      <div><span style="color:var(--t3);display:inline-block;width:62px">PEOPLE</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-people">0</span></div>
-      <div><span style="color:var(--t3);display:inline-block;width:62px">ORGS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-orgs">0</span></div>
-      <div><span style="color:var(--t3);display:inline-block;width:62px">OPPS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-opps">0</span></div>
-      <div><span style="color:var(--t3);display:inline-block;width:62px">HULLS</span><span style="color:var(--gold)" id="de3d-cb-hulls">0</span></div>
-      <div><span style="color:var(--t3);display:inline-block;width:62px">PULSES</span><span style="color:var(--gold)" id="de3d-cb-pulses">0</span></div>
+    <!-- Micro-step 3.20: persistent count badge — live entity tally
+         Micro-step 4.5.5: rows are clickable layer toggles. -->
+    <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);line-height:1.7;user-select:none">
+      <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>ENTITIES</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK TO TOGGLE</span></div>
+      <div class="de3d-layer-row" data-layer="people" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">PEOPLE</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-people">0</span></div>
+      <div class="de3d-layer-row" data-layer="orgs" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">ORGS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-orgs">0</span></div>
+      <div class="de3d-layer-row" data-layer="opps" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">OPPS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-opps">0</span></div>
+      <div class="de3d-layer-row" data-layer="halos" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">HALOS</span><span style="color:var(--gold)" id="de3d-cb-hulls">0</span></div>
+      <div class="de3d-layer-row" data-layer="links" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LINKS</span><span style="color:var(--gold)" id="de3d-cb-links">0</span></div>
+      <div class="de3d-layer-row" data-layer="labels" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LABELS</span><span style="color:var(--gold)" id="de3d-cb-labels">on</span></div>
+      <div style="margin-top:4px"><span style="color:var(--t3);display:inline-block;width:62px">PULSES</span><span style="color:var(--gold)" id="de3d-cb-pulses">0</span></div>
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
@@ -34330,7 +34333,16 @@ const DiscoveryEngine3D = (function(){
     // per-frame orient + scale from worker positions.
     linkMesh: null,
     linkIndexPairs: null,
-    linkCount: 0
+    linkCount: 0,
+    // Micro-step 4.5.5: layer visibility flags (operator toggles)
+    layerVisible: {
+      people: true,
+      orgs:   true,
+      opps:   true,
+      halos:  true,
+      links:  true,
+      labels: true
+    }
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34732,11 +34744,13 @@ const DiscoveryEngine3D = (function(){
       var cbOrgs   = document.getElementById('de3d-cb-orgs');
       var cbOpps   = document.getElementById('de3d-cb-opps');
       var cbHulls  = document.getElementById('de3d-cb-hulls');
+      var cbLinks  = document.getElementById('de3d-cb-links');
       var cbPulses = document.getElementById('de3d-cb-pulses');
       if (cbPeople) cbPeople.textContent = (state.instanceCount | 0);
       if (cbOrgs)   cbOrgs.textContent   = (state.orgInstanceCount | 0);
       if (cbOpps)   cbOpps.textContent   = (state.oppInstanceCount | 0);
       if (cbHulls)  cbHulls.textContent  = (state.pursuitHullGroup ? state.pursuitHullGroup.children.length : 0);
+      if (cbLinks)  cbLinks.textContent  = (state.linkCount | 0);
       if (cbPulses){
         var activePulses = 0;
         if (state.signalPulseGeo){
@@ -36084,6 +36098,55 @@ const DiscoveryEngine3D = (function(){
     return specs;
   }
 
+  // ── Micro-step 4.5.5: apply layer visibility flags to scene meshes ────
+  // Called whenever state.layerVisible changes. Flips .visible on the
+  // relevant InstancedMesh / Group / Sprite[] for each layer. Cheap to
+  // call; just sets boolean flags.
+  function _applyLayerVisibility(){
+    var lv = state.layerVisible || {};
+    // People: spheres + all three ring meshes
+    if (state.instancedMesh)  state.instancedMesh.visible  = !!lv.people;
+    if (state.ringMesh)       state.ringMesh.visible       = !!lv.people;
+    if (state.teamRingMesh)   state.teamRingMesh.visible   = !!lv.people;
+    if (state.paperRingMesh)  state.paperRingMesh.visible  = !!lv.people;
+    // Orgs: box mesh + density strip
+    if (state.orgMesh)        state.orgMesh.visible        = !!lv.orgs;
+    if (state.orgStripMesh)   state.orgStripMesh.visible   = !!lv.orgs;
+    // Opps: hex prisms
+    if (state.oppMesh)        state.oppMesh.visible        = !!lv.opps;
+    // Halos: pursuit hull group
+    if (state.pursuitHullGroup) state.pursuitHullGroup.visible = !!lv.halos;
+    // Links: link mesh
+    if (state.linkMesh)       state.linkMesh.visible       = !!lv.links;
+    // Labels: all sprite arrays
+    var spVisible = !!lv.labels;
+    if (state.orgLabels)         state.orgLabels.forEach(function(sp){ sp.visible = spVisible; });
+    if (state.oppLabels)         state.oppLabels.forEach(function(sp){ sp.visible = spVisible; });
+    if (state.pursuitNameSprites) state.pursuitNameSprites.forEach(function(sp){ sp.visible = spVisible; });
+  }
+
+  // Public layer toggle (called by count-badge click handler, also exposed
+  // on the engine API so external code or console can flip layers).
+  function setLayer(layerName, visible){
+    if (!state.layerVisible) return;
+    if (!(layerName in state.layerVisible)) return;
+    state.layerVisible[layerName] = !!visible;
+    _applyLayerVisibility();
+    // Update the row's visual state if the badge is present
+    var row = document.querySelector('#de3d-count-badge .de3d-layer-row[data-layer="' + layerName + '"]');
+    if (row){
+      row.style.opacity = visible ? '1' : '0.35';
+      row.style.textDecoration = visible ? 'none' : 'line-through';
+    }
+    var labelsCount = document.getElementById('de3d-cb-labels');
+    if (labelsCount && layerName === 'labels') labelsCount.textContent = visible ? 'on' : 'off';
+    console.log('[DiscoveryEngine3D] 4.5.5 layer toggle:', layerName, '=', visible);
+  }
+  function toggleLayer(layerName){
+    if (!state.layerVisible || !(layerName in state.layerVisible)) return;
+    setLayer(layerName, !state.layerVisible[layerName]);
+  }
+
   // ── Micro-step 4.5.7: resolve hit → entity → open Inspector ───────────
   // Translates a (kind, instanceId) from the raycaster hit into the right
   // Inspector call. The 3D engine carries only stripped representations
@@ -36378,6 +36441,7 @@ const DiscoveryEngine3D = (function(){
     state.canvas.addEventListener('pointerdown', state.onPointerDown);
     state.canvas.addEventListener('pointerup',   state.onPointerUp);
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
+    console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
 
     // Clear any prior error pins on the HUD
     const fpsEl0 = document.getElementById('de3d-fps');
@@ -36628,7 +36692,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -36668,7 +36732,22 @@ window._toggle3DEngine = function(mode){
     };
     setTimeout(_tryLoad, 100);
     if (fpsHud) fpsHud.style.display = 'flex';
-    if (countBadge) countBadge.style.display = 'block';
+    if (countBadge){
+      countBadge.style.display = 'block';
+      // Micro-step 4.5.5: wire layer-row clicks (idempotent — dataset flag)
+      if (countBadge.dataset.layersWired !== '1'){
+        countBadge.dataset.layersWired = '1';
+        var rows = countBadge.querySelectorAll('.de3d-layer-row');
+        rows.forEach(function(row){
+          row.addEventListener('click', function(){
+            var L = row.dataset.layer;
+            if (L && window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.toggleLayer === 'function'){
+              window.DiscoveryEngine3D.toggleLayer(L);
+            }
+          });
+        });
+      }
+    }
     if (btn2d){ btn2d.classList.remove('active'); }
     if (btn3d){ btn3d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '3d'); } catch(e){}
