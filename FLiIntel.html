@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.9</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.10</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36458,6 +36458,7 @@ const DiscoveryEngine3D = (function(){
     if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.7 link shader: Fresnel side-glow ready (centerAlpha=0.35 rimAlpha=0.88 rimPower=1.4 glowBoost=0.55)');
     if (linkPairs.length) console.log('[DiscoveryEngine3D] 4.8 link LOD twin: LineSegments fallback ready (switches at camDist/radius 2.5↔3.5)');
     console.log('[DiscoveryEngine3D] 4.9 signal flow infrastructure ready (700ms src→tgt lerp; emitFlow API in 4.10)');
+    console.log('[DiscoveryEngine3D] 4.10 emitFlow() API ready — DiscoveryEngine3D.emitFlow(source, target, colorHex?) accepts worker idx, entity id, or {kind,instanceId}');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37907,6 +37908,71 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
+  // ── Micro-step 4.10: resolve flexible entity ref → worker index ───────
+  // Accepts:
+  //   number             → already a worker index
+  //   {kind, instanceId} → convert via the right offset
+  //   string id          → search cleanRefs (person, opp, org) in order
+  // Returns worker index or -1 if not found.
+  function _resolveEntityToWorkerIdx(ref){
+    if (typeof ref === 'number') return ref;
+    if (ref && typeof ref === 'object' && typeof ref.instanceId === 'number'){
+      if (ref.kind === 'person') return ref.instanceId;
+      if (ref.kind === 'org')    return (state.orgWorkerOffset | 0) + ref.instanceId;
+      if (ref.kind === 'opp')    return (state.oppWorkerOffset | 0) + ref.instanceId;
+    }
+    if (typeof ref === 'string'){
+      var s = String(ref);
+      var people = state._cleanNodesRef || [];
+      for (var i = 0; i < people.length; i++){
+        if (String(people[i].id) === s) return i;
+      }
+      var orgs = state.orgCleanRef || [];
+      for (var j = 0; j < orgs.length; j++){
+        if (String(orgs[j].id) === s) return (state.orgWorkerOffset | 0) + j;
+      }
+      var oppPrefix = s.indexOf('opp:') === 0 ? s : ('opp:' + s);
+      var opps = state.oppCleanRef || [];
+      for (var k = 0; k < opps.length; k++){
+        if (String(opps[k].id) === oppPrefix || String(opps[k].id) === s) return (state.oppWorkerOffset | 0) + k;
+      }
+    }
+    return -1;
+  }
+
+  // ── Micro-step 4.10: public emitFlow(source, target, color?) ──────────
+  // Fires a flow particle that travels from source entity to target entity
+  // over 700ms. source/target can be worker index (number), entity ID
+  // (string), or {kind, instanceId}. Returns the slot index used, or -1.
+  //
+  // Example:
+  //   DiscoveryEngine3D.emitFlow({kind:'person', instanceId:0},
+  //                              {kind:'opp',    instanceId:0});
+  //   DiscoveryEngine3D.emitFlow('123', 'opp:456', 0x3a8a5c);
+  function emitFlow(source, target, colorHex){
+    var srcW = _resolveEntityToWorkerIdx(source);
+    var tgtW = _resolveEntityToWorkerIdx(target);
+    if (srcW < 0 || tgtW < 0){
+      console.warn('[DiscoveryEngine3D] 4.10 emitFlow: unresolved entity', { source: source, target: target, srcW: srcW, tgtW: tgtW });
+      return -1;
+    }
+    var pos = state.physicsPositions;
+    if (!pos){
+      console.warn('[DiscoveryEngine3D] 4.10 emitFlow: no worker positions yet');
+      return -1;
+    }
+    var total = (pos.length / 3) | 0;
+    if (srcW >= total || tgtW >= total){
+      console.warn('[DiscoveryEngine3D] 4.10 emitFlow: worker idx out of range', srcW, tgtW, 'of', total);
+      return -1;
+    }
+    return _emitFlow(
+      pos[srcW*3+0], pos[srcW*3+1], pos[srcW*3+2],
+      pos[tgtW*3+0], pos[tgtW*3+1], pos[tgtW*3+2],
+      colorHex
+    );
+  }
+
   // ── Micro-step 4.9: internal flow emit (raw xyz endpoints) ─────────────
   // Allocates a slot in flow mode: stores source + target xyz, sets the
   // flow flag, kicks animation. The pulse decay loop lerps position from
@@ -37947,7 +38013,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, _emitFlow, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, emitFlow, _emitFlow, setLayer, toggleLayer, setLabelDistance, setFilter, enterFocal, exitFocal, _performSearch, saveView, deleteView, applyView, applyViewById, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
