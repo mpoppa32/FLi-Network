@@ -6714,7 +6714,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.8</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.8b</span>
     </div>
     <!-- Micro-step 4.5.8: focal mode pill (top-center of canvas) -->
     <div id="de3d-focal-pill" style="display:none;position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:31;background:rgba(7,13,24,.92);border:1px solid var(--gold,#d4823a);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px 6px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper,#b5ad9f);align-items:center;gap:10px;user-select:none;box-shadow:0 4px 18px rgba(212,130,58,.18)">
@@ -36800,27 +36800,48 @@ const DiscoveryEngine3D = (function(){
     try {
       if (kind === 'person'){
         var cn = (state._cleanNodesRef || [])[instanceId];
-        if (!cn) return;
+        if (!cn){ console.warn('[DiscoveryEngine3D] 4.5.7 person dispatch: no cleanNode at index', instanceId); return; }
         var full = (window.nodes || []).find(function(n){ return String(n.id) === String(cn.id); });
-        if (full && typeof window.openNetPanel === 'function'){
-          console.log('[DiscoveryEngine3D] 4.5.7 click → person:', full.name);
+        if (!full) full = cn;  // fallback to stripped record
+        if (typeof window.openNetPanel === 'function'){
+          console.log('[DiscoveryEngine3D] 4.5.7 click → person:', full.name, '(id=' + full.id + ')');
           window.openNetPanel(full);
+        } else {
+          console.warn('[DiscoveryEngine3D] 4.5.7 openNetPanel not on window');
         }
       } else if (kind === 'org'){
         var oc = (state.orgCleanRef || [])[instanceId];
-        if (!oc) return;
+        if (!oc){ console.warn('[DiscoveryEngine3D] 4.5.7 org dispatch: no orgClean at index', instanceId, '— orgCleanRef.length=' + (state.orgCleanRef ? state.orgCleanRef.length : 'null')); return; }
         var fullOrg = (window.nodes || []).find(function(n){ return String(n.id) === String(oc.id); });
-        if (fullOrg && typeof window.openNetPanel === 'function'){
-          console.log('[DiscoveryEngine3D] 4.5.7 click → org:', fullOrg.name);
+        if (!fullOrg){
+          // 4.5.8b fallback: id mismatch between cleanRef and window.nodes.
+          // Synthesize a minimal record so openNetPanel can render something.
+          console.warn('[DiscoveryEngine3D] 4.5.7 org id "' + oc.id + '" not found in window.nodes (' + (window.nodes||[]).length + ' nodes); using stripped cleanRef');
+          fullOrg = {
+            id: oc.id,
+            name: oc.name,
+            type: 'company',
+            priority: oc.priority || 2,
+            role: '',
+            org: '',
+            notes: ''
+          };
+        }
+        if (typeof window.openNetPanel === 'function'){
+          console.log('[DiscoveryEngine3D] 4.5.7 click → org:', fullOrg.name, '(id=' + fullOrg.id + ', type=' + fullOrg.type + ')');
           window.openNetPanel(fullOrg);
+        } else {
+          console.warn('[DiscoveryEngine3D] 4.5.7 openNetPanel not on window');
         }
       } else if (kind === 'opp'){
         var op = (state.oppCleanRef || [])[instanceId];
-        if (!op) return;
+        if (!op){ console.warn('[DiscoveryEngine3D] 4.5.7 opp dispatch: no oppClean at index', instanceId); return; }
         var rawId = String(op.id).replace(/^opp:/, '');
         if (typeof window.selectOpp === 'function'){
-          console.log('[DiscoveryEngine3D] 4.5.7 click → opp:', op.name);
+          console.log('[DiscoveryEngine3D] 4.5.7 click → opp:', op.name, '(rawId=' + rawId + ')');
           window.selectOpp(rawId);
+        } else {
+          console.warn('[DiscoveryEngine3D] 4.5.7 selectOpp not on window');
         }
       }
     } catch (e) {
@@ -37084,6 +37105,7 @@ const DiscoveryEngine3D = (function(){
         if (state.focal) exitFocal();
         return;
       }
+      console.log('[DiscoveryEngine3D] 4.5.7 hit:', bestHit.kind, '#' + bestHit.instanceId, '(dist=' + bestHit.dist.toFixed(1) + ')');
       // 4.5.8: double-click detection (350ms, same entity) → focal mode
       var now = ev.timeStamp || ((typeof performance !== 'undefined') ? performance.now() : Date.now());
       var isDouble = (now - state._lastClickTs < 350)
