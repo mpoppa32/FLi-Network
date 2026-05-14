@@ -5387,8 +5387,8 @@ input[type="url"], textarea, select {
 .brief-card-header .brief-date{color:var(--gold);font-weight:700}
 .brief-cols{
   display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:12px;
+  grid-template-columns:repeat(5,1fr);
+  gap:10px;
 }
 .brief-col{
   background:rgba(125,118,105,.04);
@@ -5410,6 +5410,7 @@ input[type="url"], textarea, select {
 .brief-col[data-bucket="stale"] .brief-col-hdr{color:#b86b2a}
 .brief-col[data-bucket="upcoming"] .brief-col-hdr{color:var(--gold)}
 .brief-col[data-bucket="commit"]   .brief-col-hdr{color:var(--bone)}
+.brief-col[data-bucket="coverage"] .brief-col-hdr{color:#d27474}
 .brief-count{
   background:rgba(212,130,58,.18);color:var(--gold);
   padding:1px 6px;border-radius:8px;font-weight:700;
@@ -5418,6 +5419,7 @@ input[type="url"], textarea, select {
 .brief-col[data-bucket="decay"] .brief-count{background:rgba(196,134,43,.18);color:#c4862b}
 .brief-col[data-bucket="stale"] .brief-count{background:rgba(184,107,42,.18);color:#b86b2a}
 .brief-col[data-bucket="commit"] .brief-count{background:rgba(125,118,105,.20);color:var(--bone)}
+.brief-col[data-bucket="coverage"] .brief-count{background:rgba(210,116,116,.18);color:#d27474}
 .brief-col-list{
   font-family:'IBM Plex Sans',sans-serif;
   font-size:11px;color:var(--paper,#b5ad9f);
@@ -5456,10 +5458,13 @@ input[type="url"], textarea, select {
 .health-pill.health-warm{background:rgba(212,130,58,.22);color:var(--gold)}
 .health-pill.health-cold{background:rgba(184,68,68,.20);color:#d27474}
 .health-pill.health-unknown{background:rgba(125,118,105,.18);color:var(--t3)}
-@media (max-width:900px){
+@media (max-width:1180px){
+  .brief-cols{grid-template-columns:repeat(3,1fr)}
+}
+@media (max-width:780px){
   .brief-cols{grid-template-columns:repeat(2,1fr)}
 }
-@media (max-width:560px){
+@media (max-width:520px){
   .brief-cols{grid-template-columns:1fr}
 }
 .cap-eyebrow {
@@ -6327,6 +6332,11 @@ input[type="url"], textarea, select {
               <div class="brief-col-hdr"><span>COMMITMENTS DUE</span><span class="brief-count" id="brief-commit-count">0</span></div>
               <div class="brief-col-list" id="brief-commit-list"><div class="brief-empty">no data</div></div>
             </div>
+            <!-- 7.3: Weak Coverage column -->
+            <div class="brief-col" data-bucket="coverage">
+              <div class="brief-col-hdr"><span>WEAK COVERAGE</span><span class="brief-count" id="brief-coverage-count">0</span></div>
+              <div class="brief-col-list" id="brief-coverage-list"><div class="brief-empty">no data</div></div>
+            </div>
           </div>
         </div>
         <!-- ── CAPTURE HEADER ──────────────────────────────────── -->
@@ -6858,7 +6868,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P7.2</span>
+      <span style="color:var(--gold)" id="de3d-build">P7.3</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -14529,6 +14539,103 @@ window._computePursuitHealth = function(opp, meetingsArg){
   };
 };
 
+// ── Micro-step 7.3: Account Coverage Score ────────────────────────────────
+// Returns { score (0-100), status, factors } for an org node.
+// Coverage = how well your relational network covers an account that you
+// are actively pursuing. Only meaningful for orgs with ≥1 active opp.
+//
+// Score = round(100 × min(1, engagedRecent / max(1, oppCount × 2)))
+//   engagedRecent : people whose .org contains this org's name AND who have
+//                   been touched (via meeting attendance) within 60 days
+//   oppCount      : active-stage opps tied to this org (heuristic: name
+//                   substring on opp.agency / opp.customer / opp.name)
+//   ×2 multiplier : rough expectation of 2 engaged contacts per active opp
+//
+// Status: ≥70 STRONG · 40-69 PARTIAL · 1-39 SPARSE · 0 DARK (org pursued
+// but no engaged contacts — high-priority alert)
+window._computeAccountCoverage = function(org, dataArg){
+  var noScore = { score: 0, status: 'unknown', factors: { oppCount: 0 } };
+  if (!org) return noScore;
+  var orgName = String(org.name || '').toLowerCase().trim();
+  if (!orgName) return noScore;
+  var nowMs = Date.now();
+  var DAY = 86400000;
+  dataArg = dataArg || {};
+  var nodes_  = dataArg.nodes    || (typeof nodes !== 'undefined' && nodes) || window.nodes || [];
+  var mtgs_   = dataArg.meetings || (typeof meetings !== 'undefined' && meetings) || window.meetings || [];
+  var opps_   = dataArg.opps     || (typeof opportunities !== 'undefined' && opportunities) || window.opportunities || [];
+  var simFn   = (typeof nameSimilarity === 'function') ? nameSimilarity : null;
+  function _ts(m){
+    if (!m) return null;
+    if (m.meta){
+      if (typeof m.meta.ts === 'number') return m.meta.ts;
+      if (m.meta.date){ var t = Date.parse(String(m.meta.date)); if (!isNaN(t)) return t; }
+    }
+    if (typeof m.ts === 'number') return m.ts;
+    return null;
+  }
+  function _names(m){
+    var out = [];
+    if (m && m.meta && Array.isArray(m.meta.attendees))   m.meta.attendees.forEach(function(a){ if(a&&a.name) out.push(a.name); });
+    if (m && m.intel && Array.isArray(m.intel.keyPeople)) m.intel.keyPeople.forEach(function(p){ if(p&&p.name) out.push(p.name); });
+    return out;
+  }
+  // ─ People at this org ─────────────────────────────────────────────────
+  var peopleAt = [];
+  for (var ni = 0; ni < nodes_.length; ni++){
+    var n = nodes_[ni];
+    if (!n || n.type !== 'person') continue;
+    var po = String((n.org || n.govOrg) || '').toLowerCase().trim();
+    if (po && po.indexOf(orgName) !== -1) peopleAt.push(n);
+  }
+  // ─ Active opps at this org ────────────────────────────────────────────
+  var STAGE_ACTIVE = { proposal:1, negotiation:1, submitted:1, award:1, engaged:1, rfp:1, awareness:1, tracking:1 };
+  var oppCount = 0;
+  for (var oi = 0; oi < opps_.length; oi++){
+    var o = opps_[oi];
+    if (!o) continue;
+    var stg = String(o.stage || '').toLowerCase();
+    if (!STAGE_ACTIVE[stg]) continue;
+    var oTarget = String((o.agency || o.customer || o.name || '')).toLowerCase();
+    if (oTarget.indexOf(orgName) !== -1) oppCount++;
+  }
+  if (oppCount === 0) return { score: 0, status: 'unknown', factors: { peopleAtOrg: peopleAt.length, oppCount: 0 } };
+  // ─ Recently-engaged contacts at this org (last touch ≤ 60 days) ───────
+  var horizon = nowMs - 60 * DAY;
+  var engagedRecent = 0;
+  if (simFn){
+    for (var pi = 0; pi < peopleAt.length; pi++){
+      var p = peopleAt[pi];
+      var lastTs = null;
+      for (var mi = 0; mi < mtgs_.length; mi++){
+        var m = mtgs_[mi];
+        var ts = _ts(m);
+        if (ts == null) continue;
+        var names = _names(m);
+        for (var k = 0; k < names.length; k++){
+          try { if (simFn(names[k], p.name) >= 0.72){ if (lastTs == null || ts > lastTs) lastTs = ts; break; } } catch (e) {}
+        }
+      }
+      if (lastTs != null && lastTs >= horizon) engagedRecent++;
+    }
+  }
+  var ratio = Math.min(1, engagedRecent / Math.max(1, oppCount * 2));
+  var score = Math.round(100 * ratio);
+  var status = score >= 70 ? 'strong'
+             : score >= 40 ? 'partial'
+             : score >= 1  ? 'sparse'
+             : 'dark';
+  return {
+    score: score,
+    status: status,
+    factors: {
+      peopleAtOrg: peopleAt.length,
+      engagedRecent: engagedRecent,
+      oppCount: oppCount
+    }
+  };
+};
+
 // ── Micro-step 7.1: Daily Brief Card render ───────────────────────────────
 // Pulls from in-memory workspace data (no new external calls) and surfaces
 // the four operator priorities at the top of the Log Meeting screen.
@@ -14680,6 +14787,29 @@ function renderDailyBrief(){
   }
   commitDue.sort(function(a,b){ return a.days - b.days; });
 
+  // ─── 5. Weak coverage: pursued orgs with low engaged-contact ratio ───
+  // (7.3) Surfaces orgs that have active opps but <40% coverage. Sorted
+  // by score ascending (worst first) so DARK orgs surface above SPARSE.
+  var coverage = [];
+  if (typeof window._computeAccountCoverage === 'function'){
+    var orgsAll = nodes_.filter(function(n){ return n && n.type === 'company'; });
+    for (var ci2 = 0; ci2 < orgsAll.length; ci2++){
+      var org = orgsAll[ci2];
+      var cov = window._computeAccountCoverage(org, { nodes: nodes_, meetings: mtgs_, opps: opps_ });
+      // Only surface orgs that ARE being pursued (oppCount > 0) AND have weak coverage
+      if (cov.factors.oppCount > 0 && cov.score < 40){
+        coverage.push({
+          id: org.id,
+          name: org.name || '(unnamed)',
+          score: cov.score,
+          status: cov.status,
+          factors: cov.factors
+        });
+      }
+    }
+    coverage.sort(function(a,b){ return a.score - b.score; });  // worst first
+  }
+
   // Render helpers
   function _renderCol(listId, countId, items, formatter){
     var listEl  = document.getElementById(listId);
@@ -14720,7 +14850,16 @@ function renderDailyBrief(){
            '<span class="brief-item-title">' + c.title.slice(0, 60) + ownerStr + '</span>' +
            '<span class="brief-item-meta">' + when + '</span></div>';
   });
-  console.log('[Brief] 7.1 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length);
+  // 7.3: Weak coverage
+  _renderCol('brief-coverage-list', 'brief-coverage-count', coverage, function(c){
+    var pillKlass = c.status === 'dark' ? 'health-cold' : c.status === 'sparse' ? 'health-cold' : 'health-warm';
+    var pillTxt = c.status === 'dark' ? 'DARK' : String(c.score);
+    var pill = '<span class="health-pill ' + pillKlass + '" title="' + c.factors.engagedRecent + '/' + (c.factors.oppCount*2) + ' coverage · ' + c.factors.peopleAtOrg + ' contacts · ' + c.factors.oppCount + ' opps">' + pillTxt + '</span>';
+    return '<div class="brief-item">' +
+           '<span class="brief-item-title">' + pill + c.name + '</span>' +
+           '<span class="brief-item-meta">' + c.factors.oppCount + ' opp' + (c.factors.oppCount===1?'':'s') + '</span></div>';
+  });
+  console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length);
 }
 window.renderDailyBrief = renderDailyBrief;
 
