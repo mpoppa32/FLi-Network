@@ -6714,11 +6714,15 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P4.5.1</span>
+      <span style="color:var(--gold)" id="de3d-build">P4.5.6</span>
     </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
     <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);line-height:1.7;user-select:none">
+      <!-- Micro-step 4.5.6: filter chips (operator scope controls) -->
+      <div style="color:var(--t3);margin-bottom:4px;font-weight:700">FILTERS</div>
+      <div style="margin-bottom:3px"><span style="color:var(--t3);display:inline-block;width:62px">STAGE</span><select id="de3d-flt-stage" style="background:rgba(7,13,24,.9);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;letter-spacing:.1em;text-transform:uppercase"><option value="all">ALL</option><option value="active">ACTIVE</option><option value="upcoming">UPCOMING</option><option value="won">WON</option><option value="lost">LOST</option></select></div>
+      <div style="margin-bottom:6px"><span style="color:var(--t3);display:inline-block;width:62px">TIER</span><select id="de3d-flt-tier" style="background:rgba(7,13,24,.9);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;letter-spacing:.1em;text-transform:uppercase"><option value="all">ALL</option><option value="1">T1</option><option value="2">T2</option><option value="3">T3</option></select></div>
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>ENTITIES</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK TO TOGGLE</span></div>
       <div class="de3d-layer-row" data-layer="people" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">PEOPLE</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-people">0</span></div>
       <div class="de3d-layer-row" data-layer="orgs" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">ORGS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-orgs">0</span></div>
@@ -34473,7 +34477,13 @@ const DiscoveryEngine3D = (function(){
     // Atlas-scale cluster (~24 people + 50 orgs in ~15-unit radius). At
     // larger workspaces operators can raise this via setLabelDistance().
     labelLodDistance: 25,
-    _labelLodTick: 0
+    _labelLodTick: 0,
+    // Micro-step 4.5.6: operator filters. Currently scoping opps only —
+    // people and orgs don't have the same density problem at Atlas scale.
+    // 'stage' values: all | active | upcoming | won | lost
+    // 'tier'  values: all | 1 | 2 | 3
+    filter: { stage: 'all', tier: 'all' },
+    filterPass: { opps: null }
   };
 
   // Sample FPS over a rolling 30-frame window
@@ -34703,7 +34713,9 @@ const DiscoveryEngine3D = (function(){
                 if (y3 < minY) minY = y3; if (y3 > maxY) maxY = y3;
                 if (z3 < minZ) minZ = z3; if (z3 > maxZ) maxZ = z3;
                 _frameDummy.position.set(x3, y3, z3);
-                _frameDummy.scale.set(1, 1, 1);
+                // 4.5.6: filter pass — hidden if filter rejects this opp
+                var oppPass = !state.filterPass || !state.filterPass.opps || state.filterPass.opps[k] !== false;
+                _frameDummy.scale.set(oppPass ? 1 : 0, oppPass ? 1 : 0, oppPass ? 1 : 0);
                 _frameDummy.rotation.set(0, 0, 0);
                 _frameDummy.updateMatrix();
                 state.oppMesh.setMatrixAt(k, _frameDummy.matrix);
@@ -34877,12 +34889,14 @@ const DiscoveryEngine3D = (function(){
       var thr = (state.labelLodDistance | 0) || 25;
       var thr2 = thr * thr;  // squared distance, avoid sqrt
       var camPos = state.camera.position;
-      var _applyLod = function(spriteArr){
+      var _applyLod = function(spriteArr, passArr){
         if (!spriteArr) return;
         for (var i = 0; i < spriteArr.length; i++){
           var sp = spriteArr[i];
           if (!sp) continue;
           if (!labelsOn){ sp.visible = false; continue; }
+          // 4.5.6: respect filter pass (if provided)
+          if (passArr && passArr[i] === false){ sp.visible = false; continue; }
           var dx = sp.position.x - camPos.x;
           var dy = sp.position.y - camPos.y;
           var dz = sp.position.z - camPos.z;
@@ -34891,7 +34905,7 @@ const DiscoveryEngine3D = (function(){
         }
       };
       _applyLod(state.orgLabels);
-      _applyLod(state.oppLabels);
+      _applyLod(state.oppLabels, state.filterPass && state.filterPass.opps);
       _applyLod(state.pursuitNameSprites);
     }
 
@@ -36015,6 +36029,9 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.3 directionality: 3:1 taper geometry (radiusTop=0.025, radiusBottom=0.075)');
     console.log('[DiscoveryEngine3D] 4.5 employment edges: ' + _empCount + ' person→org works-at links');
 
+    // 4.5.6: compute initial filter pass over the freshly-loaded opps
+    _recomputeFilters();
+
     if (linkPairs.length){
       // ── Micro-step 4.3: directionality taper ──────────────────────────
       // Source (bottom) radius = 0.075, target (top) radius = 0.025 — a
@@ -36317,6 +36334,51 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.5.2 label LOD distance set to', v);
   }
 
+  // ── Micro-step 4.5.6: filter pass recomputation ────────────────────────
+  // Walks the opps and sets state.filterPass.opps[i] = true|false. When
+  // false, the animation loop multiplies that opp's scale by 0 (hidden);
+  // the LOD pass also hides its label. Hulls/links are cascading because
+  // they reference opps by index, so a hidden opp's hull stays — that's
+  // intentional. Pursuit halos remain visible since they show RELATIONSHIPS
+  // around active pursuits; filtering opps shouldn't remove the topology.
+  // (If operator wants halos to follow opp filter too, that's a later step.)
+  var STAGE_GROUPS = {
+    active:   { proposal:1, negotiation:1, submitted:1, award:1 },
+    upcoming: { awareness:1, tracking:1, engaged:1, rfp:1 }
+  };
+  function _recomputeFilters(){
+    var f = state.filter || { stage: 'all', tier: 'all' };
+    if (state.oppCleanRef){
+      var arr = state.oppCleanRef;
+      var passArr = new Array(arr.length);
+      var passCount = 0;
+      for (var k = 0; k < arr.length; k++){
+        var opp = arr[k];
+        var stg = String(opp.stage || '').toLowerCase();
+        var pass = true;
+        if (f.stage !== 'all'){
+          if (f.stage === 'won')      pass = (stg === 'won');
+          else if (f.stage === 'lost') pass = (stg === 'lost');
+          else if (STAGE_GROUPS[f.stage]) pass = !!STAGE_GROUPS[f.stage][stg];
+          else pass = false;
+        }
+        if (pass && f.tier !== 'all'){
+          var t = String(opp.priority || 3);
+          if (t !== f.tier) pass = false;
+        }
+        passArr[k] = pass;
+        if (pass) passCount++;
+      }
+      state.filterPass.opps = passArr;
+      console.log('[DiscoveryEngine3D] 4.5.6 filter: stage=' + f.stage + ' tier=' + f.tier + ' → ' + passCount + '/' + arr.length + ' opps visible');
+    }
+  }
+  function setFilter(name, value){
+    if (!state.filter || !(name in state.filter)) return;
+    state.filter[name] = String(value || 'all');
+    _recomputeFilters();
+  }
+
   // ── Micro-step 4.5.7: resolve hit → entity → open Inspector ───────────
   // Translates a (kind, instanceId) from the raycaster hit into the right
   // Inspector call. The 3D engine carries only stripped representations
@@ -36613,6 +36675,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggles wired (click rows in count badge to hide People/Orgs/Opps/Halos/Links/Labels)');
     console.log('[DiscoveryEngine3D] 4.5.2 sprite LOD: distance=' + (state.labelLodDistance|0) + ' (tune via DiscoveryEngine3D.setLabelDistance(N))');
+    console.log('[DiscoveryEngine3D] 4.5.6 filter chips wired (stage + tier dropdowns in count badge)');
 
     // Clear any prior error pins on the HUD
     const fpsEl0 = document.getElementById('de3d-fps');
@@ -36863,7 +36926,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, reheat, fitToCluster, emit, setLayer, toggleLayer, setLabelDistance, setFilter, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -36916,6 +36979,20 @@ window._toggle3DEngine = function(mode){
               window.DiscoveryEngine3D.toggleLayer(L);
             }
           });
+        });
+      }
+      // Micro-step 4.5.6: wire filter chip change handlers (idempotent)
+      if (countBadge.dataset.filtersWired !== '1'){
+        countBadge.dataset.filtersWired = '1';
+        var fltStage = document.getElementById('de3d-flt-stage');
+        var fltTier  = document.getElementById('de3d-flt-tier');
+        if (fltStage) fltStage.addEventListener('change', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.setFilter === 'function')
+            window.DiscoveryEngine3D.setFilter('stage', this.value);
+        });
+        if (fltTier) fltTier.addEventListener('change', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.setFilter === 'function')
+            window.DiscoveryEngine3D.setFilter('tier', this.value);
         });
       }
     }
