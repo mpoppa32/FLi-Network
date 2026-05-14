@@ -6736,7 +6736,7 @@ input[type="url"], textarea, select {
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone)" id="de3d-status">init</span>
       <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P5.8</span>
+      <span style="color:var(--gold)" id="de3d-build">P5.11</span>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -36541,6 +36541,7 @@ const DiscoveryEngine3D = (function(){
     console.log('[DiscoveryEngine3D] 5.4 drag-to-pin wired (Alt+drag entity to translate in XZ plane; release leaves it pinned via worker)');
     console.log('[DiscoveryEngine3D] 5.7 multi-select wired (Shift/Cmd+click extends; SELECTED row shows count + ⚡ pulse-all + × clear)');
     console.log('[DiscoveryEngine3D] 5.8 keyboard nav wired (Tab/Shift+Tab steps entities; Enter → focal; arrows rotate camera)');
+    console.log('[DiscoveryEngine3D] 5.11 link hover wired (hover any tube → tooltip shows Source → Target · TYPE · weight)');
 
     // 4.5.6: compute initial filter pass over the freshly-loaded opps
     _recomputeFilters();
@@ -37563,6 +37564,22 @@ const DiscoveryEngine3D = (function(){
     _hideContextMenu();
   }
 
+  // ── Micro-step 5.11: resolve worker idx → entity name ─────────────────
+  // Used by the link-hover tooltip to display "Source → Target" endpoints.
+  function _entityNameFromWorkerIdx(widx){
+    var nP = (state._cleanNodesRef || []).length;
+    if (widx >= 0 && widx < nP) return state._cleanNodesRef[widx].name || '(person)';
+    var orgOff = state.orgWorkerOffset | 0;
+    var nO = (state.orgCleanRef || []).length;
+    var ow = widx - orgOff;
+    if (ow >= 0 && ow < nO) return state.orgCleanRef[ow].name || '(org)';
+    var oppOff = state.oppWorkerOffset | 0;
+    var nQ = (state.oppCleanRef || []).length;
+    var qw = widx - oppOff;
+    if (qw >= 0 && qw < nQ) return state.oppCleanRef[qw].name || '(opp)';
+    return null;
+  }
+
   // ── Micro-step 5.2: hover tooltip ──────────────────────────────────────
   // Updates the floating tooltip element to reflect state.hover. Called
   // from pointermove (whenever cursor moves) and from hover transitions.
@@ -37632,6 +37649,23 @@ const DiscoveryEngine3D = (function(){
         if (fv) partsQ.push(fv);
         if (q.solicitationNumber) partsQ.push(String(q.solicitationNumber).slice(0, 20));
         meta = partsQ.join(' · ');
+      }
+    } else if (h.kind === 'link'){
+      // 5.11: link tooltip — Source → Target · TYPE · weight
+      kindLabel = 'LINK';
+      kindColor = '#d4823a';  // amber, matches relationship layer
+      var pairs = state.linkIndexPairs || [];
+      var p2 = pairs[h.instanceId];
+      if (p2){
+        var srcN = _entityNameFromWorkerIdx(p2[0]) || '?';
+        var tgtN = _entityNameFromWorkerIdx(p2[1]) || '?';
+        if (srcN.length > 18) srcN = srcN.slice(0, 15) + '…';
+        if (tgtN.length > 18) tgtN = tgtN.slice(0, 15) + '…';
+        name = srcN + ' → ' + tgtN;
+        var partsL = [];
+        if (p2[3]) partsL.push(String(p2[3]).toUpperCase());
+        if (Number.isFinite(p2[2])) partsL.push('weight ' + Number(p2[2]).toFixed(2));
+        meta = partsL.join(' · ');
       }
     }
     if (kEl){ kEl.textContent = kindLabel; kEl.style.color = kindColor; }
@@ -38160,11 +38194,16 @@ const DiscoveryEngine3D = (function(){
       if (state.oppMesh)       targets.push({ mesh: state.oppMesh,       kind: 'opp'    });
       if (state.instancedMesh) targets.push({ mesh: state.instancedMesh, kind: 'person' });
       if (state.orgMesh)       targets.push({ mesh: state.orgMesh,       kind: 'org'    });
+      // 5.11: links last so they only win when no entity is hit at that ray
+      if (state.linkMesh && state.linkMesh.visible) targets.push({ mesh: state.linkMesh, kind: 'link' });
       var best = null;
       for (var ti = 0; ti < targets.length; ti++){
         var hits = state.raycaster.intersectObject(targets[ti].mesh, false);
         if (hits.length){
           var h = hits[0];
+          // 5.11: links lose any tie with entities — only win when no
+          // entity has been hit yet (this preserves entity-first UX).
+          if (targets[ti].kind === 'link' && best) continue;
           if (!best || h.distance < best.distance){
             best = { distance: h.distance, instanceId: h.instanceId, kind: targets[ti].kind };
           }
@@ -38197,7 +38236,9 @@ const DiscoveryEngine3D = (function(){
     // whether to show the entity menu. If no hover, let the browser/OrbitControls
     // handle right-click normally (panning, etc.).
     state.onContextMenu = function(ev){
-      if (state.hover){
+      // 5.11: only show context menu for entity kinds (person/org/opp);
+      // link hover would render with placeholder data — skip.
+      if (state.hover && (state.hover.kind === 'person' || state.hover.kind === 'org' || state.hover.kind === 'opp')){
         ev.preventDefault();
         _showContextMenu(ev, state.hover);
       } else {
