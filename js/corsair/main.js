@@ -13,12 +13,13 @@ import './cop.js';
 import './rhythm.js';
 import './brief.js';
 import './theater.js';
+import './table.js';
 
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.21';
-  window.Corsair.buildBlurb  = 'Phase 6.5 COP Pipeline Board Kanban — Phase 6 complete';
+  window.Corsair.buildTag    = 'P12.0';
+  window.Corsair.buildBlurb  = 'Phase 5a — The Table surface (foundation, 16 columns)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
