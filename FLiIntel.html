@@ -5642,6 +5642,96 @@ input[type="url"], textarea, select {
   transition: background-color 280ms ease, color 280ms ease, border-color 280ms ease;
 }
 
+/* Step 3c — Contacts table inside the Posture tab */
+.posture-contacts-section {
+  margin-bottom: 18px;
+}
+.posture-contacts-table {
+  border-top: 1px solid var(--rule);
+}
+.posture-contacts-row {
+  display: grid;
+  grid-template-columns: 14px minmax(140px, 1.5fr) minmax(110px, 1.2fr) 110px 110px 50px 40px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px;
+  color: var(--text);
+}
+.posture-contacts-row.posture-contacts-head {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t3);
+  padding: 6px 6px;
+}
+.posture-contacts-row .traj-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.posture-contacts-row .contact-name {
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 140ms ease;
+}
+.posture-contacts-row .contact-name:hover {
+  color: var(--gold);
+}
+.posture-contacts-row .contact-meta {
+  font-size: 11px;
+  color: var(--t2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.posture-contacts-row .last-touch,
+.posture-contacts-row .tells-count {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--t3);
+  text-align: right;
+}
+.posture-contacts-row .tells-count.has-tells {
+  color: var(--gold);
+  font-weight: 700;
+}
+.posture-contacts-row select {
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 4px 22px 4px 7px;
+  font-size: 11px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: var(--text);
+  cursor: pointer;
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--t3) 50%),
+                    linear-gradient(135deg, var(--t3) 50%, transparent 50%);
+  background-position: calc(100% - 11px) 50%, calc(100% - 7px) 50%;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+  transition: border-color 140ms ease;
+}
+.posture-contacts-row select:hover {
+  border-color: var(--gold);
+}
+.posture-contacts-row select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    END CORSAIR POSTURE LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -6549,7 +6639,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.2</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.3</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -7288,7 +7378,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.2</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.3</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -26298,9 +26388,18 @@ window._renderEntityPosture = function(entity) {
   }
   h += '</div>';
 
-  // Future-content placeholder (Steps 3c-3e)
-  h += '<div style="font-size:11px;color:var(--t2);line-height:1.6;letter-spacing:0.02em;border-top:1px solid var(--rule);padding-top:14px;margin-top:8px">';
-  h += 'Phase 7.5.2 in progress. The contacts table (Step 3c), row expansion (Step 3d), adversaries section, and predecessor notes pull-quote (Step 3e) land in subsequent commits.';
+  // ─── Step 3c — Contacts table (pursuits only) ────────────────────────
+  if (entity.type === 'opportunity' && typeof window._renderPostureContactsTable === 'function') {
+    h += window._renderPostureContactsTable(entity);
+  }
+
+  // ─── Future-content placeholder (Steps 3d-3e) ─────────────────────────
+  h += '<div style="font-size:11px;color:var(--t2);line-height:1.6;letter-spacing:0.02em;border-top:1px solid var(--rule);padding-top:14px;margin-top:18px">';
+  if (entity.type === 'opportunity') {
+    h += 'Phase 7.5.2 in progress. Row expansion with tells library (Step 3d), adversaries section, and predecessor notes pull-quote (Step 3e) land in subsequent commits.';
+  } else {
+    h += 'Phase 7.5.2 in progress. The contacts table renders on pursuits. Personal posture data — path, trajectory, tells — for this entity’s own posture will surface in subsequent commits.';
+  }
   h += '</div>';
 
   h += '</div>';
@@ -26402,6 +26501,168 @@ window._postureSaveInfluenceRead = async function(entityId) {
     var container = document.getElementById('entity-posture-content');
     if (container) container.innerHTML = window._renderEntityPosture(entity);
   }
+};
+
+// Phase 7.5.2 Step 3c — Posture contacts table for pursuit entities.
+// Renders one row per person linked to the pursuit (via graph traversal).
+// Columns: trajectory dot · name · role·org · position dropdown
+// (per-pursuit) · path dropdown (workspace-private) · last touch · tells.
+// Dropdown onchange handlers write to the corresponding node.posture
+// field via saveNode(). No re-render needed on edit — the dropdown
+// retains its newly-selected value, and the data persists immediately.
+window._renderPostureContactsTable = function(pursuit) {
+  var postureMod = window.Corsair && window.Corsair.posture;
+  if (!postureMod || !pursuit) return '';
+
+  // Get all person neighbors of this pursuit via graph traversal
+  var traversed = null;
+  if (typeof window.traverseEntity === 'function') {
+    try { traversed = window.traverseEntity(pursuit.id, 1); } catch (e) { traversed = null; }
+  }
+
+  var people = [];
+  if (traversed && traversed.neighbors) {
+    people = traversed.neighbors
+      .map(function(nb) { return nb.entity; })
+      .filter(function(e) { return e && e.type === 'person'; });
+    // Resolve to live records in window.nodes for the freshest posture data
+    people = people.map(function(p) {
+      var live = (window.nodes || []).find(function(n) { return String(n.id) === String(p.id); });
+      return live || p;
+    });
+    people.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+  }
+
+  var pursuitId = String(pursuit.id);
+  var safePid   = pursuitId.replace(/'/g, '&#39;');
+  var POS  = postureMod.POSITION_TAXONOMY || [];
+  var PATH = postureMod.PATH_TAXONOMY     || [];
+
+  var h = '<div class="posture-contacts-section">';
+  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:4px">Contacts · Influence Map</div>';
+  h += '<div style="font-size:11px;color:var(--t2);margin-bottom:12px;letter-spacing:0.02em">Position is per-pursuit. Path is workspace-private. Both compound over time.</div>';
+
+  if (people.length === 0) {
+    h += '<div style="font-size:12px;color:var(--t3);font-style:italic;padding:14px;border:1px solid var(--rule);border-radius:2px">No contacts linked to this pursuit yet. They appear here once a meeting connects them.</div>';
+    h += '</div>';
+    return h;
+  }
+
+  h += '<div class="posture-contacts-table">';
+
+  // Header row
+  h += '<div class="posture-contacts-row posture-contacts-head">'
+    +   '<div></div>'
+    +   '<div>Contact</div>'
+    +   '<div>Role · Org</div>'
+    +   '<div>Position</div>'
+    +   '<div>Path</div>'
+    +   '<div style="text-align:right">Last</div>'
+    +   '<div style="text-align:right">Tells</div>'
+    + '</div>';
+
+  // Contact rows
+  people.forEach(function(p) {
+    var safePersonId = String(p.id).replace(/'/g, '&#39;');
+    var name    = String(p.name || '(unnamed)').replace(/</g, '&lt;');
+    var role    = String(p.role || '').replace(/</g, '&lt;');
+    var org     = String(p.org  || '').replace(/</g, '&lt;');
+    var posture = postureMod.personPosture(p);
+    var trajKey = posture.trajectory || 'stable';
+    var trajCol = postureMod.trajectoryColor(trajKey);
+    var byP     = posture.byPursuit  || {};
+    var curPos  = (byP[pursuitId] && byP[pursuitId].position) || '';
+    var curPath = posture.path || '';
+    var tellsN  = (posture.tells || []).length;
+
+    // Last touch from meetings
+    var lastTouchTxt = '—';
+    if (typeof window.getMtgsForNodeFast === 'function') {
+      try {
+        var mtgs = window.getMtgsForNodeFast(p.id) || [];
+        var lastTs = 0;
+        mtgs.forEach(function(m) {
+          if (m && m.ts) {
+            var t = new Date(m.ts).getTime();
+            if (t > lastTs) lastTs = t;
+          }
+        });
+        if (lastTs) lastTouchTxt = window._postureRelTime(lastTs);
+      } catch (e) {}
+    }
+
+    // Position dropdown options
+    var posOptions = '<option value="">—</option>';
+    POS.forEach(function(t) {
+      var sel = (t.key === curPos) ? ' selected' : '';
+      posOptions += '<option value="' + t.key + '"' + sel + '>' + t.label + '</option>';
+    });
+
+    // Path dropdown options
+    var pathOptions = '<option value="">—</option>';
+    PATH.forEach(function(t) {
+      var sel = (t.key === curPath) ? ' selected' : '';
+      pathOptions += '<option value="' + t.key + '"' + sel + '>' + t.label + '</option>';
+    });
+
+    var roleOrgMeta = (role || '') + ((role && org) ? ' · ' : '') + (org || '');
+
+    h += '<div class="posture-contacts-row">';
+    h +=   '<div title="Trajectory: ' + trajKey + '"><span class="traj-dot" style="background:' + trajCol + '"></span></div>';
+    h +=   '<div class="contact-name" onclick="window.openEntityInspector(\'' + safePersonId + '\')" title="Open dossier">' + name + '</div>';
+    h +=   '<div class="contact-meta" title="' + roleOrgMeta + '">' + roleOrgMeta + '</div>';
+    h +=   '<div><select onchange="window._postureSetContactPosition(\'' + safePersonId + '\',\'' + safePid + '\',this.value)">' + posOptions + '</select></div>';
+    h +=   '<div><select onchange="window._postureSetContactPath(\'' + safePersonId + '\',this.value)">' + pathOptions + '</select></div>';
+    h +=   '<div class="last-touch">' + lastTouchTxt + '</div>';
+    h +=   '<div class="tells-count' + (tellsN > 0 ? ' has-tells' : '') + '">' + tellsN + '</div>';
+    h += '</div>';
+  });
+
+  h += '</div>';
+  h += '</div>';
+  return h;
+};
+
+// Relative-time formatter for Posture surfaces (Plex Mono caller styling).
+window._postureRelTime = function(ts) {
+  if (!ts) return '—';
+  var diff = Date.now() - Number(ts);
+  if (diff < 0)               return 'now';
+  var days = Math.floor(diff / 86400000);
+  if (days < 1)               return 'today';
+  if (days === 1)             return '1d';
+  if (days < 30)              return days + 'd';
+  if (days < 365)             return Math.floor(days / 30) + 'mo';
+  return Math.floor(days / 365) + 'y';
+};
+
+window._postureSetContactPosition = async function(personId, pursuitId, positionKey) {
+  var node = (window.nodes || []).find(function(n) { return String(n.id) === String(personId); });
+  if (!node) return;
+  node.posture = node.posture || {};
+  node.posture.byPursuit = node.posture.byPursuit || {};
+  if (positionKey) {
+    node.posture.byPursuit[pursuitId] = node.posture.byPursuit[pursuitId] || {};
+    node.posture.byPursuit[pursuitId].position = positionKey;
+  } else if (node.posture.byPursuit[pursuitId]) {
+    delete node.posture.byPursuit[pursuitId].position;
+  }
+  node.posture.lastUpdated = Date.now();
+  try {
+    if (typeof window.saveNode === 'function') await window.saveNode(node);
+  } catch (e) { console.warn('[Posture] save position failed:', e); }
+};
+
+window._postureSetContactPath = async function(personId, pathKey) {
+  var node = (window.nodes || []).find(function(n) { return String(n.id) === String(personId); });
+  if (!node) return;
+  node.posture = node.posture || {};
+  if (pathKey) node.posture.path = pathKey;
+  else if (node.posture.path) delete node.posture.path;
+  node.posture.lastUpdated = Date.now();
+  try {
+    if (typeof window.saveNode === 'function') await window.saveNode(node);
+  } catch (e) { console.warn('[Posture] save path failed:', e); }
 };
 
 function _eiHexToRgb(hex) {
