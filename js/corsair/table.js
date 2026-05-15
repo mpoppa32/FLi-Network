@@ -302,6 +302,149 @@ window._tblHandleEditKey = function(event, field, oppId) {
 
 window._tblRerenderRowsPublic = _tblRerenderRows;
 
+// Phase 5d — bulk operations.
+// Selection state lives on the module. Selecting / deselecting rebuilds
+// the bulk-bar (no full table re-render needed). Actions: advance stage
+// (each selected pursuit moves to next stage; saveOpp's stage-history
+// interception fires per pursuit), and CSV export.
+
+var _tblSelected = new Set();
+
+function _tblToggleRow(oppId) {
+  var k = String(oppId);
+  if (_tblSelected.has(k)) _tblSelected.delete(k);
+  else _tblSelected.add(k);
+  _tblUpdateSelectionUI();
+}
+
+window._tblToggleRowPublic = _tblToggleRow;
+
+window._tblToggleAll = function(checked) {
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  var stages = (pipelineMod && pipelineMod.stages) || [];
+  var processed = _tblProcessOpps(window.opportunities || [], pipelineMod, stages);
+  if (checked) {
+    processed.forEach(function(o) { _tblSelected.add(String(o.id)); });
+  } else {
+    _tblSelected.clear();
+  }
+  // Re-render rows so checkboxes update visually
+  _tblRerenderRows();
+  _tblUpdateSelectionUI();
+};
+
+function _tblUpdateSelectionUI() {
+  // Update each row's data-selected + checkbox state in place
+  var rows = document.querySelectorAll('#table-view-body .tbl-row');
+  rows.forEach(function(row) {
+    var id = row.getAttribute('data-opp-id');
+    var sel = _tblSelected.has(id);
+    row.classList.toggle('tbl-row-selected', sel);
+    var cb = row.querySelector('.tbl-row-cb');
+    if (cb) cb.checked = sel;
+  });
+  // Update header "select all" indeterminate state
+  var headerCb = document.getElementById('tbl-cb-all');
+  if (headerCb) {
+    var totalRows = rows.length;
+    var selRows = 0;
+    rows.forEach(function(r) { if (_tblSelected.has(r.getAttribute('data-opp-id'))) selRows++; });
+    headerCb.checked = selRows > 0 && selRows === totalRows;
+    headerCb.indeterminate = selRows > 0 && selRows < totalRows;
+  }
+  // Bulk bar
+  var bar = document.getElementById('tbl-bulk-bar');
+  if (bar) {
+    if (_tblSelected.size > 0) {
+      bar.style.display = 'flex';
+      var countEl = document.getElementById('tbl-bulk-count');
+      if (countEl) countEl.textContent = _tblSelected.size;
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+}
+
+window._tblBulkAdvance = async function() {
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  if (!pipelineMod || !pipelineMod.stages) return;
+  if (_tblSelected.size === 0) return;
+  if (!window.confirm('Advance ' + _tblSelected.size + ' pursuit' + (_tblSelected.size !== 1 ? 's' : '') + ' to their next stage? Each one\'s stage history will be updated.')) return;
+  var ids = Array.from(_tblSelected);
+  var advanced = 0, skipped = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var opp = _tblFindOpp(ids[i]);
+    if (!opp || !opp.stage) { skipped++; continue; }
+    var idx = pipelineMod.index(opp.stage);
+    if (idx < 0 || idx >= pipelineMod.stages.length - 1) { skipped++; continue; }
+    opp.stage = pipelineMod.stages[idx + 1].key;
+    try { if (typeof window.saveOpp === 'function') await window.saveOpp(opp); advanced++; }
+    catch (e) { console.warn('[Table] bulk advance failed for ' + ids[i] + ':', e); skipped++; }
+  }
+  _tblSelected.clear();
+  if (typeof window.toast === 'function') window.toast('Advanced ' + advanced + (skipped > 0 ? ', skipped ' + skipped : ''));
+  _tblRerenderRows();
+  _tblUpdateSelectionUI();
+};
+
+window._tblBulkExportCSV = function() {
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  var stages = (pipelineMod && pipelineMod.stages) || [];
+  var processed = _tblProcessOpps(window.opportunities || [], pipelineMod, stages);
+  // If any selection: export selected; otherwise export the current filtered view
+  var rows = (_tblSelected.size > 0)
+    ? processed.filter(function(o) { return _tblSelected.has(String(o.id)); })
+    : processed;
+
+  var headers = ['name','customer','stage','daysInStage','value','pwin','weighted','captureLead','rfpDate','awardDate','notes'];
+  var lines = [headers.join(',')];
+  rows.forEach(function(o) {
+    var stageLabel = (pipelineMod && pipelineMod.config) ? (pipelineMod.config(o.stage).label || o.stage) : o.stage;
+    var days = (pipelineMod && pipelineMod.daysInStage) ? pipelineMod.daysInStage(o) : '';
+    var weighted = Number(o.value || 0) * Number(o.pwin || 0);
+    var fields = [
+      o.name || '',
+      o.agency || o.customer || '',
+      stageLabel || '',
+      String(days),
+      o.value != null ? String(o.value) : '',
+      o.pwin != null ? String(o.pwin) : '',
+      String(Math.round(weighted)),
+      o.captureLead || '',
+      o.rfpDate || '',
+      o.awardDate || '',
+      String(o.notes || '').replace(/\n/g, ' ')
+    ];
+    // CSV-escape: quote any field that has comma / quote / newline; escape inner quotes
+    lines.push(fields.map(function(f) {
+      var s = String(f == null ? '' : f);
+      if (/[,"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }).join(','));
+  });
+  var csv = lines.join('\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var date = new Date().toISOString().slice(0, 10);
+  var label = (_tblSelected.size > 0) ? ('selection-' + _tblSelected.size) : ('all-' + rows.length);
+  a.href = url;
+  a.download = 'corsair-pursuits-' + label + '-' + date + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+  if (typeof window.toast === 'function') window.toast('Exported ' + rows.length + ' pursuits to CSV');
+};
+
+window._tblBulkClear = function() {
+  _tblSelected.clear();
+  _tblRerenderRows();
+  _tblUpdateSelectionUI();
+};
+
 function _tblProcessOpps(allOpps, pipelineMod, stages) {
   var stageOrder = {};
   stages.forEach(function(s, i) { stageOrder[s.key] = i; });
@@ -377,6 +520,7 @@ function _tblProcessOpps(allOpps, pipelineMod, stages) {
 }
 
 var TBL_COLS = [
+  { key: 'select',   label: '',            align: 'center', w: '32px',  sortable: false },
   { key: 'status',   label: '',            align: 'center', w: '24px',  sortable: false },
   { key: 'name',     label: 'Pursuit',     align: 'left',   w: '260px', sticky: true, sortable: true },
   { key: 'customer', label: 'Customer',    align: 'left',   w: '180px', sortable: true },
@@ -411,7 +555,9 @@ function _tblRenderRows(opps, pipelineMod) {
     var weighted = Number(o.value || 0) * Number(o.pwin || 0);
     var pwinPct = o.pwin != null ? Math.round(Number(o.pwin) * 100) + '%' : '—';
 
-    html += '<tr class="tbl-row' + (aged ? ' tbl-row-aged' : '') + '" data-opp-id="' + safeId + '">';
+    var isSelected = _tblSelected.has(String(o.id));
+    html += '<tr class="tbl-row' + (aged ? ' tbl-row-aged' : '') + (isSelected ? ' tbl-row-selected' : '') + '" data-opp-id="' + safeId + '">';
+    html += '<td class="tbl-cell tbl-cell-center"><input type="checkbox" class="tbl-row-cb" onclick="event.stopPropagation();window._tblToggleRowPublic(\'' + safeId + '\')"' + (isSelected ? ' checked' : '') + '></td>';
     html += '<td class="tbl-cell tbl-cell-center"><span class="tbl-dot" style="background:' + dotColor + '" title="' + (aged ? 'aged in stage' : (health.status || 'unknown')) + '"></span></td>';
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-sticky"><span class="tbl-name" onclick="window.openEntityInspector(\'' + safeId + '\')">' + _tEsc(o.name || '(unnamed)') + '</span></td>';
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + (o.agency ? _tEsc(o.agency) : (o.customer ? _tEsc(o.customer) : '—')) + '</td>';
@@ -485,6 +631,11 @@ window._renderTableView = function() {
     if (c.sortable && _tblState.sortKey === c.key) {
       sortInd = '<span class="tbl-sort-arrow">' + (_tblState.sortDir === 'asc' ? '▲' : '▼') + '</span>';
     }
+    if (c.key === 'select') {
+      // "Select all" checkbox in header
+      h += '<th class="tbl-th tbl-th-center" style="width:' + c.w + ';min-width:' + c.w + '"><input type="checkbox" id="tbl-cb-all" onclick="window._tblToggleAll(this.checked)" title="Select all visible rows"></th>';
+      return;
+    }
     var clickable = c.sortable ? ' tbl-th-sortable" onclick="window._tblSetSort(\'' + c.key + '\')"' : '"';
     h += '<th class="tbl-th tbl-th-' + c.align + (c.sticky ? ' tbl-th-sticky' : '') + clickable + ' style="width:' + c.w + ';min-width:' + c.w + '">' + c.label + sortInd + '</th>';
   });
@@ -493,8 +644,18 @@ window._renderTableView = function() {
   h += '</table>';
   h += '</div>';
 
+  // Phase 5d — bulk action bar (always present in DOM, hidden when no selection)
+  h += '<div id="tbl-bulk-bar" class="tbl-bulk-bar" style="display:none">';
+  h += '<div class="tbl-bulk-count"><strong id="tbl-bulk-count">0</strong> selected</div>';
+  h += '<button class="tbl-bulk-btn tbl-bulk-btn-primary" onclick="window._tblBulkAdvance()">Advance stage →</button>';
+  h += '<button class="tbl-bulk-btn" onclick="window._tblBulkExportCSV()">Export selection (CSV)</button>';
+  h += '<button class="tbl-bulk-btn tbl-bulk-btn-clear" onclick="window._tblBulkClear()">Clear</button>';
+  h += '</div>';
+
   body.innerHTML = h;
-  console.log('[Table] Phase 5b rendered: ' + processed.length + ' / ' + allOpps.length + ' pursuits, sort=' + _tblState.sortKey + '/' + _tblState.sortDir);
+  // Refresh bulk-bar visibility based on persisted selection
+  _tblUpdateSelectionUI();
+  console.log('[Table] Phase 5d rendered: ' + processed.length + ' / ' + allOpps.length + ' pursuits, sort=' + _tblState.sortKey + '/' + _tblState.sortDir + ', selected=' + _tblSelected.size);
 };
 
 window.Corsair = window.Corsair || {};

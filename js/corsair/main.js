@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.2';
-  window.Corsair.buildBlurb  = 'Phase 5c — Table inline editing (Stage / Value / pWin)';
+  window.Corsair.buildTag    = 'P12.3';
+  window.Corsair.buildBlurb  = 'Phase 5d — Table bulk operations (select, advance, export CSV)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
