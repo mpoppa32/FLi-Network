@@ -6543,6 +6543,37 @@ input[type="url"], textarea, select {
   background-color: rgba(168,112,58,.1);
 }
 
+/* Step 6b — Ask Corsair posture-query result block */
+.posture-query-result {
+  background: #0A0A0A;
+  border: 1px solid #2A2A28;
+  border-left: 3px solid #A8703A;
+  border-radius: 2px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  color: #E8E3D6;
+}
+.posture-query-head {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #A8703A;
+  margin-bottom: 12px;
+}
+.posture-query-body {
+  font-size: 12px;
+  line-height: 1.55;
+}
+.posture-query-row {
+  padding: 7px 0;
+  border-bottom: 1px solid #1F1F1F;
+}
+.posture-query-row:last-child {
+  border-bottom: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    END CORSAIR POSTURE LAYER
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -7450,7 +7481,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.10</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.11</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8193,7 +8224,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.10</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.11</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -15712,6 +15743,21 @@ window.runMemorySearch=async function(){
   var q=(document.getElementById('memory-query').value||'').trim();
   if(!q)return;
   if(memorySearchActive)return;
+
+  // ── Phase 7.5.6 Step 6b: Posture queries (local, deterministic, no API) ─
+  if (typeof window._runPostureQuery === 'function') {
+    var pRes = window._runPostureQuery(q);
+    if (pRes) {
+      var resultsEl = document.getElementById('memory-results');
+      var examplesEl = document.getElementById('memory-examples');
+      if (examplesEl) examplesEl.style.display = 'none';
+      if (resultsEl) {
+        resultsEl.style.display = 'block';
+        resultsEl.innerHTML = pRes.html;
+      }
+      return;
+    }
+  }
 
   // ── C7: Detect graph queries and route locally (no API needed) ──────────
   var isGraphMode=_askMode==='network';
@@ -28823,6 +28869,217 @@ window._copyPassDownBrief = function() {
     }
   } catch (e) { console.warn('[Brief] copy failed:', e); }
 };
+
+// Phase 7.5.6 Step 6b — Ask Corsair posture queries.
+// Local deterministic pattern-matching for posture-flavored questions.
+// Returns { html } when a pattern matches; otherwise null so the
+// existing Ask Corsair routing takes over (graph / meetings / LLM).
+// Doctrine §IV: defined meanings beat LLM ambiguity for these.
+
+window._runPostureQuery = function(q) {
+  if (!q) return null;
+  var postureMod = window.Corsair && window.Corsair.posture;
+  if (!postureMod) return null;
+  var ql = q.toLowerCase().trim();
+
+  // Sovereign's Briefing trigger
+  if (/(generate\s+)?sovereign'?s?\s+briefing/.test(ql)) {
+    setTimeout(function() {
+      if (typeof window._openPassDownBriefModal === 'function') {
+        window._openPassDownBriefModal({ includePosture: true });
+      }
+    }, 120);
+    return _postureQueryWrap('Opening Sovereign’s Briefing', '<div style="font-size:12px;color:#8A8478;font-style:italic">Workspace-private. Hand only to the next operator.</div>');
+  }
+
+  // Pass-Down Brief trigger
+  if (/(generate\s+)?(pass[\s-]?down|passdown)\s+brief/.test(ql)) {
+    setTimeout(function() {
+      if (typeof window._openPassDownBriefModal === 'function') {
+        window._openPassDownBriefModal({});
+      }
+    }, 120);
+    return _postureQueryWrap('Opening Pass-Down Brief', '');
+  }
+
+  // Owed by me  (e.g., "who do i owe", "what do i owe older than 30 days")
+  if (/(who|what)\s+(do\s+)?i\s+owe/.test(ql) || /^i\s+owe\b/.test(ql) || /^owed\s+by\s+me/.test(ql)) {
+    return _renderPostureLedgerQuery('owed-by-me', q, ql);
+  }
+
+  // Owed to me
+  if (/(who|what)\s+owes?\s+me/.test(ql) || /^owed\s+to\s+me/.test(ql)) {
+    return _renderPostureLedgerQuery('owed-to-me', q, ql);
+  }
+
+  // Falling contacts
+  if (/(falling|in\s+decline|losing\s+influence|going\s+down)/.test(ql) &&
+      /(contact|person|people|who)/.test(ql)) {
+    return _renderTrajectoryQuery('falling', q);
+  }
+
+  // Rising contacts
+  if (/(rising|gaining|on\s+the\s+rise|going\s+up)/.test(ql) &&
+      /(contact|person|people|who)/.test(ql)) {
+    return _renderTrajectoryQuery('rising', q);
+  }
+
+  // Posture on [pursuit name]  /  Influence read on [pursuit name]
+  var postureMatch = ql.match(/posture\s+on\s+(.+)/) || ql.match(/influence\s+(?:read\s+)?on\s+(.+)/);
+  if (postureMatch) {
+    return _renderPostureOnPursuitQuery(postureMatch[1].trim(), q);
+  }
+
+  return null;
+};
+
+function _postureQueryWrap(title, bodyHtml) {
+  return {
+    html: '<div class="posture-query-result">' +
+            '<div class="posture-query-head">' + title + '</div>' +
+            (bodyHtml ? '<div class="posture-query-body">' + bodyHtml + '</div>' : '') +
+          '</div>'
+  };
+}
+
+function _renderPostureLedgerQuery(direction, q, ql) {
+  var postureMod = window.Corsair.posture;
+  var entries = (window.ledger || []).filter(function(e) {
+    return e && e.direction === direction && e.state !== 'resolved';
+  });
+
+  // Age filter: "older than N days|weeks|months|years"
+  var ageMatch = ql.match(/older\s+than\s+(\d+)\s*(day|week|month|year)s?/);
+  if (ageMatch) {
+    var n = parseInt(ageMatch[1], 10);
+    var unit = ageMatch[2];
+    var msDay = 86400000;
+    var threshold = unit === 'day'   ? n * msDay
+                  : unit === 'week'  ? n * 7 * msDay
+                  : unit === 'month' ? n * 30 * msDay
+                  :                    n * 365 * msDay;
+    var cutoff = Date.now() - threshold;
+    entries = entries.filter(function(e) { return Number(e.dateIncurred) <= cutoff; });
+  }
+
+  entries.sort(function(a, b) { return (a.dateIncurred || 0) - (b.dateIncurred || 0); });
+
+  var title = direction === 'owed-by-me' ? 'Owed by me' : 'Owed to me';
+  if (ageMatch) title += ' (older than ' + ageMatch[1] + ' ' + ageMatch[2] + (Number(ageMatch[1]) > 1 ? 's' : '') + ')';
+
+  if (entries.length === 0) {
+    return _postureQueryWrap(title, '<div style="font-size:12px;color:#8A8478;font-style:italic">No open entries match.</div>');
+  }
+
+  var body = '';
+  entries.forEach(function(e) {
+    var cp = (typeof window._ledgerCounterpartyName === 'function') ? window._ledgerCounterpartyName(e) : '(counterparty)';
+    var typeLabel = postureMod.ledgerTypeLabel(e.type);
+    var ageDays = postureMod.ledgerEntryAge(e);
+    var ageTxt = (ageDays != null) ? (ageDays + 'd ago') : '';
+    var pursuitName = '';
+    if (e.pursuitId) {
+      var opp = (window.opportunities || []).find(function(o) { return String(o.id) === String(e.pursuitId); });
+      if (opp) pursuitName = opp.name || '';
+    }
+    body += '<div class="posture-query-row">';
+    body += '<div><strong>' + String(cp).replace(/</g, '&lt;') + '</strong>';
+    if (pursuitName) body += ' <span style="color:#8A8478;font-style:italic">on ' + String(pursuitName).replace(/</g, '&lt;') + '</span>';
+    body += '</div>';
+    body += '<div style="font-size:11px;color:#8A8478;margin-top:2px">' + typeLabel +
+            (e.description ? ' — ' + String(e.description).replace(/</g, '&lt;') : '') +
+            (ageTxt ? ' · ' + ageTxt : '') + '</div>';
+    body += '</div>';
+  });
+
+  return _postureQueryWrap(title + ' (' + entries.length + ')', body);
+}
+
+function _renderTrajectoryQuery(trajKey, q) {
+  var postureMod = window.Corsair.posture;
+  var contacts = (window.nodes || []).filter(function(n) {
+    return n && n.type === 'person' && n.posture && n.posture.trajectory === trajKey;
+  });
+  contacts.sort(function(a, b) { return (a.name || '').localeCompare(b.name || ''); });
+
+  var title = (trajKey === 'rising' ? 'Rising' : trajKey === 'falling' ? 'Falling' : trajKey) + ' contacts';
+
+  if (contacts.length === 0) {
+    return _postureQueryWrap(title, '<div style="font-size:12px;color:#8A8478;font-style:italic">No contacts have ' + trajKey + ' trajectory recorded.</div>');
+  }
+
+  var trajCol = postureMod.trajectoryColor(trajKey);
+  var body = '';
+  contacts.forEach(function(n) {
+    var safeId = String(n.id).replace(/'/g, '&#39;');
+    body += '<div class="posture-query-row">';
+    body += '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + trajCol + ';margin-right:8px;vertical-align:middle"></span>';
+    body += '<strong style="cursor:pointer" onclick="window.openEntityInspector(\'' + safeId + '\')">' + String(n.name || '(unnamed)').replace(/</g, '&lt;') + '</strong>';
+    if (n.role || n.org) {
+      body += ' <span style="color:#8A8478;font-size:11px">' +
+              (n.role ? String(n.role).replace(/</g, '&lt;') : '') +
+              (n.role && n.org ? ' · ' : '') +
+              (n.org ? String(n.org).replace(/</g, '&lt;') : '') + '</span>';
+    }
+    if (n.posture.path) {
+      body += ' <span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:#A8703A;margin-left:6px">[' + postureMod.pathLabel(n.posture.path) + ']</span>';
+    }
+    body += '</div>';
+  });
+
+  return _postureQueryWrap(title + ' (' + contacts.length + ')', body);
+}
+
+function _renderPostureOnPursuitQuery(name, q) {
+  var nameKey = name.toLowerCase().replace(/[?.,!]+$/, '').trim();
+  var opp = (window.opportunities || []).find(function(o) {
+    return (o.name || '').toLowerCase().indexOf(nameKey) >= 0;
+  });
+  if (!opp) {
+    return _postureQueryWrap('Posture on "' + name + '"',
+      '<div style="font-size:12px;color:#8A8478;font-style:italic">No pursuit found matching "' + String(name).replace(/</g, '&lt;') + '".</div>');
+  }
+
+  var postureMod = window.Corsair.posture;
+  var p = postureMod.pursuitPosture(opp);
+  var safeId = String(opp.id).replace(/'/g, '&#39;');
+
+  var body = '<div style="margin-bottom:12px"><strong style="cursor:pointer" onclick="window.openEntityInspector(\'' + safeId + '\')">' +
+             String(opp.name).replace(/</g, '&lt;') + '</strong>' +
+             (opp.agency ? ' <span style="color:#8A8478">— ' + String(opp.agency).replace(/</g, '&lt;') + '</span>' : '') +
+             '</div>';
+
+  if (p.influenceReads) {
+    body += '<div style="border-left:2px solid #A8703A;padding:6px 12px;margin-bottom:12px;color:#C8C2B4;font-style:italic;font-size:13px;line-height:1.55;white-space:pre-wrap">' +
+            String(p.influenceReads).replace(/</g, '&lt;') + '</div>';
+  } else {
+    body += '<div style="font-size:12px;color:#8A8478;font-style:italic;margin-bottom:12px">No influence read recorded on this pursuit.</div>';
+  }
+
+  if (p.adversaries && p.adversaries.length) {
+    body += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#A8703A;margin-bottom:6px">Adversaries (' + p.adversaries.length + ')</div>';
+    p.adversaries.forEach(function(adv) {
+      var orgEnt = (window.nodes || []).find(function(n) { return String(n.id) === String(adv.orgId); });
+      var orgName = orgEnt ? (orgEnt.name || '(unnamed)') : '(missing)';
+      body += '<div class="posture-query-row"><strong>' + String(orgName).replace(/</g, '&lt;') + '</strong>';
+      if (adv.posture) body += ' <span style="color:#8A8478;font-size:11px">— ' + String(adv.posture).replace(/</g, '&lt;') + '</span>';
+      body += '</div>';
+    });
+    body += '<div style="margin-bottom:12px"></div>';
+  }
+
+  if (p.predecessorNotes) {
+    body += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#A8703A;margin-bottom:6px">Predecessor Notes</div>';
+    body += '<div style="font-style:italic;color:#C8C2B4;font-size:12px;line-height:1.5;white-space:pre-wrap">' + String(p.predecessorNotes).replace(/</g, '&lt;') + '</div>';
+    if (p.predecessorNotesAuthor) {
+      body += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:#8A8478;margin-top:4px">— ' + String(p.predecessorNotesAuthor).replace(/</g, '&lt;');
+      if (p.predecessorNotesDate) body += ', ' + new Date(p.predecessorNotesDate).toISOString().slice(0, 10);
+      body += '</div>';
+    }
+  }
+
+  return _postureQueryWrap('Posture on ' + opp.name, body);
+}
 
 window._renderInfluenceContactRow = function(item) {
   var postureMod = window.Corsair && window.Corsair.posture;
