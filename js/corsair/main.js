@@ -16,7 +16,7 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.17';
+  window.Corsair.buildTag = 'P10.18';
   window.Corsair.modules = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
@@ -25,7 +25,7 @@ import './theater.js';
   }
 
   console.log(
-    '%c[Corsair] modules loaded · P10.17 · Rhythm view to light mode · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.18 · topnav responsive density (narrow-viewport quick win) · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
