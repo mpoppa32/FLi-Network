@@ -6,14 +6,15 @@
 
 import './util.js';
 import './pipeline.js';
+import './inspector.js';
 
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P9.9';
+  window.Corsair.buildTag = 'P10.0';
   window.Corsair.modules = window.Corsair.modules || {};
   console.log(
-    '%c[Corsair] modules loaded · P9.9 · util + pipeline ready · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.0 · util + pipeline + inspector ready · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
