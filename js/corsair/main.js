@@ -15,10 +15,10 @@ import './brief.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.6';
+  window.Corsair.buildTag = 'P10.7';
   window.Corsair.modules = window.Corsair.modules || {};
   console.log(
-    '%c[Corsair] modules loaded · P10.6 · util + pipeline + state + inspector + cop + rhythm + brief ready · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.7 · inspector wired to CorsairSelection · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
