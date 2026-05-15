@@ -143,7 +143,8 @@ var _tblState = {
   filterStage: '',             // stage key or '' for all
   filterHealth: '',            // 'hot' | 'warm' | 'cold' or '' for all
   filterAged: false,           // true = only aged-in-stage
-  search:  ''
+  search:  '',
+  showPosture: false           // Phase 5g — Posture column off by default
 };
 
 window._tblSetSort = function(key) {
@@ -183,6 +184,12 @@ window._tblClearFilters = function() {
   _tblState.search = '';
   _tblState.sortKey = 'default';
   _tblState.sortDir = 'asc';
+  // showPosture preserved across clear — it's a layout preference, not a filter
+  window._renderTableView();
+};
+
+window._tblTogglePostureCol = function() {
+  _tblState.showPosture = !_tblState.showPosture;
   window._renderTableView();
 };
 
@@ -710,7 +717,7 @@ function _tblProcessOpps(allOpps, pipelineMod, stages) {
   return opps;
 }
 
-var TBL_COLS = [
+var TBL_COLS_BASE = [
   { key: 'select',   label: '',            align: 'center', w: '32px',  sortable: false },
   { key: 'status',   label: '',            align: 'center', w: '24px',  sortable: false },
   { key: 'name',     label: 'Pursuit',     align: 'left',   w: '260px', sticky: true, sortable: true },
@@ -730,9 +737,44 @@ var TBL_COLS = [
   { key: 'notes',    label: 'Notes',       align: 'left',   w: '220px', sortable: false }
 ];
 
+// Phase 5g — optional Posture column (off by default per master prompt
+// §7.5.6). Toggled via filter-bar button. Inserts after Tags column.
+var TBL_COL_POSTURE = { key: 'posture', label: 'Posture', align: 'center', w: '90px', sortable: false };
+
+function _tblColumns() {
+  if (!_tblState.showPosture) return TBL_COLS_BASE;
+  // Insert Posture after Tags (index 15 in TBL_COLS_BASE)
+  var out = [];
+  TBL_COLS_BASE.forEach(function(c) {
+    out.push(c);
+    if (c.key === 'tags') out.push(TBL_COL_POSTURE);
+  });
+  return out;
+}
+
+// Posture cell content for a pursuit: compact summary of posture richness.
+// "3 adv" / "I" (influence read) / "P" (predecessor notes) / "—" if none
+function _tPostureCell(opp) {
+  var p = opp && opp.posture;
+  if (!p) return '<span class="tbl-cell-meta">—</span>';
+  var bits = [];
+  if (Array.isArray(p.adversaries) && p.adversaries.length) {
+    bits.push('<span class="tbl-pos-bit tbl-pos-adv" title="' + p.adversaries.length + ' named adversaries">' + p.adversaries.length + ' adv</span>');
+  }
+  if (p.influenceReads) {
+    bits.push('<span class="tbl-pos-bit tbl-pos-i" title="Influence read recorded">I</span>');
+  }
+  if (p.predecessorNotes) {
+    bits.push('<span class="tbl-pos-bit tbl-pos-p" title="Predecessor notes recorded">P</span>');
+  }
+  if (bits.length === 0) return '<span class="tbl-cell-meta">—</span>';
+  return bits.join(' ');
+}
+
 function _tblRenderRows(opps, pipelineMod) {
+  var cols = _tblColumns();
   if (opps.length === 0) {
-    return '<tr><td colspan="' + TBL_COLS.length + '" class="tbl-empty">No pursuits match the current filters.</td></tr>';
+    return '<tr><td colspan="' + cols.length + '" class="tbl-empty">No pursuits match the current filters.</td></tr>';
   }
   var html = '';
   opps.forEach(function(o) {
@@ -767,6 +809,9 @@ function _tblRenderRows(opps, pipelineMod) {
     html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tLastMeeting(o) + '</td>';
     html += '<td class="tbl-cell tbl-cell-center">' + _tCoverageBadge(o) + '</td>';
     html += '<td class="tbl-cell tbl-cell-left">' + _tTags(o) + '</td>';
+    if (_tblState.showPosture) {
+      html += '<td class="tbl-cell tbl-cell-center" onclick="window.openEntityInspector(\'' + safeId + '\')" title="Click → Posture tab in dossier">' + _tPostureCell(o) + '</td>';
+    }
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + _tNotesPreview(o) + '</td>';
     html += '</tr>';
   });
@@ -807,6 +852,9 @@ window._renderTableView = function() {
   // Aged toggle
   h += '<button class="tbl-filter-toggle' + (_tblState.filterAged ? ' tbl-filter-toggle-on' : '') + '" onclick="window._tblSetFilter(\'aged\',true)" title="Only show pursuits past their stage aging threshold">AGED</button>';
 
+  // Phase 5g — Posture column toggle (master prompt §7.5.6: off by default)
+  h += '<button class="tbl-filter-toggle' + (_tblState.showPosture ? ' tbl-filter-toggle-on tbl-filter-toggle-posture' : '') + '" onclick="window._tblTogglePostureCol()" title="Show Posture column (adversary count + influence read + predecessor notes indicators)">+ POSTURE</button>';
+
   // Clear
   if (anyFilter) {
     h += '<button class="tbl-filter-clear" onclick="window._tblClearFilters()">Clear</button>';
@@ -820,7 +868,7 @@ window._renderTableView = function() {
   h += '<div class="tbl-scroll">';
   h += '<table class="tbl">';
   h += '<thead><tr>';
-  TBL_COLS.forEach(function(c) {
+  _tblColumns().forEach(function(c) {
     var sortInd = '';
     if (c.sortable && _tblState.sortKey === c.key) {
       sortInd = '<span class="tbl-sort-arrow">' + (_tblState.sortDir === 'asc' ? '▲' : '▼') + '</span>';
