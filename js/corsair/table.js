@@ -134,132 +134,251 @@ function _tNextAction(opp) {
   return act ? _tEsc(act.length > 36 ? act.slice(0, 36) + '…' : act) : '—';
 }
 
+// Phase 5b — table state (sort + filter + search). Module-scope; persists
+// across re-renders within a session. localStorage / Firebase persistence
+// (Phase 5c saved views) lands in subsequent commits.
+var _tblState = {
+  sortKey: 'default',          // column key or 'default' for stage+days desc
+  sortDir: 'asc',              // 'asc' | 'desc'
+  filterStage: '',             // stage key or '' for all
+  filterHealth: '',            // 'hot' | 'warm' | 'cold' or '' for all
+  filterAged: false,           // true = only aged-in-stage
+  search:  ''
+};
+
+window._tblSetSort = function(key) {
+  if (_tblState.sortKey === key) {
+    _tblState.sortDir = (_tblState.sortDir === 'asc') ? 'desc' : 'asc';
+  } else {
+    _tblState.sortKey = key;
+    _tblState.sortDir = (key === 'value' || key === 'weighted' || key === 'days' || key === 'pwin') ? 'desc' : 'asc';
+  }
+  window._renderTableView();
+};
+
+window._tblSetFilter = function(field, value) {
+  if (field === 'aged') _tblState.filterAged = !_tblState.filterAged;
+  else _tblState[field] = value;
+  window._renderTableView();
+};
+
+window._tblSetSearch = function(v) {
+  _tblState.search = String(v || '').toLowerCase().trim();
+  // Re-render only the rows, not the whole header (preserves search input focus)
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  var stages = (pipelineMod && pipelineMod.stages) || [];
+  var processed = _tblProcessOpps(window.opportunities || [], pipelineMod, stages);
+  var tbody = document.querySelector('#table-view-body .tbl tbody');
+  if (tbody) {
+    tbody.innerHTML = _tblRenderRows(processed, pipelineMod);
+  }
+  var countEl = document.getElementById('tbl-count');
+  if (countEl) countEl.textContent = processed.length;
+};
+
+window._tblClearFilters = function() {
+  _tblState.filterStage = '';
+  _tblState.filterHealth = '';
+  _tblState.filterAged = false;
+  _tblState.search = '';
+  _tblState.sortKey = 'default';
+  _tblState.sortDir = 'asc';
+  window._renderTableView();
+};
+
+function _tblProcessOpps(allOpps, pipelineMod, stages) {
+  var stageOrder = {};
+  stages.forEach(function(s, i) { stageOrder[s.key] = i; });
+
+  // Filter
+  var opps = allOpps.slice().filter(function(o) {
+    if (!o) return false;
+    if (_tblState.filterStage && o.stage !== _tblState.filterStage) return false;
+    if (_tblState.filterHealth) {
+      var h = (typeof window._computePursuitHealth === 'function') ? window._computePursuitHealth(o) : { status: 'unknown' };
+      if (h.status !== _tblState.filterHealth) return false;
+    }
+    if (_tblState.filterAged) {
+      var aged = pipelineMod && typeof pipelineMod.isStageStuck === 'function' && pipelineMod.isStageStuck(o);
+      if (!aged) return false;
+    }
+    if (_tblState.search) {
+      var hay = String((o.name || '') + ' ' + (o.agency || '') + ' ' + (o.customer || '') + ' ' + (o.captureLead || '') + ' ' + (o.notes || '')).toLowerCase();
+      if (hay.indexOf(_tblState.search) < 0) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  var dir = _tblState.sortDir === 'desc' ? -1 : 1;
+  function cmp(a, b, val) { return val < 0 ? -dir : val > 0 ? dir : 0; }
+  function nameOf(o) { return (o.name || '').toLowerCase(); }
+  function valueOf(o) { return Number(o.value || 0); }
+  function pwinOf(o) { return Number(o.pwin || 0); }
+  function weightedOf(o) { return Number(o.value || 0) * Number(o.pwin || 0); }
+  function daysOf(o) {
+    return (pipelineMod && typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(o) : 0;
+  }
+  function customerOf(o) { return String(o.agency || o.customer || '').toLowerCase(); }
+  function leadOf(o) { return String(o.captureLead || '').toLowerCase(); }
+  function nextOf(o) {
+    var d = o.rfpDate || o.awardDate || o.due;
+    return d ? new Date(d).getTime() : 9e15;
+  }
+
+  if (_tblState.sortKey === 'default') {
+    opps.sort(function(a, b) {
+      var sa = stageOrder[a.stage] != null ? stageOrder[a.stage] : 999;
+      var sb = stageOrder[b.stage] != null ? stageOrder[b.stage] : 999;
+      if (sa !== sb) return sa - sb;
+      return daysOf(b) - daysOf(a);
+    });
+  } else if (_tblState.sortKey === 'name') {
+    opps.sort(function(a, b) { return cmp(a, b, nameOf(a) < nameOf(b) ? -1 : nameOf(a) > nameOf(b) ? 1 : 0); });
+  } else if (_tblState.sortKey === 'customer') {
+    opps.sort(function(a, b) { return cmp(a, b, customerOf(a) < customerOf(b) ? -1 : customerOf(a) > customerOf(b) ? 1 : 0); });
+  } else if (_tblState.sortKey === 'stage') {
+    opps.sort(function(a, b) {
+      var sa = stageOrder[a.stage] != null ? stageOrder[a.stage] : 999;
+      var sb = stageOrder[b.stage] != null ? stageOrder[b.stage] : 999;
+      return cmp(a, b, sa - sb);
+    });
+  } else if (_tblState.sortKey === 'days') {
+    opps.sort(function(a, b) { return cmp(a, b, daysOf(a) - daysOf(b)); });
+  } else if (_tblState.sortKey === 'value') {
+    opps.sort(function(a, b) { return cmp(a, b, valueOf(a) - valueOf(b)); });
+  } else if (_tblState.sortKey === 'pwin') {
+    opps.sort(function(a, b) { return cmp(a, b, pwinOf(a) - pwinOf(b)); });
+  } else if (_tblState.sortKey === 'weighted') {
+    opps.sort(function(a, b) { return cmp(a, b, weightedOf(a) - weightedOf(b)); });
+  } else if (_tblState.sortKey === 'next') {
+    opps.sort(function(a, b) { return cmp(a, b, nextOf(a) - nextOf(b)); });
+  } else if (_tblState.sortKey === 'lead') {
+    opps.sort(function(a, b) { return cmp(a, b, leadOf(a) < leadOf(b) ? -1 : leadOf(a) > leadOf(b) ? 1 : 0); });
+  }
+
+  return opps;
+}
+
+var TBL_COLS = [
+  { key: 'status',   label: '',            align: 'center', w: '24px',  sortable: false },
+  { key: 'name',     label: 'Pursuit',     align: 'left',   w: '260px', sticky: true, sortable: true },
+  { key: 'customer', label: 'Customer',    align: 'left',   w: '180px', sortable: true },
+  { key: 'stage',    label: 'Stage',       align: 'left',   w: '140px', sortable: true },
+  { key: 'days',     label: 'Days',        align: 'right',  w: '60px',  sortable: true },
+  { key: 'value',    label: 'Value',       align: 'right',  w: '90px',  sortable: true },
+  { key: 'pwin',     label: 'pWin',        align: 'right',  w: '60px',  sortable: true },
+  { key: 'weighted', label: 'Weighted',    align: 'right',  w: '90px',  sortable: true },
+  { key: 'next',     label: 'Next',        align: 'right',  w: '80px',  sortable: true },
+  { key: 'lead',     label: 'Lead',        align: 'center', w: '46px',  sortable: true },
+  { key: 'action',   label: 'Next Action', align: 'left',   w: '220px', sortable: false },
+  { key: 'health',   label: 'Health',      align: 'center', w: '70px',  sortable: false },
+  { key: 'lastMtg',  label: 'Last Mtg',    align: 'right',  w: '70px',  sortable: false },
+  { key: 'coverage', label: 'Coverage',    align: 'center', w: '80px',  sortable: false },
+  { key: 'tags',     label: 'Tags',        align: 'left',   w: '120px', sortable: false },
+  { key: 'notes',    label: 'Notes',       align: 'left',   w: '220px', sortable: false }
+];
+
+function _tblRenderRows(opps, pipelineMod) {
+  if (opps.length === 0) {
+    return '<tr><td colspan="' + TBL_COLS.length + '" class="tbl-empty">No pursuits match the current filters.</td></tr>';
+  }
+  var html = '';
+  opps.forEach(function(o) {
+    var safeId = String(o.id).replace(/'/g, '&#39;');
+    var stageCfg = (pipelineMod && typeof pipelineMod.config === 'function') ? pipelineMod.config(o.stage) : { label: o.stage, color: '#7d7669' };
+    var stageLabel = (stageCfg && stageCfg.label) || o.stage || '—';
+    var days = (pipelineMod && typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(o) : 0;
+    var aged = (pipelineMod && typeof pipelineMod.isStageStuck === 'function') && pipelineMod.isStageStuck(o);
+    var health = (typeof window._computePursuitHealth === 'function') ? window._computePursuitHealth(o) : { status: 'unknown', score: 0 };
+    var dotColor = _tStatusDot(o, health);
+    var weighted = Number(o.value || 0) * Number(o.pwin || 0);
+    var pwinPct = o.pwin != null ? Math.round(Number(o.pwin) * 100) + '%' : '—';
+
+    html += '<tr class="tbl-row' + (aged ? ' tbl-row-aged' : '') + '" data-opp-id="' + safeId + '">';
+    html += '<td class="tbl-cell tbl-cell-center"><span class="tbl-dot" style="background:' + dotColor + '" title="' + (aged ? 'aged in stage' : (health.status || 'unknown')) + '"></span></td>';
+    html += '<td class="tbl-cell tbl-cell-left tbl-cell-sticky"><span class="tbl-name" onclick="window.openEntityInspector(\'' + safeId + '\')">' + _tEsc(o.name || '(unnamed)') + '</span></td>';
+    html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + (o.agency ? _tEsc(o.agency) : (o.customer ? _tEsc(o.customer) : '—')) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-left"><span class="tbl-stage-pill"><span class="tbl-stage-dot" style="background:' + (stageCfg.color || '#7d7669') + '"></span>' + _tEsc(stageLabel) + '</span></td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num' + (aged ? ' tbl-cell-warn' : '') + '">' + days + '</td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tFmtVal(o.value) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + pwinPct + '</td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tFmtVal(weighted) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tNextMilestone(o) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-center">' + _tCaptureLead(o) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + _tNextAction(o) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-center">' + _tHealthPill(health) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tLastMeeting(o) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-center">' + _tCoverageBadge(o) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-left">' + _tTags(o) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + _tNotesPreview(o) + '</td>';
+    html += '</tr>';
+  });
+  return html;
+}
+
 window._renderTableView = function() {
   var body = document.getElementById('table-view-body');
   if (!body) return;
   var pipelineMod = window.Corsair && window.Corsair.pipeline;
   var stages = (pipelineMod && pipelineMod.stages) || [];
+  var allOpps = window.opportunities || [];
 
-  var opps = (window.opportunities || []).slice();
-  // Default sort: by stage order, then days-in-stage desc within stage
-  var stageOrder = {};
-  stages.forEach(function(s, i) { stageOrder[s.key] = i; });
-  opps.sort(function(a, b) {
-    var sa = stageOrder[a.stage] != null ? stageOrder[a.stage] : 999;
-    var sb = stageOrder[b.stage] != null ? stageOrder[b.stage] : 999;
-    if (sa !== sb) return sa - sb;
-    var da = (pipelineMod && typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(a) : 0;
-    var db = (pipelineMod && typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(b) : 0;
-    return db - da;
+  var processed = _tblProcessOpps(allOpps, pipelineMod, stages);
+  var anyFilter = !!(_tblState.filterStage || _tblState.filterHealth || _tblState.filterAged || _tblState.search || _tblState.sortKey !== 'default');
+
+  // Filter chips bar
+  var h = '<div class="tbl-filters">';
+  // Search input
+  h += '<input type="text" class="tbl-search" placeholder="Search name / customer / lead / notes…" oninput="window._tblSetSearch(this.value)" value="' + _tEsc(_tblState.search) + '">';
+
+  // Stage filter chip
+  h += '<select class="tbl-filter-select" onchange="window._tblSetFilter(\'filterStage\',this.value)" title="Filter by stage">';
+  h += '<option value=""' + (_tblState.filterStage === '' ? ' selected' : '') + '>All stages</option>';
+  stages.forEach(function(s) {
+    h += '<option value="' + s.key + '"' + (_tblState.filterStage === s.key ? ' selected' : '') + '>' + _tEsc(s.label) + '</option>';
   });
+  h += '</select>';
 
-  // Header
-  var h = '<div class="tbl-meta">';
-  h += '<span class="tbl-meta-count"><strong>' + opps.length + '</strong> pursuits</span>';
-  h += '<span class="tbl-meta-sep">·</span>';
-  h += '<span class="tbl-meta-hint">click name → dossier · sortable columns + filters land in next commit</span>';
+  // Health filter chip
+  h += '<select class="tbl-filter-select" onchange="window._tblSetFilter(\'filterHealth\',this.value)" title="Filter by pursuit health">';
+  h += '<option value=""' + (_tblState.filterHealth === '' ? ' selected' : '') + '>All health</option>';
+  ['hot','warm','cold','unknown'].forEach(function(s) {
+    h += '<option value="' + s + '"' + (_tblState.filterHealth === s ? ' selected' : '') + '>' + s.toUpperCase() + '</option>';
+  });
+  h += '</select>';
+
+  // Aged toggle
+  h += '<button class="tbl-filter-toggle' + (_tblState.filterAged ? ' tbl-filter-toggle-on' : '') + '" onclick="window._tblSetFilter(\'aged\',true)" title="Only show pursuits past their stage aging threshold">AGED</button>';
+
+  // Clear
+  if (anyFilter) {
+    h += '<button class="tbl-filter-clear" onclick="window._tblClearFilters()">Clear</button>';
+  }
+
+  // Count
+  h += '<div class="tbl-meta-count" style="margin-left:auto"><strong id="tbl-count">' + processed.length + '</strong> of ' + allOpps.length + ' pursuits</div>';
   h += '</div>';
 
+  // Table
   h += '<div class="tbl-scroll">';
   h += '<table class="tbl">';
   h += '<thead><tr>';
-  var cols = [
-    { key: 'status',     label: '',          align: 'center', w: '24px' },
-    { key: 'name',       label: 'Pursuit',   align: 'left',   w: '260px', sticky: true },
-    { key: 'customer',   label: 'Customer',  align: 'left',   w: '180px' },
-    { key: 'stage',      label: 'Stage',     align: 'left',   w: '140px' },
-    { key: 'days',       label: 'Days',      align: 'right',  w: '60px'  },
-    { key: 'value',      label: 'Value',     align: 'right',  w: '90px'  },
-    { key: 'pwin',       label: 'pWin',      align: 'right',  w: '60px'  },
-    { key: 'weighted',   label: 'Weighted',  align: 'right',  w: '90px'  },
-    { key: 'next',       label: 'Next',      align: 'right',  w: '80px'  },
-    { key: 'lead',       label: 'Lead',      align: 'center', w: '46px'  },
-    { key: 'action',     label: 'Next Action', align: 'left', w: '220px' },
-    { key: 'health',     label: 'Health',    align: 'center', w: '70px'  },
-    { key: 'lastMtg',    label: 'Last Mtg',  align: 'right',  w: '70px'  },
-    { key: 'coverage',   label: 'Coverage',  align: 'center', w: '80px'  },
-    { key: 'tags',       label: 'Tags',      align: 'left',   w: '120px' },
-    { key: 'notes',      label: 'Notes',     align: 'left',   w: '220px' }
-  ];
-  cols.forEach(function(c) {
-    h += '<th class="tbl-th tbl-th-' + c.align + (c.sticky ? ' tbl-th-sticky' : '') + '" style="width:' + c.w + ';min-width:' + c.w + '">' + c.label + '</th>';
+  TBL_COLS.forEach(function(c) {
+    var sortInd = '';
+    if (c.sortable && _tblState.sortKey === c.key) {
+      sortInd = '<span class="tbl-sort-arrow">' + (_tblState.sortDir === 'asc' ? '▲' : '▼') + '</span>';
+    }
+    var clickable = c.sortable ? ' tbl-th-sortable" onclick="window._tblSetSort(\'' + c.key + '\')"' : '"';
+    h += '<th class="tbl-th tbl-th-' + c.align + (c.sticky ? ' tbl-th-sticky' : '') + clickable + ' style="width:' + c.w + ';min-width:' + c.w + '">' + c.label + sortInd + '</th>';
   });
   h += '</tr></thead>';
-
-  h += '<tbody>';
-  if (opps.length === 0) {
-    h += '<tr><td colspan="' + cols.length + '" class="tbl-empty">No pursuits in workspace yet.</td></tr>';
-  } else {
-    opps.forEach(function(o) {
-      var safeId = String(o.id).replace(/'/g, '&#39;');
-      var stageCfg = (pipelineMod && typeof pipelineMod.config === 'function') ? pipelineMod.config(o.stage) : { label: o.stage, color: '#7d7669' };
-      var stageLabel = (stageCfg && stageCfg.label) || o.stage || '—';
-      var days = (pipelineMod && typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(o) : 0;
-      var aged = (pipelineMod && typeof pipelineMod.isStageStuck === 'function') && pipelineMod.isStageStuck(o);
-      var health = (typeof window._computePursuitHealth === 'function') ? window._computePursuitHealth(o) : { status: 'unknown', score: 0 };
-      var dotColor = _tStatusDot(o, health);
-      var weighted = Number(o.value || 0) * Number(o.pwin || 0);
-      var pwinPct = o.pwin != null ? Math.round(Number(o.pwin) * 100) + '%' : '—';
-
-      h += '<tr class="tbl-row' + (aged ? ' tbl-row-aged' : '') + '" data-opp-id="' + safeId + '">';
-
-      // status dot
-      h += '<td class="tbl-cell tbl-cell-center"><span class="tbl-dot" style="background:' + dotColor + '" title="' + (aged ? 'aged in stage' : (health.status || 'unknown')) + '"></span></td>';
-
-      // name (sticky, click → dossier)
-      h += '<td class="tbl-cell tbl-cell-left tbl-cell-sticky"><span class="tbl-name" onclick="window.openEntityInspector(\'' + safeId + '\')">' + _tEsc(o.name || '(unnamed)') + '</span></td>';
-
-      // customer
-      h += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + (o.agency ? _tEsc(o.agency) : (o.customer ? _tEsc(o.customer) : '—')) + '</td>';
-
-      // stage
-      h += '<td class="tbl-cell tbl-cell-left"><span class="tbl-stage-pill"><span class="tbl-stage-dot" style="background:' + (stageCfg.color || '#7d7669') + '"></span>' + _tEsc(stageLabel) + '</span></td>';
-
-      // days
-      h += '<td class="tbl-cell tbl-cell-right tbl-cell-num' + (aged ? ' tbl-cell-warn' : '') + '">' + days + '</td>';
-
-      // value (Plex Mono right)
-      h += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tFmtVal(o.value) + '</td>';
-
-      // pwin
-      h += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + pwinPct + '</td>';
-
-      // weighted
-      h += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tFmtVal(weighted) + '</td>';
-
-      // next milestone
-      h += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tNextMilestone(o) + '</td>';
-
-      // lead (initials)
-      h += '<td class="tbl-cell tbl-cell-center">' + _tCaptureLead(o) + '</td>';
-
-      // next action
-      h += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + _tNextAction(o) + '</td>';
-
-      // health pill
-      h += '<td class="tbl-cell tbl-cell-center">' + _tHealthPill(health) + '</td>';
-
-      // last meeting
-      h += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tLastMeeting(o) + '</td>';
-
-      // coverage badge
-      h += '<td class="tbl-cell tbl-cell-center">' + _tCoverageBadge(o) + '</td>';
-
-      // tags
-      h += '<td class="tbl-cell tbl-cell-left">' + _tTags(o) + '</td>';
-
-      // notes preview
-      h += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + _tNotesPreview(o) + '</td>';
-
-      h += '</tr>';
-    });
-  }
-  h += '</tbody>';
+  h += '<tbody>' + _tblRenderRows(processed, pipelineMod) + '</tbody>';
   h += '</table>';
   h += '</div>';
 
   body.innerHTML = h;
-  console.log('[Table] Phase 5a rendered: ' + opps.length + ' pursuits, 16 columns');
+  console.log('[Table] Phase 5b rendered: ' + processed.length + ' / ' + allOpps.length + ' pursuits, sort=' + _tblState.sortKey + '/' + _tblState.sortDir);
 };
 
 window.Corsair = window.Corsair || {};
