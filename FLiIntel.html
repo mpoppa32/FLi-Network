@@ -5595,6 +5595,58 @@ input[type="url"], textarea, select {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   CORSAIR POSTURE LAYER — The Sovereign's working surface for the political
+   terrain. The Posture is the field of clarity. Distinct from Theater's warm
+   command-center palette: deeper obsidian, cold institutional amber, italic
+   pull-quotes for predecessor notes and influence reads.
+
+   Phase 7.5.2: Inspector dossier gains a POSTURE tab beside DOSSIER. When
+   selected, the dossier content area enters posture-mode (data-surface=
+   "posture") and renders the Influence Map for the focused entity.
+   ═══════════════════════════════════════════════════════════════════════════ */
+#entity-inspector-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--b1);
+}
+#entity-inspector-tabs .ei-tab {
+  padding: 9px 22px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--t3);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+#entity-inspector-tabs .ei-tab:hover {
+  color: var(--text);
+}
+#entity-inspector-tabs .ei-tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+/* Posture-mode tab content panel — uses posture tokens via data-surface */
+#entity-posture-content[data-surface="posture"] {
+  background-color: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  min-height: 220px;
+  transition: background-color 280ms ease, color 280ms ease, border-color 280ms ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   END CORSAIR POSTURE LAYER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════════
    CORSAIR CAPTURE LAYER — Meeting log entry form
    The intel-view #itab-log capture surface — the data faucet for the
    entire graph. Operator-grade form treatment with mono labels, square
@@ -6497,7 +6549,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.0</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.1</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -7236,7 +7288,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.0</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.1</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -26201,7 +26253,60 @@ window._renderEntityInspector = function(entity) {
     });
   }
 
-  return h;
+  // Phase 7.5.2 — wrap dossier content with Posture tab system.
+  // Step 3a is chrome only: posture panel renders an empty-state pull-quote.
+  // Steps 3b-3e fill in influence read editor, contacts table, row expansion,
+  // adversaries section, and predecessor notes block.
+  var postureH = (typeof window._renderEntityPosture === 'function')
+    ? window._renderEntityPosture(entity) : '';
+  return ''
+    + '<div id="entity-inspector-tabs">'
+    +   '<button id="entity-tab-dossier" class="ei-tab active" onclick="window._switchEntityInspectorTab(\'dossier\')">DOSSIER</button>'
+    +   '<button id="entity-tab-posture" class="ei-tab" onclick="window._switchEntityInspectorTab(\'posture\')">POSTURE</button>'
+    + '</div>'
+    + '<div id="entity-dossier-content">' + h + '</div>'
+    + '<div id="entity-posture-content" data-surface="posture" style="display:none">' + postureH + '</div>';
+};
+
+// Phase 7.5.2 — Inspector Posture tab content (Step 3a chrome).
+// Empty-state pull-quote until influence read editor (Step 3b), contacts
+// table (Step 3c), row expansion (Step 3d), and adversaries section
+// (Step 3e) land in subsequent commits.
+window._renderEntityPosture = function(entity) {
+  if (!entity) return '';
+  var postureMod = window.Corsair && window.Corsair.posture;
+  if (!postureMod) {
+    return '<div style="padding:30px;color:#8A8478;font-family:IBM Plex Sans,sans-serif;font-size:13px">Posture module not loaded.</div>';
+  }
+  return ''
+    + '<div style="padding:34px 28px 40px;background:var(--bg);color:var(--text);font-family:IBM Plex Sans,sans-serif">'
+    +   '<div style="font-family:IBM Plex Sans,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:14px">Posture — Influence Map</div>'
+    +   '<div style="border-left:2px solid var(--gold);padding:6px 0 6px 14px;margin-bottom:20px;color:var(--text-quote);font-style:italic;font-size:14px;line-height:1.55">'
+    +     'No Posture data recorded on this entity yet. The Sovereign’s reads — influence, position, path, trajectory, tells, predecessor notes — will appear here as you record them.'
+    +   '</div>'
+    +   '<div style="font-size:11px;color:var(--t2);line-height:1.6;letter-spacing:0.02em">'
+    +     'Phase 7.5.2 chrome (Step 3a). The contacts table, adversaries section, and predecessor notes pull-quote land in subsequent commits.'
+    +   '</div>'
+    + '</div>';
+};
+
+window._switchEntityInspectorTab = function(tabName) {
+  var dossier = document.getElementById('entity-dossier-content');
+  var posture = document.getElementById('entity-posture-content');
+  var tabD    = document.getElementById('entity-tab-dossier');
+  var tabP    = document.getElementById('entity-tab-posture');
+  if (!dossier || !posture || !tabD || !tabP) return;
+  if (tabName === 'posture') {
+    dossier.style.display = 'none';
+    posture.style.display = 'block';
+    tabD.classList.remove('active');
+    tabP.classList.add('active');
+  } else {
+    dossier.style.display = '';
+    posture.style.display = 'none';
+    tabD.classList.add('active');
+    tabP.classList.remove('active');
+  }
 };
 
 function _eiHexToRgb(hex) {
