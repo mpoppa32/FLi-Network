@@ -6358,9 +6358,9 @@ input[type="url"], textarea, select {
   background-color: rgba(142,56,56,.1);
 }
 
-/* Log Ledger modal — fields */
-.ll-field { margin-bottom: 12px; }
-.ll-label {
+/* Log Ledger modal — fields (scoped to modal so they don't collide) */
+#log-ledger-modal .ll-field { margin-bottom: 14px; }
+#log-ledger-modal .ll-lbl {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 9px;
   font-weight: 700;
@@ -6369,33 +6369,147 @@ input[type="url"], textarea, select {
   color: var(--t3);
   margin-bottom: 5px;
 }
-.ll-input {
+#log-ledger-modal .ll-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+#log-ledger-modal .ll-radio input[type="radio"] {
+  accent-color: var(--gold);
+}
+#log-ledger-modal select,
+#log-ledger-modal input[type="text"],
+#log-ledger-modal input[type="date"],
+#log-ledger-modal textarea {
   width: 100%;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 2px;
   padding: 7px 10px;
-  font-size: 13px;
+  font-size: 12px;
   font-family: 'IBM Plex Sans', sans-serif;
   color: var(--text);
   outline: none;
   box-sizing: border-box;
   transition: border-color 140ms ease;
 }
-.ll-input:focus { border-color: var(--gold); }
-textarea.ll-input { resize: vertical; min-height: 60px; line-height: 1.45; }
-.ll-radio {
+#log-ledger-modal textarea { resize: vertical; min-height: 50px; line-height: 1.45; }
+#log-ledger-modal select:focus,
+#log-ledger-modal input:focus,
+#log-ledger-modal textarea:focus { border-color: var(--gold); }
+#log-ledger-modal select option,
+#log-ledger-modal select optgroup {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Step 5 — Influence Across Pursuits sub-tab */
+.posture-influence-row {
+  background: var(--surface-alt);
+  border: 1px solid var(--rule);
+  border-left: 2px solid var(--rule);
+  border-radius: 2px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+.posture-influence-row-conflict {
+  border-left-color: var(--danger);
+  background: rgba(142,56,56,.04);
+}
+.posture-influence-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.posture-influence-name-col {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.posture-influence-name {
+  font-weight: 600;
   font-size: 13px;
   color: var(--text);
-  font-family: 'IBM Plex Sans', sans-serif;
   cursor: pointer;
+  transition: color 140ms ease;
 }
-.ll-radio input[type="radio"] {
-  accent-color: var(--gold);
+.posture-influence-name:hover { color: var(--gold); }
+.posture-influence-role {
+  color: var(--t2);
+  font-size: 11px;
+  font-weight: 400;
+}
+.posture-influence-readings {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.posture-influence-tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  background: rgba(168,112,58,.08);
+  border: 1px solid rgba(168,112,58,.25);
+  border-radius: 2px;
+  padding: 3px 7px;
+}
+.posture-influence-tag-traj {
+  color: var(--t2);
+  background: transparent;
+  border-color: var(--rule);
+}
+.posture-influence-tag-conflict {
+  color: var(--danger);
+  background: rgba(142,56,56,.08);
+  border-color: rgba(142,56,56,.35);
+  font-weight: 700;
+}
+.posture-influence-pursuits {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 17px;
+  border-left: 1px solid var(--rule);
+}
+.posture-influence-pursuit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+  padding: 4px 0;
+}
+.posture-influence-pursuit-name {
+  color: var(--text);
   cursor: pointer;
+  font-weight: 500;
+  transition: color 140ms ease;
+}
+.posture-influence-pursuit-name:hover { color: var(--gold); }
+.posture-influence-pursuit-missing {
+  color: var(--t3);
+  font-style: italic;
+}
+.posture-influence-position-chip {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.posture-influence-conflict-count {
+  color: var(--danger) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -7305,7 +7419,7 @@ textarea.ll-input { resize: vertical; min-height: 60px; line-height: 1.45; }
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.7</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.8</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8048,7 +8162,7 @@ textarea.ll-input { resize: vertical; min-height: 60px; line-height: 1.45; }
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.7</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.8</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -28311,6 +28425,114 @@ window._ledgerDelete = async function(entryId) {
     if (typeof window.deleteLedgerEntry === 'function') await window.deleteLedgerEntry(entryId);
   } catch (e) { console.warn('[Ledger] delete failed:', e); }
   if (typeof window._renderPostureView === 'function') window._renderPostureView();
+};
+
+// Phase 7.5.5 Step 5 — Influence Across Pursuits sub-tab.
+// Cross-pursuit aggregation. For each contact mapped to 2+ pursuits,
+// render their workspace-level path/trajectory plus per-pursuit
+// positions. Conflict indicator fires when positions across pursuits
+// are operationally inconsistent (ally + rival, ally + adversary,
+// benefactor + rival, benefactor + adversary, debtor + adversary).
+// Read-only — no writes from this surface.
+
+window._renderPostureInfluenceAcrossPursuits = function() {
+  var postureMod = window.Corsair && window.Corsair.posture;
+  if (!postureMod) {
+    return '<div style="font-size:12px;color:var(--t3);padding:18px">Posture module not loaded.</div>';
+  }
+
+  var people = (window.nodes || []).filter(function(n) { return n.type === 'person'; });
+  var rows = people.map(function(p) {
+    var positions = postureMod.positionsAcrossPursuits(p);
+    return { person: p, positions: positions };
+  }).filter(function(item) { return item.positions.length >= 2; });
+
+  rows.sort(function(a, b) {
+    var ac = postureMod.hasConflictingPositions(a.person) ? 0 : 1;
+    var bc = postureMod.hasConflictingPositions(b.person) ? 0 : 1;
+    if (ac !== bc) return ac - bc;
+    if (b.positions.length !== a.positions.length) return b.positions.length - a.positions.length;
+    return (a.person.name || '').localeCompare(b.person.name || '');
+  });
+
+  var conflictCount = rows.filter(function(item) { return postureMod.hasConflictingPositions(item.person); }).length;
+
+  var h = '';
+  h += '<div class="posture-ledger-header">';
+  h += '<div>';
+  h += '<div class="posture-ledger-title">Influence Across Pursuits</div>';
+  h += '<div class="posture-ledger-subtitle">Where each contact appears. Where their positions conflict.</div>';
+  h += '</div>';
+  h += '</div>';
+
+  h += '<div class="posture-ledger-counts">';
+  h += '<div class="posture-ledger-col-count"><span class="lc-count">' + rows.length + '</span><span class="lc-label">on 2+ pursuits</span></div>';
+  h += '<div class="posture-ledger-col-count"><span class="lc-count posture-influence-conflict-count">' + conflictCount + '</span><span class="lc-label">conflicting positions</span></div>';
+  h += '</div>';
+
+  if (rows.length === 0) {
+    h += '<div class="posture-ledger-empty">No contacts mapped across multiple pursuits yet. Once the same person is recorded on two or more pursuits with a position read, they appear here.</div>';
+    return h;
+  }
+
+  rows.forEach(function(item) {
+    h += window._renderInfluenceContactRow(item);
+  });
+
+  return h;
+};
+
+window._renderInfluenceContactRow = function(item) {
+  var postureMod = window.Corsair && window.Corsair.posture;
+  var p = item.person;
+  var posture = postureMod.personPosture(p);
+  var hasConflict = postureMod.hasConflictingPositions(p);
+  var trajKey = posture.trajectory || 'stable';
+  var trajCol = postureMod.trajectoryColor(trajKey);
+
+  var safeId = String(p.id).replace(/'/g, '&#39;');
+  var name = String(p.name || '(unnamed)').replace(/</g, '&lt;');
+  var roleOrg = '';
+  if (p.role && p.org) roleOrg = String(p.role).replace(/</g, '&lt;') + ' · ' + String(p.org).replace(/</g, '&lt;');
+  else if (p.role)    roleOrg = String(p.role).replace(/</g, '&lt;');
+  else if (p.org)     roleOrg = String(p.org).replace(/</g, '&lt;');
+
+  var h = '<div class="posture-influence-row' + (hasConflict ? ' posture-influence-row-conflict' : '') + '">';
+  h += '<div class="posture-influence-row-head">';
+  h += '<div class="posture-influence-name-col">';
+  h += '<span class="traj-dot" title="Trajectory: ' + trajKey + '" style="background:' + trajCol + '"></span>';
+  h += '<span class="posture-influence-name" onclick="window.openEntityInspector(\'' + safeId + '\')" title="Open dossier">' + name + '</span>';
+  if (roleOrg) h += '<span class="posture-influence-role">' + roleOrg + '</span>';
+  h += '</div>';
+  h += '<div class="posture-influence-readings">';
+  if (posture.path) {
+    h += '<span class="posture-influence-tag posture-influence-tag-path">' + postureMod.pathLabel(posture.path) + '</span>';
+  }
+  h += '<span class="posture-influence-tag posture-influence-tag-traj">' + postureMod.trajectoryLabel(trajKey) + '</span>';
+  if (hasConflict) {
+    h += '<span class="posture-influence-tag posture-influence-tag-conflict">CONFLICT</span>';
+  }
+  h += '</div>';
+  h += '</div>';
+
+  h += '<div class="posture-influence-pursuits">';
+  item.positions.forEach(function(pp) {
+    var opp = (window.opportunities || []).find(function(o) { return String(o.id) === String(pp.pursuitId); });
+    var oppName = opp ? (opp.name || '(unnamed pursuit)') : '(pursuit missing)';
+    var safeOppId = opp ? String(opp.id).replace(/'/g, '&#39;') : '';
+    h += '<div class="posture-influence-pursuit-row">';
+    if (opp) {
+      h += '<span class="posture-influence-pursuit-name" onclick="window.openEntityInspector(\'' + safeOppId + '\')" title="Open pursuit">' + String(oppName).replace(/</g, '&lt;') + '</span>';
+    } else {
+      h += '<span class="posture-influence-pursuit-missing">' + String(oppName).replace(/</g, '&lt;') + '</span>';
+    }
+    h += '<span class="posture-influence-position-chip">' + postureMod.positionLabel(pp.position) + '</span>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  h += '</div>';
+  return h;
 };
 
 function _eiHexToRgb(hex) {
