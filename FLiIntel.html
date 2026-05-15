@@ -7762,7 +7762,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.18</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.19</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8510,7 +8510,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.18</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.19</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -23465,6 +23465,34 @@ function _corsairBuildRhythm(){
       rank: 900 + (300 - Math.min(quietDays, 300))
     });
   });
+
+  // ── Phase 6.6 — pursuit-stage default-action items ──────────────────
+  // For active pursuits past their stage's aging threshold, surface the
+  // STAGE_SPEC.nextAction template as an actionable item. Doctrine §V:
+  // descriptive ("Brief capture plan to CMR board"), not prescriptive
+  // ("you should call X"). The operator decides what to do; Rhythm
+  // surfaces what's stuck and what the default next move would be.
+  var _pipelineMod_66 = window.Corsair && window.Corsair.pipeline;
+  if (_pipelineMod_66 && typeof _pipelineMod_66.isStageStuck === 'function') {
+    (opportunities || []).forEach(function(o) {
+      if (!o || !o.stage || o.stage === 'won' || o.stage === 'lost') return;
+      if (!_pipelineMod_66.isStageStuck(o)) return;
+      var nextAction = (typeof _pipelineMod_66.nextAction === 'function') ? _pipelineMod_66.nextAction(o.stage) : '';
+      if (!nextAction) return;
+      var days = _pipelineMod_66.daysInStage(o);
+      var stageLabel = ((_pipelineMod_66.config && _pipelineMod_66.config(o.stage)) || {}).label || o.stage;
+      var safeOppId = String(o.id).replace(/'/g, '&#39;');
+      items.push({
+        sev:     'warn',
+        kind:    'STAGE ACTION',
+        meta:    days + 'd in ' + stageLabel + ' · default next action',
+        subject: (o.name || 'Pursuit') + ' — ' + nextAction,
+        actor:   o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
+        click:   'window.openEntityInspector(\'' + safeOppId + '\')',
+        rank:    200 + days
+      });
+    });
+  }
 
   // Sort by rank (severity-weighted; critical items get earlier rank values)
   items.sort(function(a, b){
