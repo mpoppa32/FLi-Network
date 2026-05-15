@@ -169,6 +169,30 @@ function nextDefaultAction(opp) {
   return oppStageNextAction(opp.stage);
 }
 
+// Phase 6.2 — composite stage health for an opportunity.
+// Composes with the existing _computePursuitHealth (which scores
+// aging/coverage/momentum). This one is stage-specific:
+//   daysInStage             how long the opp has been in current stage
+//   aged                    boolean — past the stage's aging threshold
+//   exitCriteriaCompletion  0..1 fraction of gates checked
+//   gateReviewOverdue       boolean — placeholder until the gate-review
+//                           schedule lands as its own feature
+function _computeStageHealth(opp) {
+  if (!opp) {
+    return { daysInStage: 0, aged: false, exitCriteriaCompletion: 0, gateReviewOverdue: false };
+  }
+  var gates = oppStageGates(opp.stage) || [];
+  var checks = (opp.exitCriteriaChecks && opp.exitCriteriaChecks[opp.stage]) || {};
+  var checkedCount = gates.reduce(function(n, g) { return n + (checks[g] === true ? 1 : 0); }, 0);
+  var completion = gates.length > 0 ? (checkedCount / gates.length) : 0;
+  return {
+    daysInStage:            daysInStage(opp),
+    aged:                   isStageStuck(opp),
+    exitCriteriaCompletion: completion,
+    gateReviewOverdue:      false
+  };
+}
+
 if (typeof window !== 'undefined') {
   // Back-compat globals — existing FLiIntel.html code references these by name
   window.OPP_STAGES = OPP_STAGES;
@@ -188,8 +212,11 @@ if (typeof window !== 'undefined') {
     nextAction: oppStageNextAction,
     daysInStage: daysInStage,
     isStageStuck: isStageStuck,
-    nextDefaultAction: nextDefaultAction
+    nextDefaultAction: nextDefaultAction,
+    computeStageHealth: _computeStageHealth
   };
+  // Bare global for back-compat with FLiIntel.html callers that look it up by name
+  window._computeStageHealth = _computeStageHealth;
 }
 
 export {
@@ -203,5 +230,6 @@ export {
   oppStageNextAction,
   daysInStage,
   isStageStuck,
-  nextDefaultAction
+  nextDefaultAction,
+  _computeStageHealth
 };

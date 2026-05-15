@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.14';
-  window.Corsair.buildBlurb  = 'Theater orb posture rings — Phase 7.5 complete';
+  window.Corsair.buildTag    = 'P11.15';
+  window.Corsair.buildBlurb  = 'Phase 6.1 stage history persistence + 6.2 _computeStageHealth';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

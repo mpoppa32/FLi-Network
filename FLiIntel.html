@@ -7487,7 +7487,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.14</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.15</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8230,7 +8230,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.14</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.15</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -10255,7 +10255,37 @@ async function saveTLCommitments(){var o={};tlCommitments.forEach(function(c){o[
 // Granular single-item write/delete — preferred over full collection write
 async function saveTLCommitment(item){await fbSet(wsPath('tl_commitments/'+item.id),item);}
 async function deleteTLCommitmentDB(id){setSS('saving');try{await remove(ref(db,wsPath('tl_commitments/'+id)));setSS('live');}catch(e){setSS('error');}  }
-async function saveOpp(opp){if(window._canWrite&&!window._canWrite()){toast('Observers cannot edit opportunities');return;}await fbSet(wsPath('opportunities/'+opp.id),opp);}
+async function saveOpp(opp){
+  if(window._canWrite&&!window._canWrite()){toast('Observers cannot edit opportunities');return;}
+  // Phase 6.1 — auto-maintain stageEnteredAt + stageHistory on stage transitions.
+  // Single interception point: every stage change goes through here, so every
+  // call site (Inspector dropdown, Monday sync, edit form, COP drag) gets the
+  // history without per-site instrumentation.
+  if (opp && opp.stage) {
+    var _prev = (window.opportunities || []).find(function(o) { return String(o.id) === String(opp.id); });
+    var _prevStage = _prev ? _prev.stage : null;
+    if (_prevStage !== opp.stage) {
+      var _now = Date.now();
+      if (_prevStage && _prev && _prev.stageEnteredAt) {
+        opp.stageHistory = (opp.stageHistory || _prev.stageHistory || []).slice();
+        opp.stageHistory.push({
+          stage:     _prevStage,
+          enteredAt: _prev.stageEnteredAt,
+          exitedAt:  _now
+        });
+      } else if (_prev && _prev.stageHistory) {
+        opp.stageHistory = _prev.stageHistory.slice();
+      } else {
+        opp.stageHistory = opp.stageHistory || [];
+      }
+      opp.stageEnteredAt = _now;
+    } else if (!opp.stageEnteredAt) {
+      // First save of an opp that has a stage but no entered timestamp — backfill.
+      opp.stageEnteredAt = Date.now();
+    }
+  }
+  await fbSet(wsPath('opportunities/'+opp.id),opp);
+}
 async function deleteOpp(id){setSS('saving');await remove(ref(db,wsPath('opportunities/'+id)));setSS('live');}
 async function saveCommitment(c){await fbSet(wsPath('commitments/'+c.id),c);}
 async function deleteCommitment(id){setSS('saving');await remove(ref(db,wsPath('commitments/'+id)));setSS('live');}
