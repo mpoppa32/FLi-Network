@@ -11,14 +11,15 @@ import './inspector.js';
 import './cop.js';
 import './rhythm.js';
 import './brief.js';
+import './theater.js';
 
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.7';
+  window.Corsair.buildTag = 'P10.8';
   window.Corsair.modules = window.Corsair.modules || {};
   console.log(
-    '%c[Corsair] modules loaded · P10.7 · inspector wired to CorsairSelection · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.8 · theater coordination layer (Phase A) live · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
