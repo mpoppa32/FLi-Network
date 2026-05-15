@@ -16,7 +16,7 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.19';
+  window.Corsair.buildTag = 'P10.20';
   window.Corsair.modules = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
@@ -25,7 +25,7 @@ import './theater.js';
   }
 
   console.log(
-    '%c[Corsair] modules loaded · P10.19 · Rhythm All-clear + Ask Corsair examples scaled up · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.20 · Ask Corsair tab to light mode · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
