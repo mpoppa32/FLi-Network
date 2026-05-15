@@ -1,0 +1,230 @@
+// Corsair COP module — Common Operating Picture
+//
+// One of the five sacred Corsair modes. Surfaces live situational
+// awareness: what's CHANGING — meetings this week, commitments due
+// soon, overdue commitments, cooling T1/T2 contacts, active opportunity
+// counts by stage.
+//
+// Reads data via window.* globals exposed by FLiIntel.html:
+//   window.meetings, window.commitments, window.nodes,
+//   window.opportunities, window.getMtgsForNodeFast
+//
+// Triggered by renderBoard() in FLiIntel.html which calls
+// window.renderCopSection() to splice this panel into the Board view.
+//
+// Exposes:
+//   window._buildCopData        - assembles the KPIs + lists
+//   window.renderCopSection     - returns the COP panel HTML
+//   window.Corsair.cop.*        - canonical namespace
+
+function _copEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+window._buildCopData = function() {
+  var now = Date.now();
+  var DAY = 86400000;
+  var sevenDays = 7 * DAY;
+  var fourteenDays = 14 * DAY;
+  var thirtyDays = 30 * DAY;
+  var fortyFiveDays = 45 * DAY;
+
+  // ── Recent activity (last 7 days) ────────────────────────────────────
+  var recentMtgs = (window.meetings || []).filter(function(m) {
+    if (!m || !m.ts) return false;
+    return (now - new Date(m.ts).getTime()) < sevenDays;
+  });
+
+  // ── Commitments due in next 7 days ───────────────────────────────────
+  var dueSoon = (window.commitments || []).filter(function(c) {
+    if (!c || c.status !== 'open') return false;
+    var dd = c.due || c.deadline;
+    if (!dd) return false;
+    var t = new Date(dd + (dd.length === 10 ? 'T00:00:00' : '')).getTime();
+    return t > now && (t - now) < sevenDays;
+  }).sort(function(a, b) {
+    return new Date(a.due || a.deadline).getTime() - new Date(b.due || b.deadline).getTime();
+  });
+
+  // ── Overdue commitments ──────────────────────────────────────────────
+  var overdue = (window.commitments || []).filter(function(c) {
+    if (!c || c.status !== 'open') return false;
+    var dd = c.due || c.deadline;
+    if (!dd) return false;
+    return new Date(dd + (dd.length === 10 ? 'T00:00:00' : '')).getTime() < now;
+  });
+
+  // ── Stale T1/T2 contacts (no meeting in 30+ days) ─────────────────────
+  var stale = [];
+  if (window.nodes && typeof window.getMtgsForNodeFast === 'function') {
+    window.nodes.forEach(function(n) {
+      if (!n || n.type !== 'person') return;
+      if (n.priority !== 1 && n.priority !== 2) return;
+      var nodeMtgs = [];
+      try { nodeMtgs = window.getMtgsForNodeFast(n.id) || []; } catch(e) {}
+      var lastTs = 0;
+      nodeMtgs.forEach(function(m) {
+        if (m && m.ts) {
+          var t = new Date(m.ts).getTime();
+          if (t > lastTs) lastTs = t;
+        }
+      });
+      var threshold = n.priority === 1 ? thirtyDays : fortyFiveDays;
+      if (lastTs === 0 || (now - lastTs) > threshold) {
+        stale.push({ node: n, lastTs: lastTs, daysSince: lastTs ? Math.floor((now - lastTs) / DAY) : 999 });
+      }
+    });
+    stale.sort(function(a, b) {
+      if (b.daysSince === 999 && a.daysSince !== 999) return 1;
+      if (a.daysSince === 999 && b.daysSince !== 999) return -1;
+      return b.daysSince - a.daysSince;
+    });
+  }
+
+  // ── Active opportunities — stage stats ───────────────────────────────
+  var activeOpps = (window.opportunities || []).filter(function(o) {
+    return o && o.stage !== 'won' && o.stage !== 'lost';
+  });
+  var oppByStage = {};
+  activeOpps.forEach(function(o) {
+    oppByStage[o.stage || 'awareness'] = (oppByStage[o.stage || 'awareness'] || 0) + 1;
+  });
+
+  return {
+    recentMtgsCount: recentMtgs.length,
+    recentMtgs: recentMtgs.slice(0, 6),
+    dueSoonCount: dueSoon.length,
+    dueSoon: dueSoon.slice(0, 5),
+    overdueCount: overdue.length,
+    overdue: overdue.slice(0, 5),
+    staleCount: stale.length,
+    stale: stale.slice(0, 6),
+    activeOppsCount: activeOpps.length,
+    oppByStage: oppByStage
+  };
+};
+
+window.renderCopSection = function() {
+  var d = window._buildCopData();
+
+  var h = '';
+  // Section header — magazine-style hierarchy
+  h += '<div style="margin:32px 0 18px 0;display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--b1);padding-bottom:12px">';
+  h += '  <div style="display:flex;align-items:baseline;gap:14px">';
+  h += '    <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;letter-spacing:0.02em;color:var(--text);line-height:1">Live Intelligence</div>';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:var(--t3);text-transform:uppercase">What\'s Changing</div>';
+  h += '  </div>';
+  h += '  <div style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s ease-in-out infinite"></span><span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:0.14em;color:var(--green);text-transform:uppercase">Live</span></div>';
+  h += '</div>';
+
+  // KPI row — 4 large display cards
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px">';
+  var kpis = [
+    { val: d.recentMtgsCount, lbl: 'Meetings This Week', color: d.recentMtgsCount > 0 ? 'var(--green)' : 'var(--t3)', sub: 'Last 7 days' },
+    { val: d.dueSoonCount,    lbl: 'Due Soon',           color: d.dueSoonCount    > 0 ? 'var(--amber)' : 'var(--t3)', sub: 'Next 7 days' },
+    { val: d.overdueCount,    lbl: 'Overdue',            color: d.overdueCount    > 0 ? 'var(--red)'   : 'var(--t3)', sub: 'Past deadline' },
+    { val: d.staleCount,      lbl: 'Cooling Contacts',   color: d.staleCount      > 0 ? 'var(--purple)': 'var(--t3)', sub: 'No touch 30d+' }
+  ];
+  kpis.forEach(function(k) {
+    h += '<div style="background:linear-gradient(180deg,rgba(10,16,32,.6),rgba(7,13,24,.6));border:1px solid var(--b1);border-radius:var(--rlg);padding:20px 22px;position:relative;overflow:hidden">';
+    h += '  <div style="position:absolute;top:0;left:0;right:0;height:2px;background:' + k.color + ';opacity:.5"></div>';
+    h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:48px;font-weight:800;color:' + k.color + ';line-height:1;letter-spacing:-0.02em;text-shadow:0 0 24px ' + k.color + '40">' + k.val + '</div>';
+    h += '  <div style="font-size:13px;font-weight:600;color:var(--text);margin-top:10px;line-height:1.3">' + k.lbl + '</div>';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:4px">' + k.sub + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // 2-column detail panels
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:8px">';
+
+  // ── COOLING RELATIONSHIPS ──
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '<div style="display:flex;align-items:center;gap:12px">';
+  h += '<span style="width:5px;height:22px;background:var(--purple);border-radius:1px;box-shadow:0 0 12px rgba(139,92,246,.6)"></span>';
+  h += '<div><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Cooling Relationships</div>';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:2px">Priority contacts going dark</div></div>';
+  h += '</div>';
+  h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:700;color:var(--purple);letter-spacing:0.1em">' + d.staleCount + ' / ' + d.staleCount + '</span>';
+  h += '</div>';
+
+  if (d.stale.length === 0) {
+    h += '<div style="font-size:14px;color:var(--t2);padding:24px 0;line-height:1.6;text-align:center">All key contacts are warm.<br><span style="font-size:11px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.1em;text-transform:uppercase;margin-top:6px;display:inline-block">Strong cadence</span></div>';
+  } else {
+    d.stale.forEach(function(item, i) {
+      var n = item.node;
+      var daysLbl = item.daysSince >= 999 ? 'NEVER' : item.daysSince + 'd';
+      var color = item.daysSince > 60 ? 'var(--red)' : item.daysSince > 30 ? 'var(--amber)' : 'var(--purple)';
+      var sevLbl = item.daysSince > 60 ? 'CRITICAL' : item.daysSince > 30 ? 'WARNING' : 'WATCH';
+      var border = i < d.stale.length - 1 ? 'border-bottom:1px solid rgba(26,34,54,.4);' : '';
+      h += '<div onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + String(n.id).replace(/\'/g, '&#39;') + '\')" style="display:flex;align-items:center;gap:16px;padding:16px 0;cursor:pointer;' + border + 'transition:all .15s" onmouseover="this.style.transform=\'translateX(3px)\'" onmouseout="this.style.transform=\'translateX(0)\'">';
+      h += '<div style="width:10px;height:10px;border-radius:50%;background:' + color + ';box-shadow:0 0 10px ' + color + ';flex-shrink:0"></div>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.3;margin-bottom:5px">' + _copEsc(n.name || '') + '</div>';
+      h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;letter-spacing:0.06em;color:var(--t3);text-transform:uppercase">' + (n.priority === 1 ? 'T1 KEY' : 'T2 ACTIVE') + (n.org ? ' · ' + _copEsc(n.org) : '') + '</div>';
+      h += '</div>';
+      h += '<div style="text-align:right;flex-shrink:0">';
+      h += '<div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:22px;font-weight:700;color:' + color + ';line-height:1;letter-spacing:-0.02em">' + daysLbl + '</div>';
+      h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:0.16em;color:' + color + ';text-transform:uppercase;margin-top:4px">' + sevLbl + '</div>';
+      h += '</div>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+
+  // ── DUE THIS WEEK ──
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:var(--rlg);padding:24px 26px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--b1)">';
+  h += '<div style="display:flex;align-items:center;gap:12px">';
+  h += '<span style="width:5px;height:22px;background:var(--amber);border-radius:1px;box-shadow:0 0 12px rgba(245,158,11,.6)"></span>';
+  h += '<div><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Due This Week</div>';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:2px">Commitments and deadlines</div></div>';
+  h += '</div>';
+  h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:0.1em">' + (d.overdueCount + d.dueSoonCount) + ' ITEMS</span>';
+  h += '</div>';
+
+  if (d.dueSoon.length === 0 && d.overdue.length === 0) {
+    h += '<div style="font-size:14px;color:var(--t2);padding:24px 0;line-height:1.6;text-align:center">No commitments due in the next 7 days.<br><span style="font-size:11px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.1em;text-transform:uppercase;margin-top:6px;display:inline-block">Inbox clear</span></div>';
+  } else {
+    var allItems = d.overdue.map(function(c) { return { c: c, overdue: true }; })
+                   .concat(d.dueSoon.map(function(c) { return { c: c, overdue: false }; }));
+    allItems.forEach(function(it, i) {
+      var ci = it.c;
+      var label = ci.text || ci.title || ci.what || 'Commitment';
+      var border = i < allItems.length - 1 ? 'border-bottom:1px solid rgba(26,34,54,.4);' : '';
+      var color = it.overdue ? 'var(--red)' : 'var(--amber)';
+      var sevLbl = it.overdue ? 'OVERDUE' : 'DUE';
+      var dd = ci.due || ci.deadline;
+      var dt = dd ? new Date(dd + (dd.length === 10 ? 'T00:00:00' : '')) : new Date();
+      var dateStr = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      h += '<div style="display:flex;align-items:flex-start;gap:16px;padding:16px 0;' + border + '">';
+      h += '<div style="width:10px;height:10px;border-radius:50%;background:' + color + ';box-shadow:0 0 10px ' + color + ';flex-shrink:0;margin-top:5px"></div>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.4;margin-bottom:5px">' + _copEsc(label) + '</div>';
+      h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;letter-spacing:0.06em;color:var(--t3);text-transform:uppercase">' + (ci.owner ? _copEsc(ci.owner) + ' · ' : '') + dateStr + '</div>';
+      if (ci.id) {
+        h += '<div style="display:flex;gap:6px;margin-top:8px">';
+        h += '<button onclick="event.stopPropagation();updateCommitmentStatus(\'' + ci.id + '\',\'fulfilled\').then(function(){renderBoard();});" style="font-size:8px;padding:2px 7px;border:1px solid var(--green);border-radius:2px;background:transparent;color:var(--green);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✓ DONE</button>';
+        h += '<button onclick="event.stopPropagation();updateCommitmentStatus(\'' + ci.id + '\',\'broken\').then(function(){renderBoard();});" style="font-size:8px;padding:2px 7px;border:1px solid var(--red);border-radius:2px;background:transparent;color:var(--red);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✗ BROKEN</button>';
+        h += '</div>';
+      }
+      h += '</div>';
+      h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:700;color:' + color + ';letter-spacing:0.16em;flex-shrink:0;padding-top:3px">' + sevLbl + '</div>';
+      h += '</div>';
+    });
+  }
+  h += '</div>';
+
+  h += '</div>';
+  return h;
+};
+
+window.Corsair = window.Corsair || {};
+window.Corsair.cop = {
+  build:  window._buildCopData,
+  render: window.renderCopSection
+};
