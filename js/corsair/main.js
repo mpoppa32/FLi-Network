@@ -16,17 +16,16 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.10';
+  window.Corsair.buildTag = 'P10.11';
   window.Corsair.modules = window.Corsair.modules || {};
 
-  // Sync the pre-auth footer build tag with current.
   if (typeof document !== 'undefined') {
     var el = document.getElementById('auth-build-tag');
     if (el) el.textContent = window.Corsair.buildTag;
   }
 
   console.log(
-    '%c[Corsair] modules loaded · P10.10 · CORSAIR wordmark scaled up · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.11 · wordmark switched to Saira Stencil One · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
