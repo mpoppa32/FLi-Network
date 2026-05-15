@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.11';
-  window.Corsair.buildBlurb  = 'Ask Corsair posture queries — local deterministic patterns (Phase 7.5.6 / Step 6b)';
+  window.Corsair.buildTag    = 'P11.12';
+  window.Corsair.buildBlurb  = 'Bug fix: modal vertical scroll + sticky Inspector tab strip';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
