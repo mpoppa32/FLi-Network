@@ -10,9 +10,7 @@
 // for now — it depends on module-scope helpers (_computeAlerts,
 // _buildDecayAlerts, getProcurementAlerts) that aren't yet on window.
 //
-// P10.17: surface mode = light. Output uses token-based backgrounds
-// so descendants of #rhythm-view (which has data-surface="light")
-// inherit the light token system. No hardcoded dark gradients.
+// P10.19: "All clear" empty state sizes bumped for presence.
 //
 // Triggered by switchView('rhythm') in FLiIntel.html.
 //
@@ -33,10 +31,10 @@ window._renderRhythmView = function() {
   }
 
   if (!items.length) {
-    body.innerHTML = '<div class="empty-state" style="text-align:center;padding:80px 20px;color:var(--t3)">' +
-      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);margin-bottom:8px">All clear</div>' +
-      '<div style="font-size:13px;color:var(--t2);margin-bottom:24px">No overdue commitments, no slipping milestones, no decaying relationships.</div>' +
-      '<button class="btn btn-gold btn-sm" onclick="switchView(\'graph\')">Open Graph</button>' +
+    body.innerHTML = '<div class="empty-state" style="text-align:center;padding:120px 24px;color:var(--t3)">' +
+      '<div style="font-family:Antonio,\'Big Shoulders Display\',sans-serif;font-size:48px;font-weight:800;letter-spacing:0.02em;color:var(--text);margin-bottom:14px;line-height:1.05">All clear</div>' +
+      '<div style="font-size:17px;color:var(--t2);margin-bottom:36px;line-height:1.5;max-width:520px;margin-left:auto;margin-right:auto">No overdue commitments, no slipping milestones, no decaying relationships.</div>' +
+      '<button onclick="switchView(\'graph\')" style="display:inline-flex;align-items:center;gap:10px;padding:14px 28px;background:var(--gold);color:var(--s1);border:none;border-radius:6px;font-family:\'IBM Plex Sans\',sans-serif;font-size:15px;font-weight:600;letter-spacing:.02em;cursor:pointer;box-shadow:0 2px 8px rgba(184,105,30,.18);transition:all 180ms ease" onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 6px 18px rgba(184,105,30,.28)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'0 2px 8px rgba(184,105,30,.18)\'">Open Graph<span style="font-size:18px;line-height:1">→</span></button>' +
       '</div>';
     if (meta) meta.textContent = '';
     return;
