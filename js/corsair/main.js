@@ -16,18 +16,17 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.9';
+  window.Corsair.buildTag = 'P10.10';
   window.Corsair.modules = window.Corsair.modules || {};
 
-  // Keep the pre-auth footer build tag in sync with whatever is current.
-  // The HTML hardcodes a fallback; this overwrites it once modules load.
+  // Sync the pre-auth footer build tag with current.
   if (typeof document !== 'undefined') {
     var el = document.getElementById('auth-build-tag');
     if (el) el.textContent = window.Corsair.buildTag;
   }
 
   console.log(
-    '%c[Corsair] modules loaded · P10.9 · pre-auth visual lock applied · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.10 · CORSAIR wordmark scaled up · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
