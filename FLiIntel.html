@@ -6549,7 +6549,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.1</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.2</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -7288,7 +7288,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.1</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.2</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -26278,16 +26278,33 @@ window._renderEntityPosture = function(entity) {
   if (!postureMod) {
     return '<div style="padding:30px;color:#8A8478;font-family:IBM Plex Sans,sans-serif;font-size:13px">Posture module not loaded.</div>';
   }
-  return ''
-    + '<div style="padding:34px 28px 40px;background:var(--bg);color:var(--text);font-family:IBM Plex Sans,sans-serif">'
-    +   '<div style="font-family:IBM Plex Sans,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:14px">Posture — Influence Map</div>'
-    +   '<div style="border-left:2px solid var(--gold);padding:6px 0 6px 14px;margin-bottom:20px;color:var(--text-quote);font-style:italic;font-size:14px;line-height:1.55">'
-    +     'No Posture data recorded on this entity yet. The Sovereign’s reads — influence, position, path, trajectory, tells, predecessor notes — will appear here as you record them.'
-    +   '</div>'
-    +   '<div style="font-size:11px;color:var(--t2);line-height:1.6;letter-spacing:0.02em">'
-    +     'Phase 7.5.2 chrome (Step 3a). The contacts table, adversaries section, and predecessor notes pull-quote land in subsequent commits.'
-    +   '</div>'
-    + '</div>';
+
+  var influenceRead = (entity.posture && entity.posture.influenceReads) || '';
+  var safeId   = String(entity.id).replace(/'/g, '&#39;');
+  var safeName = String(entity.name || '').replace(/</g, '&lt;');
+
+  var h = '<div style="padding:30px 28px 36px;background:var(--bg);color:var(--text);font-family:IBM Plex Sans,sans-serif">';
+
+  // Section header
+  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:6px">The Operator’s Read</div>';
+  h += '<div style="font-size:11px;color:var(--t2);margin-bottom:14px;letter-spacing:0.02em">Your running observation on this entity’s place in the political terrain. Workspace-private.</div>';
+
+  // Influence read pull-quote / editor (stable container for in-place swap)
+  h += '<div id="posture-influence-read-block" style="margin-bottom:22px">';
+  if (influenceRead) {
+    h += '<div id="posture-influence-read-quote" onclick="window._postureBeginEditInfluenceRead(\'' + safeId + '\')" style="border-left:2px solid var(--gold);padding:8px 14px;color:var(--text-quote);font-style:italic;font-size:14px;line-height:1.6;cursor:text;white-space:pre-wrap;word-wrap:break-word;transition:background-color 160ms" onmouseover="this.style.backgroundColor=\'rgba(168,112,58,.05)\'" onmouseout="this.style.backgroundColor=\'transparent\'" title="Click to edit">' + influenceRead.replace(/</g, '&lt;') + '</div>';
+  } else {
+    h += '<div id="posture-influence-read-quote" onclick="window._postureBeginEditInfluenceRead(\'' + safeId + '\')" style="border-left:2px solid var(--rule);padding:8px 14px;color:var(--t3);font-style:italic;font-size:13px;line-height:1.55;cursor:text;transition:border-color 160ms,color 160ms" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.color=\'var(--t2)\'" onmouseout="this.style.borderColor=\'var(--rule)\';this.style.color=\'var(--t3)\'" title="Click to record your read">Click to record your read on ' + safeName + '. What does your gut say about their posture, their leverage, the terrain they sit in?</div>';
+  }
+  h += '</div>';
+
+  // Future-content placeholder (Steps 3c-3e)
+  h += '<div style="font-size:11px;color:var(--t2);line-height:1.6;letter-spacing:0.02em;border-top:1px solid var(--rule);padding-top:14px;margin-top:8px">';
+  h += 'Phase 7.5.2 in progress. The contacts table (Step 3c), row expansion (Step 3d), adversaries section, and predecessor notes pull-quote (Step 3e) land in subsequent commits.';
+  h += '</div>';
+
+  h += '</div>';
+  return h;
 };
 
 window._switchEntityInspectorTab = function(tabName) {
@@ -26306,6 +26323,84 @@ window._switchEntityInspectorTab = function(tabName) {
     posture.style.display = 'none';
     tabD.classList.add('active');
     tabP.classList.remove('active');
+  }
+};
+
+// Phase 7.5.2 Step 3b — Influence read click-to-edit.
+// Recoverable action (Doctrine section IV): explicit Save / Cancel
+// buttons, Esc cancels, Cmd/Ctrl+Enter saves. Writes the operator's
+// running political-terrain read to entity.posture.influenceReads via
+// the existing Firebase helpers (saveOpp for pursuits, saveNode for
+// people/orgs/govs). Workspace-private; never leaves the workspace
+// without explicit operator export action.
+window._postureBeginEditInfluenceRead = function(entityId) {
+  var entity = window.getEntity && window.getEntity(entityId);
+  if (!entity) return;
+  var container = document.getElementById('posture-influence-read-block');
+  if (!container) return;
+  var current  = (entity.posture && entity.posture.influenceReads) || '';
+  var safeId   = String(entityId).replace(/'/g, '&#39;');
+  var safeText = current.replace(/</g, '&lt;');
+
+  container.innerHTML = ''
+    + '<textarea id="posture-influence-read-edit" style="width:100%;min-height:120px;background:var(--surface);border:2px solid var(--gold);border-radius:2px;padding:10px 14px;color:var(--text);font-style:italic;font-size:14px;line-height:1.6;font-family:IBM Plex Sans,sans-serif;resize:vertical;outline:none;box-sizing:border-box" placeholder="Record your read on this entity’s place in the political terrain. Restrained. Operational. Adult.">' + safeText + '</textarea>'
+    + '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;align-items:center">'
+    +   '<div style="flex:1;font-size:10px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:0.06em">Cmd+Enter saves · Esc cancels</div>'
+    +   '<button onclick="window._postureCancelInfluenceRead(\'' + safeId + '\')" style="padding:7px 16px;background:transparent;border:1px solid var(--rule);border-radius:2px;color:var(--t2);font-family:IBM Plex Sans,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer">Cancel</button>'
+    +   '<button onclick="window._postureSaveInfluenceRead(\'' + safeId + '\')" style="padding:7px 16px;background:var(--gold);border:1px solid var(--gold);border-radius:2px;color:#0A0A0A;font-family:IBM Plex Sans,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;cursor:pointer">Save</button>'
+    + '</div>';
+
+  var ta = document.getElementById('posture-influence-read-edit');
+  if (ta) {
+    ta.focus();
+    try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {}
+    ta.onkeydown = function(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        window._postureCancelInfluenceRead(entityId);
+      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        window._postureSaveInfluenceRead(entityId);
+      }
+    };
+  }
+};
+
+window._postureCancelInfluenceRead = function(entityId) {
+  var entity = window.getEntity && window.getEntity(entityId);
+  if (!entity) return;
+  var container = document.getElementById('entity-posture-content');
+  if (container) container.innerHTML = window._renderEntityPosture(entity);
+};
+
+window._postureSaveInfluenceRead = async function(entityId) {
+  var ta = document.getElementById('posture-influence-read-edit');
+  if (!ta) return;
+  var text = ta.value.trim();
+
+  // Find the record in opportunities (pursuits) or nodes (people/orgs/govs).
+  var opp  = (window.opportunities || []).find(function(o) { return String(o.id) === String(entityId); });
+  var node = !opp ? (window.nodes || []).find(function(n) { return String(n.id) === String(entityId); }) : null;
+  var rec  = opp || node;
+  if (!rec) { console.warn('[Posture] entity not found for save:', entityId); return; }
+
+  rec.posture = rec.posture || {};
+  rec.posture.influenceReads = text;
+  rec.posture.lastUpdated    = Date.now();
+
+  try {
+    if (opp  && typeof window.saveOpp  === 'function') await window.saveOpp(opp);
+    else if (node && typeof window.saveNode === 'function') await window.saveNode(node);
+  } catch (e) {
+    console.warn('[Posture] save failed:', e);
+    if (typeof window.toast === 'function') window.toast('Posture save failed');
+  }
+
+  // Re-render so the editor collapses back to a pull-quote.
+  var entity = window.getEntity && window.getEntity(entityId);
+  if (entity) {
+    var container = document.getElementById('entity-posture-content');
+    if (container) container.innerHTML = window._renderEntityPosture(entity);
   }
 };
 

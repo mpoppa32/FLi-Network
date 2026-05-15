@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.1';
-  window.Corsair.buildBlurb  = 'Inspector Posture tab chrome (Phase 7.5.2 / Step 3a)';
+  window.Corsair.buildTag    = 'P11.2';
+  window.Corsair.buildBlurb  = 'Influence read editor (Phase 7.5.2 / Step 3b)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
