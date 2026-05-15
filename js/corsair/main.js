@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.8';
-  window.Corsair.buildBlurb  = 'Influence Across Pursuits sub-tab with conflict detection (Phase 7.5.5 / Step 5)';
+  window.Corsair.buildTag    = 'P11.9';
+  window.Corsair.buildBlurb  = 'Pass-Down Brief + Sovereign’s Briefing generators (Phase 7.1 + 7.5.4 / Steps 7+8)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
