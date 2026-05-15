@@ -2,10 +2,9 @@
 //
 // Pure functions only: no DOM, no Firebase, no app state, no side effects.
 // Exposed on window.Corsair.util for direct lookup, and also exported for
-// future ES-module consumers. Existing duplicate helpers in FLiIntel.html
-// (escH at 13061 + 22072, escapeHtml at 35458, _formatDate at 40211,
-// _formatOppValue at 38741, _formatOppValueShort at 39938) will be retired
-// in favor of these as their host modules get extracted in later micro-steps.
+// future ES-module consumers. Select helpers (bdg, who) are also exposed
+// as bare window globals for back-compat with FLiIntel.html callers that
+// reference them by name.
 
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[<>&"']/g, function(c) {
@@ -65,6 +64,15 @@ function tabularNum(n, places) {
   });
 }
 
+// Badge / who-tag HTML builders (consolidated from FLiIntel.html lines 8668-8669, P10.5)
+function bdg(txt, c) {
+  return '<span class="bdg" style="background:' + c.b + ';color:' + c.t + '">' + txt + '</span>';
+}
+
+function who(name, color) {
+  return '<span class="who-tag" style="background:' + color + '22;color:' + color + ';border:1px solid ' + color + '44">' + name + '</span>';
+}
+
 if (typeof window !== 'undefined') {
   window.Corsair = window.Corsair || {};
   window.Corsair.util = {
@@ -75,8 +83,14 @@ if (typeof window !== 'undefined') {
     fmtMoney: fmtMoney,
     fmtDate: fmtDate,
     fmtDateLong: fmtDateLong,
-    tabularNum: tabularNum
+    tabularNum: tabularNum,
+    bdg: bdg,
+    who: who
   };
+
+  // Back-compat: bare-name globals expected by un-migrated FLiIntel.html callers
+  window.bdg = bdg;
+  window.who = who;
 }
 
 export {
@@ -87,5 +101,7 @@ export {
   fmtMoney,
   fmtDate,
   fmtDateLong,
-  tabularNum
+  tabularNum,
+  bdg,
+  who
 };
