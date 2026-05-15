@@ -445,6 +445,197 @@ window._tblBulkClear = function() {
   _tblUpdateSelectionUI();
 };
 
+// Phase 5e — Brief me on this pursuit.
+// Reuses the existing pass-down brief modal (Phase 7.5.4). The brief
+// is deterministically synthesized from workspace data — no LLM.
+// Same modal/copy-to-clipboard infrastructure; the heading and caveat
+// shift to indicate this is pursuit-scoped, not workspace-scoped.
+
+window._generatePursuitBrief = function(oppId) {
+  var opp = _tblFindOpp(oppId);
+  if (!opp) return '_Pursuit not found._';
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  var postureMod = window.Corsair && window.Corsair.posture;
+
+  var stageCfg = pipelineMod && pipelineMod.config ? pipelineMod.config(opp.stage) : { label: opp.stage, color: '#7d7669' };
+  var days = pipelineMod && pipelineMod.daysInStage ? pipelineMod.daysInStage(opp) : 0;
+  var aged = pipelineMod && pipelineMod.isStageStuck ? pipelineMod.isStageStuck(opp) : false;
+  var weighted = Math.round(Number(opp.value || 0) * Number(opp.pwin || 0));
+
+  var dateStr = new Date().toISOString().slice(0, 10);
+  var author = (window.currentUser && window.currentUser.displayName) || 'operator';
+
+  var md = '';
+  md += '# Pursuit Brief — ' + (opp.name || '(unnamed)') + '\n\n';
+  md += '_Generated ' + dateStr + ' by ' + author + '._\n\n';
+  md += '---\n\n';
+
+  // ── Stat block ──────────────────────────────────────────────────────
+  md += '**Stage:** ' + (stageCfg.label || opp.stage || '—') + ' · ' + days + 'd in stage' + (aged ? ' (**AGED**)' : '') + '\n';
+  if (opp.value)        md += '**Value:** $' + Number(opp.value).toLocaleString() + ' · pWin ' + (opp.pwin != null ? Math.round(Number(opp.pwin) * 100) + '%' : '—') + ' · Weighted $' + weighted.toLocaleString() + '\n';
+  if (opp.agency)       md += '**Customer:** ' + opp.agency + '\n';
+  if (opp.captureLead)  md += '**Capture Lead:** ' + opp.captureLead + '\n';
+  if (opp.rfpDate)      md += '**RFP date:** ' + String(opp.rfpDate).slice(0, 10) + '\n';
+  if (opp.awardDate)    md += '**Award date:** ' + String(opp.awardDate).slice(0, 10) + '\n';
+  md += '\n';
+
+  // ── Influence read ─────────────────────────────────────────────────
+  if (opp.posture && opp.posture.influenceReads) {
+    md += '## Influence Read\n\n';
+    md += '> ' + String(opp.posture.influenceReads).split('\n').join('\n> ') + '\n\n';
+  }
+
+  // ── Tier 1 contacts on this pursuit ────────────────────────────────
+  // Use the entity graph to find people linked to this pursuit
+  var contacts = [];
+  if (typeof window.traverseEntity === 'function') {
+    try {
+      var traversed = window.traverseEntity(opp.id, 1);
+      if (traversed && traversed.neighbors) {
+        contacts = traversed.neighbors
+          .map(function(nb) { return nb.entity; })
+          .filter(function(e) { return e && e.type === 'person'; });
+      }
+    } catch (e) {}
+  }
+  // Resolve to live records for the freshest posture
+  contacts = contacts.map(function(p) {
+    var live = (window.nodes || []).find(function(n) { return String(n.id) === String(p.id); });
+    return live || p;
+  });
+  var t1 = contacts.filter(function(p) { return p.priority === 1; });
+  if (t1.length) {
+    md += '## Tier 1 Contacts\n\n';
+    t1.forEach(function(p) {
+      var bits = [];
+      if (p.role) bits.push(p.role);
+      if (p.org)  bits.push(p.org);
+      if (postureMod && p.posture) {
+        if (p.posture.path)       bits.push('path: ' + postureMod.pathLabel(p.posture.path));
+        if (p.posture.trajectory) bits.push('traj: ' + postureMod.trajectoryLabel(p.posture.trajectory));
+        var pos = p.posture.byPursuit && p.posture.byPursuit[opp.id] && p.posture.byPursuit[opp.id].position;
+        if (pos) bits.push('position: ' + postureMod.positionLabel(pos));
+      }
+      md += '- **' + (p.name || '(unnamed)') + '**' + (bits.length ? ' — ' + bits.join(' · ') : '') + '\n';
+    });
+    md += '\n';
+  }
+
+  // ── Adversaries ────────────────────────────────────────────────────
+  if (opp.posture && Array.isArray(opp.posture.adversaries) && opp.posture.adversaries.length) {
+    md += '## Adversaries\n\n';
+    opp.posture.adversaries.forEach(function(adv) {
+      var orgEnt = (window.nodes || []).find(function(n) { return String(n.id) === String(adv.orgId); });
+      var orgName = orgEnt ? (orgEnt.name || '(unnamed)') : '(missing)';
+      md += '- **' + orgName + '**';
+      var bits = [];
+      if (adv.posture)      bits.push('posture: ' + adv.posture);
+      if (adv.capabilities) bits.push('cap: ' + adv.capabilities);
+      if (adv.accessLevel)  bits.push('access: ' + adv.accessLevel);
+      if (adv.notes)        bits.push('notes: ' + adv.notes);
+      if (bits.length) md += ' — ' + bits.join(' · ');
+      md += '\n';
+    });
+    md += '\n';
+  }
+
+  // ── Recent meetings tied to this pursuit (last 5) ──────────────────
+  var oid = String(opp.id);
+  var mtgs = (window.meetings || []).filter(function(m) {
+    if (!m) return false;
+    return (m.oppId != null && String(m.oppId) === oid) ||
+           (Array.isArray(opp.meetings) && opp.meetings.indexOf(m.id) !== -1);
+  }).map(function(m) {
+    var t = m.ts ? new Date(m.ts).getTime() : (m.meta && m.meta.date ? new Date(m.meta.date).getTime() : 0);
+    return { m: m, t: t };
+  }).sort(function(a, b) { return b.t - a.t; }).slice(0, 5);
+  if (mtgs.length) {
+    md += '## Recent Meetings\n\n';
+    mtgs.forEach(function(item) {
+      var m = item.m;
+      var dt = item.t ? new Date(item.t).toISOString().slice(0, 10) : '?';
+      var title = (m.meta && m.meta.title) || m.title || 'Untitled';
+      md += '- **' + dt + '** — ' + title + '\n';
+    });
+    md += '\n';
+  }
+
+  // ── Open commitments tied to this pursuit ──────────────────────────
+  var commits = (window.commitments || []).filter(function(c) {
+    if (!c || c.status === 'completed' || c.status === 'closed' || c.done) return false;
+    return (c.oppId != null && String(c.oppId) === oid) || (c.pursuitId != null && String(c.pursuitId) === oid);
+  });
+  if (commits.length) {
+    md += '## Open Commitments\n\n';
+    commits.forEach(function(c) {
+      var due = c.due || c.deadline ? String(c.due || c.deadline).slice(0, 10) : 'no date';
+      md += '- ' + (c.text || c.title || c.what || 'commitment') + ' — due ' + due + (c.owner ? ' (' + c.owner + ')' : '') + '\n';
+    });
+    md += '\n';
+  }
+
+  // ── Predecessor notes ──────────────────────────────────────────────
+  if (opp.posture && opp.posture.predecessorNotes) {
+    md += '## Predecessor Notes\n\n';
+    md += '> ' + String(opp.posture.predecessorNotes).split('\n').join('\n> ') + '\n';
+    if (opp.posture.predecessorNotesAuthor) {
+      md += '>\n> _— ' + opp.posture.predecessorNotesAuthor;
+      if (opp.posture.predecessorNotesDate) md += ', ' + new Date(opp.posture.predecessorNotesDate).toISOString().slice(0, 10);
+      md += '_\n';
+    }
+    md += '\n';
+  }
+
+  // ── Stage history ──────────────────────────────────────────────────
+  if (Array.isArray(opp.stageHistory) && opp.stageHistory.length) {
+    md += '## Stage History\n\n';
+    opp.stageHistory.forEach(function(seg) {
+      var stgLabel = pipelineMod && pipelineMod.config ? (pipelineMod.config(seg.stage).label || seg.stage) : seg.stage;
+      var dur = (seg.exitedAt && seg.enteredAt) ? Math.floor((seg.exitedAt - seg.enteredAt) / 86400000) : 0;
+      md += '- **' + stgLabel + '** — ' + dur + 'd';
+      if (seg.enteredAt) md += ' (' + new Date(seg.enteredAt).toISOString().slice(0, 10);
+      if (seg.exitedAt)  md += ' → ' + new Date(seg.exitedAt).toISOString().slice(0, 10) + ')';
+      md += '\n';
+    });
+    // Current stage entry
+    if (opp.stageEnteredAt) {
+      var curLabel = stageCfg.label || opp.stage;
+      md += '- **' + curLabel + '** — ' + days + 'd ongoing (since ' + new Date(opp.stageEnteredAt).toISOString().slice(0, 10) + ')\n';
+    }
+    md += '\n';
+  }
+
+  // ── Default next action ────────────────────────────────────────────
+  if (pipelineMod && typeof pipelineMod.nextAction === 'function') {
+    var nextAction = pipelineMod.nextAction(opp.stage);
+    if (nextAction) {
+      md += '## Default Next Action\n\n';
+      md += '_' + nextAction + '_\n\n';
+    }
+  }
+
+  md += '---\n\n';
+  md += '_Pursuit brief — ' + author + ', ' + dateStr + '. Sourced from Corsair workspace data._\n';
+  return md;
+};
+
+window._openPursuitBriefModal = function(oppId) {
+  var modal = document.getElementById('passdown-brief-modal');
+  if (!modal) return;
+  var md = window._generatePursuitBrief(oppId);
+  var ta = document.getElementById('passdown-brief-text');
+  if (ta) ta.value = md;
+  var heading = document.getElementById('passdown-brief-heading');
+  var caveat  = document.getElementById('passdown-brief-caveat');
+  var opp = _tblFindOpp(oppId);
+  if (heading) heading.textContent = opp ? ('Brief: ' + (opp.name || 'Pursuit')) : 'Pursuit Brief';
+  if (caveat)  caveat.textContent  = 'Pursuit-scoped pass-down. Stage state, contacts, posture reads, recent meetings, predecessor notes. Safe to share with capture team.';
+  modal.style.display = 'flex';
+  if (ta) {
+    setTimeout(function() { try { ta.focus(); ta.setSelectionRange(0, 0); } catch (e) {} }, 30);
+  }
+};
+
 function _tblProcessOpps(allOpps, pipelineMod, stages) {
   var stageOrder = {};
   stages.forEach(function(s, i) { stageOrder[s.key] = i; });
@@ -559,7 +750,10 @@ function _tblRenderRows(opps, pipelineMod) {
     html += '<tr class="tbl-row' + (aged ? ' tbl-row-aged' : '') + (isSelected ? ' tbl-row-selected' : '') + '" data-opp-id="' + safeId + '">';
     html += '<td class="tbl-cell tbl-cell-center"><input type="checkbox" class="tbl-row-cb" onclick="event.stopPropagation();window._tblToggleRowPublic(\'' + safeId + '\')"' + (isSelected ? ' checked' : '') + '></td>';
     html += '<td class="tbl-cell tbl-cell-center"><span class="tbl-dot" style="background:' + dotColor + '" title="' + (aged ? 'aged in stage' : (health.status || 'unknown')) + '"></span></td>';
-    html += '<td class="tbl-cell tbl-cell-left tbl-cell-sticky"><span class="tbl-name" onclick="window.openEntityInspector(\'' + safeId + '\')">' + _tEsc(o.name || '(unnamed)') + '</span></td>';
+    html += '<td class="tbl-cell tbl-cell-left tbl-cell-sticky">';
+    html +=   '<span class="tbl-name" onclick="window.openEntityInspector(\'' + safeId + '\')">' + _tEsc(o.name || '(unnamed)') + '</span>';
+    html +=   '<button class="tbl-brief-me" onclick="event.stopPropagation();window._openPursuitBriefModal(\'' + safeId + '\')" title="Brief me on this pursuit">brief</button>';
+    html += '</td>';
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + (o.agency ? _tEsc(o.agency) : (o.customer ? _tEsc(o.customer) : '—')) + '</td>';
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-editable" onclick="window._tblEditStage(event,\'' + safeId + '\')" title="Click to edit stage"><span class="tbl-stage-pill"><span class="tbl-stage-dot" style="background:' + (stageCfg.color || '#7d7669') + '"></span>' + _tEsc(stageLabel) + '</span></td>';
     html += '<td class="tbl-cell tbl-cell-right tbl-cell-num' + (aged ? ' tbl-cell-warn' : '') + '">' + days + '</td>';
