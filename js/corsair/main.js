@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.16';
-  window.Corsair.buildBlurb  = 'Phase 6.4 Inspector pursuit stage panel — pipeline strip / aging / exit criteria / advance';
+  window.Corsair.buildTag    = 'P11.17';
+  window.Corsair.buildBlurb  = 'Phase 6.8 Ask Corsair pipeline queries (stuck / weighted Qx / pursuits in stage)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
