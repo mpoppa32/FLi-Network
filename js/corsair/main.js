@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.1';
-  window.Corsair.buildBlurb  = 'Phase 5b — Table sort + filter chips + search';
+  window.Corsair.buildTag    = 'P12.2';
+  window.Corsair.buildBlurb  = 'Phase 5c — Table inline editing (Stage / Value / pWin)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

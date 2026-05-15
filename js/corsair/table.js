@@ -186,6 +186,122 @@ window._tblClearFilters = function() {
   window._renderTableView();
 };
 
+// Phase 5c — inline editing.
+// Click stage / value / pwin cells to swap them for inputs. Enter or
+// blur commits via saveOpp (which auto-handles Phase 6.1 stage history
+// on stage changes). Esc cancels and restores the display value.
+// Re-render the tbody after commit so derived columns (weighted) refresh.
+
+function _tblFindOpp(oppId) {
+  return (window.opportunities || []).find(function(o) { return String(o.id) === String(oppId); }) || null;
+}
+
+function _tblRerenderRows() {
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  var stages = (pipelineMod && pipelineMod.stages) || [];
+  var processed = _tblProcessOpps(window.opportunities || [], pipelineMod, stages);
+  var tbody = document.querySelector('#table-view-body .tbl tbody');
+  if (tbody) tbody.innerHTML = _tblRenderRows(processed, pipelineMod);
+  var countEl = document.getElementById('tbl-count');
+  if (countEl) countEl.textContent = processed.length;
+}
+
+window._tblEditStage = function(event, oppId) {
+  if (event) event.stopPropagation();
+  var opp = _tblFindOpp(oppId);
+  if (!opp) return;
+  var cell = event && event.currentTarget;
+  if (!cell) return;
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  if (!pipelineMod || !pipelineMod.stages) return;
+  var safeId = String(oppId).replace(/'/g, '&#39;');
+  var opts = pipelineMod.stages.map(function(s) {
+    return '<option value="' + s.key + '"' + (s.key === opp.stage ? ' selected' : '') + '>' + _tEsc(s.label) + '</option>';
+  }).join('');
+  cell.innerHTML = '<select class="tbl-edit-input tbl-edit-select" onclick="event.stopPropagation()" ' +
+    'onchange="window._tblCommitStage(\'' + safeId + '\',this.value)" ' +
+    'onblur="setTimeout(function(){if(document.activeElement&&document.activeElement.tagName!==\'OPTION\')window._tblRerenderRowsPublic()},100)">' + opts + '</select>';
+  var sel = cell.querySelector('select');
+  if (sel) sel.focus();
+};
+
+window._tblCommitStage = async function(oppId, newStage) {
+  var opp = _tblFindOpp(oppId);
+  if (!opp) return;
+  if (opp.stage === newStage) { _tblRerenderRows(); return; }
+  opp.stage = newStage;
+  // saveOpp handles stage history + stageEnteredAt automatically (Phase 6.1)
+  try { if (typeof window.saveOpp === 'function') await window.saveOpp(opp); }
+  catch (e) { console.warn('[Table] commit stage failed:', e); }
+  _tblRerenderRows();
+};
+
+window._tblEditValue = function(event, oppId) {
+  if (event) event.stopPropagation();
+  var opp = _tblFindOpp(oppId);
+  if (!opp) return;
+  var cell = event && event.currentTarget;
+  if (!cell) return;
+  var safeId = String(oppId).replace(/'/g, '&#39;');
+  var current = opp.value != null ? Number(opp.value) : '';
+  cell.innerHTML = '<input type="number" class="tbl-edit-input tbl-edit-num" value="' + current + '" placeholder="$" ' +
+    'onclick="event.stopPropagation()" ' +
+    'onkeydown="window._tblHandleEditKey(event,\'value\',\'' + safeId + '\')" ' +
+    'onblur="window._tblCommitValue(\'' + safeId + '\',this.value,false)">';
+  var inp = cell.querySelector('input');
+  if (inp) { inp.focus(); inp.select(); }
+};
+
+window._tblCommitValue = async function(oppId, val, viaEnter) {
+  var opp = _tblFindOpp(oppId);
+  if (!opp) return;
+  var n = parseFloat(val);
+  opp.value = isNaN(n) ? null : n;
+  try { if (typeof window.saveOpp === 'function') await window.saveOpp(opp); }
+  catch (e) { console.warn('[Table] commit value failed:', e); }
+  _tblRerenderRows();
+};
+
+window._tblEditPwin = function(event, oppId) {
+  if (event) event.stopPropagation();
+  var opp = _tblFindOpp(oppId);
+  if (!opp) return;
+  var cell = event && event.currentTarget;
+  if (!cell) return;
+  var safeId = String(oppId).replace(/'/g, '&#39;');
+  var current = opp.pwin != null ? Math.round(Number(opp.pwin) * 100) : '';
+  cell.innerHTML = '<input type="number" min="0" max="100" step="5" class="tbl-edit-input tbl-edit-num" value="' + current + '" placeholder="%" ' +
+    'onclick="event.stopPropagation()" ' +
+    'onkeydown="window._tblHandleEditKey(event,\'pwin\',\'' + safeId + '\')" ' +
+    'onblur="window._tblCommitPwin(\'' + safeId + '\',this.value,false)">';
+  var inp = cell.querySelector('input');
+  if (inp) { inp.focus(); inp.select(); }
+};
+
+window._tblCommitPwin = async function(oppId, val, viaEnter) {
+  var opp = _tblFindOpp(oppId);
+  if (!opp) return;
+  var n = parseFloat(val);
+  if (isNaN(n)) opp.pwin = null;
+  else opp.pwin = Math.max(0, Math.min(1, n / 100));
+  try { if (typeof window.saveOpp === 'function') await window.saveOpp(opp); }
+  catch (e) { console.warn('[Table] commit pwin failed:', e); }
+  _tblRerenderRows();
+};
+
+window._tblHandleEditKey = function(event, field, oppId) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    if (field === 'value') window._tblCommitValue(oppId, event.target.value, true);
+    else if (field === 'pwin') window._tblCommitPwin(oppId, event.target.value, true);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    _tblRerenderRows(); // discards in-flight edit
+  }
+};
+
+window._tblRerenderRowsPublic = _tblRerenderRows;
+
 function _tblProcessOpps(allOpps, pipelineMod, stages) {
   var stageOrder = {};
   stages.forEach(function(s, i) { stageOrder[s.key] = i; });
@@ -299,10 +415,10 @@ function _tblRenderRows(opps, pipelineMod) {
     html += '<td class="tbl-cell tbl-cell-center"><span class="tbl-dot" style="background:' + dotColor + '" title="' + (aged ? 'aged in stage' : (health.status || 'unknown')) + '"></span></td>';
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-sticky"><span class="tbl-name" onclick="window.openEntityInspector(\'' + safeId + '\')">' + _tEsc(o.name || '(unnamed)') + '</span></td>';
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + (o.agency ? _tEsc(o.agency) : (o.customer ? _tEsc(o.customer) : '—')) + '</td>';
-    html += '<td class="tbl-cell tbl-cell-left"><span class="tbl-stage-pill"><span class="tbl-stage-dot" style="background:' + (stageCfg.color || '#7d7669') + '"></span>' + _tEsc(stageLabel) + '</span></td>';
+    html += '<td class="tbl-cell tbl-cell-left tbl-cell-editable" onclick="window._tblEditStage(event,\'' + safeId + '\')" title="Click to edit stage"><span class="tbl-stage-pill"><span class="tbl-stage-dot" style="background:' + (stageCfg.color || '#7d7669') + '"></span>' + _tEsc(stageLabel) + '</span></td>';
     html += '<td class="tbl-cell tbl-cell-right tbl-cell-num' + (aged ? ' tbl-cell-warn' : '') + '">' + days + '</td>';
-    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tFmtVal(o.value) + '</td>';
-    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + pwinPct + '</td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num tbl-cell-editable" onclick="window._tblEditValue(event,\'' + safeId + '\')" title="Click to edit value">' + _tFmtVal(o.value) + '</td>';
+    html += '<td class="tbl-cell tbl-cell-right tbl-cell-num tbl-cell-editable" onclick="window._tblEditPwin(event,\'' + safeId + '\')" title="Click to edit win probability (0–100)">' + pwinPct + '</td>';
     html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tFmtVal(weighted) + '</td>';
     html += '<td class="tbl-cell tbl-cell-right tbl-cell-num">' + _tNextMilestone(o) + '</td>';
     html += '<td class="tbl-cell tbl-cell-center">' + _tCaptureLead(o) + '</td>';
