@@ -305,10 +305,11 @@ html,body{
   background:transparent;border:none;border-radius:2px;
   cursor:pointer;position:relative;
   color:var(--t3);
+  transition:color 300ms ease,background 300ms ease,box-shadow 300ms ease;
   font-family:'IBM Plex Mono',monospace;
   transition:color 180ms ease, background-color 180ms ease
 }
-.mode-btn svg{width:18px;height:18px;display:block;opacity:.85;transition:opacity 180ms ease}
+.mode-btn svg{width:18px;height:18px;display:block;opacity:.85;transition:opacity 300ms ease,filter 300ms ease}
 .mode-btn .mode-lbl{
   font-size:8.5px;font-weight:700;
   text-transform:uppercase;letter-spacing:.14em;
@@ -1151,6 +1152,24 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
   display:flex;align-items:center;padding:0 14px;gap:4px;z-index:9;
   backdrop-filter:blur(12px)
 }
+/* P8.5: Isolated focal mode — bone-colored inset outline on the canvas */
+body.de3d-isolated #network-view::after {
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:28;
+  box-shadow: inset 0 0 0 1px rgba(244,237,224,.18), inset 0 0 60px rgba(244,237,224,.06);
+  animation: de3dIsolatePulse 3s ease-in-out infinite;
+}
+@keyframes de3dIsolatePulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(244,237,224,.18), inset 0 0 60px rgba(244,237,224,.05); }
+  50% { box-shadow: inset 0 0 0 1px rgba(244,237,224,.32), inset 0 0 80px rgba(244,237,224,.10); }
+}
+/* P8.4: Expanded 3D mode — hide app chrome, stretch canvas to viewport */
+body.de3d-expanded .topnav,
+body.de3d-expanded .net-cal,
+body.de3d-expanded .net-toolbar { display:none !important; }
+body.de3d-expanded #network-view { position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; width:100vw !important; height:100vh !important; z-index:100 !important; }
+body.de3d-expanded #de3d-expand-btn { color:#f4ede0; border-color:rgba(244,237,224,.4); }
+body.de3d-expanded #de3d-expand-btn:hover { background:rgba(244,237,224,.06) !important; }
+#de3d-expand-btn:hover { background:rgba(212,130,58,.12); border-color:rgba(212,130,58,.7); }
 .search-inp{flex:1;max-width:260px;background:transparent;border:none;outline:none;font-size:12px;font-family:IBM Plex Sans,sans-serif;color:var(--text)}
 .search-inp::placeholder{color:var(--t3)}
 .filter-scroll{display:flex;gap:4px;overflow-x:auto;flex:1}
@@ -3435,10 +3454,7 @@ button, .nav-btn, .tab, .intel-tab, .opp-tab, .net-tab,
    AUTH SCREEN — STRIPPED. Centered wordmark. Single sign-in.
    ═══════════════════════════════════════════════════════════════════════════ */
 .auth-screen {
-  background: var(--bg) !important;
-  background-image:
-    radial-gradient(ellipse 60% 50% at 50% 30%, rgba(212,130,58,.08) 0%, transparent 70%),
-    radial-gradient(ellipse 40% 40% at 50% 100%, rgba(212,130,58,.04) 0%, transparent 60%) !important;
+  background: #070d18 !important;
   padding: 40px !important;
 }
 .auth-card--stripped {
@@ -3456,7 +3472,7 @@ button, .nav-btn, .tab, .intel-tab, .opp-tab, .net-tab,
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 14px;
+  margin-bottom: 40px;
   color: var(--text);
   filter: drop-shadow(0 0 28px rgba(212,130,58,.22));
 }
@@ -3486,29 +3502,29 @@ button, .nav-btn, .tab, .intel-tab, .opp-tab, .net-tab,
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  width: auto !important;
-  min-width: 240px;
-  background: var(--bone) !important;
-  color: var(--ink) !important;
-  border: 1px solid var(--bone) !important;
-  border-radius: 1px !important;
-  padding: 15px 36px !important;
+  width: 200px !important;
+  height: 48px !important;
+  background: #d4823a !important;
+  color: #f4ede0 !important;
+  border: none !important;
+  border-radius: 2px !important;
+  padding: 0 !important;
   font-family: var(--font-mono) !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.32em !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.28em !important;
   text-transform: uppercase !important;
   cursor: pointer;
-  box-shadow: 0 0 0 1px transparent, 0 0 24px rgba(212,130,58,0) !important;
+  box-shadow: none !important;
   transition: all 180ms cubic-bezier(.2,.6,.2,1) !important;
   margin: 0 auto !important;
   transform: none;
 }
 .google-btn.corsair-signin:hover {
-  background: #ffffff !important;
-  color: var(--ink) !important;
+  background: #e09048 !important;
+  color: #f4ede0 !important;
   transform: translateY(-1px);
-  box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 0 0 1px var(--gold), 0 0 28px rgba(212,130,58,.28) !important;
+  box-shadow: 0 8px 24px rgba(212,130,58,.35) !important;
 }
 .auth-loading-bar {
   height: 1px;
@@ -3656,13 +3672,12 @@ input[type="url"], textarea, select {
    ═══════════════════════════════════════════════════════════════════════════ */
 .light-mode .auth-card--stripped, .light-mode .auth-screen { color: var(--ink); }
 .light-mode .google-btn.corsair-signin {
-  background: var(--ink) !important;
-  color: var(--bone) !important;
-  border-color: var(--ink) !important;
+  background: #d4823a !important;
+  color: #f4ede0 !important;
 }
 .light-mode .google-btn.corsair-signin:hover {
-  background: var(--ink-2) !important;
-  color: var(--bone) !important;
+  background: #e09048 !important;
+  color: #f4ede0 !important;
 }
 .light-mode .nav-designation { color: var(--paper-2); border-left-color: var(--paper); }
 
@@ -6205,19 +6220,11 @@ input[type="url"], textarea, select {
         <text x="0" y="88" font-family="'Anton','Arial Black',sans-serif" font-weight="400" letter-spacing="4" font-size="92" fill="currentColor">CORSAIR</text>
       </svg>
     </div>
-    <div class="auth-designation">DEFENSE CAPTURE OPERATING SYSTEM</div>
-    <div class="auth-rule"></div>
     <button class="google-btn corsair-signin" id="google-signin-btn">
-      <svg width="16" height="16" viewBox="0 0 18 18" style="margin-right:10px"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
       <span>SIGN IN</span>
     </button>
     <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:IBM Plex Mono,monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
     <div id="auth-loading-bar" class="auth-loading-bar"></div>
-    <div class="auth-footer-meta">
-      <span>SECURE · ISOLATED WORKSPACES</span>
-      <span class="auth-footer-meta-dot">•</span>
-      <span>V1.0</span>
-    </div>
   </div>
 </div>
 
@@ -6952,14 +6959,17 @@ input[type="url"], textarea, select {
     </div>
     <svg id="net-canvas" style="position:absolute;top:42px;left:220px;right:0;bottom:0"></svg>
     <!-- DiscoveryEngine3D FPS + diagnostics HUD — hidden until 3D engine activated -->
-    <div id="de3d-fps-hud" style="display:none;position:absolute;bottom:14px;right:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none">
-      <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
-      <span style="color:var(--t3)">DiscoveryEngine3D</span>
-      <span style="color:var(--bone);font-weight:700" id="de3d-fps">— FPS</span>
-      <span style="color:var(--t3)">·</span>
-      <span style="color:var(--bone)" id="de3d-status">init</span>
-      <span style="color:var(--t3)">·</span>
-      <span style="color:var(--gold)" id="de3d-build">P7.7</span>
+    <div id="de3d-fps-hud" style="display:none;position:absolute;bottom:14px;right:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;line-height:1.7;min-width:140px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
+        <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
+        <span style="color:var(--t3)">CORSAIR</span>
+        <span style="color:var(--gold)" id="de3d-build">P9.6</span>
+      </div>
+      <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:56px">PURSUITS</span><span style="color:var(--gold);font-weight:700" id="de3d-tl-pursuits">0</span></div>
+      <div><span style="color:var(--t3);display:inline-block;width:56px">SIGNALS</span><span style="color:var(--gold)" id="de3d-tl-signals">0</span></div>
+      <div style="margin-top:2px;padding-top:2px;border-top:1px solid var(--b2)"><span style="color:var(--t3);display:inline-block;width:56px">FPS</span><span style="color:var(--bone);font-weight:700" id="de3d-fps">—</span> <span style="color:var(--bone)" id="de3d-status">init</span></div>
     </div>
     <!-- Micro-step 4.5.11: entity search panel (top-left of canvas) -->
     <div id="de3d-search-panel" style="display:none;position:absolute;top:54px;left:14px;z-index:30;background:rgba(7,13,24,.88);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);min-width:260px;max-width:340px">
@@ -6995,6 +7005,17 @@ input[type="url"], textarea, select {
         <div id="decay-panel-body" style="overflow-y:auto;flex:1;padding:8px 0">
           <div style="text-align:center;color:var(--t3);padding:30px;font-size:11px;letter-spacing:.06em">loading…</div>
         </div>
+      </div>
+    </div>
+    <!-- P8.2: Ask Corsair command bar (center-bottom, above timeline) -->
+    <div id="de3d-cmdbar" style="display:none;position:absolute;bottom:118px;left:50%;transform:translateX(-50%);z-index:31;width:420px;max-width:calc(100% - 420px)">
+      <div style="background:rgba(7,13,24,.92);border:1px solid var(--b2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:2px;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 12px">
+          <span style="color:var(--gold);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.12em">⚡</span>
+          <input id="de3d-cmdbar-input" type="text" placeholder="Ask Corsair…  ( / to focus )" spellcheck="false" autocomplete="off" style="flex:1;background:transparent;border:none;outline:none;color:var(--bone,#f4ede0);font-family:'IBM Plex Sans',sans-serif;font-size:13px;padding:6px 0;letter-spacing:.02em">
+          <span style="color:var(--t3);font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.12em;text-transform:uppercase;opacity:.6">ENTER</span>
+        </div>
+        <div id="de3d-cmdbar-response" style="display:none;padding:10px 14px;border-top:1px solid var(--b2);font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:var(--paper,#b5ad9f);line-height:1.6;max-height:200px;overflow-y:auto"></div>
       </div>
     </div>
     <!-- Micro-step 6.2: timeline bar (bottom-center of canvas) -->
@@ -7034,6 +7055,9 @@ input[type="url"], textarea, select {
       <div class="de3d-ctx-item" data-action="inspect" style="cursor:pointer;padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:8px"><span style="color:var(--t3);width:14px;text-align:center">◧</span><span>Inspect</span></div>
       <div class="de3d-ctx-item" data-action="pulse" style="cursor:pointer;padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:8px"><span style="color:var(--t3);width:14px;text-align:center">◎</span><span>Pulse + Propagate</span></div>
       <div class="de3d-ctx-item" data-action="focal" style="cursor:pointer;padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:8px"><span style="color:var(--t3);width:14px;text-align:center">◉</span><span>Make Focal</span></div>
+      <div class="de3d-ctx-item" data-action="isolate" style="cursor:pointer;padding:5px 10px;border-radius:2px;display:flex;align-items:center;gap:8px"><span style="color:var(--gold,#d4823a);width:14px;text-align:center">◈</span><span id="de3d-ctx-isolate-lbl">Isolate (show only this + connections)</span></div>
+      <div class="de3d-ctx-item" data-action="select-network" id="de3d-ctx-selnet" style="display:none;cursor:pointer;padding:5px 10px;border-radius:2px;align-items:center;gap:8px"><span style="color:var(--bone,#f4ede0);width:14px;text-align:center">⊕</span><span id="de3d-ctx-selnet-lbl">Select connected</span></div>
+      <div class="de3d-ctx-item" data-action="confirm-ghost" id="de3d-ctx-ghost" style="display:none;cursor:pointer;padding:5px 10px;border-radius:2px;display:none;align-items:center;gap:8px;border-top:1px solid var(--b2);margin-top:3px;padding-top:8px"><span style="color:var(--gold);width:14px;text-align:center">⟡</span><span id="de3d-ctx-ghost-label">Confirm Relationship</span></div>
     </div>
     <!-- Micro-step 5.2: hover tooltip (cursor-tracking) -->
     <div id="de3d-hover-tooltip" style="display:none;position:fixed;z-index:33;background:rgba(7,13,24,.94);border:1px solid var(--b2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:2px;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--paper,#b5ad9f);pointer-events:none;max-width:280px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.4);transition:opacity 80ms ease;opacity:0">
@@ -7043,18 +7067,32 @@ input[type="url"], textarea, select {
     </div>
     <!-- Micro-step 4.5.8: focal mode pill (top-center of canvas) -->
     <div id="de3d-focal-pill" style="display:none;position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:31;background:rgba(7,13,24,.92);border:1px solid var(--gold,#d4823a);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:6px 10px 6px 12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper,#b5ad9f);align-items:center;gap:10px;user-select:none;box-shadow:0 4px 18px rgba(212,130,58,.18)">
-      <span style="color:var(--gold,#d4823a);font-weight:700">◎ FOCAL</span>
+      <span id="de3d-focal-label" style="color:var(--gold,#d4823a);font-weight:700">◎ FOCAL</span>
       <span style="color:var(--t3)">·</span>
       <span style="color:var(--bone,#7d7669);font-weight:600" id="de3d-focal-kind">KIND</span>
-      <span id="de3d-focal-name" style="color:var(--paper,#b5ad9f);font-weight:700;letter-spacing:.1em;text-transform:none">Name</span>
+      <span id="de3d-focal-name" style="color:var(--paper,#b5ad9f);font-weight:700;letter-spacing:.1em;text-transform:none;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(245,237,224,.25);text-underline-offset:3px" title="Open Inspector for this entity" onclick="(function(){var st=window.DiscoveryEngine3D&&window.DiscoveryEngine3D.getState&&window.DiscoveryEngine3D.getState();if(!st||!st.focal||st.focal.kind==='multi')return;var f=st.focal;if(f.kind==='person'){var p=(st._cleanNodesRef||[])[f.instanceId];if(p&&typeof window.openNetPanel==='function')window.openNetPanel(p.id);}else if(f.kind==='org'){var o=(st.orgCleanRef||[])[f.instanceId];if(o&&typeof window.openNetPanel==='function')window.openNetPanel(o.id);}else if(f.kind==='opp'){var q=(st.oppCleanRef||[])[f.instanceId];if(q&&typeof window.selectOpp==='function')window.selectOpp(String(q.id).replace(/^opp:/,''));}})()">Name</span>
+      <span id="de3d-focal-count" style="display:none;color:var(--t3);font-weight:500;font-size:9px;margin-left:2px">· 0 VISIBLE</span>
       <!-- Micro-step 5.9: focal history back/forward arrows -->
       <span id="de3d-focal-back" style="color:var(--paper,#b5ad9f);cursor:pointer;font-size:13px;line-height:1;padding:0 4px;opacity:.25;pointer-events:none" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.focalBack)window.DiscoveryEngine3D.focalBack()" title="No previous focal">◂</span>
       <span id="de3d-focal-fwd"  style="color:var(--paper,#b5ad9f);cursor:pointer;font-size:13px;line-height:1;padding:0 4px;opacity:.25;pointer-events:none" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.focalForward)window.DiscoveryEngine3D.focalForward()" title="No forward focal">▸</span>
       <span style="color:var(--t3);cursor:pointer;font-size:14px;line-height:1;margin-left:2px;padding:0 4px" onclick="if(window.DiscoveryEngine3D&&window.DiscoveryEngine3D.exitFocal)window.DiscoveryEngine3D.exitFocal()" title="Exit focal mode (ESC)">×</span>
     </div>
+    <!-- P8.2: Minimap — 2D projection of 3D scene -->
+    <div id="de3d-minimap" style="display:none;position:absolute;bottom:14px;left:14px;z-index:29;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:4px;cursor:crosshair">
+      <canvas id="de3d-minimap-canvas" width="160" height="100" style="display:block;border-radius:1px"></canvas>
+    </div>
+    <!-- P8.4: Expand 3D to full viewport -->
+    <div id="de3d-expand-btn" style="display:none;position:fixed;top:160px;right:24px;z-index:9999;background:#d4823a;border:2px solid #f4ede0;border-radius:4px;padding:10px 16px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#070d18;cursor:pointer;user-select:none;box-shadow:0 4px 20px rgba(212,130,58,.5),0 0 0 4px rgba(212,130,58,.15);transition:transform 200ms ease,box-shadow 200ms ease" title="Expand to fill viewport (ESC to collapse)">
+      <span id="de3d-expand-icon" style="margin-right:4px;font-size:11px;line-height:1">⤢</span><span id="de3d-expand-lbl">EXPAND</span>
+    </div>
+    <!-- P8.2: Lasso selection overlay -->
+    <div id="de3d-lasso" style="display:none;position:fixed;border:1px solid rgba(212,130,58,.6);background:rgba(212,130,58,.08);z-index:35;pointer-events:none">
+      <div id="de3d-lasso-count" style="position:absolute;top:-22px;left:0;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.12em;color:#d4823a;background:rgba(7,13,24,.92);padding:2px 6px;border:1px solid rgba(212,130,58,.45);border-radius:2px;text-transform:uppercase;white-space:nowrap">0 in box</div>
+      <div id="de3d-lasso-mode" style="position:absolute;top:-22px;right:0;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.12em;color:#f4ede0;background:rgba(7,13,24,.92);padding:2px 6px;border:1px solid rgba(244,237,224,.3);border-radius:2px;text-transform:uppercase;white-space:nowrap">SELECT</div>
+    </div>
     <!-- Micro-step 3.20: persistent count badge — live entity tally
          Micro-step 4.5.5: rows are clickable layer toggles. -->
-    <div id="de3d-count-badge" style="display:none;position:absolute;bottom:14px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);line-height:1.7;user-select:none">
+    <div id="de3d-count-badge" style="display:none;position:absolute;bottom:130px;left:14px;z-index:30;background:rgba(7,13,24,.85);border:1px solid var(--b2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:2px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--paper,#b5ad9f);line-height:1.7;user-select:none">
       <!-- Micro-step 4.5.6: filter chips (operator scope controls) -->
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700">FILTERS</div>
       <div style="margin-bottom:3px"><span style="color:var(--t3);display:inline-block;width:62px">STAGE</span><select id="de3d-flt-stage" style="background:rgba(7,13,24,.9);color:var(--paper,#b5ad9f);border:1px solid var(--b2);font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;letter-spacing:.1em;text-transform:uppercase"><option value="all">ALL</option><option value="active">ACTIVE</option><option value="upcoming">UPCOMING</option><option value="won">WON</option><option value="lost">LOST</option></select></div>
@@ -7065,14 +7103,15 @@ input[type="url"], textarea, select {
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>VIEWS</span><span id="de3d-views-save" style="color:var(--gold,#d4823a);cursor:pointer;font-size:9px;letter-spacing:.1em" title="Save current scene as a view">＋ SAVE</span></div>
       <div id="de3d-views-list" style="margin-bottom:6px;max-height:140px;overflow-y:auto"></div>
       <div style="color:var(--t3);margin-bottom:4px;font-weight:700;display:flex;justify-content:space-between;align-items:center"><span>ENTITIES</span><span style="color:var(--t3);font-weight:400;font-size:8px;letter-spacing:.08em">CLICK TO TOGGLE</span></div>
-      <div class="de3d-layer-row" data-layer="people" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">PEOPLE</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-people">0</span></div>
-      <div class="de3d-layer-row" data-layer="orgs" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">ORGS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-orgs">0</span></div>
-      <div class="de3d-layer-row" data-layer="opps" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">OPPS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-opps">0</span></div>
-      <div class="de3d-layer-row" data-layer="halos" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">HALOS</span><span style="color:var(--gold)" id="de3d-cb-hulls">0</span></div>
-      <div class="de3d-layer-row" data-layer="links" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LINKS</span><span style="color:var(--gold)" id="de3d-cb-links">0</span></div>
-      <div class="de3d-layer-row" data-layer="labels" style="cursor:pointer"><span style="color:var(--t3);display:inline-block;width:62px">LABELS</span><span style="color:var(--gold)" id="de3d-cb-labels">on</span></div>
+      <div class="de3d-layer-row" data-layer="people" style="cursor:pointer" title="Toggle people (1) — contacts & operators in the network"><span style="color:var(--t3);display:inline-block;width:62px">PEOPLE</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-people">0</span></div>
+      <div class="de3d-layer-row" data-layer="orgs" style="cursor:pointer" title="Toggle organizations (2) — companies & agencies"><span style="color:var(--t3);display:inline-block;width:62px">ORGS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-orgs">0</span></div>
+      <div class="de3d-layer-row" data-layer="opps" style="cursor:pointer" title="Toggle opportunities (3) — pursuits, RFPs, programs"><span style="color:var(--t3);display:inline-block;width:62px">OPPS</span><span style="color:var(--paper,#b5ad9f);font-weight:700" id="de3d-cb-opps">0</span></div>
+      <div class="de3d-layer-row" data-layer="halos" style="cursor:pointer" title="Toggle halos (4) — pursuit hulls grouping people in the same opp"><span style="color:var(--t3);display:inline-block;width:62px">HALOS</span><span style="color:var(--gold)" id="de3d-cb-hulls">0</span></div>
+      <div class="de3d-layer-row" data-layer="links" style="cursor:pointer" title="Toggle links (5) — formal relationships (knows / works at / attended)"><span style="color:var(--t3);display:inline-block;width:62px">LINKS</span><span style="color:var(--gold)" id="de3d-cb-links">0</span></div>
+      <div class="de3d-layer-row" data-layer="labels" style="cursor:pointer" title="Toggle labels (6) — org & opp name sprites"><span style="color:var(--t3);display:inline-block;width:62px">LABELS</span><span style="color:var(--gold)" id="de3d-cb-labels">on</span></div>
+      <div class="de3d-layer-row" data-layer="ghosts" style="cursor:pointer" title="Toggle ghosts (7) — predicted (inferred) relationships, dashed amber lines. Right-click a ghost endpoint to confirm."><span style="color:var(--t3);display:inline-block;width:62px">GHOSTS</span><span style="color:var(--gold)" id="de3d-cb-ghosts">0</span></div>
       <!-- Micro-step 5.7: selection row (hidden when empty) -->
-      <div id="de3d-cb-selected-row" style="display:none;margin-top:4px;align-items:center"><span style="color:var(--t3);display:inline-block;width:62px">SELECTED</span><span style="color:var(--gold)" id="de3d-cb-selected">0</span><span id="de3d-cb-sel-pulse" style="color:var(--gold,#d4823a);cursor:pointer;margin-left:8px;padding:0 4px" title="Pulse all selected">⚡</span><span id="de3d-cb-sel-clear" style="color:var(--t3);cursor:pointer;margin-left:4px;padding:0 4px" title="Clear selection">×</span></div>
+      <div id="de3d-cb-selected-row" style="display:none;margin-top:4px;align-items:center"><span style="color:var(--t3);display:inline-block;width:62px">SELECTED</span><span style="color:var(--gold)" id="de3d-cb-selected">0</span><span id="de3d-cb-sel-fit" style="color:var(--paper,#b5ad9f);cursor:pointer;margin-left:8px;padding:0 4px;font-size:11px" title="Fit camera to selection (F)">⊙</span><span id="de3d-cb-sel-iso" style="color:#f4ede0;cursor:pointer;margin-left:4px;padding:0 4px;font-size:11px" title="Isolate selection (Shift+I)">◈</span><span id="de3d-cb-sel-pulse" style="color:var(--gold,#d4823a);cursor:pointer;margin-left:4px;padding:0 4px" title="Pulse all selected (P)">⚡</span><span id="de3d-cb-sel-clear" style="color:var(--t3);cursor:pointer;margin-left:4px;padding:0 4px" title="Clear selection (ESC)">×</span></div>
       <div style="margin-top:4px"><span style="color:var(--t3);display:inline-block;width:62px">PULSES</span><span style="color:var(--gold)" id="de3d-cb-pulses">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:62px">FLOWS</span><span style="color:var(--gold)" id="de3d-cb-flows">0</span></div>
     </div>
@@ -8733,6 +8772,7 @@ function nameSimilarity(a,b){
   });
   return matches/Math.max(ta.length,tb.length);
 }
+window.nameSimilarity = nameSimilarity;
 
 // Find best entity match: returns {entity, exact, score} or null
 function findEntityMatch(name,type){
@@ -8858,7 +8898,8 @@ window.updateCommitmentStatus=async function(id,status,note){
 // ── GRANULAR WRITES (per-item, no full collection overwrite) ──
 async function saveNode(n){_invalidateAdjCache();var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;await fbSet(wsPath('nodes/'+n.id),c);}
 async function deleteNodeFromDB(id){setSS('saving');await remove(ref(db,wsPath('nodes/'+id)));setSS('live');}
-async function saveLink(l){_invalidateAdjCache();await fbSet(wsPath('links/'+l.id),{id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||''});}
+async function saveLink(l){_invalidateAdjCache();await fbSet(wsPath('links/'+l.id),{id:l.id,source:l.source&&l.source.id?l.source.id:l.source,target:l.target&&l.target.id?l.target.id:l.target,label:l.label||'',dir:l.dir||'both',notes:l.notes||'',inferredOriginally:l.inferredOriginally||false});}
+window.saveLink = saveLink;
 async function deleteLinkFromDB(id){setSS('saving');await remove(ref(db,wsPath('links/'+id)));setSS('live');}
 async function saveEntity(e){var c=Object.assign({},e);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;await fbSet(wsPath('nodes/'+e.id),c);}
 
@@ -9032,6 +9073,66 @@ function connectWorkspace(){
   pendingCapture=[];
   mtgAllLoaded=false;
 
+  // ── P9.6: Real-time Firebase ripples ───────────────────────────────
+  // Detects newly-added entities, links, opportunities, plus opp stage
+  // changes, and dispatches visual ripples through DiscoveryEngine3D once
+  // the engine has had ~200ms to ingest the new data. First listener fire
+  // per channel is a "seed" — no ripples (the initial dataset isn't new).
+  // Capped at 8 ripples per fire, staggered 60ms, to avoid swarm at boot.
+  window._ripplePrior = { nodes: null, links: null, opps: null, oppStages: null };
+  window._fireRipple = function(kind, id, extra){
+    if (!window.DiscoveryEngine3D || !window.DiscoveryEngine3D.isRunning || !window.DiscoveryEngine3D.isRunning()) return;
+    setTimeout(function(){
+      try {
+        var st = window.DiscoveryEngine3D.getState && window.DiscoveryEngine3D.getState();
+        if (!st) return;
+        var people = st._cleanNodesRef || [];
+        var orgs   = st.orgCleanRef    || [];
+        var opps   = st.oppCleanRef    || [];
+        function _resolve(rawId){
+          var sid = String(rawId);
+          for (var i = 0; i < people.length; i++) if (String(people[i].id) === sid) return { kind: 'person', instanceId: i };
+          for (var j = 0; j < orgs.length; j++)   if (String(orgs[j].id)   === sid) return { kind: 'org',    instanceId: j };
+          var oid = sid.replace(/^opp:/, '');
+          for (var k = 0; k < opps.length; k++)   if (String(opps[k].id).replace(/^opp:/, '') === oid) return { kind: 'opp', instanceId: k };
+          return null;
+        }
+        if (kind === 'edge' && extra && extra.source != null && extra.target != null){
+          var s = _resolve(extra.source), t = _resolve(extra.target);
+          if (s && t && typeof window.DiscoveryEngine3D.emitFlow === 'function'){
+            window.DiscoveryEngine3D.emitFlow(s, t);
+          }
+        } else {
+          var ref0 = _resolve(id);
+          if (ref0 && typeof window.DiscoveryEngine3D.pulseEntity === 'function'){
+            // Brighter pulse for status-changes (extra.flash) so it reads as a state event
+            window.DiscoveryEngine3D.pulseEntity({ kind: ref0.kind, instanceId: ref0.instanceId, color: (extra && extra.flash) ? 0xf4ede0 : undefined });
+          }
+        }
+      } catch(e){}
+    }, 220);
+  };
+  window._detectRippleDeltas = function(channel, incoming){
+    var s = new Set();
+    incoming.forEach(function(it){ if (it && it.id != null) s.add(String(it.id)); });
+    if (window._ripplePrior[channel] === null){
+      window._ripplePrior[channel] = s;
+      return [];
+    }
+    var added = [];
+    s.forEach(function(id){ if (!window._ripplePrior[channel].has(id)) added.push(id); });
+    window._ripplePrior[channel] = s;
+    return added;
+  };
+  window._stagedRipple = function(addedArr, dispatchFn){
+    var cap = Math.min(8, addedArr.length);
+    for (var i = 0; i < cap; i++){
+      (function(id, idx){
+        setTimeout(function(){ try { dispatchFn(id); } catch(e){} }, idx * 60);
+      })(addedArr[i], i);
+    }
+  };
+
   // ── MEETINGS: load latest MTG_PAGE_SIZE only, maintain meetingMap ──
   var mq=query(ref(db,wsPath('meetings')),orderByChild('ts'),limitToLast(MTG_PAGE_SIZE));
   var u1=onValue(mq,function(snap){
@@ -9046,6 +9147,49 @@ function connectWorkspace(){
     if(currentMeeting){var upd=meetingMap.get(currentMeeting.id);if(upd)currentMeeting=upd;}
     if(activeView==='timeline')renderTimeline();
     setSS('live');
+    // P9.6: ripple every attendee of any newly-added meeting + the linked opp.
+    // Resolves attendee names to person nodes via nameSimilarity (0.72 threshold).
+    try {
+      var allMtgs = Array.from(meetingMap.values());
+      var addedMtgs = window._detectRippleDeltas('meetings', allMtgs);
+      if (addedMtgs.length){
+        var mtgById = {};
+        allMtgs.forEach(function(m){ if (m && m.id != null) mtgById[String(m.id)] = m; });
+        var simFn = (typeof window.nameSimilarity === 'function') ? window.nameSimilarity : null;
+        var rippleIds = [];
+        var seen = {};
+        addedMtgs.slice(0, 4).forEach(function(mid){
+          var m = mtgById[String(mid)];
+          if (!m) return;
+          // Linked opp
+          if (m.oppId != null && m.oppId !== '' && !seen['o:'+m.oppId]){
+            seen['o:'+m.oppId] = 1; rippleIds.push({ kind: 'entity', id: m.oppId });
+          }
+          // Attendees (dual-schema)
+          var atts = [];
+          if (m.meta && Array.isArray(m.meta.attendees)) atts = atts.concat(m.meta.attendees);
+          if (m.intel && Array.isArray(m.intel.keyPeople)) atts = atts.concat(m.intel.keyPeople);
+          if (simFn && atts.length){
+            (window.nodes || []).forEach(function(n){
+              if (!n || n.type !== 'person' || !n.name || seen['p:'+n.id]) return;
+              for (var ai = 0; ai < atts.length; ai++){
+                if (atts[ai] && atts[ai].name && simFn(atts[ai].name, n.name) >= 0.72){
+                  seen['p:'+n.id] = 1; rippleIds.push({ kind: 'entity', id: n.id });
+                  break;
+                }
+              }
+            });
+          }
+        });
+        // Cap and stagger
+        var cap = Math.min(8, rippleIds.length);
+        for (var ri = 0; ri < cap; ri++){
+          (function(r, idx){
+            setTimeout(function(){ try { window._fireRipple(r.kind, r.id); } catch(e){} }, idx * 60);
+          })(rippleIds[ri], ri);
+        }
+      }
+    } catch(e){}
   },function(){setSS('offline');});
 
   // ── ENTITIES: small dataset, full load ──
@@ -9082,6 +9226,11 @@ function connectWorkspace(){
     visibleIds=new Set(nodes.map(function(n){return n.id;}));
     renderNetwork();updateFilterTags();updateOrgLegend();updateNodeCount();
     document.getElementById('net-empty').style.display=nodes.length?'none':'block';
+    // P9.6: ripple on newly-added nodes
+    try {
+      var addedNodes = window._detectRippleDeltas('nodes', incoming);
+      if (addedNodes.length) window._stagedRipple(addedNodes, function(id){ window._fireRipple('entity', id); });
+    } catch(e){}
   });
 
   // ── LINKS: full load, build linkMap ──
@@ -9096,6 +9245,18 @@ function connectWorkspace(){
     links.forEach(function(l){linkMap.set(l.id,l);});
     if(window._invalidateEntityGraph)window._invalidateEntityGraph();
     renderNetwork();
+    // P9.6: ripple on newly-added links — emit a flow from source to target
+    try {
+      var addedLinks = window._detectRippleDeltas('links', links);
+      if (addedLinks.length){
+        var linkById = {};
+        links.forEach(function(l){ if (l && l.id != null) linkById[String(l.id)] = l; });
+        window._stagedRipple(addedLinks, function(lid){
+          var l = linkById[String(lid)];
+          if (l) window._fireRipple('edge', null, { source: l.source, target: l.target });
+        });
+      }
+    } catch(e){}
   });
 
   var u5=onValue(ref(db,wsPath('cal')),function(snap){calEntries=snap.val()?Object.values(snap.val()):[];renderCalendar();});
@@ -9154,6 +9315,25 @@ function connectWorkspace(){
     if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
       try { window.DiscoveryEngine3D.loadGraph(window.nodes || nodes, window.links || links || []); } catch(e){ console.warn('[DE3D] live reload (opps update) failed:', e); }
     }
+    // P9.6: ripple on newly-added opps + flash on stage changes (pursuit advance)
+    try {
+      var addedOpps = window._detectRippleDeltas('opps', opportunities);
+      if (addedOpps.length) window._stagedRipple(addedOpps, function(id){ window._fireRipple('entity', id); });
+      // Stage-change detection: compare each opp's stage against the prior snapshot
+      var stageMap = {};
+      opportunities.forEach(function(o){ if (o && o.id != null) stageMap[String(o.id)] = String(o.stage || ''); });
+      if (window._ripplePrior.oppStages){
+        var changed = [];
+        Object.keys(stageMap).forEach(function(oid){
+          var prev = window._ripplePrior.oppStages[oid];
+          if (prev != null && prev !== stageMap[oid] && changed.length < 8){
+            changed.push(oid);
+          }
+        });
+        window._stagedRipple(changed, function(id){ window._fireRipple('entity', id, { flash: true }); });
+      }
+      window._ripplePrior.oppStages = stageMap;
+    } catch(e){}
   });
   // ── COMMITMENTS ──
   var u10=onValue(ref(db,wsPath('commitments')),function(snap){
@@ -34094,7 +34274,7 @@ window.addEventListener('resize', function() {
      CORSAIR OPERATOR LAYER
      Keyboard shortcuts, graph selection visuals, right-click context menu
      ═══════════════════════════════════════════════════════════════════════════ -->
-<div id="corsair-keys-hint" style="position:fixed;bottom:24px;right:24px;background:linear-gradient(160deg,rgba(10,16,32,.98),rgba(7,13,24,.99));border:1px solid var(--rule-2);border-left:2px solid var(--gold);padding:18px 22px;font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.04em;line-height:1.9;z-index:9999;display:none;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(212,130,58,.08);min-width:280px">
+<div id="corsair-keys-hint" style="position:fixed;bottom:24px;right:24px;background:linear-gradient(160deg,rgba(10,16,32,.98),rgba(7,13,24,.99));border:1px solid var(--rule-2);border-left:2px solid var(--gold);padding:18px 22px;font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.04em;line-height:1.9;z-index:9999;display:none;box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 0 1px rgba(212,130,58,.08);min-width:280px;max-height:calc(100vh - 80px);overflow-y:auto">
   <div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.32em;color:var(--gold);text-transform:uppercase;margin-bottom:10px;font-weight:600">Operator Shortcuts</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">ESC</span> deselect · close panel</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">/</span> search · Ask Corsair</div>
@@ -34104,6 +34284,30 @@ window.addEventListener('resize', function() {
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">CLICK</span> focus &amp; reorganize around entity</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">RCLICK</span> entity context menu</div>
   <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">?</span> toggle this overlay</div>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);font-size:9px;letter-spacing:.32em;color:var(--gold);text-transform:uppercase;font-weight:600;margin-bottom:6px">3D Theater</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">E</span> toggle expand mode (fill viewport)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">I</span> isolate hovered entity</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">⇧+I</span> isolate entire selection (union)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">F</span> fit camera to selection (or focal)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">R</span> reset view (exit focal · clear selection · re-fit)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">O</span> auto-orbit on/off (drag or scroll to stop)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">⌃/⌘A</span> select all (visible-only when isolated)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">⇧+CLK</span> search result → isolate (or click ◈ icon)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">1–7</span> toggle layers: people · orgs · opps · halos · links · labels · ghosts</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">2× CLK</span> empty canvas → fit to all entities</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">Q</span> ask Corsair about current focal entity</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">Z</span> zoom-to-fit focal cluster (visible-only)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">M</span> toggle minimap</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">P</span> pulse focal entity (or selection)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">S</span> focus search input (top-left FIND)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">H</span> toggle this overlay (alias for ?)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">SHIFT⌧</span> lasso select (drag)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">⇧⌃⌧</span> lasso deselect (drag)</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">DBL-CLK</span> enter focal on entity</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">⇧+↵</span> open Inspector for current focal entity</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">[ / ]</span> focal history back / forward</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">↑↓←→</span> orbit camera</div>
+  <div><span style="display:inline-block;min-width:54px;color:var(--text);font-weight:600">WHEEL</span> dive (zoom + auto-tilt)</div>
 </div>
 <div id="corsair-ctx" role="menu"></div>
 <script>
@@ -35569,7 +35773,8 @@ const DiscoveryEngine3D = (function(){
       opps:   true,
       halos:  true,
       links:  true,
-      labels: true
+      labels: true,
+      ghosts: true
     },
     // Micro-step 4.5.2: sprite label LOD distance threshold (world units)
     // Sprites beyond this distance from camera are hidden. Tuned for the
@@ -35735,6 +35940,40 @@ const DiscoveryEngine3D = (function(){
   // Public manual fit (called by HUD double-click etc., wired in Phase 5)
   function fitToCluster(){ if (state.posBounds) _fitCameraToBounds(state.posBounds, 1.4); }
 
+  // P8.3: compute bounds of current selection and fit camera
+  function fitToSelection(){
+    if (!state.selected || !state.physicsPositions) return 0;
+    var pos = state.physicsPositions;
+    var oOff = state.orgWorkerOffset || 0;
+    var qOff = state.oppWorkerOffset || 0;
+    var xs = [], ys = [], zs = [];
+    state.selected.person.forEach(function(id){
+      var i = id;
+      if (Number.isFinite(pos[i*3])){ xs.push(pos[i*3]); ys.push(pos[i*3+1]); zs.push(pos[i*3+2]); }
+    });
+    state.selected.org.forEach(function(id){
+      var i = oOff + id;
+      if (Number.isFinite(pos[i*3])){ xs.push(pos[i*3]); ys.push(pos[i*3+1]); zs.push(pos[i*3+2]); }
+    });
+    state.selected.opp.forEach(function(id){
+      var i = qOff + id;
+      if (Number.isFinite(pos[i*3])){ xs.push(pos[i*3]); ys.push(pos[i*3+1]); zs.push(pos[i*3+2]); }
+    });
+    if (!xs.length) return 0;
+    var minX=xs[0], maxX=xs[0], minY=ys[0], maxY=ys[0], minZ=zs[0], maxZ=zs[0];
+    for (var fi=1; fi<xs.length; fi++){
+      if (xs[fi]<minX) minX=xs[fi]; else if (xs[fi]>maxX) maxX=xs[fi];
+      if (ys[fi]<minY) minY=ys[fi]; else if (ys[fi]>maxY) maxY=ys[fi];
+      if (zs[fi]<minZ) minZ=zs[fi]; else if (zs[fi]>maxZ) maxZ=zs[fi];
+    }
+    var cx=(minX+maxX)/2, cy=(minY+maxY)/2, cz=(minZ+maxZ)/2;
+    var dx=(maxX-minX)/2, dy=(maxY-minY)/2, dz=(maxZ-minZ)/2;
+    var radius = Math.max(3, Math.sqrt(dx*dx + dy*dy + dz*dz));
+    _fitCameraToBounds({ cx:cx, cy:cy, cz:cz, radius:radius }, 1.8);
+    console.log('[DiscoveryEngine3D] 8.3 fitToSelection: ' + xs.length + ' entities, radius=' + radius.toFixed(1));
+    return xs.length;
+  }
+
   function _animate(now){
     if (!state.running) return;
     state.rafId = requestAnimationFrame(_animate);
@@ -35763,12 +36002,19 @@ const DiscoveryEngine3D = (function(){
               var pSc = state.instanceScales ? state.instanceScales[i] : 1;
               if (state.focal && state.focal.focalScale && state.focal.focalScale.people){
                 pSc *= state.focal.focalScale.people[i];
+                // P8.9: focal anchor breathes continuously — anchors are scale>=1.5
+                if (state.focal.focalScale.people[i] >= 1.5){
+                  pSc *= 1.0 + 0.07 * Math.sin(now * 0.0025);
+                }
               }
               if (state.hover && state.hover.kind === 'person' && state.hover.instanceId === i){
                 pSc *= 1.15;
               }
               if (state.selected && state.selected.person.has(i)){
                 pSc *= 1.25;
+              }
+              if (state.breathingActive){
+                pSc *= 1.0 + 0.005 * Math.sin((now * 0.0015708) + i * 1.618);
               }
               _frameDummy.scale.setScalar(pSc);
               _frameDummy.rotation.set(0, 0, 0);
@@ -35875,6 +36121,52 @@ const DiscoveryEngine3D = (function(){
               state.linkMesh.instanceMatrix.needsUpdate = true;
             }
 
+            // P8.0: update edge particle positions along edges
+            if (state.edgeParticles && state.edgeParticles.count > 0){
+              var ep8 = state.edgeParticles;
+              var et8 = state.clock ? state.clock.getElapsedTime() : 0;
+              var lp8 = state.linkIndexPairs;
+              for (var ei8 = 0; ei8 < ep8.count; ei8++){
+                var eidx8 = ep8.edge[ei8];
+                var le8 = lp8[eidx8];
+                if (!le8) continue;
+                var s8 = le8[0], d8 = le8[1];
+                if (s8 >= nPos || d8 >= nPos) continue;
+                var fst8 = le8[4];
+                if (state.timeline && Number.isFinite(fst8) && state.timeline.date < fst8){
+                  ep8.posArr[ei8*3] = 0; ep8.posArr[ei8*3+1] = -9999; ep8.posArr[ei8*3+2] = 0;
+                  continue;
+                }
+                var sx8=pos[s8*3],sy8=pos[s8*3+1],sz8=pos[s8*3+2];
+                var tx8=pos[d8*3],ty8=pos[d8*3+1],tz8=pos[d8*3+2];
+                if (!Number.isFinite(sx8)||!Number.isFinite(tx8)) continue;
+                var o8 = (ep8.offset[ei8] + et8 * ep8.speed[ei8]) % 1;
+                ep8.posArr[ei8*3]   = sx8+(tx8-sx8)*o8;
+                ep8.posArr[ei8*3+1] = sy8+(ty8-sy8)*o8;
+                ep8.posArr[ei8*3+2] = sz8+(tz8-sz8)*o8;
+              }
+              ep8.geo.attributes.position.needsUpdate = true;
+            }
+
+            // P8.1: update ghost edge positions + pulse uniform
+            if (state.ghostEdges && state.ghostEdges.visible && state.ghostEdges.count > 0){
+              var ge = state.ghostEdges;
+              var gt = state.clock ? state.clock.getElapsedTime() : 0;
+              ge.mat.uniforms.uTime.value = gt;
+              for (var gi8 = 0; gi8 < ge.count; gi8++){
+                var gEdge = ge.edges[gi8];
+                var gs = gEdge.srcIdx, gd = gEdge.tgtIdx;
+                if (gs >= nPos || gd >= nPos) continue;
+                ge.posArr[gi8*6]   = pos[gs*3];
+                ge.posArr[gi8*6+1] = pos[gs*3+1];
+                ge.posArr[gi8*6+2] = pos[gs*3+2];
+                ge.posArr[gi8*6+3] = pos[gd*3];
+                ge.posArr[gi8*6+4] = pos[gd*3+1];
+                ge.posArr[gi8*6+5] = pos[gd*3+2];
+              }
+              ge.geo.attributes.position.needsUpdate = true;
+            }
+
             // Micro-step 3.7: write org box positions from worker indices
             // [orgWorkerOffset, orgWorkerOffset + orgInstanceCount). Extends
             // the cluster bounds so the camera frames orgs along with people.
@@ -35895,6 +36187,10 @@ const DiscoveryEngine3D = (function(){
                 var oSc = 1;
                 if (state.focal && state.focal.focalScale && state.focal.focalScale.orgs){
                   oSc = state.focal.focalScale.orgs[j];
+                  // P8.9: focal anchor breathes continuously
+                  if (state.focal.focalScale.orgs[j] >= 1.5){
+                    oSc *= 1.0 + 0.07 * Math.sin(now * 0.0025);
+                  }
                 }
                 if (state.hover && state.hover.kind === 'org' && state.hover.instanceId === j){
                   oSc *= 1.15;
@@ -35955,6 +36251,10 @@ const DiscoveryEngine3D = (function(){
                 // 4.5.8 focal dim · 5.1 hover · 5.6 selection
                 if (qSc > 0 && state.focal && state.focal.focalScale && state.focal.focalScale.opps){
                   qSc *= state.focal.focalScale.opps[k];
+                  // P8.9: focal anchor breathes continuously
+                  if (state.focal.focalScale.opps[k] >= 1.5){
+                    qSc *= 1.0 + 0.07 * Math.sin(now * 0.0025);
+                  }
                 }
                 if (qSc > 0 && state.hover && state.hover.kind === 'opp' && state.hover.instanceId === k){
                   qSc *= 1.15;
@@ -36140,6 +36440,69 @@ const DiscoveryEngine3D = (function(){
       }
 
       state.controls && state.controls.update();
+
+      // P9.0: auto-orbit — rotate camera azimuthally around controls.target
+      if (state.autoOrbitActive && state.camera && state.controls){
+        var aoTarget = state.controls.target;
+        var aoPos = state.camera.position;
+        var aoDx = aoPos.x - aoTarget.x;
+        var aoDz = aoPos.z - aoTarget.z;
+        var aoR = Math.sqrt(aoDx*aoDx + aoDz*aoDz);
+        if (aoR > 0.1){
+          var aoAng = Math.atan2(aoDx, aoDz) + 0.0025;  // ~0.4 rad/sec at 60fps
+          aoPos.x = aoTarget.x + aoR * Math.sin(aoAng);
+          aoPos.z = aoTarget.z + aoR * Math.cos(aoAng);
+          state.controls.update();
+        }
+      }
+
+      // P8.3: scroll-to-dive — ease camera polar toward wheel-set target
+      if (state._diveTargetPolar !== null && state.controls && state.camera){
+        var diveElapsed = performance.now() - state._diveStartTime;
+        var diveK = Math.min(1, diveElapsed / 600);
+        diveK = diveK * diveK * (3 - 2 * diveK);  // smoothstep
+        var newPolar = state._diveStartPolar + (state._diveTargetPolar - state._diveStartPolar) * diveK;
+        var dvTarget = state.controls.target;
+        var dvPos = state.camera.position;
+        var dvDx = dvPos.x - dvTarget.x;
+        var dvDz = dvPos.z - dvTarget.z;
+        var dvRadius = dvPos.distanceTo(dvTarget);
+        var dvAzimuth = Math.atan2(dvDx, dvDz);
+        var sinP = Math.sin(newPolar);
+        dvPos.x = dvTarget.x + dvRadius * sinP * Math.sin(dvAzimuth);
+        dvPos.y = dvTarget.y + dvRadius * Math.cos(newPolar);
+        dvPos.z = dvTarget.z + dvRadius * sinP * Math.cos(dvAzimuth);
+        state.controls.update();
+        if (diveK >= 1) state._diveTargetPolar = null;
+      }
+
+      // P8.0: advance drift particles
+      if (state.drift){
+        var dr = state.drift;
+        var dt8 = 1/60;
+        var bnd = dr.bounds;
+        for (var di8=0; di8<dr.n; di8++){
+          dr.pos[di8*3]   += dr.vel[di8*3]   * dt8;
+          dr.pos[di8*3+1] += dr.vel[di8*3+1] * dt8;
+          dr.pos[di8*3+2] += dr.vel[di8*3+2] * dt8;
+          if(dr.pos[di8*3]>bnd)   dr.pos[di8*3]=-bnd;
+          if(dr.pos[di8*3]<-bnd)  dr.pos[di8*3]=bnd;
+          if(dr.pos[di8*3+1]>bnd) dr.pos[di8*3+1]=-bnd;
+          if(dr.pos[di8*3+1]<-bnd)dr.pos[di8*3+1]=bnd;
+          if(dr.pos[di8*3+2]>bnd) dr.pos[di8*3+2]=-bnd;
+          if(dr.pos[di8*3+2]<-bnd)dr.pos[di8*3+2]=bnd;
+        }
+        dr.mesh.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // P8.0: idle node breathing — ±0.5% scale, 4s period, staggered phase
+      if (state.instancedMesh && state.lastInteractionTs != null){
+        var idleMs = now - state.lastInteractionTs;
+        if (idleMs > 5000){
+          state.breathingActive = true;
+        }
+      }
+
       state.composer && state.composer.render();
     } catch (renderErr) {
       console.error('[DiscoveryEngine3D] render loop error:', renderErr);
@@ -36162,6 +36525,18 @@ const DiscoveryEngine3D = (function(){
       }
     }
 
+    // P8.2: telemetry block update (~10Hz, every 6 frames)
+    if ((state._cbTick % 6) === 3){
+      var tlEnt = document.getElementById('de3d-tl-entities');
+      var tlEdg = document.getElementById('de3d-tl-edges');
+      var tlPur = document.getElementById('de3d-tl-pursuits');
+      var tlSig = document.getElementById('de3d-tl-signals');
+      if (tlEnt) tlEnt.textContent = (state.instanceCount|0) + (state.orgInstanceCount|0) + (state.oppInstanceCount|0);
+      if (tlEdg) tlEdg.textContent = (state.linkCount|0);
+      if (tlPur) tlPur.textContent = state.pursuitHullGroup ? state.pursuitHullGroup.children.length : 0;
+      if (tlSig) tlSig.textContent = (state._signalsLast24h|0);
+    }
+
     // ── Micro-step 4.5.2: sprite label LOD (throttled, ~10Hz) ─────────────
     // For each sprite, compare distance to camera against
     // state.labelLodDistance. If too far → hide. If LABELS layer is OFF,
@@ -36174,7 +36549,7 @@ const DiscoveryEngine3D = (function(){
       var thr = (state.labelLodDistance | 0) || 25;
       var thr2 = thr * thr;  // squared distance, avoid sqrt
       var camPos = state.camera.position;
-      var _applyLod = function(spriteArr, passArr){
+      var _applyLod = function(spriteArr, passArr, focalArr){
         if (!spriteArr) return;
         for (var i = 0; i < spriteArr.length; i++){
           var sp = spriteArr[i];
@@ -36182,6 +36557,8 @@ const DiscoveryEngine3D = (function(){
           if (!labelsOn){ sp.visible = false; continue; }
           // 4.5.6: respect filter pass (if provided)
           if (passArr && passArr[i] === false){ sp.visible = false; continue; }
+          // P8.4: in isolate mode, hide labels for dimmed-to-zero entities
+          if (focalArr && state.focal && state.focal.isolated && focalArr[i] === 0){ sp.visible = false; continue; }
           var dx = sp.position.x - camPos.x;
           var dy = sp.position.y - camPos.y;
           var dz = sp.position.z - camPos.z;
@@ -36189,7 +36566,9 @@ const DiscoveryEngine3D = (function(){
           sp.visible = (d2 <= thr2);
         }
       };
-      _applyLod(state.orgLabels);
+      var _focalOrgs = (state.focal && state.focal.focalScale) ? state.focal.focalScale.orgs : null;
+      var _focalOpps = (state.focal && state.focal.focalScale) ? state.focal.focalScale.opps : null;
+      _applyLod(state.orgLabels, null, _focalOrgs);
       // 6.7: build combined opp visibility (filter ∧ lifecycle) for label LOD
       var _oppVis = null;
       if (state.oppCleanRef && state.oppCleanRef.length){
@@ -36208,8 +36587,66 @@ const DiscoveryEngine3D = (function(){
           }
         }
       }
-      _applyLod(state.oppLabels, _oppVis);
+      _applyLod(state.oppLabels, _oppVis, _focalOpps);
       _applyLod(state.pursuitNameSprites);
+
+      // P8.2 Tier 5: altitude-3 metadata — when zoomed close, show person name+role
+      // P9.4: throttle the expensive HTML rebuild to 10Hz; visibility check stays per-frame
+      state._altLodTick = (state._altLodTick | 0) + 1;
+      var altDist = state.controls ? state.camera.position.distanceTo(state.controls.target) : 999;
+      var altPool = state._altitudeLabels;
+      var _altInRange = altDist < 30 && state.physicsRealData && state.physicsPositions && state._cleanNodesRef;
+      if (_altInRange && (state._altLodTick % 6) === 0){
+        if (!altPool){
+          altPool = document.createElement('div');
+          altPool.id = 'de3d-alt-labels';
+          altPool.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:28';
+          if (state.canvas && state.canvas.parentElement) state.canvas.parentElement.appendChild(altPool);
+          state._altitudeLabels = altPool;
+        }
+        var altRect = state.canvas.getBoundingClientRect();
+        var altPos = state.physicsPositions;
+        var altCam = state.camera;
+        var altV = new THREE.Vector3();
+        var altThr = 30;
+        var altHtml = '';
+        var altCount = 0;
+        var altMax = 40;
+        var pN2 = state.instanceCount || 0;
+        // P9.0: in isolate mode, skip altitude-3 labels for hidden entities
+        var altIsoP = (state.focal && state.focal.isolated && state.focal.focalScale)
+          ? state.focal.focalScale.people : null;
+        for (var ai = 0; ai < pN2 && altCount < altMax; ai++){
+          if (altIsoP && altIsoP[ai] === 0) continue;
+          altV.set(altPos[ai*3], altPos[ai*3+1], altPos[ai*3+2]);
+          var aDist = altV.distanceTo(camPos);
+          if (aDist > altThr) continue;
+          altV.project(altCam);
+          if (altV.z < 0 || altV.z > 1) continue;
+          var ax = (altV.x * 0.5 + 0.5) * altRect.width;
+          var ay = (-altV.y * 0.5 + 0.5) * altRect.height;
+          if (ax < -20 || ax > altRect.width + 20 || ay < -20 || ay > altRect.height + 20) continue;
+          var aNode = state._cleanNodesRef[ai];
+          if (!aNode) continue;
+          var aName = aNode.name || '';
+          var aFull = (window.nodes || []).find(function(n){ return String(n.id) === String(aNode.id); });
+          var aMeta = '';
+          if (aFull && aFull.role) aMeta = aFull.role;
+          if (aFull && (aFull.org || aFull.govOrg)) aMeta += (aMeta ? ' · ' : '') + (aFull.org || aFull.govOrg);
+          var aOp = Math.max(0.3, 1 - aDist / altThr);
+          altHtml += '<div style="position:absolute;left:' + ax.toFixed(0) + 'px;top:' + (ay - 18).toFixed(0) + 'px;transform:translateX(-50%);white-space:nowrap;font-family:IBM Plex Mono,monospace;font-size:8px;letter-spacing:.08em;text-align:center;opacity:' + aOp.toFixed(2) + '">'
+            + '<div style="color:#f4ede0;font-weight:600">' + aName + '</div>'
+            + (aMeta ? '<div style="color:#7d7669;font-size:7px;margin-top:1px">' + aMeta + '</div>' : '')
+            + '</div>';
+          altCount++;
+        }
+        altPool.innerHTML = altHtml;
+        altPool.style.display = altCount > 0 ? 'block' : 'none';
+      } else if (!_altInRange && altPool){
+        // Out of range: hide every frame so labels disappear immediately on zoom-out.
+        // In-range, between throttle ticks: leave pool as-is (avoid flicker).
+        altPool.style.display = 'none';
+      }
     }
 
     // ── Micro-step 4.5.4: spatial index rebuild (every 30 frames) ─────────
@@ -36418,9 +36855,18 @@ const DiscoveryEngine3D = (function(){
       var cbLinks  = document.getElementById('de3d-cb-links');
       var cbPulses = document.getElementById('de3d-cb-pulses');
       var cbFlows  = document.getElementById('de3d-cb-flows');
-      if (cbPeople) cbPeople.textContent = (state.instanceCount | 0);
-      if (cbOrgs)   cbOrgs.textContent   = (state.orgInstanceCount | 0);
-      if (cbOpps)   cbOpps.textContent   = (state.oppInstanceCount | 0);
+      // P9.0: when isolated, show "total (visible)" so the operator sees what was filtered
+      var cbIso = !!(state.focal && state.focal.isolated && state.focal.focalScale);
+      var cbVisP = 0, cbVisO = 0, cbVisQ = 0;
+      if (cbIso){
+        var cbSc = state.focal.focalScale;
+        if (cbSc.people) for (var cbi = 0; cbi < cbSc.people.length; cbi++) if (cbSc.people[cbi] >= 1) cbVisP++;
+        if (cbSc.orgs)   for (var cbj = 0; cbj < cbSc.orgs.length;   cbj++) if (cbSc.orgs[cbj]   >= 1) cbVisO++;
+        if (cbSc.opps)   for (var cbk = 0; cbk < cbSc.opps.length;   cbk++) if (cbSc.opps[cbk]   >= 1) cbVisQ++;
+      }
+      if (cbPeople) cbPeople.textContent = (state.instanceCount    | 0) + (cbIso ? ' (' + cbVisP + ')' : '');
+      if (cbOrgs)   cbOrgs.textContent   = (state.orgInstanceCount | 0) + (cbIso ? ' (' + cbVisO + ')' : '');
+      if (cbOpps)   cbOpps.textContent   = (state.oppInstanceCount | 0) + (cbIso ? ' (' + cbVisQ + ')' : '');
       if (cbHulls)  cbHulls.textContent  = (state.pursuitHullGroup ? state.pursuitHullGroup.children.length : 0);
       if (cbLinks)  cbLinks.textContent  = (state.linkCount | 0);
       // 4.12: split active slots into PULSES (flow=0) and FLOWS (flow=1)
@@ -36441,6 +36887,63 @@ const DiscoveryEngine3D = (function(){
         }
         if (cbPulses) cbPulses.textContent = activePulses;
         if (cbFlows)  cbFlows.textContent  = activeFlows;
+      }
+      var cbGhosts = document.getElementById('de3d-cb-ghosts');
+      if (cbGhosts) cbGhosts.textContent = state.ghostEdges ? state.ghostEdges.count : 0;
+
+      // P8.2: minimap render (~10Hz)
+      var mmCanvas = document.getElementById('de3d-minimap-canvas');
+      if (mmCanvas && state.posBounds && state.physicsRealData){
+        var mmCtx = mmCanvas.getContext('2d');
+        var mW = 160, mH = 100;
+        mmCtx.clearRect(0, 0, mW, mH);
+        mmCtx.fillStyle = 'rgba(7,13,24,0.9)';
+        mmCtx.fillRect(0, 0, mW, mH);
+        var b = state.posBounds;
+        var r = Math.max(b.radius, 10);
+        var scl = Math.min(mW, mH) / (r * 2.8);
+        var cx = b.cx, cz = b.cz;
+        // P8.9: in isolate mode, only draw entities that are still visible
+        var mmIso = !!(state.focal && state.focal.isolated && state.focal.focalScale);
+        var mmFP = mmIso ? state.focal.focalScale.people : null;
+        var mmFO = mmIso ? state.focal.focalScale.orgs   : null;
+        // Draw people dots
+        if (state._cleanNodesRef){
+          mmCtx.fillStyle = 'rgba(180,173,159,0.7)';
+          for (var mi = 0; mi < state.instanceCount; mi++){
+            var wp = state.physicsPositions;
+            if (!wp) break;
+            if (mmFP && mmFP[mi] === 0) continue;
+            var mx = (wp[mi*3] - cx) * scl + mW/2;
+            var mz = (wp[mi*3+2] - cz) * scl + mH/2;
+            if (mx > 0 && mx < mW && mz > 0 && mz < mH){
+              mmCtx.fillRect(mx-1, mz-1, 2, 2);
+            }
+          }
+        }
+        // Draw org dots
+        if (state.orgInstanceCount > 0 && state.physicsPositions){
+          mmCtx.fillStyle = 'rgba(212,130,58,0.5)';
+          var oOff = state.orgWorkerOffset;
+          for (var oi2 = 0; oi2 < state.orgInstanceCount; oi2++){
+            if (mmFO && mmFO[oi2] === 0) continue;
+            var wi = oOff + oi2;
+            var ox2 = (state.physicsPositions[wi*3] - cx) * scl + mW/2;
+            var oz2 = (state.physicsPositions[wi*3+2] - cz) * scl + mH/2;
+            if (ox2 > 0 && ox2 < mW && oz2 > 0 && oz2 < mH){
+              mmCtx.fillRect(ox2-1.5, oz2-1.5, 3, 3);
+            }
+          }
+        }
+        // Viewport indicator
+        if (state.camera && state.controls){
+          var camX = (state.camera.position.x - cx) * scl + mW/2;
+          var camZ = (state.camera.position.z - cz) * scl + mH/2;
+          var vSize = Math.max(6, 30 / (state.camera.position.distanceTo(state.controls.target) / r + 0.1));
+          mmCtx.strokeStyle = 'rgba(212,130,58,0.7)';
+          mmCtx.lineWidth = 1;
+          mmCtx.strokeRect(camX - vSize/2, camZ - vSize/2, vSize, vSize);
+        }
       }
       // 5.7: selection count row (shown when N > 0)
       var selN = selectionCount();
@@ -37923,6 +38426,256 @@ const DiscoveryEngine3D = (function(){
     }
     console.log('[DiscoveryEngine3D] 4.1 person-person links: ' + linkPairs.length + ' links rendered');
 
+    // ── P8.0: Persistent kinetic edge particle system ─────────────────────
+    // Up to 50,000 particles streaming along edges. Per-edge flow velocity
+    // driven by edge weight (engagement intensity). Dormant edges get zero
+    // particles. Additive-blended amber sprites give the "fiber-optic" feel.
+    if (state.edgeParticles){
+      if (state.scene) state.scene.remove(state.edgeParticles.mesh);
+      state.edgeParticles.geo.dispose();
+      state.edgeParticles.mat.dispose();
+      state.edgeParticles = null;
+    }
+    if (linkPairs.length){
+      var EP_CAP = 50000;
+      var _epPos = new Float32Array(EP_CAP * 3);
+      var _epEdge = new Uint16Array(EP_CAP);
+      var _epOff = new Float32Array(EP_CAP);
+      var _epSpd = new Float32Array(EP_CAP);
+      var _epFV = new Float32Array(linkPairs.length);
+      for (var efi = 0; efi < linkPairs.length; efi++){
+        var epL = linkPairs[efi];
+        var epW = epL[2];
+        var epT = epL[3] || 'knows';
+        _epFV[efi] = (epT === 'employment') ? 0.08 : (Number.isFinite(epW) ? epW : 0);
+      }
+      var _epN = 0;
+      for (var epi = 0; epi < linkPairs.length && _epN < EP_CAP; epi++){
+        var fv = _epFV[epi];
+        if (fv < 0.05) continue;
+        var ppN = Math.max(2, Math.round(fv * 15));
+        for (var epj = 0; epj < ppN && _epN < EP_CAP; epj++){
+          _epEdge[_epN] = epi;
+          _epOff[_epN] = Math.random();
+          _epSpd[_epN] = 0.08 + fv * 0.22 * (0.6 + Math.random() * 0.8);
+          _epN++;
+        }
+      }
+      var epGeo = new THREE.BufferGeometry();
+      epGeo.setAttribute('position', new THREE.BufferAttribute(_epPos, 3));
+      epGeo.setDrawRange(0, _epN);
+      var epMat = new THREE.ShaderMaterial({
+        vertexShader: [
+          'uniform float uPR;',
+          'void main(){',
+          '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
+          '  gl_PointSize=clamp(3.0*uPR*(200.0/(-mv.z)),1.0,6.0);',
+          '  gl_Position=projectionMatrix*mv;',
+          '}'
+        ].join('\n'),
+        fragmentShader: [
+          'void main(){',
+          '  float d=length(gl_PointCoord-vec2(0.5));',
+          '  if(d>0.5)discard;',
+          '  float a=0.55*smoothstep(0.5,0.08,d);',
+          '  gl_FragColor=vec4(0.831,0.510,0.227,a);',
+          '}'
+        ].join('\n'),
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        uniforms: { uPR: { value: Math.min(window.devicePixelRatio || 1, 2) } }
+      });
+      var epMesh = new THREE.Points(epGeo, epMat);
+      epMesh.frustumCulled = false;
+      if (state.scene) state.scene.add(epMesh);
+      state.edgeParticles = {
+        mesh: epMesh, geo: epGeo, mat: epMat,
+        posArr: _epPos, edge: _epEdge, offset: _epOff,
+        speed: _epSpd, flowVel: _epFV, count: _epN
+      };
+      console.log('[DiscoveryEngine3D] P8.0 edge particles: ' + _epN + ' particles across ' + linkPairs.length + ' edges');
+    }
+
+    // ── P8.1: Ghost edge prediction engine ────────────────────────────────
+    // Compute predicted relationships from co-pursuit overlap, meeting
+    // co-attendance, and shared org membership. Each candidate gets a
+    // confidence 0-1 and a basis string. Rendered as dashed pulsing lines.
+    if (state.ghostEdges){
+      if (state.scene) state.scene.remove(state.ghostEdges.mesh);
+      state.ghostEdges.geo.dispose();
+      state.ghostEdges.mat.dispose();
+      state.ghostEdges = null;
+    }
+    (function(){
+      var existingPairs = new Set();
+      for (var eli = 0; eli < linkPairs.length; eli++){
+        var eA = linkPairs[eli][0], eB = linkPairs[eli][1];
+        if (linkPairs[eli][3] !== 'employment' && linkPairs[eli][3] !== 'pursuit'){
+          var ek = Math.min(eA,eB)+'_'+Math.max(eA,eB);
+          existingPairs.add(ek);
+        }
+      }
+      var nPeople = cleanNodes.length;
+      var candidates = {};
+      var simFn = window.nameSimilarity;
+      var mtgs = window.meetings || [];
+
+      // Source 1: meeting co-attendance (people attending ≥3 meetings together)
+      var coMtg = {};
+      for (var mi = 0; mi < mtgs.length; mi++){
+        var m = mtgs[mi];
+        var atts = _meetingAttendees(m);
+        var matched = [];
+        for (var ai = 0; ai < atts.length; ai++){
+          if (!atts[ai] || !atts[ai].name) continue;
+          for (var pi = 0; pi < nPeople; pi++){
+            if (simFn && simFn(atts[ai].name, cleanNodes[pi].name) >= 0.72){
+              matched.push(pi); break;
+            }
+          }
+        }
+        for (var a = 0; a < matched.length; a++){
+          for (var b = a+1; b < matched.length; b++){
+            var pk = Math.min(matched[a],matched[b])+'_'+Math.max(matched[a],matched[b]);
+            coMtg[pk] = (coMtg[pk] || 0) + 1;
+          }
+        }
+      }
+      var coKeys = Object.keys(coMtg);
+      for (var ci = 0; ci < coKeys.length; ci++){
+        if (coMtg[coKeys[ci]] >= 3 && !existingPairs.has(coKeys[ci])){
+          var cnt = coMtg[coKeys[ci]];
+          var conf = Math.min(1.0, 0.5 + cnt * 0.1);
+          if (!candidates[coKeys[ci]] || candidates[coKeys[ci]].confidence < conf){
+            candidates[coKeys[ci]] = { confidence: conf, basis: cnt + ' shared meetings' };
+          }
+        }
+      }
+
+      // Source 2: co-pursuit overlap (people sharing ≥2 pursuit memberships)
+      var pursuitByPerson = {};
+      for (var pli = 0; pli < linkPairs.length; pli++){
+        if (linkPairs[pli][3] === 'pursuit'){
+          var pIdx = linkPairs[pli][0];
+          var oIdx = linkPairs[pli][1];
+          if (!pursuitByPerson[pIdx]) pursuitByPerson[pIdx] = [];
+          pursuitByPerson[pIdx].push(oIdx);
+        }
+      }
+      var pKeys = Object.keys(pursuitByPerson);
+      for (var pa = 0; pa < pKeys.length; pa++){
+        for (var pb = pa+1; pb < pKeys.length; pb++){
+          var pidxA = Number(pKeys[pa]), pidxB = Number(pKeys[pb]);
+          if (pidxA >= nPeople || pidxB >= nPeople) continue;
+          var oppsA = pursuitByPerson[pKeys[pa]], oppsB = pursuitByPerson[pKeys[pb]];
+          var shared = 0;
+          for (var oa = 0; oa < oppsA.length; oa++){
+            for (var ob = 0; ob < oppsB.length; ob++){
+              if (oppsA[oa] === oppsB[ob]) shared++;
+            }
+          }
+          if (shared >= 2){
+            var cpk = Math.min(pidxA,pidxB)+'_'+Math.max(pidxA,pidxB);
+            if (existingPairs.has(cpk)) continue;
+            var cconf = Math.min(1.0, 0.3 + shared * 0.15);
+            if (!candidates[cpk] || candidates[cpk].confidence < cconf){
+              candidates[cpk] = { confidence: cconf, basis: shared + ' shared pursuits' };
+            }
+          }
+        }
+      }
+
+      // Source 3: shared org membership
+      var orgGroups = {};
+      for (var oi = 0; oi < nPeople; oi++){
+        var oKey = String(cleanNodes[oi].org || cleanNodes[oi].govOrg || '').toLowerCase().trim();
+        if (!oKey) continue;
+        if (!orgGroups[oKey]) orgGroups[oKey] = [];
+        orgGroups[oKey].push(oi);
+      }
+      var oGKeys = Object.keys(orgGroups);
+      for (var ogi = 0; ogi < oGKeys.length; ogi++){
+        var grp = orgGroups[oGKeys[ogi]];
+        if (grp.length < 2 || grp.length > 20) continue;
+        for (var ga = 0; ga < grp.length; ga++){
+          for (var gb = ga+1; gb < grp.length; gb++){
+            var ogk = Math.min(grp[ga],grp[gb])+'_'+Math.max(grp[ga],grp[gb]);
+            if (existingPairs.has(ogk)) continue;
+            if (!candidates[ogk]){
+              candidates[ogk] = { confidence: 0.4, basis: 'same org: ' + oGKeys[ogi] };
+            }
+          }
+        }
+      }
+
+      var ghostArr = [];
+      var gKeys = Object.keys(candidates);
+      for (var gi = 0; gi < gKeys.length; gi++){
+        var c = candidates[gKeys[gi]];
+        if (c.confidence < 0.5) continue;
+        var parts = gKeys[gi].split('_');
+        ghostArr.push({
+          srcIdx: Number(parts[0]), tgtIdx: Number(parts[1]),
+          confidence: c.confidence, basis: c.basis
+        });
+      }
+      ghostArr.sort(function(a,b){ return b.confidence - a.confidence; });
+      if (ghostArr.length > 200) ghostArr.length = 200;
+
+      if (ghostArr.length && state.scene){
+        var gN = ghostArr.length;
+        var gPos = new Float32Array(gN * 6);
+        var gConf = new Float32Array(gN * 2);
+        for (var gci = 0; gci < gN; gci++){
+          gConf[gci*2] = ghostArr[gci].confidence;
+          gConf[gci*2+1] = ghostArr[gci].confidence;
+        }
+        var gGeo = new THREE.BufferGeometry();
+        gGeo.setAttribute('position', new THREE.BufferAttribute(gPos, 3));
+        gGeo.setAttribute('aConf', new THREE.BufferAttribute(gConf, 1));
+        var gMat = new THREE.ShaderMaterial({
+          vertexShader: [
+            'attribute float aConf;',
+            'varying float vConf;',
+            'varying float vDist;',
+            'void main(){',
+            '  vConf=aConf;',
+            '  vec4 mv=modelViewMatrix*vec4(position,1.0);',
+            '  vDist=length(position);',
+            '  gl_Position=projectionMatrix*mv;',
+            '}'
+          ].join('\n'),
+          fragmentShader: [
+            'uniform float uTime;',
+            'varying float vConf;',
+            'varying float vDist;',
+            'void main(){',
+            '  float dash=fract(vDist*0.15);',
+            '  if(dash>0.5)discard;',
+            '  float freq=vConf>=0.9?3.0:vConf>=0.7?1.5:0.6;',
+            '  float pulse=0.15+0.12*sin(uTime*freq*6.2832);',
+            '  gl_FragColor=vec4(0.769,0.478,0.180,pulse);',
+            '}'
+          ].join('\n'),
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          uniforms: { uTime: { value: 0 } }
+        });
+        var gMesh = new THREE.LineSegments(gGeo, gMat);
+        gMesh.frustumCulled = false;
+        state.scene.add(gMesh);
+        state.ghostEdges = {
+          mesh: gMesh, geo: gGeo, mat: gMat,
+          posArr: gPos, edges: ghostArr, count: gN, visible: true
+        };
+        console.log('[DiscoveryEngine3D] P8.1 ghost edges: ' + gN + ' predicted relationships (top confidence: ' + (ghostArr[0] ? ghostArr[0].confidence.toFixed(2) : '—') + ')');
+      } else {
+        console.log('[DiscoveryEngine3D] P8.1 ghost edges: 0 candidates above 0.5 confidence');
+      }
+    })();
+
     // Spawn / reuse worker, send graph.
     // Worker payload: people first (so existing index mappings hold), then
     // orgs, then opportunities. cleanLinks still contains only person-to-
@@ -38141,6 +38894,11 @@ const DiscoveryEngine3D = (function(){
     if (state.orgLabels)         state.orgLabels.forEach(function(sp){ sp.visible = spVisible; });
     if (state.oppLabels)         state.oppLabels.forEach(function(sp){ sp.visible = spVisible; });
     if (state.pursuitNameSprites) state.pursuitNameSprites.forEach(function(sp){ sp.visible = spVisible; });
+    // Ghost edges
+    if (state.ghostEdges){
+      state.ghostEdges.mesh.visible = !!lv.ghosts;
+      state.ghostEdges.visible = !!lv.ghosts;
+    }
   }
 
   // Public layer toggle (called by count-badge click handler, also exposed
@@ -38158,6 +38916,10 @@ const DiscoveryEngine3D = (function(){
     }
     var labelsCount = document.getElementById('de3d-cb-labels');
     if (labelsCount && layerName === 'labels') labelsCount.textContent = visible ? 'on' : 'off';
+    // P9.3: persist layer prefs across sessions (skip when isolation is forcing the value)
+    if (!(state.focal && state.focal.isolated)){
+      try { localStorage.setItem('corsair-3d-layers', JSON.stringify(state.layerVisible)); } catch(e){}
+    }
     console.log('[DiscoveryEngine3D] 4.5.5 layer toggle:', layerName, '=', visible);
   }
   function toggleLayer(layerName){
@@ -38272,13 +39034,15 @@ const DiscoveryEngine3D = (function(){
   // boolean-indexed Float32Arrays (scale factor 1.0 for focal/neighbor,
   // 0.4 for dimmed) sized to instance counts. Uses CorsairIndex (4.5.1)
   // for O(1) cross-entity lookups.
-  function _computeFocalScales(kind, instanceId){
+  function _computeFocalScales(kind, instanceId, opts){
+    opts = opts || {};
+    var dim = opts.isolated ? 0 : 0.4;
     var nP = (state._cleanNodesRef || []).length;
     var nO = (state.orgCleanRef    || []).length;
     var nQ = (state.oppCleanRef    || []).length;
-    var sP = new Float32Array(nP); sP.fill(0.4);
-    var sO = new Float32Array(nO); sO.fill(0.4);
-    var sQ = new Float32Array(nQ); sQ.fill(0.4);
+    var sP = new Float32Array(nP); sP.fill(dim);
+    var sO = new Float32Array(nO); sO.fill(dim);
+    var sQ = new Float32Array(nQ); sQ.fill(dim);
     var idx = window.CorsairIndex;
     var people = state._cleanNodesRef || [];
     var orgs   = state.orgCleanRef    || [];
@@ -38382,6 +39146,11 @@ const DiscoveryEngine3D = (function(){
     for (var ai = 0; ai < sP.length; ai++) if (sP[ai] === 1) neighbors++;
     for (var aj = 0; aj < sO.length; aj++) if (sO[aj] === 1) neighbors++;
     for (var ak = 0; ak < sQ.length; ak++) if (sQ[ak] === 1) neighbors++;
+    // P8.9: boost the focal anchor to 1.5× so it visually pops above its neighbors.
+    // Multi-isolate's union takes max() so each anchor stays boosted.
+    if      (kind === 'person' && sP[instanceId] === 1) sP[instanceId] = 1.5;
+    else if (kind === 'org'    && sO[instanceId] === 1) sO[instanceId] = 1.5;
+    else if (kind === 'opp'    && sQ[instanceId] === 1) sQ[instanceId] = 1.5;
     return { scales: { people: sP, orgs: sO, opps: sQ }, name: focalName, neighborCount: neighbors - 1 };
   }
 
@@ -38402,7 +39171,7 @@ const DiscoveryEngine3D = (function(){
 
   function enterFocal(kind, instanceId, opts){
     opts = opts || {};
-    var calc = _computeFocalScales(kind, instanceId);
+    var calc = _computeFocalScales(kind, instanceId, opts);
     if (!calc) return;
     var wp = _entityWorldPos(kind, instanceId);
     if (!wp){
@@ -38412,9 +39181,15 @@ const DiscoveryEngine3D = (function(){
     // ── 5.9: history bookkeeping ──────────────────────────────────────
     // If this is a fresh focal (not back/forward navigation), push the
     // current focal onto the back stack and clear forward (new branch).
+    // P8.7: preserve the isolated flag so [/] navigation keeps you isolated.
+    // Skip multi-anchor entries — they aren't navigable from history.
     if (!opts._fromHistory && state.focalHistory){
-      if (state.focal && state.focal.kind){
-        state.focalHistory.back.push({ kind: state.focal.kind, instanceId: state.focal.instanceId });
+      if (state.focal && state.focal.kind && state.focal.kind !== 'multi'){
+        state.focalHistory.back.push({
+          kind: state.focal.kind,
+          instanceId: state.focal.instanceId,
+          isolated: !!state.focal.isolated
+        });
       }
       state.focalHistory.forward.length = 0;
     }
@@ -38429,22 +39204,185 @@ const DiscoveryEngine3D = (function(){
     var camToTarget = new THREE.Vector3(wp.x, wp.y, wp.z);
     var camToPos    = camToTarget.clone().add(dir.multiplyScalar(FOCAL_DIST));
 
+    // P8.4–P8.6: in isolate mode, save current visibility of links, ghost
+    // edges, and edge particles, then hide them. Pivots inherit the original
+    // pre-isolation state so the final ESC restores cleanly.
+    var _wasLinksOn = null, _wasGhostsOn = null, _wasEpVisible = null;
+    if (opts.isolated){
+      var prevFocal = (state.focal && state.focal.isolated) ? state.focal : null;
+      if (state.layerVisible){
+        _wasLinksOn  = prevFocal && prevFocal._wasLinksOn  !== null ? prevFocal._wasLinksOn  : (state.layerVisible.links  !== false);
+        _wasGhostsOn = prevFocal && prevFocal._wasGhostsOn !== null ? prevFocal._wasGhostsOn : (state.layerVisible.ghosts !== false);
+        state.layerVisible.links  = false;
+        state.layerVisible.ghosts = false;
+      }
+      if (state.ghostEdges){
+        state.ghostEdges.visible = false;
+        if (state.ghostEdges.mesh) state.ghostEdges.mesh.visible = false;
+      }
+      if (state.edgeParticles && state.edgeParticles.mesh){
+        _wasEpVisible = prevFocal && prevFocal._wasEpVisible !== null ? prevFocal._wasEpVisible : !!state.edgeParticles.mesh.visible;
+        state.edgeParticles.mesh.visible = false;
+      }
+    }
     state.focal = {
       kind: kind, instanceId: instanceId,
       name: calc.name,
       focalScale: calc.scales,
+      isolated: !!opts.isolated,
+      neighborCount: calc.neighborCount | 0,
+      _wasLinksOn: _wasLinksOn,
+      _wasGhostsOn: _wasGhostsOn,
+      _wasEpVisible: _wasEpVisible,
       camFromTarget: camFromTarget, camFromPos: camFromPos,
       camToTarget:   camToTarget,   camToPos:   camToPos,
       animStart: (typeof performance !== 'undefined') ? performance.now() : Date.now(),
       animDuration: 600
     };
-    console.log('[DiscoveryEngine3D] 4.5.8 focal entered: ' + kind + ' "' + calc.name + '" with ' + calc.neighborCount + ' neighbors');
+    // P8.5: when isolating, toggle body class for canvas outline + pulse focal
+    // P8.8: cascade-pulse up to 12 visible neighbors at 60ms stagger for reveal
+    if (opts.isolated){
+      document.body.classList.add('de3d-isolated');
+      try { pulseEntity({ kind: kind, instanceId: instanceId, propagate: false }); } catch(e){}
+      try {
+        var sc = calc.scales;
+        var neighbors = [];
+        for (var pp = 0; pp < sc.people.length && neighbors.length < 18; pp++){
+          if (sc.people[pp] >= 1 && !(kind === 'person' && pp === instanceId)){
+            neighbors.push({ kind: 'person', instanceId: pp });
+          }
+        }
+        for (var oo = 0; oo < sc.orgs.length && neighbors.length < 18; oo++){
+          if (sc.orgs[oo] >= 1 && !(kind === 'org' && oo === instanceId)){
+            neighbors.push({ kind: 'org', instanceId: oo });
+          }
+        }
+        for (var qq = 0; qq < sc.opps.length && neighbors.length < 18; qq++){
+          if (sc.opps[qq] >= 1 && !(kind === 'opp' && qq === instanceId)){
+            neighbors.push({ kind: 'opp', instanceId: qq });
+          }
+        }
+        var limit = Math.min(12, neighbors.length);
+        for (var ni = 0; ni < limit; ni++){
+          (function(n, delay){
+            setTimeout(function(){ try { pulseEntity({ kind: n.kind, instanceId: n.instanceId, propagate: false }); } catch(e){} }, delay);
+          })(neighbors[ni], 120 + ni * 60);
+        }
+      } catch(e){}
+    } else {
+      document.body.classList.remove('de3d-isolated');
+    }
+    console.log('[DiscoveryEngine3D] 4.5.8 focal entered: ' + kind + ' "' + calc.name + '" with ' + calc.neighborCount + ' neighbors' + (opts.isolated ? ' [ISOLATED]' : ''));
     _renderFocalPill(calc.name, kind);
+  }
+
+  // P8.5: isolate all currently selected entities (union of their focal scales).
+  // Used by Shift+I and exposed as DiscoveryEngine3D.isolateSelection().
+  function isolateSelection(){
+    var sel = (typeof getSelection === 'function') ? getSelection() : [];
+    if (!sel.length) return 0;
+    var first = _computeFocalScales(sel[0].kind, sel[0].instanceId, { isolated: true });
+    if (!first) return 0;
+    for (var i = 1; i < sel.length; i++){
+      var calc = _computeFocalScales(sel[i].kind, sel[i].instanceId, { isolated: true });
+      if (!calc) continue;
+      var sa = first.scales, sb = calc.scales;
+      for (var p = 0; p < sa.people.length; p++) if (sb.people[p] > sa.people[p]) sa.people[p] = sb.people[p];
+      for (var o = 0; o < sa.orgs.length;   o++) if (sb.orgs[o]   > sa.orgs[o])   sa.orgs[o]   = sb.orgs[o];
+      for (var q = 0; q < sa.opps.length;   q++) if (sb.opps[q]   > sa.opps[q])   sa.opps[q]   = sb.opps[q];
+    }
+    var nVis = 0;
+    var sc = first.scales;
+    for (var pi = 0; pi < sc.people.length; pi++) if (sc.people[pi] >= 1) nVis++;
+    for (var oi = 0; oi < sc.orgs.length;   oi++) if (sc.orgs[oi]   >= 1) nVis++;
+    for (var qi = 0; qi < sc.opps.length;   qi++) if (sc.opps[qi]   >= 1) nVis++;
+    var _wasLinksOn = null, _wasGhostsOn = null, _wasEpVisible = null;
+    var prevFocal = (state.focal && state.focal.isolated) ? state.focal : null;
+    if (state.layerVisible){
+      _wasLinksOn  = prevFocal && prevFocal._wasLinksOn  !== null ? prevFocal._wasLinksOn  : (state.layerVisible.links  !== false);
+      _wasGhostsOn = prevFocal && prevFocal._wasGhostsOn !== null ? prevFocal._wasGhostsOn : (state.layerVisible.ghosts !== false);
+      state.layerVisible.links  = false;
+      state.layerVisible.ghosts = false;
+    }
+    if (state.ghostEdges){
+      state.ghostEdges.visible = false;
+      if (state.ghostEdges.mesh) state.ghostEdges.mesh.visible = false;
+    }
+    if (state.edgeParticles && state.edgeParticles.mesh){
+      _wasEpVisible = prevFocal && prevFocal._wasEpVisible !== null ? prevFocal._wasEpVisible : !!state.edgeParticles.mesh.visible;
+      state.edgeParticles.mesh.visible = false;
+    }
+    var pillName = sel.length + ' SELECTED';
+    state.focal = {
+      kind: 'multi', instanceId: -1,
+      name: pillName,
+      focalScale: first.scales,
+      isolated: true,
+      neighborCount: Math.max(0, nVis - sel.length),
+      totalVisible: nVis,
+      _wasLinksOn: _wasLinksOn,
+      _wasGhostsOn: _wasGhostsOn,
+      _wasEpVisible: _wasEpVisible,
+      camFromTarget: state.controls ? state.controls.target.clone() : new THREE.Vector3(),
+      camFromPos:    state.camera   ? state.camera.position.clone() : new THREE.Vector3(),
+      camToTarget:   state.controls ? state.controls.target.clone() : new THREE.Vector3(),
+      camToPos:      state.camera   ? state.camera.position.clone() : new THREE.Vector3(),
+      animStart: (typeof performance !== 'undefined') ? performance.now() : Date.now(),
+      animDuration: 1
+    };
+    document.body.classList.add('de3d-isolated');
+    _renderFocalPill(pillName, 'multi');
+    try { fitToSelection(); } catch(e){}
+    // P8.8: cascade pulse — anchors first (40ms stagger), then up to 9 neighbors (80ms stagger)
+    try {
+      sel.forEach(function(s, si){
+        setTimeout(function(){ try { pulseEntity({ kind: s.kind, instanceId: s.instanceId, propagate: false }); } catch(e){} }, si * 40);
+      });
+      var anchorKeys = {};
+      sel.forEach(function(s){ anchorKeys[s.kind + ':' + s.instanceId] = true; });
+      var nbrs = [];
+      var sc = first.scales;
+      for (var pp2 = 0; pp2 < sc.people.length && nbrs.length < 15; pp2++){
+        if (sc.people[pp2] >= 1 && !anchorKeys['person:' + pp2]) nbrs.push({ kind: 'person', instanceId: pp2 });
+      }
+      for (var oo2 = 0; oo2 < sc.orgs.length && nbrs.length < 15; oo2++){
+        if (sc.orgs[oo2] >= 1 && !anchorKeys['org:' + oo2]) nbrs.push({ kind: 'org', instanceId: oo2 });
+      }
+      for (var qq2 = 0; qq2 < sc.opps.length && nbrs.length < 15; qq2++){
+        if (sc.opps[qq2] >= 1 && !anchorKeys['opp:' + qq2]) nbrs.push({ kind: 'opp', instanceId: qq2 });
+      }
+      var nlim = Math.min(9, nbrs.length);
+      var baseDelay = sel.length * 40 + 100;
+      for (var n2 = 0; n2 < nlim; n2++){
+        (function(nb, dly){
+          setTimeout(function(){ try { pulseEntity({ kind: nb.kind, instanceId: nb.instanceId, propagate: false }); } catch(e){} }, dly);
+        })(nbrs[n2], baseDelay + n2 * 80);
+      }
+    } catch(e){}
+    console.log('[DiscoveryEngine3D] 8.5 isolateSelection: ' + sel.length + ' anchors → ' + nVis + ' visible');
+    return sel.length;
   }
 
   function exitFocal(){
     if (!state.focal) return;
     var nm = state.focal.name;
+    // P8.4–P8.6: restore links, ghost edges, edge particles if isolation hid them
+    if (state.focal.isolated){
+      if (state.layerVisible){
+        if (state.focal._wasLinksOn  !== null) state.layerVisible.links  = !!state.focal._wasLinksOn;
+        if (state.focal._wasGhostsOn !== null) state.layerVisible.ghosts = !!state.focal._wasGhostsOn;
+      }
+      if (state.ghostEdges){
+        var gOn = state.layerVisible && state.layerVisible.ghosts !== false;
+        state.ghostEdges.visible = gOn;
+        if (state.ghostEdges.mesh) state.ghostEdges.mesh.visible = gOn;
+      }
+      if (state.edgeParticles && state.edgeParticles.mesh && state.focal._wasEpVisible !== null){
+        state.edgeParticles.mesh.visible = !!state.focal._wasEpVisible;
+      }
+    }
+    // P8.5: remove canvas outline indicator
+    document.body.classList.remove('de3d-isolated');
     state.focal = null;
     console.log('[DiscoveryEngine3D] 4.5.8 focal exited: "' + nm + '"');
     _renderFocalPill(null);
@@ -38458,12 +39396,45 @@ const DiscoveryEngine3D = (function(){
       return;
     }
     pill.style.display = 'flex';
-    var kindColor = kind === 'opp' ? 'var(--amber,#d4823a)'
-                  : kind === 'org' ? 'var(--paper,#b5ad9f)'
-                  : 'var(--bone,#7d7669)';
-    pill.querySelector('#de3d-focal-kind').textContent = (kind || '').toUpperCase();
+    var kindColor = kind === 'opp'   ? 'var(--amber,#d4823a)'
+                  : kind === 'org'   ? 'var(--paper,#b5ad9f)'
+                  : kind === 'multi' ? '#f4ede0'
+                  :                    'var(--bone,#7d7669)';
+    var kindLbl = (kind === 'multi') ? 'GROUP' : (kind || '').toUpperCase();
+    pill.querySelector('#de3d-focal-kind').textContent = kindLbl;
     pill.querySelector('#de3d-focal-kind').style.color = kindColor;
     pill.querySelector('#de3d-focal-name').textContent = name;
+    // P8.5: swap label + pill border for isolate vs focal mode
+    var labelEl = pill.querySelector('#de3d-focal-label');
+    var isolated = !!(state.focal && state.focal.isolated);
+    if (labelEl){
+      labelEl.textContent = isolated ? '◈ ISOLATED' : '◎ FOCAL';
+      labelEl.style.color = isolated ? '#f4ede0' : 'var(--gold,#d4823a)';
+    }
+    pill.style.borderColor = isolated ? '#f4ede0' : 'var(--gold,#d4823a)';
+    pill.style.boxShadow = isolated ? '0 4px 18px rgba(244,237,224,.22)' : '0 4px 18px rgba(212,130,58,.18)';
+    // P8.5–P8.8: show visible-count + per-kind breakdown when isolated
+    var cntEl = pill.querySelector('#de3d-focal-count');
+    if (cntEl){
+      if (isolated && state.focal && state.focal.focalScale){
+        var sc2 = state.focal.focalScale;
+        var nP2 = 0, nO2 = 0, nQ2 = 0;
+        if (sc2.people) for (var pj = 0; pj < sc2.people.length; pj++) if (sc2.people[pj] >= 1) nP2++;
+        if (sc2.orgs)   for (var oj = 0; oj < sc2.orgs.length;   oj++) if (sc2.orgs[oj]   >= 1) nO2++;
+        if (sc2.opps)   for (var qj = 0; qj < sc2.opps.length;   qj++) if (sc2.opps[qj]   >= 1) nQ2++;
+        var nVis = nP2 + nO2 + nQ2;
+        cntEl.textContent = '· ' + nVis + ' VISIBLE';
+        var parts = [];
+        if (nP2) parts.push(nP2 + ' ' + (nP2 === 1 ? 'person' : 'people'));
+        if (nO2) parts.push(nO2 + ' ' + (nO2 === 1 ? 'organization' : 'organizations'));
+        if (nQ2) parts.push(nQ2 + ' ' + (nQ2 === 1 ? 'opportunity' : 'opportunities'));
+        cntEl.title = parts.length ? parts.join(' · ') : 'No visible entities';
+        cntEl.style.cursor = 'help';
+        cntEl.style.display = 'inline';
+      } else {
+        cntEl.style.display = 'none';
+      }
+    }
     // 5.9: refresh back/forward button enablement
     _updateFocalHistoryButtons();
   }
@@ -38488,21 +39459,21 @@ const DiscoveryEngine3D = (function(){
   function focalBack(){
     var h = state.focalHistory;
     if (!h || !h.back.length) return false;
-    if (state.focal && state.focal.kind){
-      h.forward.push({ kind: state.focal.kind, instanceId: state.focal.instanceId });
+    if (state.focal && state.focal.kind && state.focal.kind !== 'multi'){
+      h.forward.push({ kind: state.focal.kind, instanceId: state.focal.instanceId, isolated: !!state.focal.isolated });
     }
     var prev = h.back.pop();
-    enterFocal(prev.kind, prev.instanceId, { _fromHistory: true });
+    enterFocal(prev.kind, prev.instanceId, { _fromHistory: true, isolated: !!prev.isolated });
     return true;
   }
   function focalForward(){
     var h = state.focalHistory;
     if (!h || !h.forward.length) return false;
-    if (state.focal && state.focal.kind){
-      h.back.push({ kind: state.focal.kind, instanceId: state.focal.instanceId });
+    if (state.focal && state.focal.kind && state.focal.kind !== 'multi'){
+      h.back.push({ kind: state.focal.kind, instanceId: state.focal.instanceId, isolated: !!state.focal.isolated });
     }
     var nxt = h.forward.pop();
-    enterFocal(nxt.kind, nxt.instanceId, { _fromHistory: true });
+    enterFocal(nxt.kind, nxt.instanceId, { _fromHistory: true, isolated: !!nxt.isolated });
     return true;
   }
 
@@ -38533,7 +39504,10 @@ const DiscoveryEngine3D = (function(){
         tier:  (state.filter && state.filter.tier)  || 'all'
       },
       layerVisible: Object.assign({}, state.layerVisible || {}),
-      focal: f ? { kind: f.kind, instanceId: f.instanceId } : null,
+      // P9.0: persist isolated flag; skip multi-anchor focal (no replay path)
+      focal: (f && f.kind && f.kind !== 'multi')
+        ? { kind: f.kind, instanceId: f.instanceId, isolated: !!f.isolated }
+        : null,
       camera: null
     };
     if (state.camera && state.controls){
@@ -38585,9 +39559,9 @@ const DiscoveryEngine3D = (function(){
         setLayer(L, view.layerVisible[L]);
       });
     }
-    // 3. Focal
+    // 3. Focal — P9.0: preserve isolated flag if it was saved
     if (view.focal && view.focal.kind && view.focal.instanceId != null){
-      enterFocal(view.focal.kind, view.focal.instanceId);
+      enterFocal(view.focal.kind, view.focal.instanceId, { isolated: !!view.focal.isolated });
     } else if (state.focal){
       exitFocal();
     }
@@ -38707,9 +39681,14 @@ const DiscoveryEngine3D = (function(){
     var np = (state._cleanNodesRef || []).length;
     var no = (state.orgCleanRef    || []).length;
     var nq = (state.oppCleanRef    || []).length;
-    for (var i = 0; i < np; i++) out.push({ kind: 'person', instanceId: i });
-    for (var j = 0; j < no; j++) out.push({ kind: 'org',    instanceId: j });
-    for (var k = 0; k < nq; k++) out.push({ kind: 'opp',    instanceId: k });
+    // P9.0: when isolated, Tab cycles only through visible (non-zero focal-scale) entities
+    var iso = !!(state.focal && state.focal.isolated && state.focal.focalScale);
+    var fP = iso ? state.focal.focalScale.people : null;
+    var fO = iso ? state.focal.focalScale.orgs   : null;
+    var fQ = iso ? state.focal.focalScale.opps   : null;
+    for (var i = 0; i < np; i++){ if (fP && fP[i] === 0) continue; out.push({ kind: 'person', instanceId: i }); }
+    for (var j = 0; j < no; j++){ if (fO && fO[j] === 0) continue; out.push({ kind: 'org',    instanceId: j }); }
+    for (var k = 0; k < nq; k++){ if (fQ && fQ[k] === 0) continue; out.push({ kind: 'opp',    instanceId: k }); }
     return out;
   }
   function _tabNav(direction){
@@ -38809,6 +39788,49 @@ const DiscoveryEngine3D = (function(){
     }
     if (kEl) kEl.textContent = hoverRef.kind.toUpperCase();
     if (nEl) nEl.textContent = name.length > 32 ? name.slice(0, 29) + '…' : name;
+    // P8.9: relabel "Isolate" → "Pivot isolation here" when already isolated
+    var isoLbl = document.getElementById('de3d-ctx-isolate-lbl');
+    if (isoLbl){
+      isoLbl.textContent = (state.focal && state.focal.isolated)
+        ? 'Pivot isolation here'
+        : 'Isolate (show only this + connections)';
+    }
+    // P9.0: "Select connected" item — relabel by kind, hide for unknown kinds
+    var selNetItem = document.getElementById('de3d-ctx-selnet');
+    var selNetLbl  = document.getElementById('de3d-ctx-selnet-lbl');
+    if (selNetItem && selNetLbl){
+      var snLabel = '';
+      if (hoverRef.kind === 'org')    snLabel = 'Select employees';
+      else if (hoverRef.kind === 'opp')    snLabel = 'Select attendees';
+      else if (hoverRef.kind === 'person') snLabel = 'Select fellow attendees';
+      if (snLabel){
+        selNetItem.style.display = 'flex';
+        selNetLbl.textContent = snLabel;
+      } else {
+        selNetItem.style.display = 'none';
+      }
+    }
+    // P8.1: show ghost confirm item if person has ghost edges
+    var ghostItem = document.getElementById('de3d-ctx-ghost');
+    if (ghostItem){
+      ghostItem.style.display = 'none';
+      state._ctxGhostIdx = -1;
+      if (hoverRef.kind === 'person' && state.ghostEdges && state.ghostEdges.count > 0){
+        var ge = state.ghostEdges;
+        for (var gci = 0; gci < ge.count; gci++){
+          if (ge.edges[gci].srcIdx === hoverRef.instanceId || ge.edges[gci].tgtIdx === hoverRef.instanceId){
+            var otherIdx = ge.edges[gci].srcIdx === hoverRef.instanceId ? ge.edges[gci].tgtIdx : ge.edges[gci].srcIdx;
+            var otherName = (state._cleanNodesRef || [])[otherIdx];
+            otherName = otherName ? otherName.name : '(unknown)';
+            var ghostLabel = document.getElementById('de3d-ctx-ghost-label');
+            if (ghostLabel) ghostLabel.textContent = 'Confirm → ' + (otherName.length > 20 ? otherName.slice(0,17) + '…' : otherName);
+            ghostItem.style.display = 'flex';
+            state._ctxGhostIdx = gci;
+            break;
+          }
+        }
+      }
+    }
     // Show + position (smart edge flip)
     menu.style.display = 'block';
     var w = menu.offsetWidth  || 200;
@@ -38836,6 +39858,58 @@ const DiscoveryEngine3D = (function(){
       pulseEntity({ kind: t.kind, instanceId: t.instanceId });
     } else if (action === 'focal'){
       enterFocal(t.kind, t.instanceId);
+    } else if (action === 'isolate'){
+      enterFocal(t.kind, t.instanceId, { isolated: true });
+    } else if (action === 'select-network'){
+      // P9.0: select all entities connected to this one (uses focal-scale math)
+      var calc = _computeFocalScales(t.kind, t.instanceId);
+      if (calc){
+        clearSelection();
+        var sn = 0;
+        var ssP = calc.scales.people, ssO = calc.scales.orgs, ssQ = calc.scales.opps;
+        for (var spi = 0; spi < ssP.length; spi++){ if (ssP[spi] >= 1){ toggleSelection('person', spi, { add: true }); sn++; } }
+        for (var soi = 0; soi < ssO.length; soi++){ if (ssO[soi] >= 1){ toggleSelection('org',    soi, { add: true }); sn++; } }
+        for (var sqi = 0; sqi < ssQ.length; sqi++){ if (ssQ[sqi] >= 1){ toggleSelection('opp',    sqi, { add: true }); sn++; } }
+        console.log('[DiscoveryEngine3D] 9.0 select-network: ' + sn + ' entities (anchor ' + t.kind + ' #' + t.instanceId + ')');
+      }
+    } else if (action === 'confirm-ghost'){
+      var gIdx = state._ctxGhostIdx;
+      if (gIdx >= 0 && state.ghostEdges && gIdx < state.ghostEdges.count){
+        var gEdge = state.ghostEdges.edges[gIdx];
+        var srcNode = (state._cleanNodesRef || [])[gEdge.srcIdx];
+        var tgtNode = (state._cleanNodesRef || [])[gEdge.tgtIdx];
+        if (srcNode && tgtNode){
+          // Pulse both endpoints for visual feedback
+          pulseEntity({ kind: 'person', instanceId: gEdge.srcIdx });
+          pulseEntity({ kind: 'person', instanceId: gEdge.tgtIdx });
+          emitFlow({ kind: 'person', instanceId: gEdge.srcIdx },
+                   { kind: 'person', instanceId: gEdge.tgtIdx });
+          // Persist to Firebase
+          if (typeof window.saveLink === 'function'){
+            var nlId = 'ghost_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+            var nl = { id: nlId, source: srcNode.id, target: tgtNode.id, label: 'Knows', dir: 'both', notes: 'Confirmed ghost: ' + gEdge.basis, inferredOriginally: true };
+            if (window.links) window.links.push(nl);
+            window.saveLink(nl);
+            if (window._invalidateEntityGraph) window._invalidateEntityGraph();
+          }
+          // Remove from ghost array and update geometry
+          state.ghostEdges.edges.splice(gIdx, 1);
+          state.ghostEdges.count--;
+          var gp = state.ghostEdges.posArr;
+          for (var ri = gIdx; ri < state.ghostEdges.count; ri++){
+            gp[ri*6]=gp[(ri+1)*6]; gp[ri*6+1]=gp[(ri+1)*6+1]; gp[ri*6+2]=gp[(ri+1)*6+2];
+            gp[ri*6+3]=gp[(ri+1)*6+3]; gp[ri*6+4]=gp[(ri+1)*6+4]; gp[ri*6+5]=gp[(ri+1)*6+5];
+          }
+          var ca = state.ghostEdges.geo.getAttribute('aConf').array;
+          for (var ci2 = gIdx; ci2 < state.ghostEdges.count; ci2++){
+            ca[ci2*2]=ca[(ci2+1)*2]; ca[ci2*2+1]=ca[(ci2+1)*2+1];
+          }
+          state.ghostEdges.geo.setDrawRange(0, state.ghostEdges.count);
+          state.ghostEdges.geo.attributes.position.needsUpdate = true;
+          state.ghostEdges.geo.getAttribute('aConf').needsUpdate = true;
+          console.log('[DiscoveryEngine3D] P8.1 ghost confirmed: ' + srcNode.name + ' → ' + tgtNode.name + ' (' + gEdge.basis + ')');
+        }
+      }
     }
     _hideContextMenu();
   }
@@ -39227,13 +40301,25 @@ const DiscoveryEngine3D = (function(){
       if (displayName.length > 38) displayName = displayName.slice(0, 35) + '…';
       row.innerHTML =
         '<span style="color:' + kindColor + ';font-weight:700;width:48px;font-size:9px;letter-spacing:.12em">' + h.kind.toUpperCase() + '</span>' +
-        '<span style="color:var(--paper,#b5ad9f);font-size:11px;text-transform:none;letter-spacing:.02em;font-weight:500;flex:1">' + displayName + '</span>';
+        '<span style="color:var(--paper,#b5ad9f);font-size:11px;text-transform:none;letter-spacing:.02em;font-weight:500;flex:1">' + displayName + '</span>' +
+        '<span class="de3d-search-iso" title="Isolate this entity (or Shift+click row)" style="color:#d4823a;cursor:pointer;padding:0 4px;font-size:11px;opacity:.6;transition:opacity 120ms">◈</span>';
       row.dataset.kind = h.kind;
       row.dataset.idx  = String(h.idx);
-      row.addEventListener('mouseenter', function(){ row.style.background = 'rgba(212,130,58,.18)'; });
-      row.addEventListener('mouseleave', function(){ row.style.background = 'transparent'; });
-      row.addEventListener('click', function(){
-        enterFocal(h.kind, h.idx);
+      row.addEventListener('mouseenter', function(){ row.style.background = 'rgba(212,130,58,.18)'; var ic = row.querySelector('.de3d-search-iso'); if (ic) ic.style.opacity = '1'; });
+      row.addEventListener('mouseleave', function(){ row.style.background = 'transparent'; var ic = row.querySelector('.de3d-search-iso'); if (ic) ic.style.opacity = '0.6'; });
+      var isoIcon = row.querySelector('.de3d-search-iso');
+      if (isoIcon){
+        isoIcon.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          enterFocal(h.kind, h.idx, { isolated: true });
+          var inp2 = document.getElementById('de3d-search-input');
+          if (inp2){ inp2.value = ''; }
+          resultsEl.innerHTML = '';
+        });
+      }
+      row.addEventListener('click', function(ev){
+        // P9.0: Shift+click → isolate; plain click → regular focal
+        enterFocal(h.kind, h.idx, { isolated: !!ev.shiftKey });
         var inp = document.getElementById('de3d-search-input');
         if (inp){ inp.value = ''; }
         resultsEl.innerHTML = '';
@@ -39397,6 +40483,19 @@ const DiscoveryEngine3D = (function(){
 
     state.container = container;
 
+    // P9.3: restore persisted layer preferences (only valid keys)
+    try {
+      var savedLayers = localStorage.getItem('corsair-3d-layers');
+      if (savedLayers){
+        var parsed = JSON.parse(savedLayers);
+        if (parsed && typeof parsed === 'object'){
+          Object.keys(state.layerVisible).forEach(function(k){
+            if (typeof parsed[k] === 'boolean') state.layerVisible[k] = parsed[k];
+          });
+        }
+      }
+    } catch(e){}
+
     // ── Renderer (WebGL2, antialiased, pixelRatio capped at 2.0) ──
     const w = container.clientWidth || container.offsetWidth || 800;
     const h = container.clientHeight || container.offsetHeight || 600;
@@ -39418,7 +40517,7 @@ const DiscoveryEngine3D = (function(){
     // ── Scene ──
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(PALETTE.bg);
-    scene.fog = new THREE.Fog(PALETTE.bg, 60, 220);
+    scene.fog = new THREE.Fog(0x0a1424, 100, 1500);
     state.scene = scene;
 
     // ── Camera ── Wider defaults: starts much farther back with a far plane
@@ -39464,6 +40563,39 @@ const DiscoveryEngine3D = (function(){
     );
     _originMarker.frustumCulled = false;
     scene.add(_originMarker);
+
+    // ── P8.0: Ambient drift particles ─────────────────────────────────────
+    // 300 sub-pixel amber drifters at 6% opacity, random velocity, wrapping
+    // at scene bounds. Makes empty space feel populated.
+    var DRIFT_N = 300;
+    var _driftPos = new Float32Array(DRIFT_N * 3);
+    var _driftVel = new Float32Array(DRIFT_N * 3);
+    var DRIFT_BOUNDS = 200;
+    for (var di = 0; di < DRIFT_N; di++){
+      _driftPos[di*3]   = (Math.random()-0.5)*DRIFT_BOUNDS*2;
+      _driftPos[di*3+1] = (Math.random()-0.5)*DRIFT_BOUNDS*2;
+      _driftPos[di*3+2] = (Math.random()-0.5)*DRIFT_BOUNDS*2;
+      var spd = 0.5 + Math.random()*1.5;
+      var theta = Math.random()*Math.PI*2;
+      var phi = Math.acos(2*Math.random()-1);
+      _driftVel[di*3]   = Math.sin(phi)*Math.cos(theta)*spd;
+      _driftVel[di*3+1] = Math.sin(phi)*Math.sin(theta)*spd;
+      _driftVel[di*3+2] = Math.cos(phi)*spd;
+    }
+    var driftGeo = new THREE.BufferGeometry();
+    driftGeo.setAttribute('position', new THREE.BufferAttribute(_driftPos, 3));
+    var driftMat = new THREE.PointsMaterial({
+      color: 0xd4823a, size: 1.2, transparent: true, opacity: 0.06,
+      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+    });
+    var driftMesh = new THREE.Points(driftGeo, driftMat);
+    driftMesh.frustumCulled = false;
+    scene.add(driftMesh);
+    state.drift = { mesh: driftMesh, pos: _driftPos, vel: _driftVel, n: DRIFT_N, bounds: DRIFT_BOUNDS };
+
+    // ── P8.0: Idle breathing state ──
+    state.lastInteractionTs = performance.now();
+    state.breathingActive = false;
 
     // ── Controls (damped orbit) ──
     const controls = new OrbitControls(camera, state.canvas);
@@ -39610,7 +40742,14 @@ const DiscoveryEngine3D = (function(){
         }
       }
       if (!bestHit){
-        // Click on empty space → clear selection + exit focal mode if active
+        // Click on empty space → clear selection + exit focal mode if active.
+        // P9.1: double-click empty (within 350ms) → fit to all entities.
+        var emptyNow = ev.timeStamp || ((typeof performance !== 'undefined') ? performance.now() : Date.now());
+        if (emptyNow - (state._lastEmptyClickTs || 0) < 350){
+          if (state.posBounds) _fitCameraToBounds(state.posBounds, 1.4);
+          console.log('[DiscoveryEngine3D] 9.1 dbl-click empty → fit to cluster');
+        }
+        state._lastEmptyClickTs = emptyNow;
         clearSelection();
         if (state.focal) exitFocal();
         return;
@@ -39655,6 +40794,34 @@ const DiscoveryEngine3D = (function(){
     };
     state.canvas.addEventListener('pointerdown', state.onPointerDown);
     state.canvas.addEventListener('pointerup',   state.onPointerUp);
+    // P8.0: reset idle breathing on any interaction
+    state._wakeBreathing = function(){ state.lastInteractionTs = performance.now(); state.breathingActive = false; if (state.autoOrbitActive){ state.autoOrbitActive = false; console.log('[DiscoveryEngine3D] 9.0 auto-orbit: off (user interaction)'); } };
+    state.canvas.addEventListener('pointerdown', state._wakeBreathing);
+    state.canvas.addEventListener('wheel', state._wakeBreathing, { passive: true });
+    document.addEventListener('keydown', state._wakeBreathing);
+    // ── P8.3 Tier 5: scroll-to-dive — wheel sets target polar based on distance ──
+    // Close zoom → camera tilts horizontal (flying-low feel).
+    // Far zoom → camera tilts top-down (overhead reconnaissance).
+    // The animation loop eases the polar over ~600ms; user drag cancels it.
+    state._diveTargetPolar = null;
+    state._diveStartPolar = null;
+    state._diveStartTime = 0;
+    state._diveWheelHandler = function(){
+      if (!state.controls || !state.camera) return;
+      var dist = state.camera.position.distanceTo(state.controls.target);
+      var minD = state.controls.minDistance || 4;
+      var maxD = state.controls.maxDistance || 400;
+      var t = Math.max(0, Math.min(1, (dist - minD) / (maxD - minD)));
+      // π/2.2 ≈ 81° (near-horizontal) → π/5 ≈ 36° (overhead-ish)
+      state._diveTargetPolar = (Math.PI / 2.2) + ((Math.PI / 5) - (Math.PI / 2.2)) * t;
+      state._diveStartPolar = state.controls.getPolarAngle();
+      state._diveStartTime = performance.now();
+    };
+    state.canvas.addEventListener('wheel', state._diveWheelHandler, { passive: true });
+    state._diveCancelHandler = function(ev){
+      if (ev.button === 0 && !ev.shiftKey){ state._diveTargetPolar = null; }
+    };
+    state.canvas.addEventListener('pointerdown', state._diveCancelHandler);
     // ── Micro-step 5.1: hover raycast (throttled to ~30Hz) ──────────────
     // pointermove fires up to 1000Hz on some mice — way too fast for a
     // raycaster. Throttle to every 33ms (~30Hz) for snappy-but-cheap
@@ -39774,6 +40941,12 @@ const DiscoveryEngine3D = (function(){
       } else if (ev.key === 'Tab'){
         ev.preventDefault();
         _tabNav(ev.shiftKey ? -1 : 1);
+      } else if (ev.key === 'Enter' && ev.shiftKey){
+        // P9.4: Shift+Enter → open Inspector for the current focal entity
+        if (state.focal && state.focal.kind && state.focal.kind !== 'multi'){
+          ev.preventDefault();
+          _dispatchInspector(state.focal.kind, state.focal.instanceId);
+        }
       } else if (ev.key === 'Enter'){
         var sel = getSelection();
         if (sel.length){
@@ -39788,9 +40961,285 @@ const DiscoveryEngine3D = (function(){
         ev.preventDefault(); _rotateCamera(0, -0.10);
       } else if (ev.key === 'ArrowDown'){
         ev.preventDefault(); _rotateCamera(0,  0.10);
+      } else if (ev.key === 'f' || ev.key === 'F'){
+        // P8.7: F prioritizes selection, falls back to focal entity if isolated/focused
+        if (selectionCount() > 0){ ev.preventDefault(); fitToSelection(); }
+        else if (state.focal && state.focal.kind && state.focal.kind !== 'multi'){
+          ev.preventDefault();
+          var wp = _entityWorldPos(state.focal.kind, state.focal.instanceId);
+          if (wp) _fitCameraToBounds({ cx: wp.x, cy: wp.y, cz: wp.z, radius: 8 }, 1.8);
+        }
+      } else if ((ev.key === 'i' || ev.key === 'I') && ev.shiftKey){
+        // P8.5: Shift+I → isolate the entire current selection (union)
+        if (selectionCount() > 0){ ev.preventDefault(); isolateSelection(); }
+      } else if (ev.key === 'i' || ev.key === 'I'){
+        // P8.5: hover + I → isolate that entity (no right-click needed)
+        if (state.hover && (state.hover.kind === 'person' || state.hover.kind === 'org' || state.hover.kind === 'opp')){
+          ev.preventDefault();
+          enterFocal(state.hover.kind, state.hover.instanceId, { isolated: true });
+        }
+      } else if (ev.key === 'r' || ev.key === 'R'){
+        // P9.0–P9.1: R → Reset view — exit focal/isolate, clear selection,
+        // cancel auto-orbit, fit to cluster. Does NOT collapse expand mode
+        // (operator's layout preference is preserved).
+        ev.preventDefault();
+        if (state.focal) exitFocal();
+        clearSelection();
+        state.autoOrbitActive = false;
+        if (state.posBounds) _fitCameraToBounds(state.posBounds, 1.4);
+        console.log('[DiscoveryEngine3D] 9.0 reset view');
+      } else if (ev.key === 'o' || ev.key === 'O'){
+        // P9.0: O → toggle auto-orbit (slow rotation around current target)
+        ev.preventDefault();
+        state.autoOrbitActive = !state.autoOrbitActive;
+        console.log('[DiscoveryEngine3D] 9.0 auto-orbit:', state.autoOrbitActive ? 'ON' : 'off');
+      } else if (ev.key === 'q' || ev.key === 'Q'){
+        // P9.1/P9.4: Q → ask Corsair about the focal entity, or single-selected
+        var qName = null;
+        if (state.focal && state.focal.kind && state.focal.kind !== 'multi' && state.focal.name){
+          qName = state.focal.name;
+        } else if (selectionCount() === 1){
+          var qSel = getSelection();
+          var s0 = qSel[0];
+          if (s0.kind === 'person'){ var qP = (state._cleanNodesRef || [])[s0.instanceId]; if (qP) qName = qP.name; }
+          else if (s0.kind === 'org'){ var qO = (state.orgCleanRef || [])[s0.instanceId];   if (qO) qName = qO.name; }
+          else if (s0.kind === 'opp'){ var qQ = (state.oppCleanRef || [])[s0.instanceId];   if (qQ) qName = qQ.name; }
+        }
+        if (qName && typeof window._apAction === 'function'){
+          ev.preventDefault();
+          window._apAction('askfli', 'Tell me about ' + qName);
+          console.log('[DiscoveryEngine3D] 9.4 ask-corsair: "' + qName + '"');
+        }
+      } else if (ev.key === 'm' || ev.key === 'M'){
+        // P9.2: M → toggle minimap visibility
+        ev.preventDefault();
+        var mmEl = document.getElementById('de3d-minimap');
+        if (mmEl){
+          var hide = mmEl.style.display !== 'none';
+          mmEl.style.display = hide ? 'none' : 'block';
+          console.log('[DiscoveryEngine3D] 9.2 minimap:', hide ? 'off' : 'on');
+        }
+      } else if (ev.key === 'p' || ev.key === 'P'){
+        // P9.2: P → pulse focal entity, or all selected if no focal
+        ev.preventDefault();
+        if (state.focal && state.focal.kind && state.focal.kind !== 'multi'){
+          try { pulseEntity({ kind: state.focal.kind, instanceId: state.focal.instanceId }); } catch(e){}
+        } else if (selectionCount() > 0){
+          pulseSelected();
+        }
+      } else if (ev.key === 's' || ev.key === 'S'){
+        // P9.3: S → focus the search input (top-left FIND box)
+        var sInp = document.getElementById('de3d-search-input');
+        if (sInp){ ev.preventDefault(); sInp.focus(); sInp.select(); }
+      } else if (ev.key === 'h' || ev.key === 'H'){
+        // P9.3: H → toggle help overlay (alias for ?, no shift required)
+        ev.preventDefault();
+        var hint = document.getElementById('corsair-keys-hint');
+        if (hint) hint.style.display = (hint.style.display === 'none' || !hint.style.display) ? 'block' : 'none';
+      } else if (ev.key === 'e' || ev.key === 'E'){
+        // P9.4: E → click the expand button (toggle expand/collapse)
+        var eBtn = document.getElementById('de3d-expand-btn');
+        if (eBtn && eBtn.style.display !== 'none'){
+          ev.preventDefault();
+          eBtn.click();
+        }
+      } else if (ev.key === 'z' || ev.key === 'Z'){
+        // P9.2: Z → fit camera to focal cluster (all currently visible entities)
+        // P9.5: fall back to fitting all entities when no focal is active
+        if (!state.focal && state.posBounds){
+          ev.preventDefault();
+          _fitCameraToBounds(state.posBounds, 1.4);
+        } else if (state.focal && state.focal.focalScale && state.physicsPositions){
+          ev.preventDefault();
+          var fs = state.focal.focalScale;
+          var fpos = state.physicsPositions;
+          var fxs = [], fys = [], fzs = [];
+          if (fs.people){ for (var fpi = 0; fpi < fs.people.length; fpi++) if (fs.people[fpi] >= 1 && Number.isFinite(fpos[fpi*3])){ fxs.push(fpos[fpi*3]); fys.push(fpos[fpi*3+1]); fzs.push(fpos[fpi*3+2]); } }
+          var fOff = state.orgWorkerOffset || 0;
+          if (fs.orgs){   for (var foi = 0; foi < fs.orgs.length;   foi++) if (fs.orgs[foi] >= 1){ var fwi = fOff + foi; if (Number.isFinite(fpos[fwi*3])){ fxs.push(fpos[fwi*3]); fys.push(fpos[fwi*3+1]); fzs.push(fpos[fwi*3+2]); } } }
+          var qfOff = state.oppWorkerOffset || 0;
+          if (fs.opps){   for (var fqi = 0; fqi < fs.opps.length;   fqi++) if (fs.opps[fqi] >= 1){ var fwq = qfOff + fqi; if (Number.isFinite(fpos[fwq*3])){ fxs.push(fpos[fwq*3]); fys.push(fpos[fwq*3+1]); fzs.push(fpos[fwq*3+2]); } } }
+          if (fxs.length){
+            var fminX=fxs[0],fmaxX=fxs[0],fminY=fys[0],fmaxY=fys[0],fminZ=fzs[0],fmaxZ=fzs[0];
+            for (var fii=1; fii<fxs.length; fii++){
+              if (fxs[fii]<fminX) fminX=fxs[fii]; else if (fxs[fii]>fmaxX) fmaxX=fxs[fii];
+              if (fys[fii]<fminY) fminY=fys[fii]; else if (fys[fii]>fmaxY) fmaxY=fys[fii];
+              if (fzs[fii]<fminZ) fminZ=fzs[fii]; else if (fzs[fii]>fmaxZ) fmaxZ=fzs[fii];
+            }
+            var fdx=(fmaxX-fminX)/2, fdy=(fmaxY-fminY)/2, fdz=(fmaxZ-fminZ)/2;
+            _fitCameraToBounds({ cx:(fminX+fmaxX)/2, cy:(fminY+fmaxY)/2, cz:(fminZ+fmaxZ)/2, radius:Math.max(3, Math.sqrt(fdx*fdx+fdy*fdy+fdz*fdz)) }, 1.8);
+          }
+        }
+      } else if (!ev.ctrlKey && !ev.metaKey && !ev.shiftKey && '1234567'.indexOf(ev.key) !== -1){
+        // P9.1: number keys toggle layers — 1 people · 2 orgs · 3 opps · 4 halos · 5 links · 6 labels · 7 ghosts
+        var layerMap = { '1': 'people', '2': 'orgs', '3': 'opps', '4': 'halos', '5': 'links', '6': 'labels', '7': 'ghosts' };
+        var layer = layerMap[ev.key];
+        if (layer && state.layerVisible && layer in state.layerVisible){
+          ev.preventDefault();
+          toggleLayer(layer);
+          console.log('[DiscoveryEngine3D] 9.1 toggle layer ' + layer + ' →', state.layerVisible[layer]);
+        }
+      } else if ((ev.key === 'a' || ev.key === 'A') && (ev.ctrlKey || ev.metaKey)){
+        // P9.0: Ctrl/Cmd+A → select all (visible-only when isolated)
+        ev.preventDefault();
+        clearSelection();
+        var iso2 = !!(state.focal && state.focal.isolated && state.focal.focalScale);
+        var fsP = iso2 ? state.focal.focalScale.people : null;
+        var fsO = iso2 ? state.focal.focalScale.orgs   : null;
+        var fsQ = iso2 ? state.focal.focalScale.opps   : null;
+        var aN = state.instanceCount || 0;
+        for (var ap = 0; ap < aN; ap++){ if (!fsP || fsP[ap] !== 0) toggleSelection('person', ap, { add: true }); }
+        var aO = state.orgInstanceCount || 0;
+        for (var ao = 0; ao < aO; ao++){ if (!fsO || fsO[ao] !== 0) toggleSelection('org',    ao, { add: true }); }
+        var aQ = state.oppInstanceCount || 0;
+        for (var aq = 0; aq < aQ; aq++){ if (!fsQ || fsQ[aq] !== 0) toggleSelection('opp',    aq, { add: true }); }
+        console.log('[DiscoveryEngine3D] 9.0 select all: ' + selectionCount() + ' entities' + (iso2 ? ' (visible-only)' : ''));
       }
     };
     window.addEventListener('keydown', state.onKeyDown);
+
+    // ── P8.2 Tier 5: Lasso selection ──
+    // Shift+drag = replace-select; Shift+Ctrl+drag = deselect mode.
+    // ESC mid-drag cancels. Live count badge shows entities currently in box.
+    state._lasso = null;
+    state._lassoCollectInBox = function(lx0, ly0, lx1, ly1){
+      var rect = state.canvas.getBoundingClientRect();
+      var pos = state.physicsPositions;
+      if (!pos || !state.camera) return [];
+      var v = new THREE.Vector3();
+      var hits = [];
+      // P8.5: in isolate mode, only consider entities still visible (scale > 0)
+      var isolated = !!(state.focal && state.focal.isolated && state.focal.focalScale);
+      var fP = isolated ? state.focal.focalScale.people : null;
+      var fO = isolated ? state.focal.focalScale.orgs   : null;
+      var fQ = isolated ? state.focal.focalScale.opps   : null;
+      var pN = state.instanceCount || 0;
+      for (var li = 0; li < pN; li++){
+        if (fP && fP[li] === 0) continue;
+        v.set(pos[li*3], pos[li*3+1], pos[li*3+2]);
+        v.project(state.camera);
+        var sx = (v.x * 0.5 + 0.5) * rect.width + rect.left;
+        var sy = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
+        if (sx >= lx0 && sx <= lx1 && sy >= ly0 && sy <= ly1 && v.z > 0 && v.z < 1){
+          hits.push({ kind: 'person', id: li });
+        }
+      }
+      var oOff = state.orgWorkerOffset || 0;
+      var oN = state.orgInstanceCount || 0;
+      for (var oi = 0; oi < oN; oi++){
+        if (fO && fO[oi] === 0) continue;
+        var wi = oOff + oi;
+        v.set(pos[wi*3], pos[wi*3+1], pos[wi*3+2]);
+        v.project(state.camera);
+        var sx2 = (v.x * 0.5 + 0.5) * rect.width + rect.left;
+        var sy2 = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
+        if (sx2 >= lx0 && sx2 <= lx1 && sy2 >= ly0 && sy2 <= ly1 && v.z > 0 && v.z < 1){
+          hits.push({ kind: 'org', id: oi });
+        }
+      }
+      var qOff = state.oppWorkerOffset || 0;
+      var qN = state.oppInstanceCount || 0;
+      for (var qi = 0; qi < qN; qi++){
+        if (fQ && fQ[qi] === 0) continue;
+        var wi3 = qOff + qi;
+        v.set(pos[wi3*3], pos[wi3*3+1], pos[wi3*3+2]);
+        v.project(state.camera);
+        var sx3 = (v.x * 0.5 + 0.5) * rect.width + rect.left;
+        var sy3 = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
+        if (sx3 >= lx0 && sx3 <= lx1 && sy3 >= ly0 && sy3 <= ly1 && v.z > 0 && v.z < 1){
+          hits.push({ kind: 'opp', id: qi });
+        }
+      }
+      return hits;
+    };
+    state._lassoDownHandler = function(ev){
+      if (ev.button !== 0 || !ev.shiftKey || !state.camera || !state.canvas) return;
+      if (state.hover) return;
+      ev.preventDefault();
+      if (state.controls) state.controls.enabled = false;
+      var mode = (ev.ctrlKey || ev.metaKey) ? 'deselect' : 'select';
+      state._lasso = { x0: ev.clientX, y0: ev.clientY, x1: ev.clientX, y1: ev.clientY, active: true, mode: mode, countTick: 0 };
+      var box = document.getElementById('de3d-lasso');
+      if (box){
+        box.style.display = 'block';
+        box.style.left = ev.clientX + 'px'; box.style.top = ev.clientY + 'px';
+        box.style.width = '0'; box.style.height = '0';
+        if (mode === 'deselect'){
+          box.style.borderColor = 'rgba(244,237,224,.7)';
+          box.style.background = 'rgba(244,237,224,.06)';
+        } else {
+          box.style.borderColor = 'rgba(212,130,58,.6)';
+          box.style.background = 'rgba(212,130,58,.08)';
+        }
+      }
+      var modeEl = document.getElementById('de3d-lasso-mode');
+      if (modeEl){
+        modeEl.textContent = mode === 'deselect' ? 'DESELECT' : 'SELECT';
+        modeEl.style.color = mode === 'deselect' ? '#f4ede0' : '#d4823a';
+        modeEl.style.borderColor = mode === 'deselect' ? 'rgba(244,237,224,.45)' : 'rgba(212,130,58,.45)';
+      }
+      var cntEl = document.getElementById('de3d-lasso-count');
+      if (cntEl) cntEl.textContent = '0 in box';
+    };
+    state._lassoMoveHandler = function(ev){
+      if (!state._lasso || !state._lasso.active) return;
+      state._lasso.x1 = ev.clientX; state._lasso.y1 = ev.clientY;
+      var box = document.getElementById('de3d-lasso');
+      var lx = Math.min(state._lasso.x0, state._lasso.x1);
+      var ly = Math.min(state._lasso.y0, state._lasso.y1);
+      var lw = Math.abs(state._lasso.x1 - state._lasso.x0);
+      var lh = Math.abs(state._lasso.y1 - state._lasso.y0);
+      if (box){
+        box.style.left = lx + 'px'; box.style.top = ly + 'px';
+        box.style.width = lw + 'px'; box.style.height = lh + 'px';
+      }
+      state._lasso.countTick = (state._lasso.countTick + 1) % 4;
+      if (state._lasso.countTick === 0 && lw > 5 && lh > 5){
+        var hits = state._lassoCollectInBox(lx, ly, lx + lw, ly + lh);
+        var cntEl = document.getElementById('de3d-lasso-count');
+        if (cntEl) cntEl.textContent = hits.length + ' in box';
+      }
+    };
+    state._lassoUpHandler = function(ev){
+      if (!state._lasso || !state._lasso.active) return;
+      var lassoMode = state._lasso.mode;
+      state._lasso.active = false;
+      if (state.controls) state.controls.enabled = true;
+      var box = document.getElementById('de3d-lasso');
+      if (box) box.style.display = 'none';
+      var lx0 = Math.min(state._lasso.x0, state._lasso.x1);
+      var ly0 = Math.min(state._lasso.y0, state._lasso.y1);
+      var lx1 = Math.max(state._lasso.x0, state._lasso.x1);
+      var ly1 = Math.max(state._lasso.y0, state._lasso.y1);
+      if ((lx1 - lx0) < 5 || (ly1 - ly0) < 5){ state._lasso = null; return; }
+      var hits = state._lassoCollectInBox(lx0, ly0, lx1, ly1);
+      if (lassoMode === 'deselect'){
+        var removed = 0;
+        hits.forEach(function(h){
+          if (isSelected(h.kind, h.id)){ toggleSelection(h.kind, h.id, { add: true }); removed++; }
+        });
+        console.log('[DiscoveryEngine3D] 8.2 lasso deselected ' + removed + ' of ' + hits.length + ' in box');
+      } else {
+        clearSelection();
+        hits.forEach(function(h){ toggleSelection(h.kind, h.id, { add: true }); });
+        console.log('[DiscoveryEngine3D] 8.2 lasso selected ' + hits.length + ' entities');
+      }
+      state._lasso = null;
+    };
+    state._lassoCancelHandler = function(ev){
+      if (ev.key !== 'Escape' || !state._lasso || !state._lasso.active) return;
+      state._lasso.active = false;
+      if (state.controls) state.controls.enabled = true;
+      var box = document.getElementById('de3d-lasso');
+      if (box) box.style.display = 'none';
+      console.log('[DiscoveryEngine3D] 8.2 lasso cancelled (ESC)');
+      state._lasso = null;
+    };
+    state.canvas.addEventListener('pointerdown', state._lassoDownHandler);
+    document.addEventListener('pointermove', state._lassoMoveHandler);
+    document.addEventListener('pointerup', state._lassoUpHandler);
+    window.addEventListener('keydown', state._lassoCancelHandler);
+
     console.log('[DiscoveryEngine3D] 4.5.7 click→Inspector wired (people/orgs→openNetPanel, opps→selectOpp)');
     console.log('[DiscoveryEngine3D] 4.5.8 focal mode wired (double-click any entity to enter, ESC or click-empty to exit)');
     console.log('[DiscoveryEngine3D] 4.5.11 entity search wired (top-left FIND box — type to filter, click result to fly-in)');
@@ -39880,6 +41329,29 @@ const DiscoveryEngine3D = (function(){
     state.rayMouse = null;
     state.rayDownPt = null;
     state._cleanNodesRef = null;
+    // P8.2: clean up lasso + altitude labels
+    if (state._lassoDownHandler && state.canvas) state.canvas.removeEventListener('pointerdown', state._lassoDownHandler);
+    if (state._lassoMoveHandler) document.removeEventListener('pointermove', state._lassoMoveHandler);
+    if (state._lassoUpHandler) document.removeEventListener('pointerup', state._lassoUpHandler);
+    if (state._lassoCancelHandler) window.removeEventListener('keydown', state._lassoCancelHandler);
+    state._lasso = null;
+    // P8.3: dive listeners
+    if (state._diveWheelHandler && state.canvas) state.canvas.removeEventListener('wheel', state._diveWheelHandler);
+    if (state._diveCancelHandler && state.canvas) state.canvas.removeEventListener('pointerdown', state._diveCancelHandler);
+    state._diveTargetPolar = null;
+    if (state._altitudeLabels && state._altitudeLabels.parentElement){
+      state._altitudeLabels.parentElement.removeChild(state._altitudeLabels);
+    }
+    state._altitudeLabels = null;
+    // P8.9–P9.3: clear lingering body classes, hide pill, reset transient state
+    document.body.classList.remove('de3d-expanded');
+    document.body.classList.remove('de3d-isolated');
+    var _fpDispose = document.getElementById('de3d-focal-pill');
+    if (_fpDispose) _fpDispose.style.display = 'none';
+    state.autoOrbitActive = false;
+    state._diveTargetPolar = null;
+    state._lastEmptyClickTs = 0;
+    state.focal = null;
     // ── Phase 2: terminate physics worker, free its Blob URL ──
     if (state.physicsWorker){
       try { state.physicsWorker.postMessage({ type: 'stop' }); } catch(e){}
@@ -40009,6 +41481,34 @@ const DiscoveryEngine3D = (function(){
       state.linkLines = null;
     }
     if (state.linkLinesGeo){ state.linkLinesGeo.dispose(); state.linkLinesGeo = null; }
+    // P8.0 dispose: edge particles
+    if (state.edgeParticles){
+      if (state.scene) state.scene.remove(state.edgeParticles.mesh);
+      state.edgeParticles.geo.dispose();
+      state.edgeParticles.mat.dispose();
+      state.edgeParticles = null;
+    }
+    // P8.0 dispose: drift particles + breathing listeners
+    if (state.drift){
+      if (state.scene) state.scene.remove(state.drift.mesh);
+      state.drift.mesh.geometry.dispose();
+      state.drift.mesh.material.dispose();
+      state.drift = null;
+    }
+    if (state._wakeBreathing){
+      if (state.canvas) state.canvas.removeEventListener('pointerdown', state._wakeBreathing);
+      if (state.canvas) state.canvas.removeEventListener('wheel', state._wakeBreathing);
+      document.removeEventListener('keydown', state._wakeBreathing);
+      state._wakeBreathing = null;
+    }
+    state.breathingActive = false;
+    // P8.1 dispose: ghost edges
+    if (state.ghostEdges){
+      if (state.scene) state.scene.remove(state.ghostEdges.mesh);
+      state.ghostEdges.geo.dispose();
+      state.ghostEdges.mat.dispose();
+      state.ghostEdges = null;
+    }
     state.linkLinesPosAttr = null;
     state._linkLODmode = 'close';
     state.linkIndexPairs = null;
@@ -40231,7 +41731,7 @@ const DiscoveryEngine3D = (function(){
     return idx;
   }
 
-  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, emit, emitFlow, _emitFlow, pulseEntity, pulseSelected, setLayer, toggleLayer, setLabelDistance, setFilter, setOppColorMode, enterFocal, exitFocal, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, selectionCount, setTimelineDate, playTimeline, pauseTimeline, PALETTE };
+  return { init, start, stop, dispose, getFps, getState, isRunning, loadGraph, pinNode, unpinNode, unpinEntity, reheat, fitToCluster, fitToSelection, emit, emitFlow, _emitFlow, pulseEntity, pulseSelected, setLayer, toggleLayer, setLabelDistance, setFilter, setOppColorMode, enterFocal, exitFocal, isolateSelection, focalBack, focalForward, _performSearch, saveView, deleteView, applyView, applyViewById, selectEntity, deselectEntity, toggleSelection, clearSelection, isSelected, getSelection, selectionCount, setTimelineDate, playTimeline, pauseTimeline, PALETTE };
 })();
 
 window.DiscoveryEngine3D = DiscoveryEngine3D;
@@ -40309,6 +41809,42 @@ window._toggle3DEngine = function(mode){
     };
     setTimeout(_tryLoad, 100);
     if (fpsHud) fpsHud.style.display = 'flex';
+    // P8.2: show command bar + wire / key
+    var cmdBar = document.getElementById('de3d-cmdbar');
+    if (cmdBar){
+      cmdBar.style.display = 'block';
+      if (!cmdBar.dataset.wired){
+        cmdBar.dataset.wired = '1';
+        var cmdInput = document.getElementById('de3d-cmdbar-input');
+        var cmdResp = document.getElementById('de3d-cmdbar-response');
+        if (cmdInput){
+          document.addEventListener('keydown', function(e){
+            if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA'){
+              e.preventDefault(); cmdInput.focus();
+            }
+            if (e.key === 'Escape' && document.activeElement === cmdInput){
+              cmdInput.blur(); if (cmdResp) cmdResp.style.display = 'none';
+            }
+          });
+          cmdInput.addEventListener('keydown', function(e){
+            if (e.key === 'Enter' && cmdInput.value.trim()){
+              var query = cmdInput.value.trim();
+              cmdInput.value = '';
+              if (cmdResp){
+                cmdResp.style.display = 'block';
+                cmdResp.textContent = 'Searching…';
+              }
+              // Dispatch to Ask Corsair
+              if (typeof window._apAction === 'function'){
+                window._apAction('askfli', query);
+                if (cmdResp) cmdResp.innerHTML = '<span style="color:var(--t3);font-size:10px;letter-spacing:.1em;text-transform:uppercase">Query sent to Ask Corsair tab</span>';
+                setTimeout(function(){ if(cmdResp) cmdResp.style.display='none'; }, 2000);
+              }
+            }
+          });
+        }
+      }
+    }
     if (timelineBar){
       timelineBar.style.display = 'block';
       // Micro-step 6.3: wire transport + speed controls (idempotent)
@@ -40411,6 +41947,69 @@ window._toggle3DEngine = function(mode){
         }
       }
     }
+    // P8.4: show + wire expand button
+    var exBtn = document.getElementById('de3d-expand-btn');
+    if (exBtn){
+      exBtn.style.display = 'block';
+      if (!exBtn.dataset.wired){
+        exBtn.dataset.wired = '1';
+        var _exApply = function(expanded){
+          if (expanded) document.body.classList.add('de3d-expanded');
+          else document.body.classList.remove('de3d-expanded');
+          var lbl = document.getElementById('de3d-expand-lbl');
+          var ic  = document.getElementById('de3d-expand-icon');
+          if (lbl) lbl.textContent = expanded ? 'COLLAPSE' : 'EXPAND';
+          if (ic)  ic.textContent  = expanded ? '⤡' : '⤢';
+          exBtn.title = expanded ? 'Collapse to embedded view (ESC)' : 'Expand to fill viewport (ESC to collapse)';
+          // P9.1: persist expand preference
+          try { localStorage.setItem('corsair-3d-expanded', expanded ? '1' : '0'); } catch(e){}
+          // Force canvas resize on next tick so Three.js matches the new container
+          setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 30);
+          setTimeout(function(){ window.dispatchEvent(new Event('resize')); }, 220);
+        };
+        // P9.1: restore expand preference if previously set
+        try {
+          if (localStorage.getItem('corsair-3d-expanded') === '1'){
+            setTimeout(function(){ _exApply(true); }, 80);
+          }
+        } catch(e){}
+        exBtn.addEventListener('click', function(){
+          _exApply(!document.body.classList.contains('de3d-expanded'));
+        });
+        document.addEventListener('keydown', function(e){
+          if (e.key === 'Escape' && document.body.classList.contains('de3d-expanded')){
+            var ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+            _exApply(false);
+          }
+        });
+      }
+    }
+    // P8.2: show minimap + wire click-to-pan
+    var mmWrap = document.getElementById('de3d-minimap');
+    if (mmWrap){
+      mmWrap.style.display = 'block';
+      if (!mmWrap.dataset.wired){
+        mmWrap.dataset.wired = '1';
+        var mmcv = document.getElementById('de3d-minimap-canvas');
+        if (mmcv) mmcv.addEventListener('click', function(ev){
+          if (!window.DiscoveryEngine3D) return;
+          var st = window.DiscoveryEngine3D.getState();
+          if (!st || !st.posBounds || !st.camera || !st.controls) return;
+          var rect = mmcv.getBoundingClientRect();
+          var px = (ev.clientX - rect.left), py = (ev.clientY - rect.top);
+          var mW = 160, mH = 100;
+          var b = st.posBounds, r = Math.max(b.radius, 10);
+          var scl = Math.min(mW, mH) / (r * 2.8);
+          var wx = (px - mW/2) / scl + b.cx;
+          var wz = (py - mH/2) / scl + b.cz;
+          var camY = st.camera.position.y;
+          st.camera.position.set(wx, camY, wz);
+          st.controls.target.set(wx, 0, wz);
+          st.controls.update();
+        });
+      }
+    }
     if (countBadge){
       countBadge.style.display = 'block';
       // Micro-step 4.5.5: wire layer-row clicks (idempotent — dataset flag)
@@ -40445,6 +42044,8 @@ window._toggle3DEngine = function(mode){
         countBadge.dataset.selWired = '1';
         var selPulseBtn = document.getElementById('de3d-cb-sel-pulse');
         var selClearBtn = document.getElementById('de3d-cb-sel-clear');
+        var selFitBtn   = document.getElementById('de3d-cb-sel-fit');
+        var selIsoBtn   = document.getElementById('de3d-cb-sel-iso');
         if (selPulseBtn) selPulseBtn.addEventListener('click', function(){
           if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.pulseSelected === 'function')
             window.DiscoveryEngine3D.pulseSelected();
@@ -40452,6 +42053,15 @@ window._toggle3DEngine = function(mode){
         if (selClearBtn) selClearBtn.addEventListener('click', function(){
           if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.clearSelection === 'function')
             window.DiscoveryEngine3D.clearSelection();
+        });
+        // P9.5: fit + isolate selection from the count badge row
+        if (selFitBtn) selFitBtn.addEventListener('click', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.fitToSelection === 'function')
+            window.DiscoveryEngine3D.fitToSelection();
+        });
+        if (selIsoBtn) selIsoBtn.addEventListener('click', function(){
+          if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.isolateSelection === 'function')
+            window.DiscoveryEngine3D.isolateSelection();
         });
       }
       // Micro-step 4.5.9: wire SAVE button + initial views render (idempotent)
@@ -40520,6 +42130,14 @@ window._toggle3DEngine = function(mode){
     var ctxMenu  = document.getElementById('de3d-ctx-menu');
     if (ctxMenu) ctxMenu.style.display = 'none';
     if (timelineBar) timelineBar.style.display = 'none';
+    var mmHide = document.getElementById('de3d-minimap');
+    if (mmHide) mmHide.style.display = 'none';
+    var cmdHide = document.getElementById('de3d-cmdbar');
+    if (cmdHide) cmdHide.style.display = 'none';
+    // P8.4: collapse expanded mode + hide button
+    document.body.classList.remove('de3d-expanded');
+    var exHide = document.getElementById('de3d-expand-btn');
+    if (exHide) exHide.style.display = 'none';
     if (btn3d){ btn3d.classList.remove('active'); }
     if (btn2d){ btn2d.classList.add('active'); }
     try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
