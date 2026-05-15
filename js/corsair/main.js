@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.6';
-  window.Corsair.buildBlurb  = 'Posture mode in switcher + sub-tab chrome (Phase 7.5.3 / Step 4a)';
+  window.Corsair.buildTag    = 'P11.7';
+  window.Corsair.buildBlurb  = 'Ledger surface — data layer + CRUD UI + Log Entry modal (Phase 7.5.3 / Step 4b)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
