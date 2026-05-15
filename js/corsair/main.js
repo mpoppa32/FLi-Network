@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.17';
-  window.Corsair.buildBlurb  = 'Phase 6.8 Ask Corsair pipeline queries (stuck / weighted Qx / pursuits in stage)';
+  window.Corsair.buildTag    = 'P11.18';
+  window.Corsair.buildBlurb  = 'Phase 6.7 Daily Brief 6th column — AGED IN STAGE';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

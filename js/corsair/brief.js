@@ -178,6 +178,28 @@ window.renderDailyBrief = function() {
     coverage.sort(function(a, b) { return a.score - b.score; });
   }
 
+  // ─── 6. Aged in stage: active pursuits past pipeline.ageLimit (Phase 6.7) ───
+  // Reads pipeline helpers from window.Corsair.pipeline. Falls through silently
+  // if the module hasn't loaded yet (during init order edge cases).
+  var aged = [];
+  var pipelineMod = (window.Corsair && window.Corsair.pipeline) || null;
+  if (pipelineMod && typeof pipelineMod.isStageStuck === 'function') {
+    for (var ai = 0; ai < opps_.length; ai++) {
+      var op = opps_[ai];
+      if (!op || !op.stage || op.stage === 'won' || op.stage === 'lost') continue;
+      if (!pipelineMod.isStageStuck(op)) continue;
+      var d = (typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(op) : 0;
+      var cfg = (typeof pipelineMod.config === 'function') ? pipelineMod.config(op.stage) : null;
+      aged.push({
+        id:    op.id,
+        name:  op.name || 'Pursuit',
+        stage: (cfg && cfg.label) || op.stage,
+        days:  d
+      });
+    }
+    aged.sort(function(a, b) { return b.days - a.days; });
+  }
+
   // Render helpers
   function _renderCol(listId, countId, items, formatter) {
     var listEl  = document.getElementById(listId);
@@ -225,7 +247,13 @@ window.renderDailyBrief = function() {
            '<span class="brief-item-title">' + pill + c.name + '</span>' +
            '<span class="brief-item-meta">' + c.factors.oppCount + ' opp' + (c.factors.oppCount === 1 ? '' : 's') + '</span></div>';
   });
-  console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length);
+  _renderCol('brief-aged-list', 'brief-aged-count', aged, function(a) {
+    var safeId = String(a.id).replace(/'/g, '');
+    return '<div class="brief-item" onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + safeId + '\')">' +
+           '<span class="brief-item-title">' + a.name + '</span>' +
+           '<span class="brief-item-meta">' + a.days + 'd · ' + a.stage + '</span></div>';
+  });
+  console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length + ' aged=' + aged.length);
 };
 
 window.Corsair = window.Corsair || {};
