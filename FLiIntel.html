@@ -7487,7 +7487,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.13</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.14</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8230,7 +8230,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.13</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.14</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -38313,6 +38313,15 @@ const DiscoveryEngine3D = (function(){
     // Micro-step 3.6: paper rings for all other contacts (not DM, not own-team)
     paperRingMesh: null,
     paperRingIndexMap: null,
+    // Phase 7.5.6 Step 6a: cold-amber Posture rings for contacts with
+    // non-default posture data (operator has recorded a path / trajectory
+    // / tells / per-pursuit position / lastUpdated). Doctrine-aligned
+    // visual cue: at a glance the operator can see which contacts she
+    // has read on. Cold institutional amber #A8703A (NOT Theater warm).
+    // Set is computed once at scene init from current posture data;
+    // posture changes during a session are reflected on next page load.
+    postureRingMesh: null,
+    postureRingIndexMap: null,
     // Micro-step 3.7: organization nodes as solid BoxGeometry InstancedMesh.
     // People still drive state.instancedMesh / rings at worker indices 0..N-1.
     // Orgs occupy worker indices [orgWorkerOffset, orgWorkerOffset+orgInstanceCount).
@@ -38638,9 +38647,10 @@ const DiscoveryEngine3D = (function(){
               }
               ringMesh.instanceMatrix.needsUpdate = true;
             }
-            _writeRingMatrices(state.ringMesh,      state.ringIndexMap);      // gold (3.4)
-            _writeRingMatrices(state.teamRingMesh,  state.teamRingIndexMap);  // bone (3.5')
-            _writeRingMatrices(state.paperRingMesh, state.paperRingIndexMap); // paper (3.6)
+            _writeRingMatrices(state.ringMesh,        state.ringIndexMap);        // gold (3.4)
+            _writeRingMatrices(state.teamRingMesh,    state.teamRingIndexMap);    // bone (3.5')
+            _writeRingMatrices(state.paperRingMesh,   state.paperRingIndexMap);   // paper (3.6)
+            _writeRingMatrices(state.postureRingMesh, state.postureRingIndexMap); // posture (7.5.6)
 
             // ── Micro-step 4.1: orient person-person link cylinders ───────
             // For each link: midpoint position, quaternion from cylinder's
@@ -39979,6 +39989,23 @@ const DiscoveryEngine3D = (function(){
     state.paperRingIndexMap = paperIdxMap;
     console.log('[DiscoveryEngine3D] 3.6 paper rings: ' + paperIdxMap.length + ' of ' + cleanNodes.length + ' people');
 
+    // ── Phase 7.5.6 Step 6a: posture rings ─────────────────────────────
+    // Cold-amber halo on any person where the operator has recorded
+    // non-default Posture data. Independent of the gold/bone/paper
+    // role tier — this fires regardless of role. Visual: a slightly
+    // larger torus sitting outside the role ring, low opacity so it
+    // reads as a layered cue rather than competing with the role color.
+    var _postureMod = window.Corsair && window.Corsair.posture;
+    var postureIdxMap = [];
+    if (_postureMod && typeof _postureMod.hasNonDefaultPosture === 'function') {
+      cleanNodes.forEach(function(n, gi){
+        var raw = personOnly[gi];
+        if (raw && _postureMod.hasNonDefaultPosture(raw)) postureIdxMap.push(gi);
+      });
+    }
+    state.postureRingIndexMap = postureIdxMap;
+    console.log('[DiscoveryEngine3D] 7.5.6 posture rings: ' + postureIdxMap.length + ' of ' + cleanNodes.length + ' people');
+
     // ── Micro-step 3.7: organization nodes (separate typed bucket) ────────
     // Lifts the people-only worker payload by appending company-type nodes.
     // 'government' is ambiguous (used as both person and org type elsewhere
@@ -40194,6 +40221,32 @@ const DiscoveryEngine3D = (function(){
       paperMesh.instanceMatrix.needsUpdate = true;
       state.paperRingMesh = paperMesh;
       if (state.scene) state.scene.add(paperMesh);
+    }
+
+    // Phase 7.5.6 Step 6a — Posture rings (cold institutional amber
+    // #A8703A; torus radius 2.05 puts it OUTSIDE the role rings at 1.6/1.8).
+    // Lower opacity (0.50) so the role color reads first; the posture
+    // ring is a layered cue, not a competing accent.
+    if (postureIdxMap.length){
+      const postureGeo = new THREE.TorusGeometry(2.05, 0.05, 6, 24);
+      const postureMat = new THREE.MeshBasicMaterial({
+        color: 0xA8703A,
+        transparent: true,
+        opacity: 0.50,
+        depthWrite: false
+      });
+      const postureMesh = new THREE.InstancedMesh(postureGeo, postureMat, postureIdxMap.length);
+      postureMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      postureMesh.frustumCulled = false;
+      const dummy4 = new THREE.Object3D();
+      dummy4.scale.setScalar(0);
+      dummy4.updateMatrix();
+      for (let r = 0; r < postureIdxMap.length; r++){
+        postureMesh.setMatrixAt(r, dummy4.matrix);
+      }
+      postureMesh.instanceMatrix.needsUpdate = true;
+      state.postureRingMesh = postureMesh;
+      if (state.scene) state.scene.add(postureMesh);
     }
 
     // Micro-step 3.7 / 3.8: org InstancedMesh — BoxGeometry, translucent shell.
@@ -43982,6 +44035,13 @@ const DiscoveryEngine3D = (function(){
       state.paperRingMesh = null;
     }
     state.paperRingIndexMap = null;
+    if (state.postureRingMesh){
+      if (state.scene) state.scene.remove(state.postureRingMesh);
+      if (state.postureRingMesh.geometry) state.postureRingMesh.geometry.dispose();
+      if (state.postureRingMesh.material) state.postureRingMesh.material.dispose();
+      state.postureRingMesh = null;
+    }
+    state.postureRingIndexMap = null;
     if (state.orgMesh){
       if (state.scene) state.scene.remove(state.orgMesh);
       if (state.orgMesh.geometry) state.orgMesh.geometry.dispose();
