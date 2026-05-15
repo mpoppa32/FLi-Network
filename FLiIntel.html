@@ -7487,7 +7487,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.12</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P11.13</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8230,7 +8230,7 @@ input[type="url"], textarea, select {
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--b2)">
         <span style="width:5px;height:5px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:inline-block"></span>
         <span style="color:var(--t3)">CORSAIR</span>
-        <span style="color:var(--gold)" id="de3d-build">P11.12</span>
+        <span style="color:var(--gold)" id="de3d-build">P11.13</span>
       </div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">ENTITIES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-entities">0</span></div>
       <div><span style="color:var(--t3);display:inline-block;width:56px">EDGES</span><span style="color:var(--bone);font-weight:700" id="de3d-tl-edges">0</span></div>
@@ -27734,9 +27734,35 @@ window._renderPostureRowExpansion = function(personId, pursuitId) {
   h += '</div>';
 
   // ── Ledger items section ────────────────────────────────────────
+  // Filter ledger for entries where this contact is the counterparty,
+  // open only. Show owed-to-me and owed-by-me as separate sub-groups.
   h += '<div class="posture-expansion-section">';
   h += '<div class="posture-expansion-section-head">Ledger items</div>';
-  h += '<div class="posture-tell-empty">The Ledger surface lands in Step 4. Entries involving this contact will appear here.</div>';
+  var contactLedger = (window.ledger || []).filter(function(e) {
+    return e && String(e.counterpartyId) === String(personId) && e.state !== 'resolved';
+  });
+  if (contactLedger.length === 0) {
+    h += '<div class="posture-tell-empty">No open ledger entries involving this contact.</div>';
+  } else {
+    var owedToMe = contactLedger.filter(function(e) { return e.direction === 'owed-to-me'; });
+    var owedByMe = contactLedger.filter(function(e) { return e.direction === 'owed-by-me'; });
+    function _renderLedgerInRow(entries, label) {
+      var out = '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold);margin-bottom:6px;margin-top:6px">' + label + ' (' + entries.length + ')</div>';
+      entries.forEach(function(e) {
+        var typeLabel = postureMod.ledgerTypeLabel(e.type);
+        var ageDays = postureMod.ledgerEntryAge(e);
+        out += '<div style="padding:6px 0;border-bottom:1px solid rgba(168,112,58,.08);font-size:12px">';
+        out += '<div style="color:var(--text)">' + typeLabel + (e.description ? ' — ' + String(e.description).replace(/</g, '&lt;') : '') + '</div>';
+        if (ageDays != null) {
+          out += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);margin-top:3px;letter-spacing:0.08em">' + ageDays + 'd ago</div>';
+        }
+        out += '</div>';
+      });
+      return out;
+    }
+    if (owedToMe.length) h += _renderLedgerInRow(owedToMe, 'Owes me');
+    if (owedByMe.length) h += _renderLedgerInRow(owedByMe, 'I owe');
+  }
   h += '</div>';
 
   // ── Note on this pursuit ────────────────────────────────────────
@@ -28234,7 +28260,7 @@ window._renderPostureView = function() {
       ledgerEl.innerHTML = ''
         + '<div style="font-family:IBM Plex Sans,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:6px">The Ledger</div>'
         + '<div style="font-size:13px;color:var(--t2);font-style:italic;margin-bottom:18px">What is owed. What is owing. What is due.</div>'
-        + '<div style="font-size:12px;color:var(--t3);padding:18px;border:1px solid var(--rule);border-radius:2px">Ledger surface lands in Step 4b. Entries — favors, introductions, information shared, support given, votes cast, commitments made, cover provided — will appear here in two columns: Owed to me / Owed by me.</div>';
+        + '<div style="font-size:12px;color:var(--t3);padding:18px;border:1px solid var(--rule);border-radius:2px">Ledger surface unavailable. Reload the page to retry.</div>';
     }
   }
 
@@ -28247,7 +28273,7 @@ window._renderPostureView = function() {
       infEl.innerHTML = ''
         + '<div style="font-family:IBM Plex Sans,sans-serif;font-weight:600;font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold);margin-bottom:6px">Influence Across Pursuits</div>'
         + '<div style="font-size:13px;color:var(--t2);font-style:italic;margin-bottom:18px">Cross-pursuit aggregation. Where each contact appears, on which side, and where their positions conflict.</div>'
-        + '<div style="font-size:12px;color:var(--t3);padding:18px;border:1px solid var(--rule);border-radius:2px">Surface lands in Step 5. Every contact mapped across more than one pursuit will appear here with path / trajectory / per-pursuit position. Conflict indicators flag ally-on-one / rival-on-another situations.</div>';
+        + '<div style="font-size:12px;color:var(--t3);padding:18px;border:1px solid var(--rule);border-radius:2px">Influence Across Pursuits unavailable. Reload the page to retry.</div>';
     }
   }
 };

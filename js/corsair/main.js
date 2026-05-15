@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.12';
-  window.Corsair.buildBlurb  = 'Bug fix: modal vertical scroll + sticky Inspector tab strip';
+  window.Corsair.buildTag    = 'P11.13';
+  window.Corsair.buildBlurb  = 'Wire row-expansion Ledger section to real data + clean stale "Step Xb" placeholders';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
