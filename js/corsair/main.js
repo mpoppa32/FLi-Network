@@ -10,14 +10,15 @@ import './state.js';
 import './inspector.js';
 import './cop.js';
 import './rhythm.js';
+import './brief.js';
 
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.3';
+  window.Corsair.buildTag = 'P10.4';
   window.Corsair.modules = window.Corsair.modules || {};
   console.log(
-    '%c[Corsair] modules loaded · P10.3 · util + pipeline + state + inspector + cop + rhythm ready · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.4 · util + pipeline + state + inspector + cop + rhythm + brief ready · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
