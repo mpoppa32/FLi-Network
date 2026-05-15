@@ -1,18 +1,18 @@
-// Corsair main module — scaffold (P9.7)
+// Corsair main module — entry orchestrator
 //
-// Entry point for the multi-file Corsair refactor (Phase 11).
-// Currently a no-op: announces load + exposes a namespace for future modules.
-// Subsequent micro-steps progressively migrate util, pipeline, firebase,
-// corsair-index, state, theater, inspector, ask, cop, rhythm, brief from
-// FLiIntel.html into sibling files under this directory.
+// Loads sibling modules under js/corsair/. Each imported module
+// publishes to window.Corsair.<name> and (where back-compat is required)
+// also exposes select helpers as bare window globals.
+
+import './util.js';
 
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P9.7';
+  window.Corsair.buildTag = 'P9.8';
   window.Corsair.modules = window.Corsair.modules || {};
   console.log(
-    '%c[Corsair] module scaffold loaded · P9.7 · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P9.8 · util ready · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
