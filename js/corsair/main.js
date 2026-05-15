@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.9';
-  window.Corsair.buildBlurb  = 'Pass-Down Brief + Sovereign’s Briefing generators (Phase 7.1 + 7.5.4 / Steps 7+8)';
+  window.Corsair.buildTag    = 'P11.10';
+  window.Corsair.buildBlurb  = 'Layout fix: reparent posture-view into #main-app so flex:1 fills viewport';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
@@ -27,6 +27,18 @@ import './theater.js';
     if (auth) auth.textContent = window.Corsair.buildTag;
     var hud = document.getElementById('de3d-build');
     if (hud)  hud.textContent  = window.Corsair.buildTag;
+
+    // P11.10 layout fix: posture-view was inserted at body level after
+    // the other top-level views, but the other views live inside the
+    // #main-app flex container. flex:1 on posture-view therefore
+    // resolved against <body> (not flex), giving it only ~389px of
+    // height. Reparent it into #main-app so its flex:1 fills the
+    // visible content area like the other views.
+    var mainApp     = document.getElementById('main-app');
+    var postureView = document.getElementById('posture-view');
+    if (mainApp && postureView && postureView.parentNode !== mainApp) {
+      mainApp.appendChild(postureView);
+    }
   }
 
   console.log(
