@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.19';
-  window.Corsair.buildBlurb  = 'Phase 6.6 Rhythm stage-aware actions for aged pursuits';
+  window.Corsair.buildTag    = 'P11.20';
+  window.Corsair.buildBlurb  = 'Phase 6.3 Theater PIPELINE color mode (Corsair 10-stage palette)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
