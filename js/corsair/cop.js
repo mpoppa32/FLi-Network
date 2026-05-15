@@ -92,6 +92,21 @@ window._buildCopData = function() {
     oppByStage[o.stage || 'awareness'] = (oppByStage[o.stage || 'awareness'] || 0) + 1;
   });
 
+  // Phase 6.5 — Kanban data: pursuits-by-stage + rollups (count, value, weighted)
+  var pursuitsByStage = {};
+  var stageRollups = {};
+  activeOpps.forEach(function(o) {
+    var stg = o.stage || 'awareness';
+    (pursuitsByStage[stg] = pursuitsByStage[stg] || []).push(o);
+  });
+  Object.keys(pursuitsByStage).forEach(function(stg) {
+    var list = pursuitsByStage[stg];
+    var totalValue = list.reduce(function(s, o) { return s + Number(o.value || 0); }, 0);
+    var weighted   = list.reduce(function(s, o) { return s + Number(o.value || 0) * Number(o.pwin || 0); }, 0);
+    stageRollups[stg] = { count: list.length, value: totalValue, weighted: weighted };
+    list.sort(function(a, b) { return Number(b.value || 0) - Number(a.value || 0); });
+  });
+
   return {
     recentMtgsCount: recentMtgs.length,
     recentMtgs: recentMtgs.slice(0, 6),
@@ -102,7 +117,9 @@ window._buildCopData = function() {
     staleCount: stale.length,
     stale: stale.slice(0, 6),
     activeOppsCount: activeOpps.length,
-    oppByStage: oppByStage
+    oppByStage: oppByStage,
+    pursuitsByStage: pursuitsByStage,
+    stageRollups: stageRollups
   };
 };
 
@@ -222,9 +239,91 @@ window.renderCopSection = function() {
   h += '</div>';
 
   h += '</div>'; // close 2-column panels
+
+  // ── PIPELINE BOARD (Phase 6.5 Kanban-by-stage) ──────────────────────
+  // 10-column Kanban using the operator's locked stage spec from
+  // Corsair.pipeline.stages. Each column header rolls up count, value,
+  // weighted value (sum of value * pwin). Cards click into the
+  // dossier (Phase 6.4 stage panel handles advancement).
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  if (pipelineMod && pipelineMod.stages) {
+    var stages = pipelineMod.stages;
+    var byStage = d.pursuitsByStage || {};
+    var rollups = d.stageRollups   || {};
+
+    h += '<div style="margin-top:24px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--rule)">';
+    h += '<div style="display:flex;align-items:center;gap:12px">';
+    h += '<span style="width:5px;height:22px;background:var(--gold);border-radius:1px"></span>';
+    h += '<div><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Pipeline Board</div>';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:2px">' + d.activeOppsCount + ' active pursuits across ' + stages.filter(function(s){return s.key!=='won'&&s.key!=='lost';}).length + ' stages</div></div>';
+    h += '</div>';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:0.1em;color:var(--t3);text-transform:uppercase">click card → dossier</div>';
+    h += '</div>';
+
+    h += '<div class="cop-kanban">';
+    stages.forEach(function(s) {
+      // Skip terminal stages in the active board (won + lost are end states)
+      if (s.key === 'won' || s.key === 'lost') return;
+      var roll = rollups[s.key] || { count: 0, value: 0, weighted: 0 };
+      var cards = byStage[s.key] || [];
+
+      h += '<div class="cop-kanban-col">';
+      h += '<div class="cop-kanban-col-head">';
+      h += '<div class="cop-kanban-col-title"><span class="cop-kanban-col-dot" style="background:' + s.color + '"></span>' + _copEsc(s.label) + '</div>';
+      h += '<div class="cop-kanban-col-count">' + roll.count + '</div>';
+      h += '</div>';
+
+      // Rollup line: value · weighted
+      if (roll.count > 0) {
+        h += '<div class="cop-kanban-col-rollup">';
+        h += '<span title="Total value">$' + _formatVal(roll.value) + '</span>';
+        h += '<span class="cop-kanban-rollup-sep">·</span>';
+        h += '<span title="Weighted (sum of value × pwin)">$' + _formatVal(roll.weighted) + ' weighted</span>';
+        h += '</div>';
+      }
+
+      // Cards
+      h += '<div class="cop-kanban-col-cards">';
+      if (cards.length === 0) {
+        h += '<div class="cop-kanban-col-empty">—</div>';
+      } else {
+        cards.forEach(function(o) {
+          var aged = (typeof pipelineMod.isStageStuck === 'function') && pipelineMod.isStageStuck(o);
+          var days = (typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(o) : null;
+          var safeId = String(o.id).replace(/'/g, '&#39;');
+          var pwinPct = Math.round(Number(o.pwin || 0) * 100);
+
+          h += '<div class="cop-kanban-card' + (aged ? ' cop-kanban-card-aged' : '') + '" onclick="window.openEntityInspector(\'' + safeId + '\')" title="Open dossier">';
+          h += '<div class="cop-kanban-card-name">' + _copEsc(o.name || '(unnamed)') + '</div>';
+          var metaBits = [];
+          if (o.value)        metaBits.push('$' + _formatVal(o.value));
+          if (o.pwin != null) metaBits.push(pwinPct + '%');
+          if (days != null)   metaBits.push(days + 'd');
+          h += '<div class="cop-kanban-card-meta">' + metaBits.join(' · ') + '</div>';
+          if (aged) h += '<div class="cop-kanban-card-aged-badge">aged</div>';
+          h += '</div>';
+        });
+      }
+      h += '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+    h += '</div>';
+  }
+
   h += '</div>'; // close data-surface="light" wrapper
   return h;
 };
+
+// Compact value formatter for COP Kanban (1.2M / 425K / 800)
+function _formatVal(n) {
+  n = Number(n) || 0;
+  if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'K';
+  return String(Math.round(n));
+}
 
 window.Corsair = window.Corsair || {};
 window.Corsair.cop = {

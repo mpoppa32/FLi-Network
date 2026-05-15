@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.20';
-  window.Corsair.buildBlurb  = 'Phase 6.3 Theater PIPELINE color mode (Corsair 10-stage palette)';
+  window.Corsair.buildTag    = 'P11.21';
+  window.Corsair.buildBlurb  = 'Phase 6.5 COP Pipeline Board Kanban — Phase 6 complete';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
