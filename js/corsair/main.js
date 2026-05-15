@@ -7,6 +7,7 @@
 import './util.js';
 import './pipeline.js';
 import './state.js';
+import './posture.js';
 import './inspector.js';
 import './cop.js';
 import './rhythm.js';
@@ -16,16 +17,21 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.20';
-  window.Corsair.modules = window.Corsair.modules || {};
+  window.Corsair.buildTag    = 'P11.0';
+  window.Corsair.buildBlurb  = 'Posture Layer data model + taxonomies (Phase 7.5.1)';
+  window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
-    var el = document.getElementById('auth-build-tag');
-    if (el) el.textContent = window.Corsair.buildTag;
+    // Single source of truth — both surfaces read the same tag.
+    var auth = document.getElementById('auth-build-tag');
+    if (auth) auth.textContent = window.Corsair.buildTag;
+    var hud = document.getElementById('de3d-build');
+    if (hud)  hud.textContent  = window.Corsair.buildTag;
   }
 
   console.log(
-    '%c[Corsair] modules loaded · P10.20 · Ask Corsair tab to light mode · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · ' + window.Corsair.buildTag + ' · ' +
+    window.Corsair.buildBlurb + ' · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
