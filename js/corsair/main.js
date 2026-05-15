@@ -17,8 +17,8 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P11.4';
-  window.Corsair.buildBlurb  = 'Contact row expansion: tells, ledger placeholder, per-pursuit note (Phase 7.5.2 / Step 3d)';
+  window.Corsair.buildTag    = 'P11.5';
+  window.Corsair.buildBlurb  = 'Adversaries + Predecessor notes — Inspector Posture tab complete (Phase 7.5.2 / Step 3e)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
