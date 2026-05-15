@@ -1,18 +1,16 @@
 // Corsair inspector module — Entity Inspector dossier landing
 //
-// The Inspector is one of the five sacred Corsair modes. It renders an
+// The Inspector is one of the five sacred Corsair modes. Renders an
 // entity dossier landing page: recent investigations, Tier 1 decision
-// makers, and the rest of the network. Triggered by:
-//   - switchView('inspector') in FLiIntel.html (line ~12717)
-//   - The inspector-search-inp input's oninput handler (line ~7818)
-//   - openEntityInspector chains from Theater / COP / Ask Corsair
+// makers, and the rest of the network.
+//
+// P10.14: surface mode = light. Inline gradients that hardcoded
+// dark-mode rgba values have been replaced with token references so the
+// rendered output inherits the scope set by data-surface="light" on
+// #inspector-view in FLiIntel.html.
 //
 // Reads entity data from window.nodes (populated by the entity-graph
 // module that still lives in FLiIntel.html).
-//
-// P10.7: wired to window.CorsairSelection — chips and cards publish
-// selection events, and an external subscription reflects selections
-// from other surfaces into "Recently Investigated".
 //
 // Exposes:
 //   window._renderInspectorView   - main render function
@@ -30,15 +28,13 @@ window._pushInspectorRecent = function(id) {
 };
 
 function _inspectorPriColor(p) {
-  return p === 1 ? 'var(--gold)' : p === 2 ? '#38bdf8' : 'var(--t3)';
+  return p === 1 ? 'var(--gold)' : p === 2 ? 'var(--blue, #38bdf8)' : 'var(--t3)';
 }
 
 function _inspectorTypeGlyph(t) {
   return t === 'company' ? '◧' : t === 'government' ? '◈' : '●';
 }
 
-// P10.7: build the onclick handler that publishes selection + pushes recent + opens dossier.
-// Inlined into the HTML strings; CorsairSelection is feature-detected at call time.
 function _inspectorClickAttr(n) {
   var idStr = String(n.id).replace(/\'/g, '&#39;');
   var typeStr = String(n.type || 'unknown').replace(/\'/g, '&#39;');
@@ -59,8 +55,8 @@ function _inspectorCard(n) {
   var role = (n.role || '').replace(/</g, '&lt;');
   var org = (n.org || '').replace(/</g, '&lt;');
   var meta = [role, org].filter(Boolean).join(' · ');
-  return '<div onclick="' + _inspectorClickAttr(n) + '" style="background:linear-gradient(180deg,var(--s1),rgba(7,13,24,.5));border:1px solid var(--b1);border-left:3px solid ' + p + ';border-radius:2px;padding:10px 12px;cursor:pointer;transition:border-color 160ms,transform 160ms" onmouseover="this.style.borderColor=\'rgba(212,130,58,.4)\';this.style.transform=\'translateX(2px)\'" onmouseout="this.style.borderColor=\'var(--b1)\';this.style.transform=\'\'">' +
-    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="color:' + p + ';font-size:13px">' + _inspectorTypeGlyph(n.type) + '</span><span style="font-family:Antonio,sans-serif;font-size:14px;font-weight:700;color:var(--bone);letter-spacing:-.005em">' + nm + '</span></div>' +
+  return '<div onclick="' + _inspectorClickAttr(n) + '" style="background:var(--s1);border:1px solid var(--b1);border-left:3px solid ' + p + ';border-radius:2px;padding:10px 12px;cursor:pointer;transition:border-color 160ms,transform 160ms,box-shadow 160ms" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.transform=\'translateX(2px)\';this.style.boxShadow=\'0 2px 12px rgba(184,105,30,.12)\'" onmouseout="this.style.borderColor=\'var(--b1)\';this.style.transform=\'\';this.style.boxShadow=\'none\'">' +
+    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="color:' + p + ';font-size:13px">' + _inspectorTypeGlyph(n.type) + '</span><span style="font-family:Antonio,sans-serif;font-size:14px;font-weight:700;color:var(--text);letter-spacing:-.005em">' + nm + '</span></div>' +
     (meta ? '<div style="font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace">' + meta + '</div>' : '') +
     '</div>';
 }
@@ -80,27 +76,25 @@ window._renderInspectorView = function() {
           || (n.role || '').toLowerCase().indexOf(q) >= 0;
     });
   }
-  // T1 first, T2 next, others last
   pool.sort(function(a, b) {
     var pa = a.priority || 9, pb = b.priority || 9;
     if (pa !== pb) return pa - pb;
     return (a.name || '').localeCompare(b.name || '');
   });
 
-  // Always-visible top bar — confirms the mode rendered, surfaces totals
   var typeCount = { person: 0, company: 0, government: 0, other: 0 };
   allNodes.forEach(function(n) { typeCount[n.type] != null ? typeCount[n.type]++ : typeCount.other++; });
-  var html = '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:18px;padding:10px 14px;background:linear-gradient(180deg,rgba(7,13,24,.55),rgba(10,16,32,.35));border:1px solid var(--b1);border-radius:2px">';
+  var html = '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:18px;padding:10px 14px;background:var(--surface-alt);border:1px solid var(--b1);border-radius:2px">';
   html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--gold);font-weight:700">' + allNodes.length + '</span> entities</div>';
-  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--bone);font-weight:700">' + typeCount.person + '</span> people</div>';
-  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--bone);font-weight:700">' + typeCount.company + '</span> orgs</div>';
-  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--bone);font-weight:700">' + typeCount.government + '</span> gov</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--text);font-weight:700">' + typeCount.person + '</span> people</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--text);font-weight:700">' + typeCount.company + '</span> orgs</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)"><span style="color:var(--text);font-weight:700">' + typeCount.government + '</span> gov</div>';
   if (q) html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-left:auto"><span style="font-weight:700">' + pool.length + '</span> matches for "' + q.replace(/</g, '&lt;') + '"</div>';
   html += '</div>';
 
   if (allNodes.length === 0) {
     html += '<div class="empty-state" style="text-align:center;padding:60px 20px;color:var(--t3)">' +
-      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--bone);margin-bottom:8px">No entities yet</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);margin-bottom:8px">No entities yet</div>' +
       '<div style="font-size:13px;color:var(--t2);margin-bottom:24px">Build your network by logging a meeting — Corsair extracts every person, organization, and stance automatically.</div>' +
       '<button class="btn btn-gold btn-sm" onclick="switchView(\'intel\');switchIntelTab&amp;&amp;switchIntelTab(\'log\')">Log First Meeting</button>' +
       '</div>';
@@ -109,7 +103,6 @@ window._renderInspectorView = function() {
   }
 
   if (!q) {
-    // Recents
     var recents = (window._inspectorRecentIds || []).map(function(id) { return allNodes.find(function(n) { return n.id === id; }); }).filter(Boolean);
     if (recents.length) {
       html += '<div style="margin-bottom:22px">';
@@ -128,7 +121,6 @@ window._renderInspectorView = function() {
       html += '</div></div>';
     }
 
-    // Always show the rest, even if no T1 entities
     var rest = pool.filter(function(n) { return n.priority !== 1; }).slice(0, 120);
     if (rest.length) {
       html += '<div>';
@@ -150,14 +142,13 @@ window._renderInspectorView = function() {
   body.innerHTML = html;
 };
 
-// P10.7: subscribe to CorsairSelection so external selections (from
-// Theater, COP, Ask, etc.) reflect into "Recently Investigated" and
-// trigger a re-render if the Inspector view is currently visible.
+// P10.7: subscribe to CorsairSelection so external selections reflect
+// into "Recently Investigated" and trigger a re-render if visible.
 (function wireSelectionSubscription() {
   if (!window.CorsairSelection || typeof window.CorsairSelection.subscribe !== 'function') return;
   window.CorsairSelection.subscribe(function(sel) {
     if (!sel || !sel.entityId) return;
-    if (sel.source === 'inspector') return;  // ignore our own
+    if (sel.source === 'inspector') return;
     window._pushInspectorRecent(sel.entityId);
     var view = document.getElementById('inspector-view');
     if (view && view.style.display !== 'none' && typeof window._renderInspectorView === 'function') {

@@ -16,7 +16,7 @@ import './theater.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag = 'P10.13';
+  window.Corsair.buildTag = 'P10.14';
   window.Corsair.modules = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
@@ -25,7 +25,7 @@ import './theater.js';
   }
 
   console.log(
-    '%c[Corsair] modules loaded · P10.13 · pre-auth tagline switched to bronze · ' + new Date().toISOString(),
+    '%c[Corsair] modules loaded · P10.14 · Inspector to light mode (Phase 2 foundation) · ' + new Date().toISOString(),
     'color:#d4823a;font-weight:bold'
   );
 })();
