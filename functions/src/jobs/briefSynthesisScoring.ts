@@ -129,16 +129,75 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
     case "periodic_report":
       return { score: 0.6, why: `${(attrs.formType as string) || "10-K/Q"} periodic report` };
     case "insider_transaction": {
-      const total = Number(attrs.totalValue ?? 0);
+      // v1.4 — leverages SEC EDGAR v1.2 deep-parsed Form 4 attrs.
+      // Codes: P (open-market purchase) is the strongest posture signal —
+      // insiders rarely buy with their own money. S (open-market sale)
+      // matters more when the insider is an officer + value is large.
+      // A (grant) and F/G (mechanical) are low signal regardless of size.
+      const total = Number(attrs.aggregateValue ?? attrs.totalValue ?? 0);
+      const code = (attrs.transactionCode as string | undefined) || "";
+      const isOfficer = !!attrs.insiderIsOfficer;
+      const isDirector = !!attrs.insiderIsDirector;
+      const isTenPercent = !!attrs.insiderIsTenPercentOwner;
+      const officerTier = isOfficer || isTenPercent;
+      const title = (attrs.insiderTitle as string | undefined) || "";
+      const titleText = title ? ` (${title})` : "";
+
+      // Mechanical codes — irrelevant for posture
+      if (code === "F" || code === "G") {
+        return { score: 0.15, why: `Form 4 mechanical ${code === "F" ? "tax withholding" : "gift"} — low signal` };
+      }
+      // Open-market purchase — the strongest signal
+      if (code === "P") {
+        if (officerTier && total >= 1_000_000) return { score: 1.0, why: `Officer P open-market purchase $${(total/1e6).toFixed(1)}M${titleText} — strong posture signal` };
+        if (officerTier && total >= 100_000) return { score: 0.85, why: `Officer P open-market purchase $${(total/1e3).toFixed(0)}K${titleText}` };
+        if (isDirector && total >= 250_000) return { score: 0.7, why: `Director P open-market purchase $${(total/1e3).toFixed(0)}K` };
+        if (total >= 250_000) return { score: 0.6, why: `Insider P open-market purchase $${(total/1e3).toFixed(0)}K` };
+        return { score: 0.45, why: `Form 4 P (insider purchase)` };
+      }
+      // Open-market sale — magnitude scales with role + size
+      if (code === "S") {
+        if (officerTier && total >= 5_000_000) return { score: 0.75, why: `Officer S open-market sale $${(total/1e6).toFixed(1)}M${titleText}` };
+        if (officerTier && total >= 1_000_000) return { score: 0.55, why: `Officer S open-market sale $${(total/1e6).toFixed(1)}M${titleText}` };
+        if (total >= 1_000_000) return { score: 0.4, why: `Insider S sale $${(total/1e6).toFixed(1)}M` };
+        return { score: 0.25, why: `Form 4 S (sale)` };
+      }
+      // Derivative exercise / conversion — moderate when significant size
+      if (code === "M" || code === "X" || code === "C") {
+        if (total >= 1_000_000) return { score: 0.4, why: `Form 4 ${code} (derivative exercise) $${(total/1e6).toFixed(1)}M` };
+        return { score: 0.25, why: `Form 4 ${code} (derivative exercise)` };
+      }
+      // Grant / award — compensation event, lower signal
+      if (code === "A") {
+        if (total >= 5_000_000) return { score: 0.4, why: `Form 4 A (large grant) $${(total/1e6).toFixed(1)}M` };
+        return { score: 0.25, why: `Form 4 A (grant)` };
+      }
+      // Fallback (J, D, etc., or v1.1 metadata-only)
       if (total >= 1_000_000) return { score: 0.5, why: `Form 4 insider transaction >$1M` };
       return { score: 0.3, why: `Form 4 insider transaction` };
     }
     case "protest": {
+      // v1.4 — leverages GAO Protest v1.1 decision-PDF-parsed attrs.
       const outcome = attrs.outcome as string | undefined;
       const status = attrs.status as string | undefined;
-      if (outcome === "sustained") return { score: 0.9, why: "GAO protest sustained (rare outcome; competitor relief granted)" };
-      if (outcome === "denied") return { score: 0.4, why: "GAO protest denied" };
-      if (status === "pending") return { score: 0.5, why: "GAO protest pending decision" };
+      const hasCorrective = !!attrs.correctiveAction;
+      if (outcome === "sustained") {
+        return { score: hasCorrective ? 1.0 : 0.9, why: `GAO protest sustained${hasCorrective ? " with corrective action" : ""} — competitive opening` };
+      }
+      if (outcome === "settled" || hasCorrective) {
+        return { score: 0.75, why: `GAO protest settled / corrective action — procurement reset` };
+      }
+      if (outcome === "withdrawn") {
+        return { score: 0.35, why: `GAO protest withdrawn` };
+      }
+      if (outcome === "dismissed_partial") {
+        return { score: 0.55, why: `GAO protest dismissed in part` };
+      }
+      if (outcome === "dismissed_full") {
+        return { score: 0.4, why: `GAO protest dismissed` };
+      }
+      if (outcome === "denied") return { score: 0.4, why: `GAO protest denied` };
+      if (status === "pending") return { score: 0.5, why: `GAO protest pending decision` };
       return { score: 0.4, why: `GAO protest (${status || "unknown status"})` };
     }
     case "congressional_hearing":
@@ -150,6 +209,33 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
     }
     case "committee_meeting":
       return { score: 0.5, why: "FACA committee meeting" };
+    case "oversight_finding": {
+      // v1.4 — leverages GAO Reports v1.1 deep-parsed report attrs.
+      // Non-concurrence by the agency is the highest-signal posture event:
+      // the auditee is publicly disputing GAO's findings — leading
+      // indicator of procurement risk + contractor trouble.
+      const response = (attrs.agencyResponse as string | undefined) || "";
+      const kind = (attrs.reportKind as string | undefined) || "";
+      const findingsCount = Array.isArray(attrs.findings) ? (attrs.findings as unknown[]).length : 0;
+      const contractorsCount = Array.isArray(attrs.contractors) ? (attrs.contractors as unknown[]).length : 0;
+
+      if (response === "non_concur") {
+        return { score: 0.9, why: `GAO ${kind || "report"} — agency disputes findings (non-concur)` };
+      }
+      if (response === "partial_concur") {
+        return { score: 0.65, why: `GAO ${kind || "report"} — agency partially concurs` };
+      }
+      if (kind === "testimony") {
+        return { score: 0.6, why: `GAO testimony before Congress` };
+      }
+      if (findingsCount > 0 && contractorsCount > 0) {
+        return { score: 0.55, why: `GAO ${kind || "report"} — ${findingsCount} findings touching ${contractorsCount} contractor(s)` };
+      }
+      if (findingsCount > 0) {
+        return { score: 0.45, why: `GAO ${kind || "report"} — ${findingsCount} findings` };
+      }
+      return { score: 0.35, why: `GAO ${kind || "oversight"} finding` };
+    }
     case "opportunity_amendment": {
       const changes = (attrs.changes as Array<{ field: string }>) ?? [];
       const hasDeadline = changes.some((c) => /deadline|due|response/i.test(c.field || ""));
