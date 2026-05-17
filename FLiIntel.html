@@ -35198,6 +35198,28 @@ window._runGenericSourceSync = async function(sourceName) {
     var updated = result.signalsUpdated || result.oppsUpdated || result.awardsUpdated || 0;
     var unchanged = result.signalsUnchanged || result.oppsUnchanged || result.awardsUnchanged || 0;
     lines.push(meta.entityType + 's: ' + created + ' created · ' + updated + ' updated · ' + unchanged + ' unchanged');
+    // v1.1: SAM.gov amendment + reconciliation metrics
+    if (typeof result.amendmentsApplied === 'number' && (result.amendmentsApplied || result.amendmentsOrphaned || result.reconciledWithOperator)) {
+      lines.push('Amendments: ' + result.amendmentsApplied + ' applied · ' + (result.amendmentsOrphaned || 0) + ' orphaned · ' + (result.reconciledWithOperator || 0) + ' reconciled w/ operator-Opps');
+    }
+    if (typeof result.deadlineChangeSignals === 'number' && result.deadlineChangeSignals > 0) {
+      lines.push('<span style="color:var(--gold)">' + result.deadlineChangeSignals + ' deadline-change Signal(s) emitted</span>');
+    }
+    if (typeof result.qaExtractedTotal === 'number' && result.qaExtractedTotal > 0) {
+      lines.push('Q&A extracted: ' + result.qaExtractedTotal + ' entries across amendments');
+    }
+    // FACA-specific
+    if (typeof result.committeesUpserted === 'number') {
+      lines.push('Committees: ' + result.committeesUpserted + ' upserted · ' + (result.membersUpserted || 0) + ' members · ' + (result.meetingsUpserted || 0) + ' meetings');
+    }
+    // Think tank-specific
+    if (typeof result.tanksSyncedSuccessfully === 'number') {
+      lines.push('Tanks: ' + result.tanksSyncedSuccessfully + ' synced · ' + (result.itemsMatched || 0) + ' items matched · ' + (result.itemsConsidered || 0) + ' considered');
+    }
+    // DoD News-specific
+    if (typeof result.provisionalCreated === 'number') {
+      lines.push('Provisional Awards: ' + result.provisionalCreated + ' created · ' + (result.observationsAppended || 0) + ' observations · ' + (result.skippedBelowConfidence || 0) + ' below confidence');
+    }
     if (result.errors && result.errors.length) {
       lines.push('<span style="color:var(--gold)">' + result.errors.length + ' record-level error(s):</span>');
       lines.push('<span style="font-size:10px">' + result.errors.slice(0,3).map(function(e){return e.recordId + ': ' + (e.message||'').slice(0,80);}).join('<br>') + '</span>');
