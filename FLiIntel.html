@@ -10387,6 +10387,16 @@ input[type="url"], textarea, select {
           <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">Defense committee hearings → Signal entities. Daily 12:00 UTC. <span style="color:var(--gold)">Requires CONGRESSGOV_API_KEY env var + migration.</span> Free key at api.congress.gov.</div>
           <button onclick="window._showSourcePanelGeneric('congress_gov')" style="padding:5px 12px;border:1px solid rgba(244,237,224,.25);border-radius:2px;background:rgba(244,237,224,.05);color:#f4ede0;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
         </div>
+
+        <!-- Phase 8.6.1 FACA Database (first Tier 2 source) -->
+        <div style="background:var(--s1);border:1px solid rgba(195,155,211,.15);border-left:3px solid #c39bd3;border-radius:2px;padding:12px 14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#c39bd3;font-weight:600">FACA Database <span style="color:var(--t3);font-weight:400;font-size:8px">· Tier 2</span></div>
+            <span id="faca-source-status" style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px;border:1px solid var(--b1)">AWAITING MIGRATION</span>
+          </div>
+          <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">Defense Business Board, Defense Science Board, Defense Innovation Board membership + meetings → committee Organizations + Persons + Signals. Weekly Saturday 08:00 UTC. Keyless.</div>
+          <button onclick="window._showSourcePanelGeneric('faca')" style="padding:5px 12px;border:1px solid rgba(195,155,211,.35);border-radius:2px;background:rgba(195,155,211,.08);color:#c39bd3;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
+        </div>
       </div>
 
       <!-- ── FOOTER ── -->
@@ -34860,6 +34870,26 @@ window._phase85Sources = {
       { key: 'lookBackMonths', label: 'Lookback months', placeholder: '6', kind: 'number', default: 6 }
     ],
     entityCounter: { path: 'signals', filterType: 'congressional_hearing', label: 'hearing Signals' }
+  },
+  // Phase 8.6.1 — first Tier 2 source
+  faca: {
+    displayName: 'FACA Database',
+    subtitle: 'Phase 8.6.1 · Federal Advisory Committees',
+    color: '#c39bd3',
+    callable: 'triggerFacaDatabaseSync',
+    entityType: 'committee Organization + Person + Signal',
+    requiresKey: null,
+    cadence: 'Weekly · Saturday 08:00 UTC',
+    cadenceCron: '0 8 * * 6',
+    description: 'Federal Advisory Committee Act database (facadatabase.gov). Defense Business Board, Defense Science Board, Defense Innovation Board, Defense Policy Board, and capability-area FACAs. Maps committees to Organizations (type:committee), members to Persons with member_of Edges, meetings to Signals. Posture-layer intelligence — who advises whom.',
+    badgeId: 'faca-source-status',
+    configPath: 'sources/faca/config',
+    healthPath: 'sources/faca',
+    fields: [
+      { key: 'committeeNames', label: 'Committee names', placeholder: 'Defense Business Board, Defense Science Board', kind: 'csv', default: ['Defense Business Board','Defense Science Board','Defense Innovation Board','Defense Policy Board'] },
+      { key: 'meetingsLookbackDays', label: 'Meetings lookback (days)', placeholder: '90', kind: 'number', default: 90 }
+    ],
+    entityCounter: { path: 'nodes', filterType: 'committee', label: 'FACA committee Organizations' }
   }
 };
 

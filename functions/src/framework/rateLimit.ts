@@ -26,6 +26,8 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   gao_protest: { capacity: 1, refillPerSecond: 0.5 },
   sec_edgar: { capacity: 10, refillPerSecond: 10 },
   congress_gov: { capacity: 5, refillPerSecond: 1.389, dailyBudget: 5000 },
+  // Tier 2 — Phase 8.6+
+  faca: { capacity: 2, refillPerSecond: 0.5 }, // polite weekly cadence; no documented limit
 };
 
 interface BucketState {

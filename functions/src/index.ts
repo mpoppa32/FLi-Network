@@ -42,3 +42,7 @@ export { congressGovDaily } from "./jobs/congressGovDaily";
 // Brief Synthesis (Phase 8.5.8) — composes all sources into a daily Brief
 export { triggerBriefSynthesis } from "./http/triggerBriefSynthesis";
 export { briefSynthesisNightly } from "./jobs/briefSynthesisNightly";
+
+// FACA Database (Phase 8.6.1 — first Tier 2 source)
+export { triggerFacaDatabaseSync } from "./http/triggerFacaDatabaseSync";
+export { facaDatabaseWeekly } from "./jobs/facaDatabaseWeekly";
