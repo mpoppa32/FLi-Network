@@ -31,6 +31,7 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   think_tank: { capacity: 3, refillPerSecond: 0.5 }, // polite per-tank polling; RSS-based
   dsca_fms: { capacity: 1, refillPerSecond: 0.5 }, // polite scrape, weekly cadence
   service_news: { capacity: 3, refillPerSecond: 0.5 }, // polite per-service RSS
+  gao_reports: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence
 };
 
 interface BucketState {

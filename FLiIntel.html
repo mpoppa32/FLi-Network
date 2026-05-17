@@ -10466,6 +10466,16 @@ input[type="url"], textarea, select {
           <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">RSS aggregator for 6 US military service branches (Army, Navy, Air Force, Marines, Space Force, Coast Guard) → service_news Signals. Leadership change announcements auto-flagged. Daily 15:00 UTC. Keyless.</div>
           <button onclick="window._showSourcePanelGeneric('service_news')" style="padding:5px 12px;border:1px solid rgba(116,168,155,.35);border-radius:2px;background:rgba(116,168,155,.08);color:#74a89b;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
         </div>
+
+        <!-- Phase 8.6.14 GAO Reports (Tier 2 oversight findings) -->
+        <div style="background:var(--s1);border:1px solid rgba(154,64,64,.15);border-left:3px solid #9a4040;border-radius:2px;padding:12px 14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#9a4040;font-weight:600">GAO Reports <span style="color:var(--t3);font-weight:400;font-size:8px">· Tier 2</span></div>
+            <span id="gao-reports-source-status" style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px;border:1px solid var(--b1)">AWAITING MIGRATION</span>
+          </div>
+          <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">GAO programmatic audit + evaluation reports → oversight_finding Signals. Defense-keyword filtered. Daily 16:00 UTC. Keyless. Adverse findings = leading indicators of contractor trouble.</div>
+          <button onclick="window._showSourcePanelGeneric('gao_reports')" style="padding:5px 12px;border:1px solid rgba(154,64,64,.35);border-radius:2px;background:rgba(154,64,64,.08);color:#9a4040;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
+        </div>
       </div>
 
       <!-- ── FOOTER ── -->
@@ -34962,6 +34972,28 @@ window._phase85Sources = {
     ],
     entityCounter: { path: 'awards', filterType: 'award', label: 'Award entities (provisional + active)' }
   },
+  // Phase 8.6.14 — Tier 2 GAO Reports (oversight findings via RSS)
+  gao_reports: {
+    displayName: 'GAO Reports',
+    subtitle: 'Phase 8.6.14 · Oversight Findings',
+    color: '#9a4040',
+    callable: 'triggerGaoReportsSync',
+    entityType: 'oversight_finding Signal',
+    requiresKey: null,
+    cadence: 'Daily · 16:00 UTC',
+    cadenceCron: '0 16 * * *',
+    description: 'GAO programmatic audit + evaluation reports (distinct from Bid Protests). Defense-keyword filtered by default. Each report → oversight_finding Signal with title/summary/reportId/URL. Adverse findings are leading indicators of contractor trouble.',
+    badgeId: 'gao-reports-source-status',
+    configPath: 'sources/gao_reports/config',
+    healthPath: 'sources/gao_reports',
+    fields: [
+      { key: 'enabled', label: 'Enable GAO Reports sync', placeholder: 'true or false', kind: 'bool', default: true },
+      { key: 'defenseOnly', label: 'Restrict to defense topics', placeholder: 'true or false', kind: 'bool', default: true },
+      { key: 'keywords', label: 'Additional keywords (empty = none)', placeholder: 'F-35,Sentinel,Columbia', kind: 'csv' },
+      { key: 'lookbackDays', label: 'Lookback days', placeholder: '60', kind: 'number', default: 60 }
+    ],
+    entityCounter: { path: 'signals', filterType: 'oversight_finding', label: 'oversight_finding Signals' }
+  },
   // Phase 8.6.5 — Tier 2 service-branch news (RSS aggregator)
   service_news: {
     displayName: 'Service-branch News',
@@ -36285,7 +36317,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'faca',         label: 'FACA Database',    cadenceMin: 10080, accent: '#c39bd3' },
   { key: 'think_tank',   label: 'Defense Think Tanks', cadenceMin: 1440, accent: '#e89668' },
   { key: 'dsca_fms',     label: 'DSCA FMS Notifications', cadenceMin: 10080, accent: '#7ab8d8' },
-  { key: 'service_news', label: 'Service-branch News', cadenceMin: 1440, accent: '#74a89b' }
+  { key: 'service_news', label: 'Service-branch News', cadenceMin: 1440, accent: '#74a89b' },
+  { key: 'gao_reports',  label: 'GAO Reports',         cadenceMin: 1440, accent: '#9a4040' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -36711,7 +36744,8 @@ window._renderOnboardStep3 = function() {
     { key:'faca',        label:'FACA Database (Tier 2)', desc:'DBB/DSB/DIB membership + meetings → committee Orgs + Persons + Signals · Weekly · Keyless', color:'#c39bd3' },
     { key:'think_tank',  label:'Defense Think Tanks (Tier 2)', desc:'CSIS/RAND/CNAS/Hudson/AEI/Brookings/Heritage/Atlantic Council/Stimson publications → analysis_publication Signals · Daily · Keyless RSS', color:'#e89668' },
     { key:'dsca_fms',    label:'DSCA FMS Notifications (Tier 2)', desc:'Foreign Military Sales notifications → fms_notification Signals + foreign_government Orgs · Weekly · Keyless · Opt-in', color:'#7ab8d8' },
-    { key:'service_news',label:'Service-branch News (Tier 2)', desc:'Army/Navy/Air Force/Marines/Space Force/Coast Guard RSS → service_news Signals; leadership transitions auto-flagged · Daily · Keyless', color:'#74a89b' }
+    { key:'service_news',label:'Service-branch News (Tier 2)', desc:'Army/Navy/Air Force/Marines/Space Force/Coast Guard RSS → service_news Signals; leadership transitions auto-flagged · Daily · Keyless', color:'#74a89b' },
+    { key:'gao_reports', label:'GAO Reports (Tier 2)', desc:'GAO programmatic audit/evaluation reports → oversight_finding Signals; defense-keyword filtered · Daily · Keyless', color:'#9a4040' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -36729,7 +36763,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });
