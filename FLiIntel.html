@@ -8527,6 +8527,20 @@ input[type="url"], textarea, select {
           </div>
         </div>
 
+        <!-- ── Phase 8.5.8 v1.1: Source Health — aggregate per source-health-ui-v1 ── -->
+        <div id="source-health-card" class="daily-brief-card" data-surface="light" style="margin-top:14px">
+          <div class="brief-card-header" style="cursor:pointer" onclick="window._toggleSourceHealth&&window._toggleSourceHealth()">
+            <span>◆ SOURCE HEALTH</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span id="source-health-aggregate" class="brief-date" style="color:var(--t2)">—</span>
+              <span id="source-health-chevron" style="color:var(--t3);font-size:10px">▾</span>
+            </span>
+          </div>
+          <div id="source-health-body" style="padding:6px 0;display:none">
+            <div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">Loading source health…</div>
+          </div>
+        </div>
+
         <!-- ── CAPTURE HEADER ──────────────────────────────────── -->
         <div class="cap-header">
           <div class="cap-eyebrow">
@@ -35770,6 +35784,128 @@ window._renderAwardDetail = function(aw, nodes) {
 
 setTimeout(function(){ window._loadRecompeteWatch && window._loadRecompeteWatch(); }, 5000);
 setInterval(function(){ window._loadRecompeteWatch && window._loadRecompeteWatch(); }, 180000);
+
+// ══════════════════════════════════════════════════════════════════════════
+// SOURCE HEALTH CARD — Brief surface aggregate per source-health-ui-v1
+// Reads workspaces/{wsId}/sources/{system} for all 6 plugins, computes
+// per-source state, renders collapsed aggregate + expanded list.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._SOURCE_HEALTH_META = [
+  { key: 'sam_gov',      label: 'SAM.gov',          cadenceMin: 60,   accent: '#d4823a' },
+  { key: 'usaspending',  label: 'USAspending.gov',  cadenceMin: 1440, accent: '#3a8a5c' },
+  { key: 'gao_protest',  label: 'GAO Bid Protest',  cadenceMin: 1440, accent: '#b34040' },
+  { key: 'sec_edgar',    label: 'SEC EDGAR',        cadenceMin: 240,  accent: '#8b5cf6' },
+  { key: 'congress_gov', label: 'Congress.gov',     cadenceMin: 1440, accent: '#f4ede0' },
+  { key: 'faca',         label: 'FACA Database',    cadenceMin: 10080, accent: '#c39bd3' }
+];
+
+window._sourceHealthClassify = function(state, cadenceMin) {
+  // Returns { code, label, color }
+  // Codes match spec Part Three: operational ◆, stale ○, attention ◍, stopped ●, disabled ◌, initializing ◇
+  if (!state) return { code: 'noconfig', glyph: '·', label: 'Not initialized', color: 'var(--t3)' };
+  if (state.disabled) return { code: 'disabled', glyph: '◌', label: 'Disabled by operator', color: '#5a5450' };
+  var err = state.lastError;
+  if (err && err.category && /auth_failed|config_invalid|schema_mismatch|doctrine_violation/.test(err.category)) {
+    return { code: 'stopped', glyph: '●', label: 'Action required: ' + err.category, color: '#b34040' };
+  }
+  if (!state.lastSync) {
+    return { code: 'init', glyph: '◇', label: 'Initializing — no sync yet', color: 'var(--t2)' };
+  }
+  var ageMin = (Date.now() - state.lastSync) / 60000;
+  if (ageMin <= cadenceMin * 1.5) {
+    return { code: 'operational', glyph: '◆', label: 'Synced ' + window._formatSourceAge(ageMin) + ' ago', color: 'var(--t2)' };
+  }
+  if (ageMin <= cadenceMin * 3) {
+    return { code: 'stale', glyph: '○', label: 'Delayed — last sync ' + window._formatSourceAge(ageMin) + ' ago', color: 'var(--t3)' };
+  }
+  return { code: 'attention', glyph: '◍', label: 'Degraded — last sync ' + window._formatSourceAge(ageMin) + ' ago', color: 'var(--gold)' };
+};
+
+window._formatSourceAge = function(ageMin) {
+  if (ageMin < 60) return Math.floor(ageMin) + 'm';
+  if (ageMin < 1440) return Math.floor(ageMin/60) + 'h';
+  return Math.floor(ageMin/1440) + 'd';
+};
+
+window._sourceHealthAggregate = function(perSource) {
+  // Priority: stopped > attention > stale > init > operational (per spec Part Three §State priority)
+  var counts = { stopped:0, attention:0, stale:0, init:0, operational:0, noconfig:0, disabled:0 };
+  for (var i = 0; i < perSource.length; i++) {
+    counts[perSource[i].state.code] = (counts[perSource[i].state.code] || 0) + 1;
+  }
+  if (counts.stopped > 0) return { glyph: '●', text: counts.stopped + ' source' + (counts.stopped===1?'':'s') + ' need attention', color: '#b34040' };
+  if (counts.attention > 0) return { glyph: '◍', text: counts.attention + ' source' + (counts.attention===1?'':'s') + ' degraded', color: 'var(--gold)' };
+  if (counts.stale > 0) return { glyph: '○', text: counts.stale + ' source' + (counts.stale===1?'':'s') + ' delayed', color: 'var(--t3)' };
+  if (counts.init > 0) return { glyph: '◇', text: 'Initializing ' + counts.init + ' source' + (counts.init===1?'':'s'), color: 'var(--t2)' };
+  if (counts.operational > 0) return { glyph: '◆', text: counts.operational + ' source' + (counts.operational===1?'':'s') + ' operational', color: 'var(--t2)' };
+  return { glyph: '·', text: 'No sources initialized', color: 'var(--t3)' };
+};
+
+window._renderSourceHealth = function(perSource) {
+  var body = document.getElementById('source-health-body');
+  var agg = document.getElementById('source-health-aggregate');
+  if (!body || !agg) return;
+  var aggregate = window._sourceHealthAggregate(perSource);
+  agg.innerHTML = '<span style="color:' + aggregate.color + '">' + aggregate.glyph + '</span> <span style="color:' + aggregate.color + '">' + aggregate.text + '</span>';
+
+  var h = '';
+  for (var i = 0; i < perSource.length; i++) {
+    var p = perSource[i];
+    var meta = p.meta;
+    var st = p.state;
+    h += '<div style="padding:8px 14px;border-top:1px solid rgba(0,0,0,.04);display:flex;gap:10px;align-items:flex-start">';
+    h += '  <span style="color:' + st.color + ';font-weight:700;font-size:13px;line-height:1;width:18px">' + st.glyph + '</span>';
+    h += '  <div style="flex:1;min-width:0">';
+    h += '    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">';
+    h += '      <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.06em">' + meta.label + '</div>';
+    h += '      <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3)">' + (p.raw && p.raw.lastSync ? new Date(p.raw.lastSync).toLocaleString() : 'never') + '</div>';
+    h += '    </div>';
+    h += '    <div style="color:var(--t2);font-size:11px;line-height:1.4;margin-top:2px">' + st.label + '</div>';
+    if (p.raw && p.raw.lastError && st.code !== 'stopped') {
+      h += '    <div style="color:#b34040;font-family:\'IBM Plex Mono\',monospace;font-size:9px;margin-top:3px">last error: ' + ((p.raw.lastError.category||'') + ' — ' + (p.raw.lastError.message||'').slice(0,160)).replace(/</g,'&lt;') + '</div>';
+    }
+    if (p.raw && typeof p.raw.recordsLastSync === 'number') {
+      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:3px">' + p.raw.recordsLastSync + ' upserted last sync · ' + (p.raw.recordsLastSkipped || 0) + ' unchanged · ' + (p.raw.durationLastSyncMs ? Math.round(p.raw.durationLastSyncMs/100)/10 + 's' : '?') + '</div>';
+    }
+    h += '  </div>';
+    h += '</div>';
+  }
+  body.innerHTML = h;
+};
+
+window._loadSourceHealth = async function() {
+  if (!currentWsId) return;
+  try {
+    var promises = window._SOURCE_HEALTH_META.map(function(meta){
+      return get(ref(db, 'workspaces/' + currentWsId + '/sources/' + meta.key)).then(function(snap){
+        var raw = snap.exists() ? snap.val() : null;
+        return { meta: meta, raw: raw, state: window._sourceHealthClassify(raw, meta.cadenceMin) };
+      });
+    });
+    var perSource = await Promise.all(promises);
+    window._renderSourceHealth(perSource);
+  } catch (e) {
+    var body = document.getElementById('source-health-body');
+    if (body) body.innerHTML = '<div style="padding:10px 14px;color:#b34040;font-size:11px">Error: ' + (e && e.message ? e.message : e) + '</div>';
+  }
+};
+
+window._toggleSourceHealth = function() {
+  var body = document.getElementById('source-health-body');
+  var chev = document.getElementById('source-health-chevron');
+  if (!body) return;
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    if (chev) chev.textContent = '▴';
+  } else {
+    body.style.display = 'none';
+    if (chev) chev.textContent = '▾';
+  }
+};
+
+setTimeout(function(){ window._loadSourceHealth && window._loadSourceHealth(); }, 5500);
+setInterval(function(){ window._loadSourceHealth && window._loadSourceHealth(); }, 60000);
 
 
 
