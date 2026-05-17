@@ -35484,7 +35484,7 @@ window._renderExternalIntelligence = function(brief) {
       h += '    <div style="color:var(--t2);font-size:11px">' + (it.subtitle || '').replace(/</g,'&lt;') + '</div>';
       h += '  </div>';
       h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:3px">';
-      h += '    <span>' + it.source + ' · ' + ageStr + (it.link ? ' · <a href="' + it.link + '" target="_blank" style="color:var(--t3)">open</a>' : '') + '</span>';
+      h += '    <span>' + it.source + ' · ' + ageStr + (it.link ? ' · <a href="' + it.link + '" target="_blank" style="color:var(--t3)">open</a>' : '') + ' · <a href="#" onclick="event.preventDefault();window._briefItemTouches&&window._briefItemTouches(\'' + it.entityId + '\',\'' + it.kind + '\')" style="color:#5fb3b8;text-decoration:underline">touches</a></span>';
       h += '    ' + actionsMenu;
       h += '  </div>';
       h += '</div>';
@@ -35632,6 +35632,48 @@ window._briefSnooze = async function(entityId, days) {
 window._briefToggleCategory = function(categoryKey) {
   window._briefCategoryExpanded[categoryKey] = !window._briefCategoryExpanded[categoryKey];
   if (window._latestBrief) window._renderExternalIntelligence(window._latestBrief);
+};
+
+// v1.3: open cross-source touches from a Brief item. Looks up the underlying
+// entity to find the right Organization ID to pivot on:
+//   - award: primeOrgId
+//   - signal: first subjectId
+//   - opportunity: customerOrgId
+window._briefItemTouches = async function(entityId, kind) {
+  if (!entityId || !currentWsId) return;
+  try {
+    var snap;
+    var orgId = null;
+    var displayName = null;
+    if (kind === 'award') {
+      snap = await get(ref(db, 'workspaces/' + currentWsId + '/awards/' + entityId));
+      if (snap.exists()) {
+        var aw = snap.val();
+        orgId = aw.primeOrgId;
+      }
+    } else if (kind === 'signal') {
+      snap = await get(ref(db, 'workspaces/' + currentWsId + '/signals/' + entityId));
+      if (snap.exists()) {
+        var sg = snap.val();
+        orgId = (sg.subjectIds && sg.subjectIds[0]) || (sg.relatedIds && sg.relatedIds[0]) || null;
+      }
+    } else if (kind === 'opportunity') {
+      snap = await get(ref(db, 'workspaces/' + currentWsId + '/opportunities/' + entityId));
+      if (snap.exists()) {
+        var op = snap.val();
+        orgId = op.customerOrgId || null;
+      }
+    }
+    if (!orgId) { toast('No linked organization found for cross-source touches'); return; }
+    // Resolve a display name for the popover header
+    try {
+      var nodeSnap = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + orgId));
+      if (nodeSnap.exists()) displayName = nodeSnap.val().name || null;
+    } catch (e) {}
+    if (window._openEntityTouches) window._openEntityTouches(orgId, displayName);
+  } catch (e) {
+    toast('Touches lookup failed: ' + ((e && e.message) || 'unknown'));
+  }
 };
 
 // ══════════════════════════════════════════════════════════════════════════
