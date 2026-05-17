@@ -8514,6 +8514,18 @@ input[type="url"], textarea, select {
           </div>
         </div>
 
+        <!-- ── Workspace Pulse: at-a-glance counts across collections ── -->
+        <div id="workspace-pulse-card" class="daily-brief-card" data-surface="light" style="margin-bottom:14px">
+          <div class="brief-card-header">
+            <span>◆ WORKSPACE PULSE</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span class="brief-date" id="workspace-pulse-updated">—</span>
+              <button id="workspace-pulse-refresh" onclick="window._refreshWorkspacePulse&&window._refreshWorkspacePulse()" style="padding:3px 8px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase">Refresh</button>
+            </span>
+          </div>
+          <div id="workspace-pulse-body" style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">Loading workspace pulse…</div>
+        </div>
+
         <!-- ── Phase 8.5.8: External Intelligence Brief ───────────────── -->
         <div id="ext-intel-card" class="daily-brief-card" data-surface="light" style="margin-top:14px">
           <div class="brief-card-header">
@@ -36710,6 +36722,142 @@ window._toggleSourceHealth = function() {
 
 setTimeout(function(){ window._loadSourceHealth && window._loadSourceHealth(); }, 5500);
 setInterval(function(){ window._loadSourceHealth && window._loadSourceHealth(); }, 60000);
+
+// ══════════════════════════════════════════════════════════════════════════
+// WORKSPACE PULSE — at-a-glance summary of what's in the workspace
+// Counts across all collections: Opportunities by stage, Awards (active +
+// expiring), Signals last 7d, tracked competitors, Persons/Orgs, FACA
+// committees. Pure client read.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._loadWorkspacePulse = async function() {
+  if (!currentWsId) return;
+  var body = document.getElementById('workspace-pulse-body');
+  var updEl = document.getElementById('workspace-pulse-updated');
+  if (!body) return;
+  try {
+    var [oppsSnap, awardsSnap, signalsSnap, nodesSnap] = await Promise.all([
+      get(ref(db, 'workspaces/' + currentWsId + '/opportunities')),
+      get(ref(db, 'workspaces/' + currentWsId + '/awards')),
+      get(ref(db, 'workspaces/' + currentWsId + '/signals')),
+      get(ref(db, 'workspaces/' + currentWsId + '/nodes'))
+    ]);
+    var opps = oppsSnap.exists() ? oppsSnap.val() : {};
+    var awards = awardsSnap.exists() ? awardsSnap.val() : {};
+    var signals = signalsSnap.exists() ? signalsSnap.val() : {};
+    var nodes = nodesSnap.exists() ? nodesSnap.val() : {};
+
+    // Opportunity stage counts
+    var oppStages = { awareness:0, tracking:0, engaged:0, rfp:0, proposal:0, negotiation:0, submitted:0, award:0, won:0, lost:0 };
+    var oppTotal = 0;
+    for (var oid in opps) {
+      var o = opps[oid]; if (!o) continue;
+      oppTotal++;
+      if (oppStages[o.stage] !== undefined) oppStages[o.stage]++;
+    }
+    var pipelineActive = oppStages.tracking + oppStages.engaged + oppStages.rfp + oppStages.proposal + oppStages.negotiation + oppStages.submitted;
+
+    // Award counts
+    var awTotal = 0, awActive = 0, awExpiring = 0, awExpired = 0, awProvisional = 0, awTerminated = 0;
+    var totalObligated = 0;
+    for (var aid in awards) {
+      var a = awards[aid]; if (!a) continue;
+      awTotal++;
+      totalObligated += (a.obligated || 0);
+      if (a.lifecycleState === 'active') awActive++;
+      else if (a.lifecycleState === 'expiring') awExpiring++;
+      else if (a.lifecycleState === 'expired') awExpired++;
+      else if (a.lifecycleState === 'provisional') awProvisional++;
+      else if (a.lifecycleState === 'terminated') awTerminated++;
+    }
+
+    // Signal counts (by type, last 7d)
+    var cutoff7d = Date.now() - 7*24*60*60*1000;
+    var sigTotal = 0, sig7d = 0;
+    var sigByType = {};
+    for (var sid in signals) {
+      var s = signals[sid]; if (!s) continue;
+      sigTotal++;
+      if (s.occurredAt && s.occurredAt >= cutoff7d) {
+        sig7d++;
+        sigByType[s.type] = (sigByType[s.type] || 0) + 1;
+      }
+    }
+
+    // Node/org counts
+    var orgCount = 0, personCount = 0, committeeCount = 0, foreignGovCount = 0, programCount = 0;
+    for (var nid in nodes) {
+      var n = nodes[nid]; if (!n) continue;
+      if (n.type === 'person') personCount++;
+      else if (n.type === 'committee') committeeCount++;
+      else if (n.type === 'foreign_government') foreignGovCount++;
+      else if (n.type === 'program') programCount++;
+      else orgCount++;
+    }
+
+    // Tracked competitors (distinct adversary org IDs across active pursuits)
+    var competitorSet = {};
+    for (var oid2 in opps) {
+      var o2 = opps[oid2]; if (!o2 || !o2.posture || !o2.posture.adversaries) continue;
+      for (var ai = 0; ai < o2.posture.adversaries.length; ai++) {
+        competitorSet[o2.posture.adversaries[ai]] = true;
+      }
+    }
+    var competitorCount = Object.keys(competitorSet).length;
+
+    if (updEl) updEl.textContent = new Date().toLocaleTimeString();
+
+    var h = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">';
+    // Pipeline cell
+    h += '<div style="background:rgba(212,130,58,.06);border:1px solid rgba(212,130,58,.18);border-radius:2px;padding:10px 12px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px">Pipeline</div>';
+    h += '  <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-family:\'Antonio\',sans-serif;font-size:22px;font-weight:700;color:var(--text)">' + pipelineActive + '</span><span style="font-size:10px;color:var(--t3)">active pursuits</span></div>';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3)">' + oppStages.awareness + ' awareness · ' + oppStages.rfp + ' RFP · ' + oppStages.proposal + ' proposal</div>';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:2px">' + oppStages.won + ' won · ' + oppStages.lost + ' lost (lifetime)</div>';
+    h += '</div>';
+    // Awards cell
+    h += '<div style="background:rgba(58,138,92,.06);border:1px solid rgba(58,138,92,.18);border-radius:2px;padding:10px 12px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#3a8a5c;text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px">Awards</div>';
+    h += '  <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-family:\'Antonio\',sans-serif;font-size:22px;font-weight:700;color:var(--text)">' + awTotal + '</span><span style="font-size:10px;color:var(--t3)">tracked · ' + _fmtDollars(totalObligated) + ' Σ</span></div>';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3)">' + awActive + ' active · ' + awExpiring + ' expiring · ' + awExpired + ' expired</div>';
+    if (awProvisional || awTerminated) h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:2px">' + awProvisional + ' provisional · ' + awTerminated + ' terminated</div>';
+    h += '</div>';
+    // Signals cell
+    h += '<div style="background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.18);border-radius:2px;padding:10px 12px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#5fb3b8;text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px">Signals (last 7d)</div>';
+    h += '  <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-family:\'Antonio\',sans-serif;font-size:22px;font-weight:700;color:var(--text)">' + sig7d + '</span><span style="font-size:10px;color:var(--t3)">recent · ' + sigTotal + ' lifetime</span></div>';
+    // Top 3 signal types in last 7d
+    var typesArr = Object.keys(sigByType).map(function(k){return {k:k,v:sigByType[k]};}).sort(function(a,b){return b.v-a.v;}).slice(0,3);
+    if (typesArr.length > 0) {
+      var typeText = typesArr.map(function(t){return t.v+' '+t.k.replace(/_/g,' ');}).join(' · ');
+      h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3)">' + typeText + '</div>';
+    }
+    h += '</div>';
+    // Network cell
+    h += '<div style="background:rgba(195,155,211,.06);border:1px solid rgba(195,155,211,.18);border-radius:2px;padding:10px 12px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#c39bd3;text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px">Network</div>';
+    h += '  <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px"><span style="font-family:\'Antonio\',sans-serif;font-size:22px;font-weight:700;color:var(--text)">' + competitorCount + '</span><span style="font-size:10px;color:var(--t3)">tracked competitors</span></div>';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3)">' + personCount + ' Persons · ' + orgCount + ' Orgs · ' + committeeCount + ' committees</div>';
+    if (foreignGovCount || programCount) h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:2px">' + foreignGovCount + ' foreign gov · ' + programCount + ' programs</div>';
+    h += '</div>';
+    h += '</div>';
+
+    body.innerHTML = h;
+  } catch (e) {
+    body.innerHTML = '<div style="color:#b34040;font-size:11px">Error: ' + ((e && e.message) || e) + '</div>';
+  }
+};
+
+window._refreshWorkspacePulse = function() {
+  var btn = document.getElementById('workspace-pulse-refresh');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  return window._loadWorkspacePulse().finally(function() {
+    if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+  });
+};
+
+setTimeout(function(){ window._loadWorkspacePulse && window._loadWorkspacePulse(); }, 4500);
+setInterval(function(){ window._loadWorkspacePulse && window._loadWorkspacePulse(); }, 120000);
 
 // ══════════════════════════════════════════════════════════════════════════
 // PHASE 8.5 ONBOARDING WIZARD — per onboarding-flow-v1
