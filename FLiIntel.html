@@ -10436,6 +10436,16 @@ input[type="url"], textarea, select {
           <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">Daily $7.5M+ contract announcements from defense.gov → provisional Awards. Reconciles with USAspending when PIIDs match. Business days 23:00 UTC. Keyless. <span style="color:var(--gold)">Opt-in: set enabled:true in config.</span></div>
           <button onclick="window._showSourcePanelGeneric('dod_news')" style="padding:5px 12px;border:1px solid rgba(74,144,226,.35);border-radius:2px;background:rgba(74,144,226,.08);color:#4a90e2;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
         </div>
+
+        <!-- Phase 8.6.6 Defense Think Tanks (Tier 2 bundled aggregator) -->
+        <div style="background:var(--s1);border:1px solid rgba(232,150,104,.15);border-left:3px solid #e89668;border-radius:2px;padding:12px 14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#e89668;font-weight:600">Defense Think Tanks <span style="color:var(--t3);font-weight:400;font-size:8px">· Tier 2</span></div>
+            <span id="think-tank-source-status" style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px;border:1px solid var(--b1)">AWAITING MIGRATION</span>
+          </div>
+          <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">RSS aggregator for 9 think tanks (CSIS, RAND, CNAS, Hudson, AEI, Brookings, Heritage, Atlantic Council, Stimson) → analysis_publication Signals. Daily 14:00 UTC. Keyless. Pre-stages policy direction 6-18 months ahead.</div>
+          <button onclick="window._showSourcePanelGeneric('think_tank')" style="padding:5px 12px;border:1px solid rgba(232,150,104,.35);border-radius:2px;background:rgba(232,150,104,.08);color:#e89668;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
+        </div>
       </div>
 
       <!-- ── FOOTER ── -->
@@ -34932,6 +34942,27 @@ window._phase85Sources = {
     ],
     entityCounter: { path: 'awards', filterType: 'award', label: 'Award entities (provisional + active)' }
   },
+  // Phase 8.6.6 — Tier 2 think tank aggregator (RSS)
+  think_tank: {
+    displayName: 'Defense Think Tanks',
+    subtitle: 'Phase 8.6.6 · CSIS / RAND / CNAS / Hudson / AEI / Brookings',
+    color: '#e89668',
+    callable: 'triggerThinkTanksSync',
+    entityType: 'analysis publication Signal',
+    requiresKey: null,
+    cadence: 'Daily · 14:00 UTC',
+    cadenceCron: '0 14 * * *',
+    description: 'Bundled RSS aggregator for 9 defense-relevant think tanks. Publications map to Signal entities with type "analysis_publication". Per-workspace config selects which tanks; keyword filter narrows results. Adding a new tank takes a single registry entry on the server (no client change required).',
+    badgeId: 'think-tank-source-status',
+    configPath: 'sources/think_tank/config',
+    healthPath: 'sources/think_tank',
+    fields: [
+      { key: 'enabledTanks', label: 'Tank keys', placeholder: 'csis,rand,cnas,hudson', kind: 'csv', default: ['csis','rand','cnas','hudson'] },
+      { key: 'keywords', label: 'Keyword filter (empty = no filter)', placeholder: 'autonomy, AI, hypersonic', kind: 'csv' },
+      { key: 'lookbackDays', label: 'Lookback days', placeholder: '30', kind: 'number', default: 30 }
+    ],
+    entityCounter: { path: 'signals', filterType: 'analysis_publication', label: 'analysis publication Signals' }
+  },
   // Phase 8.6.1 — first Tier 2 source
   faca: {
     displayName: 'FACA Database',
@@ -35962,10 +35993,12 @@ setInterval(function(){ window._loadRecompeteWatch && window._loadRecompeteWatch
 window._SOURCE_HEALTH_META = [
   { key: 'sam_gov',      label: 'SAM.gov',          cadenceMin: 60,   accent: '#d4823a' },
   { key: 'usaspending',  label: 'USAspending.gov',  cadenceMin: 1440, accent: '#3a8a5c' },
+  { key: 'dod_news',     label: 'DoD News Contracts', cadenceMin: 1440, accent: '#4a90e2' },
   { key: 'gao_protest',  label: 'GAO Bid Protest',  cadenceMin: 1440, accent: '#b34040' },
   { key: 'sec_edgar',    label: 'SEC EDGAR',        cadenceMin: 240,  accent: '#8b5cf6' },
   { key: 'congress_gov', label: 'Congress.gov',     cadenceMin: 1440, accent: '#f4ede0' },
-  { key: 'faca',         label: 'FACA Database',    cadenceMin: 10080, accent: '#c39bd3' }
+  { key: 'faca',         label: 'FACA Database',    cadenceMin: 10080, accent: '#c39bd3' },
+  { key: 'think_tank',   label: 'Defense Think Tanks', cadenceMin: 1440, accent: '#e89668' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -36388,7 +36421,8 @@ window._renderOnboardStep3 = function() {
     { key:'gao_protest', label:'GAO Bid Protest',   desc:'Protest decisions → Signal entities · Daily · Keyless', color:'#b34040' },
     { key:'sec_edgar',   label:'SEC EDGAR',         desc:'Competitor 8-K filings → Signal entities · Every 4h · User-Agent only', color:'#8b5cf6' },
     { key:'congress_gov',label:'Congress.gov',      desc:'Defense committee hearings → Signal entities · Daily · Requires CONGRESSGOV_API_KEY', color:'#f4ede0' },
-    { key:'faca',        label:'FACA Database (Tier 2)', desc:'DBB/DSB/DIB membership + meetings → committee Orgs + Persons + Signals · Weekly · Keyless', color:'#c39bd3' }
+    { key:'faca',        label:'FACA Database (Tier 2)', desc:'DBB/DSB/DIB membership + meetings → committee Orgs + Persons + Signals · Weekly · Keyless', color:'#c39bd3' },
+    { key:'think_tank',  label:'Defense Think Tanks (Tier 2)', desc:'CSIS/RAND/CNAS/Hudson/AEI/Brookings/Heritage/Atlantic Council/Stimson publications → analysis_publication Signals · Daily · Keyless RSS', color:'#e89668' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -36406,7 +36440,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });

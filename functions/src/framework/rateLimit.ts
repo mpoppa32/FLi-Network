@@ -28,6 +28,7 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   congress_gov: { capacity: 5, refillPerSecond: 1.389, dailyBudget: 5000 },
   // Tier 2 — Phase 8.6+
   faca: { capacity: 2, refillPerSecond: 0.5 }, // polite weekly cadence; no documented limit
+  think_tank: { capacity: 3, refillPerSecond: 0.5 }, // polite per-tank polling; RSS-based
 };
 
 interface BucketState {

@@ -50,3 +50,7 @@ export { facaDatabaseWeekly } from "./jobs/facaDatabaseWeekly";
 // DoD News Contracts (Phase 8.5.4 v1.2 — multi-source reconciliation)
 export { triggerDodNewsSync } from "./http/triggerDodNewsSync";
 export { dodNewsDaily } from "./jobs/dodNewsDaily";
+
+// Think Tanks (Phase 8.6.6 — bundled RSS aggregator)
+export { triggerThinkTanksSync } from "./http/triggerThinkTanksSync";
+export { thinkTanksDaily } from "./jobs/thinkTanksDaily";
