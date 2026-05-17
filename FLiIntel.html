@@ -8520,7 +8520,10 @@ input[type="url"], textarea, select {
             <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.12em;margin-bottom:2px">Brief Surface</div>
             <div id="brief-master-status" style="font-family:'Antonio','Outfit',sans-serif;font-size:14px;color:var(--text);font-weight:600">Ready</div>
           </div>
-          <button id="brief-master-refresh-btn" onclick="window._briefMasterRefresh&&window._briefMasterRefresh()" style="padding:7px 14px;border:1px solid rgba(95,179,184,.45);border-radius:2px;background:rgba(95,179,184,.10);color:#5fb3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">↻ Refresh All</button>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="brief-master-health-chip" style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border:1px solid var(--b1);border-radius:2px;cursor:pointer" onclick="window._toggleSourceHealth&&window._toggleSourceHealth()" title="Click to expand Source Health">— sources</span>
+            <button id="brief-master-refresh-btn" onclick="window._briefMasterRefresh&&window._briefMasterRefresh()" style="padding:7px 14px;border:1px solid rgba(95,179,184,.45);border-radius:2px;background:rgba(95,179,184,.10);color:#5fb3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">↻ Refresh All</button>
+          </div>
         </div>
 
         <!-- ── Adversary Leaderboard: top competitors by cross-source touches ── -->
@@ -36567,6 +36570,13 @@ window._renderSourceHealth = function(perSource) {
   if (!body || !agg) return;
   var aggregate = window._sourceHealthAggregate(perSource);
   agg.innerHTML = '<span style="color:' + aggregate.color + '">' + aggregate.glyph + '</span> <span style="color:' + aggregate.color + '">' + aggregate.text + '</span>';
+
+  // v1.2: mirror aggregate to Brief master header chip
+  var chip = document.getElementById('brief-master-health-chip');
+  if (chip) {
+    chip.innerHTML = '<span style="color:' + aggregate.color + '">' + aggregate.glyph + '</span> ' + aggregate.text;
+    chip.style.borderColor = aggregate.color;
+  }
 
   // v1.2: stash for drawer access
   window._latestSourceHealth = perSource;
