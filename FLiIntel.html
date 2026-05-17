@@ -8463,6 +8463,21 @@ input[type="url"], textarea, select {
     </div>
     <div class="intel-main">
       <div id="itab-log">
+        <!-- ── Phase 8.5 Onboarding Banner — appears when migration/sources not yet activated ── -->
+        <div id="onboarding-banner" data-surface="light" style="display:none;background:linear-gradient(135deg,rgba(95,179,184,.10),rgba(212,130,58,.05));border:1px solid rgba(95,179,184,.30);border-radius:3px;padding:14px 18px;margin-bottom:12px;display:none">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:240px">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.16em;color:#5fb3b8;font-weight:700;margin-bottom:4px">External Intelligence · Get Started</div>
+              <div id="onboarding-banner-title" style="font-family:'Antonio','Outfit',sans-serif;font-size:16px;font-weight:700;color:var(--text);line-height:1.3;margin-bottom:3px">Set up Corsair OSINT in 5 steps</div>
+              <div id="onboarding-banner-text" style="font-size:11px;color:var(--t2);line-height:1.5">Migration + source selection + watchlists + first sync. ~10 minutes.</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button onclick="window._openOnboarding&&window._openOnboarding()" style="padding:8px 14px;border:1px solid rgba(95,179,184,.45);border-radius:2px;background:rgba(95,179,184,.10);color:#5fb3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Show me what this means</button>
+              <button onclick="window._dismissOnboardingBanner&&window._dismissOnboardingBanner()" style="padding:8px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Not now</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ── Micro-step 7.1: Daily Brief Card ─────────────────── -->
         <div id="brief-card" class="daily-brief-card" data-surface="light">
           <div class="brief-card-header">
@@ -35941,6 +35956,404 @@ window._toggleSourceHealth = function() {
 
 setTimeout(function(){ window._loadSourceHealth && window._loadSourceHealth(); }, 5500);
 setInterval(function(){ window._loadSourceHealth && window._loadSourceHealth(); }, 60000);
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.5 ONBOARDING WIZARD — per onboarding-flow-v1
+// 5-step guided activation: orientation → migration → sources → watchlists →
+// initial sync. Banner appears on Brief surface when not complete; modal
+// wizard navigates the steps. State persisted to RTDB so it's resumable.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._onboardingCurrentStep = 1;
+window._onboardingState = null;
+
+window._loadOnboardingState = async function() {
+  if (!currentWsId) return null;
+  try {
+    var snap = await get(ref(db, 'workspaces/' + currentWsId + '/onboarding'));
+    window._onboardingState = snap.exists() ? snap.val() : null;
+    return window._onboardingState;
+  } catch (e) { return null; }
+};
+
+window._saveOnboardingState = async function(patch) {
+  if (!currentWsId) return;
+  var cur = window._onboardingState || {};
+  var merged = Object.assign({}, cur, patch);
+  try {
+    await fbSet('workspaces/' + currentWsId + '/onboarding', merged);
+    window._onboardingState = merged;
+  } catch (e) {}
+};
+
+window._maybeShowOnboardingBanner = async function() {
+  var banner = document.getElementById('onboarding-banner');
+  if (!banner || !currentWsId) return;
+  var state = await window._loadOnboardingState();
+  // Hide if completed or recently dismissed (7-day reappearance per spec)
+  if (state && state.completedAt) { banner.style.display = 'none'; return; }
+  if (state && state.dismissedAt && (Date.now() - state.dismissedAt) < 7*24*60*60*1000) {
+    banner.style.display = 'none'; return;
+  }
+  // Check migration state
+  try {
+    var migSnap = await get(ref(db, 'workspaces/' + currentWsId + '/migrations/8.5.1'));
+    var mig = migSnap.exists() ? migSnap.val() : null;
+    var migComplete = mig && mig.completedAt && mig.validationResult === 'pass';
+    var titleEl = document.getElementById('onboarding-banner-title');
+    var textEl = document.getElementById('onboarding-banner-text');
+    if (!migComplete) {
+      if (titleEl) titleEl.textContent = 'External Intelligence is available for this workspace';
+      if (textEl) textEl.textContent = 'Run the 5-step onboarding to activate OSINT (~10 minutes). Operator-controlled, fully reversible.';
+    } else {
+      // Migration done but not all sources configured — softer prompt
+      if (titleEl) titleEl.textContent = 'Finish OSINT setup — configure sources';
+      if (textEl) textEl.textContent = 'Migration complete. Pick sources, set watchlists, run initial sync.';
+    }
+    banner.style.display = 'block';
+  } catch (e) {
+    banner.style.display = 'none';
+  }
+};
+
+window._dismissOnboardingBanner = async function() {
+  await window._saveOnboardingState({ dismissedAt: Date.now() });
+  var banner = document.getElementById('onboarding-banner');
+  if (banner) banner.style.display = 'none';
+  toast('Banner dismissed for 7 days — open from Settings to resume.');
+};
+
+window._openOnboarding = async function() {
+  if (!currentWsId) { toast('Select a workspace first'); return; }
+  await window._loadOnboardingState();
+  window._onboardingCurrentStep = (window._onboardingState && window._onboardingState.currentStep) || 1;
+  await window._saveOnboardingState({
+    startedAt: window._onboardingState && window._onboardingState.startedAt || Date.now(),
+    currentStep: window._onboardingCurrentStep
+  });
+  var modal = document.getElementById('onboarding-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'onboarding-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:1700;background:rgba(7,13,24,.85);backdrop-filter:blur(3px);align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto';
+    modal.innerHTML = '<div data-surface="light" style="background:var(--bg);max-width:720px;width:100%;border:1px solid var(--b1);border-radius:3px;box-shadow:0 18px 56px rgba(0,0,0,.65)"><div id="onboarding-modal-body" style="padding:32px 36px">Loading…</div></div>';
+    modal.addEventListener('click', function(e){ if (e.target === modal) window._closeOnboarding(); });
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  window._renderOnboardingStep();
+};
+
+window._closeOnboarding = function() {
+  var modal = document.getElementById('onboarding-modal');
+  if (modal) modal.style.display = 'none';
+};
+
+window._nextOnboardingStep = async function() {
+  var completed = (window._onboardingState && window._onboardingState.completedSteps) || [];
+  if (completed.indexOf(window._onboardingCurrentStep) < 0) completed.push(window._onboardingCurrentStep);
+  if (window._onboardingCurrentStep >= 5) {
+    await window._saveOnboardingState({ completedSteps: completed, completedAt: Date.now(), currentStep: 5 });
+    window._closeOnboarding();
+    var banner = document.getElementById('onboarding-banner');
+    if (banner) banner.style.display = 'none';
+    toast('Onboarding complete · external intelligence will populate as sources sync');
+    if (window._refreshExternalIntelligence) window._refreshExternalIntelligence();
+    if (window._loadSourceHealth) window._loadSourceHealth();
+    return;
+  }
+  window._onboardingCurrentStep++;
+  await window._saveOnboardingState({ completedSteps: completed, currentStep: window._onboardingCurrentStep });
+  window._renderOnboardingStep();
+};
+
+window._backOnboardingStep = function() {
+  if (window._onboardingCurrentStep > 1) {
+    window._onboardingCurrentStep--;
+    window._renderOnboardingStep();
+  }
+};
+
+window._renderOnboardingStep = function() {
+  var body = document.getElementById('onboarding-modal-body');
+  if (!body) return;
+  var step = window._onboardingCurrentStep;
+  var stepRenderers = [null, window._renderOnboardStep1, window._renderOnboardStep2, window._renderOnboardStep3, window._renderOnboardStep4, window._renderOnboardStep5];
+  var fn = stepRenderers[step];
+  body.innerHTML = fn ? fn() : '<div>Unknown step</div>';
+};
+
+window._renderOnboardStep1 = function() {
+  var h = '';
+  h += window._onboardingHeader('External Intelligence', 1);
+  h += '<div style="font-size:13px;color:var(--t2);line-height:1.65;margin-bottom:18px">';
+  h += 'Corsair can now listen to public defense procurement data on your behalf:';
+  h += '</div>';
+  h += '<ul style="margin:0 0 18px 18px;font-size:12px;color:var(--t2);line-height:1.8">';
+  h += '<li>New <strong style="color:var(--text)">solicitations</strong> posted to SAM.gov</li>';
+  h += '<li><strong style="color:var(--text)">Contracts awarded</strong> by DoD via USAspending + DoD News (same-day announcements)</li>';
+  h += '<li><strong style="color:var(--text)">Protests filed</strong> at GAO</li>';
+  h += '<li><strong style="color:var(--text)">SEC filings</strong> (8-K material events) from publicly-traded competitors</li>';
+  h += '<li><strong style="color:var(--text)">Congressional hearings</strong> on defense topics</li>';
+  h += '<li><strong style="color:var(--text)">FACA committee memberships</strong> + meetings (Tier 2)</li>';
+  h += '</ul>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:12px 14px;margin-bottom:18px">';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#3a8a5c;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">What changes for you</div>';
+  h += '<div style="font-size:12px;color:var(--t2);line-height:1.55">Each morning, your Brief shows what happened in your watchlist while you weren\'t looking.</div>';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-top:10px;margin-bottom:4px">What does NOT change</div>';
+  h += '<div style="font-size:12px;color:var(--t2);line-height:1.55">Your existing pursuits, contacts, notes, and pass-down stay exactly as they are. Nothing in your workspace gets overwritten.</div>';
+  h += '</div>';
+  h += window._onboardingFooter({ canBack: false, nextLabel: 'Continue' });
+  return h;
+};
+
+window._renderOnboardStep2 = function() {
+  var h = '';
+  h += window._onboardingHeader('Workspace Schema Update', 2);
+  h += '<div style="font-size:13px;color:var(--t2);line-height:1.65;margin-bottom:16px">';
+  h += 'Before external sources can flow into your workspace, your data needs to be prepared. This is a one-time schema update.';
+  h += '</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">';
+  h += '<div style="background:rgba(58,138,92,.05);border:1px solid rgba(58,138,92,.25);border-radius:2px;padding:12px 14px">';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#3a8a5c;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">What this does</div>';
+  h += '<ul style="margin:0 0 0 16px;font-size:11px;color:var(--t2);line-height:1.6"><li>Adds source-tracking to entities</li><li>Creates collections for Award entities</li><li>Initializes source config paths</li></ul>';
+  h += '</div>';
+  h += '<div style="background:rgba(212,130,58,.05);border:1px solid rgba(212,130,58,.25);border-radius:2px;padding:12px 14px">';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">What this does NOT do</div>';
+  h += '<ul style="margin:0 0 0 16px;font-size:11px;color:var(--t2);line-height:1.6"><li>Modify any existing entity field</li><li>Remove or merge any records</li><li>Change Corsair\'s look or behavior</li></ul>';
+  h += '</div>';
+  h += '</div>';
+  h += '<div style="font-size:11px;color:var(--t3);font-style:italic;margin-bottom:18px">The update is fully reversible. You can undo it anytime from Settings → Migration Panel.</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Run inventory + apply migration</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">Opens the existing Migration Panel. Run Inventory → Approve → Apply, then return here.</div></div>';
+  h += '<button onclick="window._showPhase85MigrationPanel&&window._showPhase85MigrationPanel()" style="padding:8px 14px;border:1px solid rgba(95,179,184,.45);border-radius:2px;background:rgba(95,179,184,.10);color:#5fb3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Open Migration Panel</button>';
+  h += '</div>';
+  h += window._onboardingFooter({ canBack: true, nextLabel: 'Migration done · Continue' });
+  return h;
+};
+
+window._renderOnboardStep3 = function() {
+  var h = '';
+  h += window._onboardingHeader('Which sources should Corsair listen to?', 3);
+  h += '<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:16px">Most operators enable all sources. You can disable any anytime from Settings.</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px">';
+  var sources = [
+    { key:'sam_gov',     label:'SAM.gov',           desc:'Solicitations → Opportunity entities · Hourly · Requires SAMGOV_API_KEY', color:'#d4823a' },
+    { key:'usaspending', label:'USAspending.gov',   desc:'Federal contract awards → Award entities + Recompete Watch · Nightly · Keyless', color:'#3a8a5c' },
+    { key:'dod_news',    label:'DoD News Contracts',desc:'Same-day $7.5M+ announcements → provisional Awards (reconciles with USAspending) · Daily · Keyless', color:'#4a90e2' },
+    { key:'gao_protest', label:'GAO Bid Protest',   desc:'Protest decisions → Signal entities · Daily · Keyless', color:'#b34040' },
+    { key:'sec_edgar',   label:'SEC EDGAR',         desc:'Competitor 8-K filings → Signal entities · Every 4h · User-Agent only', color:'#8b5cf6' },
+    { key:'congress_gov',label:'Congress.gov',      desc:'Defense committee hearings → Signal entities · Daily · Requires CONGRESSGOV_API_KEY', color:'#f4ede0' },
+    { key:'faca',        label:'FACA Database (Tier 2)', desc:'DBB/DSB/DIB membership + meetings → committee Orgs + Persons + Signals · Weekly · Keyless', color:'#c39bd3' }
+  ];
+  for (var i = 0; i < sources.length; i++) {
+    var s = sources[i];
+    h += '<label style="display:flex;gap:10px;padding:10px 12px;border:1px solid rgba(0,0,0,.06);border-radius:2px;background:var(--s1);cursor:pointer;align-items:flex-start">';
+    h += '<input type="checkbox" id="ob-src-' + s.key + '" checked style="margin-top:3px">';
+    h += '<div style="flex:1"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:' + s.color + ';font-weight:700;text-transform:uppercase;letter-spacing:.06em">' + s.label + '</div>';
+    h += '<div style="font-size:11px;color:var(--t2);line-height:1.5;margin-top:2px">' + s.desc + '</div></div>';
+    h += '</label>';
+  }
+  h += '</div>';
+  h += '<div style="font-size:10px;color:var(--t3);font-style:italic;margin-bottom:14px">Note: enabling a source here writes a config; it does not bypass external API key requirements. SAM.gov and Congress.gov will return UNAUTHENTICATED until keys are set.</div>';
+  h += window._onboardingFooter({ canBack: true, nextLabel: 'Save & Continue', nextHandler: 'window._saveOnboardingSources()' });
+  return h;
+};
+
+window._saveOnboardingSources = async function() {
+  var enabled = {};
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca'].forEach(function(k){
+    var cb = document.getElementById('ob-src-' + k);
+    enabled[k] = !!(cb && cb.checked);
+  });
+  // For each enabled source: ensure a config exists with disabled:false; for dod_news, also enabled:true
+  try {
+    for (var k in enabled) {
+      var cfgPath = 'workspaces/' + currentWsId + '/sources/' + k + '/config';
+      var snap = await get(ref(db, cfgPath));
+      var cur = snap.exists() ? snap.val() : {};
+      if (enabled[k]) {
+        cur.disabled = false;
+        if (k === 'dod_news' && typeof cur.enabled === 'undefined') cur.enabled = true;
+      } else {
+        cur.disabled = true;
+      }
+      cur.initializedAt = cur.initializedAt || Date.now();
+      await fbSet(cfgPath, cur);
+    }
+    await window._saveOnboardingState({ enabledSources: enabled });
+    toast('Source preferences saved');
+    window._nextOnboardingStep();
+  } catch (e) {
+    toast('Save failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._renderOnboardStep4 = function() {
+  var h = '';
+  h += window._onboardingHeader('Watchlist — Quick Start', 4);
+  h += '<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:16px">Tell Corsair what to listen for. Defaults below cover most defense BD operators; you can refine per-source from Settings later.</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;color:var(--text);letter-spacing:.04em;margin-bottom:10px">NAICS codes (capability segment)</div>';
+  h += '<input type="text" id="ob-naics" value="541330,541512,541715,541330,541611" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:2px;background:var(--bg);color:var(--text);font-family:\'IBM Plex Mono\',monospace;font-size:12px">';
+  h += '<div style="font-size:10px;color:var(--t3);margin-top:4px">Comma-separated. Defaults: Engineering Services, Computer Systems Design, R&D Phys/Eng/Life, Engineering Svcs, Admin Mgmt &amp; General Consulting.</div>';
+  h += '</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;color:var(--text);letter-spacing:.04em;margin-bottom:10px">Customer agencies</div>';
+  h += '<input type="text" id="ob-agencies" value="Department of Defense" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:2px;background:var(--bg);color:var(--text);font-size:12px">';
+  h += '<div style="font-size:10px;color:var(--t3);margin-top:4px">Comma-separated toptier agency names.</div>';
+  h += '</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:18px">';
+  h += '<div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;color:var(--text);letter-spacing:.04em;margin-bottom:10px">FACA committees to track</div>';
+  h += '<input type="text" id="ob-faca" value="Defense Business Board,Defense Science Board,Defense Innovation Board,Defense Policy Board" style="width:100%;padding:8px 10px;border:1px solid var(--b1);border-radius:2px;background:var(--bg);color:var(--text);font-size:12px">';
+  h += '<div style="font-size:10px;color:var(--t3);margin-top:4px">Comma-separated committee names; sync resolves to IDs on first run.</div>';
+  h += '</div>';
+  h += window._onboardingFooter({ canBack: true, nextLabel: 'Save & Continue', nextHandler: 'window._saveOnboardingWatchlist()' });
+  return h;
+};
+
+window._saveOnboardingWatchlist = async function() {
+  var naics = (document.getElementById('ob-naics').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var agencies = (document.getElementById('ob-agencies').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var faca = (document.getElementById('ob-faca').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  try {
+    // USAspending + SAM.gov watchlists
+    var paths = ['sources/usaspending/config','sources/sam_gov/config'];
+    for (var p = 0; p < paths.length; p++) {
+      var snap = await get(ref(db, 'workspaces/' + currentWsId + '/' + paths[p]));
+      var cfg = snap.exists() ? snap.val() : {};
+      cfg.naics = naics;
+      cfg.agencies = agencies;
+      cfg.initializedAt = cfg.initializedAt || Date.now();
+      await fbSet('workspaces/' + currentWsId + '/' + paths[p], cfg);
+    }
+    // FACA watchlist
+    var fSnap = await get(ref(db, 'workspaces/' + currentWsId + '/sources/faca/config'));
+    var fCfg = fSnap.exists() ? fSnap.val() : {};
+    fCfg.committeeNames = faca;
+    fCfg.initializedAt = fCfg.initializedAt || Date.now();
+    await fbSet('workspaces/' + currentWsId + '/sources/faca/config', fCfg);
+    await window._saveOnboardingState({ watchlist: { naics: naics, agencies: agencies, faca: faca } });
+    toast('Watchlist saved · ' + naics.length + ' NAICS · ' + agencies.length + ' agencies · ' + faca.length + ' committees');
+    window._nextOnboardingStep();
+  } catch (e) {
+    toast('Save failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._renderOnboardStep5 = function() {
+  var h = '';
+  h += window._onboardingHeader('Initial Sync', 5);
+  h += '<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:16px">Run the initial USAspending + FACA syncs now. The other sources sync on their next scheduled cadence; SAM.gov + Congress.gov require API keys before they\'ll return data.</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">USAspending — Federal Awards</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">Will run for ~30-60s. Creates Award entities + builds Recompete Watch.</div></div>';
+  h += '<button id="ob-run-usa" onclick="window._obRunUsaSync()" style="padding:8px 14px;border:1px solid rgba(58,138,92,.45);border-radius:2px;background:rgba(58,138,92,.10);color:#3a8a5c;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
+  h += '</div>';
+  h += '<div id="ob-usa-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
+  h += '</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">FACA Database — Committee Memberships</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">Will run for ~60-120s. Resolves committee names to IDs, fetches members + meetings.</div></div>';
+  h += '<button id="ob-run-faca" onclick="window._obRunFacaSync()" style="padding:8px 14px;border:1px solid rgba(195,155,211,.45);border-radius:2px;background:rgba(195,155,211,.10);color:#c39bd3;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
+  h += '</div>';
+  h += '<div id="ob-faca-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
+  h += '</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:18px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Generate first Brief</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">Once syncs complete, synthesize the External Intelligence brief from whatever Signals/Awards/Opps now exist.</div></div>';
+  h += '<button id="ob-run-brief" onclick="window._obRunBriefSync()" style="padding:8px 14px;border:1px solid rgba(95,179,184,.45);border-radius:2px;background:rgba(95,179,184,.10);color:#5fb3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Synthesize</button>';
+  h += '</div>';
+  h += '<div id="ob-brief-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
+  h += '</div>';
+  h += '<div style="font-size:11px;color:var(--t3);font-style:italic;margin-bottom:18px">You can close this and the syncs will continue on their scheduled cadences. The External Intelligence card on Brief surface will populate as data arrives.</div>';
+  h += window._onboardingFooter({ canBack: true, nextLabel: 'Done — Close' });
+  return h;
+};
+
+window._obRunUsaSync = async function() {
+  var btn = document.getElementById('ob-run-usa');
+  var out = document.getElementById('ob-usa-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (out) out.innerHTML = '<span style="color:#5fb3b8">Calling triggerUsaSpendingSync…</span>';
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerUsaSpendingSync');
+    var res = await callable({ workspaceId: currentWsId, sinceDays: 30, maxRecords: 300 });
+    var r = res && res.data && res.data.result;
+    if (out) out.innerHTML = '<span style="color:#3a8a5c">✓ ' + (r ? (r.awardsCreated + ' created · ' + r.awardsUpdated + ' updated · Recompete: ' + (r.recompeteWatch ? r.recompeteWatch.total : 0)) : 'done') + '</span>';
+    if (btn) { btn.textContent = '✓ Done'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+};
+
+window._obRunFacaSync = async function() {
+  var btn = document.getElementById('ob-run-faca');
+  var out = document.getElementById('ob-faca-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (out) out.innerHTML = '<span style="color:#5fb3b8">Calling triggerFacaDatabaseSync…</span>';
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerFacaDatabaseSync');
+    var res = await callable({ workspaceId: currentWsId, maxCommittees: 10 });
+    var r = res && res.data && res.data.result;
+    if (out) out.innerHTML = '<span style="color:#3a8a5c">✓ ' + (r ? (r.committeesUpserted + ' committees · ' + r.membersUpserted + ' members · ' + r.meetingsUpserted + ' meetings') : 'done') + '</span>';
+    if (btn) { btn.textContent = '✓ Done'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+};
+
+window._obRunBriefSync = async function() {
+  var btn = document.getElementById('ob-run-brief');
+  var out = document.getElementById('ob-brief-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (out) out.innerHTML = '<span style="color:#5fb3b8">Synthesizing Brief…</span>';
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerBriefSynthesis');
+    var res = await callable({ workspaceId: currentWsId, windowHours: 168 });
+    var r = res && res.data && (res.data.brief || res.data.result);
+    if (out) out.innerHTML = '<span style="color:#3a8a5c">✓ ' + (r ? r.totalItems + ' items surfaced across 5 categories' : 'done') + '</span>';
+    if (btn) { btn.textContent = '✓ Done'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+};
+
+window._onboardingHeader = function(title, step) {
+  var h = '';
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--b1)">';
+  h += '<div style="flex:1"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#5fb3b8;letter-spacing:.16em;text-transform:uppercase;margin-bottom:5px">Step ' + step + ' of 5 · OSINT Onboarding</div>';
+  h += '<div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:22px;font-weight:700;color:var(--text);line-height:1.15">' + title + '</div></div>';
+  h += '<button onclick="window._closeOnboarding()" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:16px;cursor:pointer;width:30px;height:30px;border-radius:50%">×</button>';
+  h += '</div>';
+  // Progress dots
+  h += '<div style="display:flex;gap:6px;margin-bottom:18px">';
+  for (var i = 1; i <= 5; i++) {
+    var on = i <= step;
+    h += '<div style="flex:1;height:3px;border-radius:2px;background:' + (on ? '#5fb3b8' : 'var(--b2)') + '"></div>';
+  }
+  h += '</div>';
+  return h;
+};
+
+window._onboardingFooter = function(opts) {
+  var handler = opts.nextHandler || 'window._nextOnboardingStep()';
+  var h = '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:14px;border-top:1px solid var(--b1)">';
+  h += '<div>' + (opts.canBack ? '<button onclick="window._backOnboardingStep()" style="padding:8px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">← Back</button>' : '') + '</div>';
+  h += '<button onclick="' + handler + '" style="padding:9px 18px;border:1px solid rgba(58,138,92,.45);border-radius:2px;background:rgba(58,138,92,.10);color:#3a8a5c;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">' + (opts.nextLabel || 'Continue') + ' →</button>';
+  h += '</div>';
+  return h;
+};
+
+// Show banner shortly after workspace loads
+setTimeout(function(){ window._maybeShowOnboardingBanner && window._maybeShowOnboardingBanner(); }, 7000);
 
 
 
