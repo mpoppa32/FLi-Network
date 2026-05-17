@@ -35864,6 +35864,16 @@ window._renderEntityTouches = function(node, t, nodes) {
   h += '  <button onclick="document.getElementById(\'entity-touches-modal\').style.display=\'none\'" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:16px;cursor:pointer;width:30px;height:30px;border-radius:50%">×</button>';
   h += '</div>';
 
+  // v1.3: operator actions for company-type orgs — mark as adversary on a pursuit
+  var isCompany = node.type === 'company' || node.type === undefined;
+  if (isCompany && node.id) {
+    h += '<div style="background:rgba(212,130,58,.05);border:1px solid rgba(212,130,58,.20);border-radius:2px;padding:10px 14px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;gap:12px">';
+    h += '  <div style="flex:1"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;margin-bottom:2px">Operator action</div>';
+    h += '  <div style="font-size:11px;color:var(--t2)">Mark this organization as an adversary on a tracked pursuit. Future Brief scoring will boost signals touching them.</div></div>';
+    h += '  <button onclick="window._markAsAdversary&&window._markAsAdversary(\'' + node.id + '\',\'' + ((node.name||'').replace(/\'/g,"\\\\'")) + '\')" style="padding:7px 12px;border:1px solid rgba(212,130,58,.45);border-radius:2px;background:rgba(212,130,58,.10);color:var(--gold);font-size:10px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">+ Adversary</button>';
+    h += '</div>';
+  }
+
   if (total === 0) {
     h += '<div style="padding:14px;text-align:center;color:var(--t3);font-style:italic;font-size:11px">No touches found across any source for this entity. As source syncs run, touches will appear here.</div>';
     return h;
@@ -35933,6 +35943,96 @@ window._renderEntityTouches = function(node, t, nodes) {
   }
 
   return h;
+};
+
+// v1.3: mark an org as adversary on a pursuit
+// - 0 pursuits: prompt operator to create one first
+// - 1 pursuit: confirm + add directly
+// - multi pursuits: show picker
+window._markAsAdversary = async function(orgId, orgName) {
+  if (!currentWsId || !orgId) return;
+  try {
+    var oppsSnap = await get(ref(db, 'workspaces/' + currentWsId + '/opportunities'));
+    var opps = oppsSnap.exists() ? oppsSnap.val() : {};
+    var activeOpps = [];
+    for (var oid in opps) {
+      var o = opps[oid]; if (!o) continue;
+      // Skip won / lost / archived
+      if (o.stage === 'won' || o.stage === 'lost') continue;
+      activeOpps.push({ id: oid, name: o.name || '(unnamed)', stage: o.stage, current: !!(o.posture && o.posture.adversaries && o.posture.adversaries.indexOf(orgId) >= 0) });
+    }
+    if (activeOpps.length === 0) {
+      toast('No active pursuits — create one first, then mark adversaries from its Inspector');
+      return;
+    }
+    if (activeOpps.length === 1) {
+      var opp = activeOpps[0];
+      if (opp.current) { toast(orgName + ' is already an adversary on this pursuit'); return; }
+      if (!confirm('Add ' + orgName + ' as an adversary on pursuit "' + opp.name + '"?')) return;
+      await window._writeAdversary(opp.id, orgId);
+      toast(orgName + ' marked as adversary on "' + opp.name + '"');
+      return;
+    }
+    // Multiple pursuits — picker modal
+    var modal = document.getElementById('adversary-picker-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'adversary-picker-modal';
+      modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:1700;background:rgba(7,13,24,.85);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:40px 20px;overflow-y:auto';
+      modal.addEventListener('click', function(e){ if (e.target === modal) modal.style.display='none'; });
+      document.body.appendChild(modal);
+    }
+    var h = '<div data-surface="light" style="background:var(--bg);max-width:520px;width:100%;border:1px solid var(--b1);border-radius:3px;padding:22px 24px;box-shadow:0 14px 40px rgba(0,0,0,.55)">';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--gold);letter-spacing:.16em;text-transform:uppercase;margin-bottom:5px">Mark as adversary</div>';
+    h += '<div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;color:var(--text);line-height:1.25;margin-bottom:14px">On which pursuit(s) is ' + orgName.replace(/</g,'&lt;') + ' an adversary?</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px;max-height:360px;overflow-y:auto">';
+    for (var i = 0; i < activeOpps.length; i++) {
+      var po = activeOpps[i];
+      var disabled = po.current ? 'disabled style="opacity:.5;cursor:not-allowed"' : '';
+      var label = po.current ? '✓ already adversary' : '+ add';
+      h += '<button ' + disabled + ' onclick="window._writeAdversaryAndClose(\'' + po.id + '\',\'' + orgId + '\',\'' + orgName.replace(/\'/g,"\\\\'") + '\',\'' + po.name.replace(/\'/g,"\\\\'") + '\')" style="text-align:left;padding:8px 12px;border:1px solid var(--b1);border-radius:2px;background:transparent;color:var(--text);font-size:12px;cursor:pointer;font-family:inherit;display:flex;justify-content:space-between;align-items:center;gap:10px">';
+      h += '<div><div>' + po.name.replace(/</g,'&lt;') + '</div><div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-top:2px">' + po.stage + '</div></div>';
+      h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + (po.current ? '#3a8a5c' : 'var(--gold)') + ';text-transform:uppercase;letter-spacing:.08em">' + label + '</span>';
+      h += '</button>';
+    }
+    h += '</div>';
+    h += '<div style="display:flex;justify-content:flex-end"><button onclick="document.getElementById(\'adversary-picker-modal\').style.display=\'none\'" style="padding:7px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Cancel</button></div>';
+    h += '</div>';
+    modal.innerHTML = h;
+    modal.style.display = 'flex';
+  } catch (e) {
+    toast('Adversary lookup failed: ' + ((e && e.message) || 'unknown'));
+  }
+};
+
+window._writeAdversary = async function(oppId, orgId) {
+  var snap = await get(ref(db, 'workspaces/' + currentWsId + '/opportunities/' + oppId));
+  if (!snap.exists()) throw new Error('Pursuit not found');
+  var opp = snap.val();
+  var advs = (opp.posture && opp.posture.adversaries) || [];
+  if (advs.indexOf(orgId) >= 0) return; // idempotent
+  advs.push(orgId);
+  var newPosture = Object.assign({}, opp.posture || {}, { adversaries: advs });
+  await fbSet('workspaces/' + currentWsId + '/opportunities/' + oppId + '/posture', newPosture);
+  // Bump operatorOverrides so SAM.gov reconcile doesn't overwrite
+  var existingOverrides = (opp.reconciliation && opp.reconciliation.operatorOverrides) || [];
+  if (existingOverrides.indexOf('posture') < 0) {
+    var newOverrides = existingOverrides.concat(['posture']);
+    await fbSet('workspaces/' + currentWsId + '/opportunities/' + oppId + '/reconciliation/operatorOverrides', newOverrides);
+  }
+};
+
+window._writeAdversaryAndClose = async function(oppId, orgId, orgName, oppName) {
+  try {
+    await window._writeAdversary(oppId, orgId);
+    toast(orgName + ' marked as adversary on "' + oppName + '"');
+    var modal = document.getElementById('adversary-picker-modal');
+    if (modal) modal.style.display = 'none';
+    // Refresh leaderboard since adversary set changed
+    if (window._loadAdversaryLeaderboard) window._loadAdversaryLeaderboard();
+  } catch (e) {
+    toast('Save failed: ' + ((e && e.message) || 'unknown'));
+  }
 };
 
 window._touchesSection = function(label, count, color, rows) {
