@@ -35188,7 +35188,11 @@ var _PHASE85_CATEGORY_META = {
   context: { label: 'Background context', glyph: '·', color: 'var(--t3)' }
 };
 
+// v1.1: stash latest brief so "why" popover can fetch RelevanceComponents on demand
+window._latestBrief = null;
+
 window._renderExternalIntelligence = function(brief) {
+  window._latestBrief = brief;
   var body = document.getElementById('ext-intel-body');
   var dateEl = document.getElementById('ext-intel-generated');
   if (!body) return;
@@ -35199,7 +35203,8 @@ window._renderExternalIntelligence = function(brief) {
   }
   if (dateEl) {
     var ageMin = Math.floor((Date.now() - brief.generatedAt) / 60000);
-    dateEl.textContent = ageMin < 60 ? ageMin + 'm ago' : Math.floor(ageMin/60) + 'h ago';
+    var versionTag = brief.scoringVersion ? ' · v' + brief.scoringVersion : '';
+    dateEl.textContent = (ageMin < 60 ? ageMin + 'm ago' : Math.floor(ageMin/60) + 'h ago') + versionTag;
   }
   var cats = brief.itemsByCategory || {};
   var h = '';
@@ -35215,12 +35220,23 @@ window._renderExternalIntelligence = function(brief) {
     h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + meta.color + ';text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">' + meta.glyph + ' ' + meta.label + ' · ' + items.length + '</div>';
     for (var j = 0; j < items.length; j++) {
       var it = items[j];
-      var ageMin = Math.floor((Date.now() - it.occurredAt) / 60000);
-      var ageStr = ageMin < 60 ? ageMin + 'm' : (ageMin < 1440 ? Math.floor(ageMin/60) + 'h' : Math.floor(ageMin/1440) + 'd');
+      var ageMin2 = Math.floor((Date.now() - it.occurredAt) / 60000);
+      var ageStr = ageMin2 < 60 ? ageMin2 + 'm' : (ageMin2 < 1440 ? Math.floor(ageMin2/60) + 'h' : Math.floor(ageMin2/1440) + 'd');
+      // v1.1: relevance score badge (only if scored)
+      var scoreBadge = '';
+      if (it.relevance && typeof it.relevance.total === 'number') {
+        var sc = it.relevance.total;
+        var scColor = sc >= 7 ? '#3a8a5c' : sc >= 4 ? 'var(--gold)' : 'var(--t3)';
+        scoreBadge = '<span title="Relevance score — click for breakdown" style="cursor:pointer;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + scColor + ';border:1px solid currentColor;padding:1px 5px;border-radius:2px;margin-left:6px;font-weight:600" onclick="window._showWhySurfaced&&window._showWhySurfaced(\'' + key + '\',' + j + ')">' + sc.toFixed(1) + '</span>';
+      }
+      // v1.1: dedup note as small chip
+      var dedupChip = it.dedupNote
+        ? '<span title="' + (it.dedupNote || '').replace(/"/g,'&quot;') + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--t3);border:1px solid var(--b1);padding:0 4px;border-radius:2px;margin-left:5px">collapsed</span>'
+        : '';
       h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4">';
       h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
       h += '  <div style="flex:1;min-width:0">';
-      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + '</div>';
+      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + dedupChip + '</div>';
       h += '    <div style="color:var(--t2);font-size:11px">' + (it.subtitle || '').replace(/</g,'&lt;') + '</div>';
       h += '  </div>';
       h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap;align-self:center">' + it.source + ' · ' + ageStr + (it.link ? ' · <a href="' + it.link + '" target="_blank" style="color:var(--t3)">open</a>' : '') + '</div>';
@@ -35233,11 +35249,73 @@ window._renderExternalIntelligence = function(brief) {
   }
   // Counts summary
   if (brief.counts) {
+    var supText = brief.counts.suppressedByDedup
+      ? ' · ' + brief.counts.suppressedByDedup + ' suppressed by dedup'
+      : '';
     h += '<div style="padding:8px 14px;border-top:1px solid rgba(0,0,0,.05);font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">';
-    h += brief.totalItems + ' items shown · ' + brief.counts.signals + ' signals · ' + brief.counts.awards + ' awards · ' + brief.counts.opportunities + ' opportunities (24h window)';
+    h += brief.totalItems + ' items shown · ' + brief.counts.signals + ' signals · ' + brief.counts.awards + ' awards · ' + brief.counts.opportunities + ' opportunities (24h window)' + supText;
     h += '</div>';
   }
   body.innerHTML = h;
+};
+
+// v1.1: "Why this surfaced" popover — show per-component relevance breakdown
+window._showWhySurfaced = function(categoryKey, itemIndex) {
+  var brief = window._latestBrief;
+  if (!brief) return;
+  var items = (brief.itemsByCategory && brief.itemsByCategory[categoryKey]) || [];
+  var it = items[itemIndex];
+  if (!it || !it.relevance) { toast('No scoring data available'); return; }
+  var r = it.relevance;
+  // Modal lazy-init
+  var modal = document.getElementById('why-surfaced-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'why-surfaced-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:1600;background:rgba(7,13,24,.78);backdrop-filter:blur(2px);align-items:flex-start;justify-content:center;padding:60px 20px;overflow-y:auto';
+    modal.innerHTML = '<div data-surface="light" style="background:var(--bg);max-width:560px;width:100%;border:1px solid var(--b1);border-radius:3px;box-shadow:0 18px 56px rgba(0,0,0,.55)"><div id="why-surfaced-body" style="padding:24px 28px">Loading…</div></div>';
+    modal.addEventListener('click', function(e){ if (e.target === modal) modal.style.display='none'; });
+    document.body.appendChild(modal);
+  }
+  var body = document.getElementById('why-surfaced-body');
+  var weights = (brief.weightsApplied) || {pursuit:4,adversary:3,customer:2.5,capability:1.5,recency:1,magnitude:1};
+  var h = '';
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--b1)">';
+  h += '  <div><div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#3a8a5c;letter-spacing:.16em;text-transform:uppercase;margin-bottom:3px">Why this surfaced</div>';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:18px;font-weight:700;color:var(--text);line-height:1.2">' + (it.title||'').replace(/</g,'&lt;') + '</div></div>';
+  h += '  <button onclick="document.getElementById(\'why-surfaced-modal\').style.display=\'none\'" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:16px;cursor:pointer;width:28px;height:28px;border-radius:50%">×</button>';
+  h += '</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px;margin-bottom:14px">';
+  h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Total relevance</div>';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:30px;font-weight:700;color:var(--text);line-height:1">' + r.total.toFixed(2) + '</div>';
+  h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:3px">Category: ' + categoryKey + '</div>';
+  h += '</div>';
+  h += '<table style="width:100%;font-size:11px;border-collapse:collapse">';
+  h += '  <thead><tr style="border-bottom:1px solid var(--b1)"><th style="text-align:left;padding:5px 0;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Component</th><th style="text-align:right;padding:5px 0;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Raw</th><th style="text-align:right;padding:5px 0;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Weight</th><th style="text-align:right;padding:5px 0;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Contribution</th></tr></thead>';
+  h += '  <tbody>';
+  ['pursuit','adversary','customer','capability','recency','magnitude'].forEach(function(c){
+    var raw = r[c] || 0;
+    var w = weights[c] || 1;
+    var contrib = raw * w;
+    var faded = raw === 0 ? 'opacity:.4' : '';
+    h += '<tr style="border-bottom:1px solid rgba(0,0,0,.03);' + faded + '"><td style="padding:5px 0;color:var(--text);text-transform:capitalize">' + c + '</td><td style="padding:5px 0;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:var(--t2)">' + raw.toFixed(2) + '</td><td style="padding:5px 0;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:var(--t3)">×' + w + '</td><td style="padding:5px 0;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:var(--text);font-weight:600">' + contrib.toFixed(2) + '</td></tr>';
+  });
+  h += '  </tbody></table>';
+  if (r.whySurfaced && r.whySurfaced.length) {
+    h += '<div style="margin-top:16px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:12px 14px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Reasoning</div>';
+    h += '  <ul style="margin:0;padding-left:18px;font-size:11px;color:var(--t2);line-height:1.6">';
+    for (var k = 0; k < r.whySurfaced.length; k++) {
+      h += '<li>' + r.whySurfaced[k].replace(/</g,'&lt;') + '</li>';
+    }
+    h += '  </ul>';
+    h += '</div>';
+  }
+  if (it.dedupNote) {
+    h += '<div style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);font-style:italic">' + it.dedupNote.replace(/</g,'&lt;') + '</div>';
+  }
+  body.innerHTML = h;
+  modal.style.display = 'flex';
 };
 
 window._loadExternalIntelligence = async function() {

@@ -1,14 +1,10 @@
 // Phase 8.5.8 Brief Synthesis — shared logic
 //
-// V1 scope per brief-synthesis-v1.md Part Two:
-//   1. Collect signals/awards/opportunities from last 24h
-//   2. Categorize into 5 buckets (pursuit / adversary / customer / capability / context)
-//   3. Soft caps per category
-//   4. Write to workspaces/{wsId}/derivedViews/dailyBrief/{date}
+// V1.1 (2026-05-17): adds relevance scoring (Part Two §2), category
+// assignment by threshold (Part Two §3), cross-source deduplication
+// (Part Two §5), and per-item whySurfaced reasoning (Part Three §6).
 //
-// V1 omissions (deferred to v1.1):
-//   - Relevance scoring algorithm (Part Two §2-3)
-//   - Cross-source deduplication (Part Two §5)
+// Still deferred to v1.2:
 //   - Dismissal feedback loop (Part Four)
 //   - Pinning / snoozing
 
@@ -17,6 +13,15 @@ import { Logger } from "../framework/logger";
 import type { Signal } from "../framework/types/signals";
 import type { Award } from "../framework/types/awards";
 import type { Opportunity } from "../framework/types/entities";
+import {
+  type RelevanceComponents,
+  type BriefScoringContext,
+  scoreSignal,
+  scoreAward,
+  scoreOpportunity,
+  categoryFromRelevance,
+  SCORING_WEIGHTS,
+} from "./briefSynthesisScoring";
 
 export interface BriefItem {
   id: string;
@@ -29,7 +34,13 @@ export interface BriefItem {
   link?: string | null;
   entityId: string;
   contextLine?: string;
+  /** v1.1: per-component relevance + total */
+  relevance?: RelevanceComponents;
+  /** v1.1: deduplication consequences */
+  dedupNote?: string;
 }
+
+export type { RelevanceComponents };
 
 export interface BriefOutput {
   workspaceId: string;
@@ -47,7 +58,12 @@ export interface BriefOutput {
     signals: number;
     awards: number;
     opportunities: number;
+    /** v1.1: items suppressed by deduplication */
+    suppressedByDedup?: number;
   };
+  /** v1.1: scoring metadata */
+  scoringVersion?: string;
+  weightsApplied?: typeof SCORING_WEIGHTS;
 }
 
 const SOFT_CAPS = {
@@ -58,63 +74,79 @@ const SOFT_CAPS = {
   context: 3,
 };
 
-interface WorkspaceContext {
-  adversaryOrgIds: Set<string>;
-  trackedPursuitOrgIds: Set<string>; // Organizations linked to active pursuits
-  tracked: { opportunities: Map<string, Opportunity>; awards: Map<string, Award> };
-}
+const HARD_CAPS = {
+  pursuit: 20,
+  adversary: 10,
+  customer: 10,
+  capability: 8,
+  context: 5,
+};
 
-async function loadWorkspaceContext(workspaceId: string): Promise<WorkspaceContext> {
-  const [oppSnap, awardSnap] = await Promise.all([
+const ARCHIVED_STAGES = new Set(["won", "lost"]);
+
+async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringContext> {
+  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap] = await Promise.all([
     db.ref(wsPath(workspaceId, "opportunities")).once("value"),
     db.ref(wsPath(workspaceId, "awards")).once("value"),
+    db.ref(wsPath(workspaceId, "sources", "usaspending", "config")).once("value"),
+    db.ref(wsPath(workspaceId, "sources", "sam_gov", "config")).once("value"),
   ]);
   const opps = (oppSnap.val() as Record<string, Opportunity> | null) ?? {};
   const awards = (awardSnap.val() as Record<string, Award> | null) ?? {};
-  const adversaryOrgIds = new Set<string>();
-  const trackedPursuitOrgIds = new Set<string>();
+  const usaCfg = (usaCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
+  const samCfg = (samCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
+
+  const activeAdversaryOrgIds = new Set<string>();
+  const archivedAdversaryOrgIds = new Set<string>();
+  const customerOrgIds = new Set<string>();
+  const customerHistoryOrgIds = new Set<string>();
+  const pursuitOrgIds = new Set<string>();
+  const watchlistNaics = new Set<string>();
+  const watchlistPsc = new Set<string>();
+  const awardByPiid = new Map<string, string>();
+
   for (const opp of Object.values(opps)) {
+    const isArchived = ARCHIVED_STAGES.has(opp.stage);
     if (opp.posture?.adversaries) {
-      for (const a of opp.posture.adversaries) adversaryOrgIds.add(a);
+      for (const a of opp.posture.adversaries) {
+        (isArchived ? archivedAdversaryOrgIds : activeAdversaryOrgIds).add(a);
+        pursuitOrgIds.add(a);
+      }
     }
-    if (opp.customerOrgId) trackedPursuitOrgIds.add(opp.customerOrgId);
+    if (opp.customerOrgId) {
+      customerHistoryOrgIds.add(opp.customerOrgId);
+      pursuitOrgIds.add(opp.customerOrgId);
+      if (!isArchived) customerOrgIds.add(opp.customerOrgId);
+    }
+    if (opp.naicsCodes) opp.naicsCodes.forEach((n) => watchlistNaics.add(n));
+    if (opp.pscCodes) opp.pscCodes.forEach((p) => watchlistPsc.add(p));
   }
+  for (const award of Object.values(awards)) {
+    if (award.naics) watchlistNaics.add(award.naics);
+    if (award.psc) watchlistPsc.add(award.psc);
+    if (award.customerOrgId) customerHistoryOrgIds.add(award.customerOrgId);
+    if (award.customerToptierOrgId) customerHistoryOrgIds.add(award.customerToptierOrgId);
+    if (award.primeOrgId) pursuitOrgIds.add(award.primeOrgId);
+    if (award.piid) awardByPiid.set(award.piid.toUpperCase(), award.id);
+  }
+  // Pull NAICS from source configs too
+  (usaCfg.naics || []).forEach((n) => watchlistNaics.add(n));
+  (samCfg.naics || []).forEach((n) => watchlistNaics.add(n));
+
   return {
-    adversaryOrgIds,
-    trackedPursuitOrgIds,
-    tracked: { opportunities: new Map(Object.entries(opps)), awards: new Map(Object.entries(awards)) },
+    trackedOppIds: new Set(Object.keys(opps)),
+    trackedAwardIds: new Set(Object.keys(awards)),
+    pursuitOrgIds,
+    activeAdversaryOrgIds,
+    archivedAdversaryOrgIds,
+    customerOrgIds,
+    customerHistoryOrgIds,
+    watchlistNaics,
+    watchlistPsc,
+    opportunities: new Map(Object.entries(opps)),
+    awards: new Map(Object.entries(awards)),
+    awardByPiid,
   };
-}
-
-function categorizeItem(
-  item: { subjectIds?: string[]; relatedIds?: string[]; primeOrgId?: string; customerOrgId?: string },
-  ctx: WorkspaceContext
-): BriefItem["category"] {
-  const allIds = new Set<string>([
-    ...(item.subjectIds ?? []),
-    ...(item.relatedIds ?? []),
-    ...(item.primeOrgId ? [item.primeOrgId] : []),
-    ...(item.customerOrgId ? [item.customerOrgId] : []),
-  ]);
-
-  // Pursuit: touches any tracked Opportunity or Award entity directly
-  for (const id of allIds) {
-    if (ctx.tracked.opportunities.has(id) || ctx.tracked.awards.has(id)) {
-      return "pursuit";
-    }
-  }
-  // Adversary: org is in any active pursuit's posture.adversaries
-  for (const id of allIds) {
-    if (ctx.adversaryOrgIds.has(id)) return "adversary";
-  }
-  // Customer: org is a tracked customer agency
-  for (const id of allIds) {
-    if (ctx.trackedPursuitOrgIds.has(id)) return "customer";
-  }
-  // Capability vs context: hard to distinguish in V1; default to capability
-  // (broader segment relevance). Context reserved for items the operator
-  // has explicitly dismissed or marked low-priority (V1.1).
-  return "capability";
 }
 
 function signalToItem(signal: Signal, category: BriefItem["category"]): BriefItem {
@@ -126,6 +158,7 @@ function signalToItem(signal: Signal, category: BriefItem["category"]): BriefIte
     sam_gov: "SAM.gov",
     usaspending: "USAspending",
     dod_news: "DoD News",
+    faca: "FACA",
   };
   const sourceName = sourceMap[signal.source.system] ?? signal.source.system;
   let title = "Signal";
@@ -140,6 +173,9 @@ function signalToItem(signal: Signal, category: BriefItem["category"]): BriefIte
   } else if (signal.type === "congressional_hearing") {
     title = (attrs.committeeName as string) || "Committee Hearing";
     subtitle = String(attrs.title || "");
+  } else if (signal.type === "committee_meeting") {
+    title = (attrs.title as string) || "Committee Meeting";
+    subtitle = (attrs.location as string) || "FACA committee";
   } else {
     title = signal.type.replace(/_/g, " ");
     subtitle = String((attrs.summary as string) || (attrs.title as string) || "");
@@ -187,19 +223,89 @@ function opportunityToItem(opp: Opportunity, category: BriefItem["category"]): B
 }
 
 /**
+ * v1.1: deduplicate items per Part Two §5.
+ *
+ * Rules implemented:
+ *  - 8-K Signal whose attrs reference a PIID matching an Award in workspace → suppress
+ *  - Multiple opportunity_amendment signals on same parentNoticeId → keep latest
+ *  - Multiple protest signals on same docketNumber → keep most-recent-state
+ *  - Multiple committee_meeting signals on same committee+date → keep one
+ */
+function deduplicate(
+  items: BriefItem[],
+  signals: Record<string, Signal>,
+  ctx: BriefScoringContext
+): { kept: BriefItem[]; suppressed: number } {
+  let suppressed = 0;
+  const keep = new Set<string>(items.map((i) => i.id));
+
+  // 1. 8-K → Award dedup
+  for (const item of items) {
+    if (item.kind !== "signal") continue;
+    const sig = signals[item.entityId];
+    if (!sig || sig.type !== "material_event") continue;
+    const attrs = sig.attrs as Record<string, unknown>;
+    const summary = String(attrs.summary || "");
+    // Heuristic: scan summary for PIID-looking tokens, check against awardByPiid
+    const piidLike = summary.match(/[A-Z0-9]{4,}-[0-9]{2,}-[A-Z]-[0-9]{4,}/g) || [];
+    for (const p of piidLike) {
+      if (ctx.awardByPiid.has(p.toUpperCase())) {
+        keep.delete(item.id);
+        suppressed++;
+        break;
+      }
+    }
+  }
+
+  // 2. Per-docket / per-amendment / per-meeting collapse — keep highest-score
+  const groups = new Map<string, BriefItem[]>();
+  for (const item of items) {
+    if (!keep.has(item.id) || item.kind !== "signal") continue;
+    const sig = signals[item.entityId];
+    if (!sig) continue;
+    const attrs = sig.attrs as Record<string, unknown>;
+    let key: string | null = null;
+    if (sig.type === "protest" && attrs.docketNumber) {
+      key = `protest::${attrs.docketNumber}`;
+    } else if (sig.type === "opportunity_amendment" && attrs.parentNoticeId) {
+      key = `amendment::${attrs.parentNoticeId}`;
+    } else if (sig.type === "committee_meeting") {
+      const day = Math.floor((sig.occurredAt || 0) / 86400000);
+      key = `meeting::${sig.subjectIds?.[0] || ""}::${day}`;
+    }
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  }
+  for (const cluster of groups.values()) {
+    if (cluster.length < 2) continue;
+    cluster.sort((a, b) => (b.relevance?.total || 0) - (a.relevance?.total || 0));
+    for (let i = 1; i < cluster.length; i++) {
+      keep.delete(cluster[i].id);
+      suppressed++;
+    }
+    cluster[0].dedupNote = `Collapsed ${cluster.length - 1} related signal(s) in same group`;
+  }
+
+  return { kept: items.filter((i) => keep.has(i.id)), suppressed };
+}
+
+/**
  * Synthesize a Brief for one workspace covering the past `windowHours`.
+ * v1.1: 6-factor relevance scoring + category-by-threshold + dedup.
  */
 export async function synthesizeBrief(
   workspaceId: string,
   windowHours: number = 24,
   log?: Logger
 ): Promise<BriefOutput> {
-  const cutoff = Date.now() - windowHours * 60 * 60 * 1000;
-  log?.info("brief_synthesis_started", { workspaceId, windowHours });
+  const nowMs = Date.now();
+  const cutoff = nowMs - windowHours * 60 * 60 * 1000;
+  log?.info("brief_synthesis_started", { workspaceId, windowHours, version: "v1.1" });
 
   const ctx = await loadWorkspaceContext(workspaceId);
 
-  // Collect from signals
+  // 1. Collect signals + score
   const sigSnap = await db.ref(wsPath(workspaceId, "signals")).once("value");
   const signals = (sigSnap.val() as Record<string, Signal> | null) ?? {};
   const sigItems: BriefItem[] = [];
@@ -207,37 +313,54 @@ export async function synthesizeBrief(
   for (const sig of Object.values(signals)) {
     if (!sig || !sig.occurredAt || sig.occurredAt < cutoff) continue;
     signalCount++;
-    const category = categorizeItem(sig, ctx);
-    sigItems.push(signalToItem(sig, category));
+    const relevance = scoreSignal(sig, ctx, nowMs);
+    const category = categoryFromRelevance(relevance);
+    const item = signalToItem(sig, category);
+    item.relevance = relevance;
+    sigItems.push(item);
   }
 
-  // Collect from awards (created or modified recently)
+  // 2. Collect awards + score
   const awardItems: BriefItem[] = [];
   let awardCount = 0;
-  for (const award of ctx.tracked.awards.values()) {
+  for (const award of ctx.awards.values()) {
     const recentTimestamp = award.lastModifiedAt || award.awardedAt;
     if (!recentTimestamp || recentTimestamp < cutoff) continue;
     awardCount++;
-    const category = categorizeItem(award, ctx);
-    awardItems.push(awardToItem(award, category));
+    const relevance = scoreAward(award, ctx, nowMs);
+    const category = categoryFromRelevance(relevance);
+    const item = awardToItem(award, category);
+    item.relevance = relevance;
+    awardItems.push(item);
   }
 
-  // Collect from opportunities (posted recently)
+  // 3. Collect opportunities + score
   const oppItems: BriefItem[] = [];
   let oppCount = 0;
-  for (const opp of ctx.tracked.opportunities.values()) {
+  for (const opp of ctx.opportunities.values()) {
     const ts = opp.samgovPostedDate || (typeof opp.stageEnteredAt === "number" ? opp.stageEnteredAt : 0);
     if (!ts || ts < cutoff) continue;
     oppCount++;
-    const category = categorizeItem(
-      { customerOrgId: opp.customerOrgId, subjectIds: opp.customerOrgId ? [opp.customerOrgId] : [] },
-      ctx
-    );
-    oppItems.push(opportunityToItem(opp, category));
+    const relevance = scoreOpportunity(opp, ctx, nowMs);
+    const category = categoryFromRelevance(relevance);
+    const item = opportunityToItem(opp, category);
+    item.relevance = relevance;
+    oppItems.push(item);
   }
 
-  // Combine, sort by occurredAt desc, bucket by category, cap by soft cap
-  const all = [...sigItems, ...awardItems, ...oppItems].sort((a, b) => b.occurredAt - a.occurredAt);
+  const allItems = [...sigItems, ...awardItems, ...oppItems];
+
+  // 4. Dedupe
+  const { kept, suppressed } = deduplicate(allItems, signals, ctx);
+
+  // 5. Sort by relevance descending, fall back to recency on ties
+  kept.sort((a, b) => {
+    const dr = (b.relevance?.total || 0) - (a.relevance?.total || 0);
+    if (Math.abs(dr) > 0.01) return dr;
+    return b.occurredAt - a.occurredAt;
+  });
+
+  // 6. Bucket by category, apply soft caps
   const byCategory: BriefOutput["itemsByCategory"] = {
     pursuit: [],
     adversary: [],
@@ -245,16 +368,21 @@ export async function synthesizeBrief(
     capability: [],
     context: [],
   };
-  for (const item of all) {
+  for (const item of kept) {
     const cap = SOFT_CAPS[item.category];
-    if (byCategory[item.category].length < cap) {
-      byCategory[item.category].push(item);
+    const hardCap = HARD_CAPS[item.category];
+    const bucket = byCategory[item.category];
+    if (bucket.length < cap) {
+      bucket.push(item);
+    } else if (bucket.length < hardCap) {
+      // Keep below soft cap for client-side "show more" expansion
+      bucket.push(item);
     }
   }
 
   const output: BriefOutput = {
     workspaceId,
-    generatedAt: Date.now(),
+    generatedAt: nowMs,
     windowHours,
     totalItems:
       byCategory.pursuit.length +
@@ -263,13 +391,18 @@ export async function synthesizeBrief(
       byCategory.capability.length +
       byCategory.context.length,
     itemsByCategory: byCategory,
-    counts: { signals: signalCount, awards: awardCount, opportunities: oppCount },
+    counts: {
+      signals: signalCount,
+      awards: awardCount,
+      opportunities: oppCount,
+      suppressedByDedup: suppressed,
+    },
+    scoringVersion: "1.1",
+    weightsApplied: SCORING_WEIGHTS,
   };
 
-  // Write to derived views path
-  const dateKey = new Date().toISOString().slice(0, 10);
+  const dateKey = new Date(nowMs).toISOString().slice(0, 10);
   await db.ref(wsPath(workspaceId, "derivedViews", "dailyBrief", dateKey)).set(output);
-  // Also keep a "latest" pointer for easy client access
   await db.ref(wsPath(workspaceId, "derivedViews", "dailyBrief", "latest")).set(output);
 
   log?.info("brief_synthesis_completed", {
@@ -278,6 +411,7 @@ export async function synthesizeBrief(
     signals: signalCount,
     awards: awardCount,
     opps: oppCount,
+    suppressedByDedup: suppressed,
   });
 
   return output;
