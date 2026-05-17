@@ -111,6 +111,7 @@ export interface Award {
   placeOfPerf: AwardPlaceOfPerf;
   description: string;
   modifications: Modification[];
+  modsLastSyncAt?: number;
   subawards: SubawardRef[];
   subawardsLastSyncAt?: number;
   attachments?: Array<{ url: string; name: string; fetchedAt: number }>;

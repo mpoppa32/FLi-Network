@@ -16,9 +16,12 @@ export { triggerInventory } from "./http/triggerInventory";
 export { triggerMigration } from "./http/triggerMigration";
 export { triggerRollback } from "./http/triggerRollback";
 
-// USAspending (Phase 8.5.4)
+// USAspending (Phase 8.5.4 + v1.1)
 export { triggerUsaSpendingSync } from "./http/triggerUsaSpendingSync";
 export { usaSpendingNightly } from "./jobs/usaSpendingNightly";
+export { triggerUsaSpendingSubawards } from "./http/triggerUsaSpendingSubawards";
+export { usaSpendingSubawardsWeekly } from "./jobs/usaSpendingSubawardsWeekly";
+export { triggerRecompeteWatchRefresh } from "./http/triggerRecompeteWatchRefresh";
 
 // GAO Bid Protest (Phase 8.5.5)
 export { triggerGaoProtestSync } from "./http/triggerGaoProtestSync";

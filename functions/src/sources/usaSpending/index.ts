@@ -4,8 +4,10 @@
 // watchlist (NAICS, agencies, competitors). Each result mapped to an Award
 // entity. Hash-equality skipping prevents unnecessary writes.
 //
-// V1 scope: search endpoint only. Modifications, subawards, recipient
-// detail, and DoD News reconciliation are follow-up enhancements.
+// v1.1 (2026-05-17):
+//   - Mod history refresh for recently-modified active/expiring awards
+//   - Server-side Recompete Watch derived view rebuilt at end of each sync
+//   - Subawards sync split into a separate weekly job (subawards.ts)
 
 import { Logger } from "../../framework/logger";
 import {
@@ -14,6 +16,7 @@ import {
   readSourceHealth,
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
+import { db, wsPath } from "../../framework/rtdb";
 import { invalidateOrgCache } from "./orgResolver";
 import { loadConfig, validateConfig, type UsaSpendingConfig } from "./config";
 import {
@@ -23,9 +26,17 @@ import {
   type UsaSpendingSearchRequest,
 } from "./client";
 import { mapSearchResultToAward, upsertAward } from "./mapper";
+import { syncAwardModifications } from "./modifications";
+import { buildRecompeteWatchView } from "./recompeteWatch";
+import type { Award } from "../../framework/types/awards";
 
 export const SOURCE_NAME = "usaspending";
-export const SOURCE_VERSION = "0.1.0";
+export const SOURCE_VERSION = "1.1.0";
+
+export { syncAwardSubawards, syncWorkspaceSubawards } from "./subawards";
+export { syncAwardModifications } from "./modifications";
+export { buildRecompeteWatchView } from "./recompeteWatch";
+export type { RecompeteWatchView, RecompeteEntry, RecompeteUrgencyTier } from "./recompeteWatch";
 
 export interface UsaSpendingSyncOptions {
   /** Override the lookback window in days. Default: from config lookBackMonths. */
@@ -36,6 +47,12 @@ export interface UsaSpendingSyncOptions {
   forceRefresh?: boolean;
   /** Dry run: fetch and map, but don't write. Default: false. */
   dryRun?: boolean;
+  /** Cap on awards whose mod history is refreshed this run. Default: 50. */
+  maxModRefreshes?: number;
+  /** Skip Recompete Watch derived view rebuild. Default: false. */
+  skipRecompeteBuild?: boolean;
+  /** Skip mod refresh step entirely. Default: false. */
+  skipModRefresh?: boolean;
 }
 
 export interface UsaSpendingSyncResult {
@@ -51,6 +68,21 @@ export interface UsaSpendingSyncResult {
   durationMs: number;
   apiCallsCount: number;
   filterSummary: { naics: number; agencies: number; competitors: number };
+  modRefresh: {
+    awardsRefreshed: number;
+    modsWritten: number;
+    terminationsDetected: number;
+    obligatedDeltaTotal: number;
+    errors: number;
+  };
+  recompeteWatch: {
+    built: boolean;
+    total: number;
+    imminent: number;
+    near: number;
+    mid: number;
+    far: number;
+  };
 }
 
 /**
@@ -78,6 +110,21 @@ export async function syncWorkspace(
     durationMs: 0,
     apiCallsCount: 0,
     filterSummary: { naics: 0, agencies: 0, competitors: 0 },
+    modRefresh: {
+      awardsRefreshed: 0,
+      modsWritten: 0,
+      terminationsDetected: 0,
+      obligatedDeltaTotal: 0,
+      errors: 0,
+    },
+    recompeteWatch: {
+      built: false,
+      total: 0,
+      imminent: 0,
+      near: 0,
+      mid: 0,
+      far: 0,
+    },
   };
 
   try {
@@ -160,10 +207,69 @@ export async function syncWorkspace(
       }
     }
 
+    // 5. Mod history refresh — for the most-stale active/expiring awards
+    if (!options.dryRun && !options.skipModRefresh) {
+      const maxRefresh = options.maxModRefreshes ?? 50;
+      try {
+        const allSnap = await db.ref(wsPath(workspaceId, "awards")).once("value");
+        const allAwards = (allSnap.val() as Record<string, Award> | null) ?? {};
+        const candidates = Object.values(allAwards)
+          .filter((a) => a && (a.lifecycleState === "active" || a.lifecycleState === "expiring"))
+          // Prefer awards whose source.refreshedAt is newer than modsLastSyncAt
+          // (i.e., search sync touched them but mods may have drifted), then
+          // oldest mod sync.
+          .sort((a, b) => {
+            const aLag = (a.source?.refreshedAt ?? 0) - (a.modsLastSyncAt ?? 0);
+            const bLag = (b.source?.refreshedAt ?? 0) - (b.modsLastSyncAt ?? 0);
+            if (aLag !== bLag) return bLag - aLag; // bigger lag first
+            return (a.modsLastSyncAt ?? 0) - (b.modsLastSyncAt ?? 0);
+          })
+          .slice(0, maxRefresh);
+
+        for (const award of candidates) {
+          try {
+            const modResult = await syncAwardModifications(workspaceId, award, log);
+            if (modResult.changed) {
+              result.modRefresh.awardsRefreshed++;
+              result.modRefresh.modsWritten += modResult.modsWritten;
+              result.modRefresh.obligatedDeltaTotal += modResult.obligatedDelta;
+              if (modResult.terminated) result.modRefresh.terminationsDetected++;
+            }
+            result.apiCallsCount++;
+          } catch (err) {
+            result.modRefresh.errors++;
+            log?.warn("usaspending_mod_refresh_failed", {
+              awardId: award.id,
+              message: (err as Error).message,
+            });
+          }
+        }
+      } catch (err) {
+        log?.warn("usaspending_mod_refresh_step_failed", { message: (err as Error).message });
+      }
+    }
+
+    // 6. Server-side Recompete Watch derived view
+    if (!options.dryRun && !options.skipRecompeteBuild) {
+      try {
+        const view = await buildRecompeteWatchView(workspaceId, {}, log);
+        result.recompeteWatch = {
+          built: true,
+          total: view.totals.all,
+          imminent: view.totals.imminent,
+          near: view.totals.near,
+          mid: view.totals.mid,
+          far: view.totals.far,
+        };
+      } catch (err) {
+        log?.warn("usaspending_recompete_build_failed", { message: (err as Error).message });
+      }
+    }
+
     result.completedAt = Date.now();
     result.durationMs = result.completedAt - result.startedAt;
 
-    // 5. Source Health write
+    // 7. Source Health write
     await recordSyncSuccess(
       workspaceId,
       SOURCE_NAME,

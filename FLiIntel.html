@@ -34628,7 +34628,10 @@ window._renderUsaSpendingSourcePanel = function(state) {
   h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
   h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:12px">Actions</div>';
   var canSync = migComplete;
-  h += '  <button onclick="window._runUsaSpendingSync()" ' + (!canSync ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%;opacity:.55"' : 'style="padding:10px 14px;border:1px solid rgba(58,138,92,.45);border-radius:3px;background:rgba(58,138,92,.1);color:#3a8a5c;font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%"') + '>Run Sync Now <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">' + (canSync ? 'Fetches last 7 days of matching awards' : 'Migration required first') + '</span></button>';
+  h += '  <button onclick="window._runUsaSpendingSync()" ' + (!canSync ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%;opacity:.55"' : 'style="padding:10px 14px;border:1px solid rgba(58,138,92,.45);border-radius:3px;background:rgba(58,138,92,.1);color:#3a8a5c;font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%;margin-bottom:8px"') + '>Run Sync Now <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">' + (canSync ? 'Fetches awards + mods + rebuilds Recompete view' : 'Migration required first') + '</span></button>';
+  // v1.1 buttons
+  h += '  <button onclick="window._runUsaSpendingSubawards()" ' + (!canSync ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%;opacity:.55;margin-bottom:8px"' : 'style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t2);font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%;margin-bottom:8px"') + '>Sync FFATA Subawards <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">Refreshes subrecipient data (weekly auto)</span></button>';
+  h += '  <button onclick="window._refreshRecompeteServer()" ' + (!canSync ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%;opacity:.55"' : 'style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t2);font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%"') + '>Rebuild Recompete Watch View <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">Server-side derived view refresh</span></button>';
   h += '</div>';
 
   // Last result
@@ -34652,7 +34655,7 @@ window._setUsaSpendingResultBody = function(html) {
 
 window._runUsaSpendingSync = async function() {
   if (!currentWsId) { toast('No active workspace'); return; }
-  window._setUsaSpendingResultBody('<span style="color:#5fb3b8">Syncing… (typically 5–30s)</span>');
+  window._setUsaSpendingResultBody('<span style="color:#5fb3b8">Syncing… (typically 5–60s; mod refresh + Recompete build add a few seconds)</span>');
   try {
     var callable = httpsCallable(fbFunctions, 'triggerUsaSpendingSync');
     var res = await callable({ workspaceId: currentWsId, sinceDays: 7, maxRecords: 300 });
@@ -34662,6 +34665,17 @@ window._runUsaSpendingSync = async function() {
     lines.push('<span style="color:#3a8a5c">✓ Sync complete in ' + Math.round((result.durationMs||0)/100)/10 + 's.</span>');
     lines.push('Records fetched: ' + (result.recordsFetched || 0) + ' · API calls: ' + (result.apiCallsCount || 0));
     lines.push('Awards created: ' + (result.awardsCreated || 0) + ' · updated: ' + (result.awardsUpdated || 0) + ' · unchanged: ' + (result.awardsUnchanged || 0));
+    if (result.modRefresh) {
+      lines.push('Mods refreshed: ' + (result.modRefresh.awardsRefreshed || 0) + ' awards · ' + (result.modRefresh.modsWritten || 0) + ' mods written'
+        + (result.modRefresh.terminationsDetected ? ' · <span style="color:#b34040">' + result.modRefresh.terminationsDetected + ' termination' + (result.modRefresh.terminationsDetected === 1 ? '' : 's') + ' detected</span>' : ''));
+    }
+    if (result.recompeteWatch && result.recompeteWatch.built) {
+      lines.push('Recompete Watch view: ' + result.recompeteWatch.total + ' awards ('
+        + result.recompeteWatch.imminent + ' imminent · '
+        + result.recompeteWatch.near + ' near · '
+        + result.recompeteWatch.mid + ' mid · '
+        + result.recompeteWatch.far + ' far)');
+    }
     if (result.errors && result.errors.length) {
       lines.push('<span style="color:var(--gold)">' + result.errors.length + ' record-level errors (recorded in source health)</span>');
     }
@@ -34671,9 +34685,58 @@ window._runUsaSpendingSync = async function() {
     window._setUsaSpendingResultBody(lines.join('<br>'));
     toast('USAspending sync complete · ' + (result.awardsCreated + result.awardsUpdated) + ' awards upserted');
     window._refreshUsaSpendingSourceState();
+    if (window._refreshRecompeteWatch) window._refreshRecompeteWatch();
   } catch (e) {
     window._setUsaSpendingResultBody('<span style="color:#b34040">Error: ' + (e && e.message ? e.message : e) + '</span>');
     toast('Sync failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+// v1.1: Manual FFATA subaward sync trigger
+window._runUsaSpendingSubawards = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  window._setUsaSpendingResultBody('<span style="color:#5fb3b8">Syncing subawards… (FFATA fetches are slower; up to 60s for 200 awards)</span>');
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerUsaSpendingSubawards');
+    var res = await callable({ workspaceId: currentWsId, maxAwards: 200 });
+    var result = res && res.data && res.data.result;
+    if (!result) throw new Error('No result returned');
+    var lines = [];
+    lines.push('<span style="color:#3a8a5c">✓ Subaward sync complete in ' + Math.round(((result.completedAt||0)-(result.startedAt||0))/100)/10 + 's.</span>');
+    lines.push('Awards processed: ' + (result.awardsProcessed || 0));
+    lines.push('Subawards written: ' + (result.subawardsTotal || 0) + ' · Organizations auto-created: ' + (result.orgsCreated || 0));
+    if (result.errors && result.errors.length) {
+      lines.push('<span style="color:var(--gold)">' + result.errors.length + ' per-award errors</span>');
+    }
+    window._setUsaSpendingResultBody(lines.join('<br>'));
+    toast('Subaward sync · ' + (result.subawardsTotal || 0) + ' subs across ' + (result.awardsProcessed || 0) + ' awards');
+    if (window._refreshRecompeteWatch) window._refreshRecompeteWatch();
+  } catch (e) {
+    window._setUsaSpendingResultBody('<span style="color:#b34040">Error: ' + (e && e.message ? e.message : e) + '</span>');
+    toast('Subaward sync failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+// v1.1: Manual Recompete Watch derived view refresh
+window._refreshRecompeteServer = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  window._setUsaSpendingResultBody('<span style="color:#5fb3b8">Rebuilding Recompete view…</span>');
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerRecompeteWatchRefresh');
+    var res = await callable({ workspaceId: currentWsId });
+    var data = res && res.data;
+    if (!data || !data.ok) throw new Error('No result');
+    var t = data.totals || {};
+    window._setUsaSpendingResultBody(
+      '<span style="color:#3a8a5c">✓ Recompete view rebuilt</span><br>' +
+      'Total: ' + (t.all||0) + ' · imminent ' + (t.imminent||0) + ' · near ' + (t.near||0) + ' · mid ' + (t.mid||0) + ' · far ' + (t.far||0) + '<br>' +
+      'Σ obligated: ' + _fmtDollars(t.totalObligated || 0)
+    );
+    toast('Recompete view refreshed · ' + (t.all||0) + ' awards tracked');
+    if (window._refreshRecompeteWatch) window._refreshRecompeteWatch();
+  } catch (e) {
+    window._setUsaSpendingResultBody('<span style="color:#b34040">Error: ' + (e && e.message ? e.message : e) + '</span>');
+    toast('Refresh failed: ' + (e && e.message ? e.message : 'unknown'));
   }
 };
 
@@ -35200,89 +35263,163 @@ function _fmtDollars(n) {
   return '$' + n.toLocaleString();
 }
 
-window._renderRecompeteWatch = function(awards, orgMap) {
+// v1.1: tier styling helper
+window._recompeteTierStyle = function(tier) {
+  if (tier === 'imminent') return { color: '#b34040', bg: 'rgba(179,64,64,.12)', label: 'IMMINENT' };
+  if (tier === 'near')     return { color: 'var(--gold)', bg: 'rgba(212,130,58,.12)', label: 'NEAR' };
+  if (tier === 'mid')      return { color: '#5fb3b8', bg: 'rgba(95,179,184,.12)', label: 'MID' };
+  return { color: '#3a8a5c', bg: 'rgba(58,138,92,.10)', label: 'FAR' };
+};
+
+// v1.1: accepts either server-side derived entries (preferred) OR client-mapped
+// award objects (fallback). Renders urgency tier badge, mods/subawards chips,
+// and a totals header summarizing the workspace recompete exposure.
+window._renderRecompeteWatch = function(entries, orgMap, totals) {
   var body = document.getElementById('recompete-watch-body');
   var countEl = document.getElementById('recompete-watch-count');
   if (!body) return;
-  if (!awards || awards.length === 0) {
+  if (!entries || entries.length === 0) {
     body.innerHTML = '<div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">No expiring contracts in your workspace yet. After USAspending sync runs, awards with popEnd within 18 months appear here as recompete candidates.</div>';
     if (countEl) countEl.textContent = '0 items';
     return;
   }
   // Sort by popEnd ascending (soonest first)
-  awards.sort(function(a, b) { return (a.popEnd || 0) - (b.popEnd || 0); });
-  if (countEl) countEl.textContent = awards.length + ' item' + (awards.length === 1 ? '' : 's');
+  entries.sort(function(a, b) { return (a.popEnd || 0) - (b.popEnd || 0); });
+  if (countEl) countEl.textContent = entries.length + ' item' + (entries.length === 1 ? '' : 's');
 
   var h = '';
+
+  // Totals header — derived view totals if present, else compute from entries
+  var t = totals || null;
+  if (!t) {
+    t = { imminent: 0, near: 0, mid: 0, far: 0, totalObligated: 0 };
+    for (var k = 0; k < entries.length; k++) {
+      var tier = entries[k].urgencyTier;
+      if (!tier) {
+        var d = Math.round(((entries[k].popEnd || 0) - Date.now()) / (24*60*60*1000));
+        tier = d <= 90 ? 'imminent' : d <= 180 ? 'near' : d <= 365 ? 'mid' : 'far';
+      }
+      t[tier] = (t[tier] || 0) + 1;
+      t.totalObligated += (entries[k].obligated || 0);
+    }
+  }
+  h += '<div style="padding:8px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid rgba(0,0,0,.04);background:rgba(0,0,0,.015)">';
+  ['imminent','near','mid','far'].forEach(function(tk) {
+    var s = window._recompeteTierStyle(tk);
+    var n = t[tk] || 0;
+    h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;letter-spacing:.1em;color:' + s.color + ';background:' + s.bg + ';padding:2px 7px;border-radius:2px;text-transform:uppercase">' + s.label + ' ' + n + '</span>';
+  });
+  h += '<span style="margin-left:auto;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Σ ' + _fmtDollars(t.totalObligated || 0) + '</span>';
+  h += '</div>';
+
   var now = Date.now();
-  for (var i = 0; i < Math.min(awards.length, 25); i++) {
-    var aw = awards[i];
-    var daysToEnd = Math.floor(((aw.popEnd || 0) - now) / (24*60*60*1000));
-    var daysClass = daysToEnd < 0 ? 'color:#b34040'
-                  : daysToEnd < 90 ? 'color:#b34040'
-                  : daysToEnd < 180 ? 'color:var(--gold)'
-                  : 'color:#3a8a5c';
+  var cap = Math.min(entries.length, 30);
+  for (var i = 0; i < cap; i++) {
+    var aw = entries[i];
+    var daysToEnd = (typeof aw.daysUntilPopEnd === 'number')
+      ? aw.daysUntilPopEnd
+      : Math.floor(((aw.popEnd || 0) - now) / (24*60*60*1000));
+    var tier = aw.urgencyTier || (daysToEnd <= 90 ? 'imminent' : daysToEnd <= 180 ? 'near' : daysToEnd <= 365 ? 'mid' : 'far');
+    var ts = window._recompeteTierStyle(tier);
     var primeName = (orgMap && orgMap[aw.primeOrgId] && orgMap[aw.primeOrgId].name) || aw.primeUei || aw.piid || '(unknown)';
     var customerName = (orgMap && orgMap[aw.customerOrgId] && orgMap[aw.customerOrgId].name) || '(unknown customer)';
     var dollars = _fmtDollars(aw.obligated || 0);
-    var lifecycleBadge = aw.lifecycleState === 'expired'
-      ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:#b34040;background:rgba(179,64,64,.1);padding:1px 5px;border-radius:2px;text-transform:uppercase">expired</span>'
-      : '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--gold);background:rgba(212,130,58,.1);padding:1px 5px;border-radius:2px;text-transform:uppercase">expiring</span>';
+    var tierBadge = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:' + ts.color + ';background:' + ts.bg + ';padding:1px 5px;border-radius:2px;text-transform:uppercase">' + ts.label + '</span>';
+    var modsChip = (aw.modsCount && aw.modsCount > 0)
+      ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--t3);border:1px solid var(--b1);padding:1px 5px;border-radius:2px;text-transform:uppercase;letter-spacing:.08em">' + aw.modsCount + ' mods</span>'
+      : '';
+    var subChip = (aw.subawardsCount && aw.subawardsCount > 0)
+      ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--t3);border:1px solid var(--b1);padding:1px 5px;border-radius:2px;text-transform:uppercase;letter-spacing:.08em">' + aw.subawardsCount + ' subs</span>'
+      : '';
     var hasProposed = aw._proposedOppId ? true : false;
+    var awId = aw.awardId || aw.id;
     h += '<div style="padding:9px 14px;border-bottom:1px solid rgba(0,0,0,.04);display:flex;gap:10px;align-items:flex-start">';
     h += '  <div style="flex:1;min-width:0">';
-    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (primeName || '').replace(/</g,'&lt;') + ' ' + lifecycleBadge + '</div>';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em;display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+    h += '      <span>' + (primeName || '').replace(/</g,'&lt;') + '</span>';
+    h += '      ' + tierBadge + ' ' + modsChip + ' ' + subChip;
+    h += '    </div>';
     h += '    <div style="color:var(--t2);font-size:11px">' + (customerName || '').replace(/</g,'&lt;') + ' · NAICS ' + (aw.naics || '?') + ' · ' + dollars + '</div>';
-    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:2px">PIID ' + (aw.piid || '').slice(0,40) + ' · popEnd ' + (aw.popEnd ? new Date(aw.popEnd).toLocaleDateString() : '?') + ' · <span style="' + daysClass + '">' + (daysToEnd >= 0 ? daysToEnd + ' days' : Math.abs(daysToEnd) + ' days past') + '</span></div>';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:2px">PIID ' + (aw.piid || '').slice(0,40) + ' · popEnd ' + (aw.popEnd ? new Date(aw.popEnd).toLocaleDateString() : '?') + ' · <span style="color:' + ts.color + '">' + (daysToEnd >= 0 ? daysToEnd + ' days' : Math.abs(daysToEnd) + ' days past') + '</span> · <a href="#" onclick="event.preventDefault();window._openAwardDetail&&window._openAwardDetail(\'' + awId + '\')" style="color:var(--t2);text-decoration:underline">details</a></div>';
     h += '  </div>';
     if (hasProposed) {
       h += '  <button onclick="(window._goToProposedOpp && window._goToProposedOpp(\'' + aw._proposedOppId + '\'))" style="padding:4px 10px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;align-self:center">View Pursuit</button>';
     } else {
-      h += '  <button onclick="window._convertAwardToPursuit&&window._convertAwardToPursuit(\'' + aw.id + '\')" style="padding:4px 10px;border:1px solid rgba(58,138,92,.4);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;align-self:center">+ Pursue</button>';
+      h += '  <button onclick="window._convertAwardToPursuit&&window._convertAwardToPursuit(\'' + awId + '\')" style="padding:4px 10px;border:1px solid rgba(58,138,92,.4);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;align-self:center">+ Pursue</button>';
     }
     h += '</div>';
   }
-  if (awards.length > 25) {
-    h += '<div style="padding:8px 14px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">Showing 25 of ' + awards.length + ' total</div>';
+  if (entries.length > cap) {
+    h += '<div style="padding:8px 14px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">Showing ' + cap + ' of ' + entries.length + ' total</div>';
   }
   body.innerHTML = h;
 };
 
+// v1.1: prefer server-side derivedViews/recompeteWatch/latest. Fall back to
+// the legacy client-side scan if the derived view hasn't been built yet
+// (workspace not yet sync'd post-v1.1 rollout).
 window._loadRecompeteWatch = async function() {
   if (!currentWsId) return;
   try {
-    var [awardsSnap, oppsSnap, nodesSnap] = await Promise.all([
+    // 1. Try server-side derived view first
+    var derivedSnap = await get(ref(db, 'workspaces/' + currentWsId + '/derivedViews/recompeteWatch/latest'));
+    if (derivedSnap.exists()) {
+      var view = derivedSnap.val();
+      // Combine all tiers into one entry list, sorted by popEnd
+      var combined = []
+        .concat(view.byTier && view.byTier.imminent || [])
+        .concat(view.byTier && view.byTier.near || [])
+        .concat(view.byTier && view.byTier.mid || [])
+        .concat(view.byTier && view.byTier.far || []);
+
+      // Overlay proposedOppId for any opportunity already linked via _sourceAwardId
+      var [oppsSnap, nodesSnap] = await Promise.all([
+        get(ref(db, 'workspaces/' + currentWsId + '/opportunities')),
+        get(ref(db, 'workspaces/' + currentWsId + '/nodes'))
+      ]);
+      var opps = oppsSnap.exists() ? oppsSnap.val() : {};
+      var nodes = nodesSnap.exists() ? nodesSnap.val() : {};
+      var proposedByAward = {};
+      for (var oppId in opps) {
+        var opp = opps[oppId];
+        if (opp && opp._sourceAwardId) proposedByAward[opp._sourceAwardId] = oppId;
+      }
+      for (var i = 0; i < combined.length; i++) {
+        var aid = combined[i].awardId;
+        if (proposedByAward[aid]) combined[i]._proposedOppId = proposedByAward[aid];
+      }
+      window._renderRecompeteWatch(combined, nodes, view.totals);
+      return;
+    }
+
+    // 2. Fall back to legacy client-side scan
+    var [awardsSnap, oppsSnap2, nodesSnap2] = await Promise.all([
       get(ref(db, 'workspaces/' + currentWsId + '/awards')),
       get(ref(db, 'workspaces/' + currentWsId + '/opportunities')),
       get(ref(db, 'workspaces/' + currentWsId + '/nodes'))
     ]);
     var awards = awardsSnap.exists() ? awardsSnap.val() : {};
-    var opps = oppsSnap.exists() ? oppsSnap.val() : {};
-    var nodes = nodesSnap.exists() ? nodesSnap.val() : {};
+    var opps2 = oppsSnap2.exists() ? oppsSnap2.val() : {};
+    var nodes2 = nodesSnap2.exists() ? nodesSnap2.val() : {};
 
-    // Build org-name lookup
-    var orgMap = nodes;
-
-    // Build proposed-opp-by-award lookup
-    var proposedByAward = {};
-    for (var oppId in opps) {
-      var opp = opps[oppId];
-      if (opp && opp._sourceAwardId) {
-        proposedByAward[opp._sourceAwardId] = oppId;
-      }
+    var proposedByAward2 = {};
+    for (var oppId2 in opps2) {
+      var opp2 = opps2[oppId2];
+      if (opp2 && opp2._sourceAwardId) proposedByAward2[opp2._sourceAwardId] = oppId2;
     }
 
-    // Filter to expiring or recently expired Awards
     var filtered = [];
     for (var awId in awards) {
       var aw = awards[awId];
       if (!aw || !aw.lifecycleState) continue;
-      if (aw.lifecycleState === 'expiring' || aw.lifecycleState === 'expired') {
-        if (proposedByAward[awId]) aw._proposedOppId = proposedByAward[awId];
+      if (aw.lifecycleState === 'expiring' || aw.lifecycleState === 'expired' || aw.lifecycleState === 'active') {
+        if (proposedByAward2[awId]) aw._proposedOppId = proposedByAward2[awId];
+        aw.modsCount = (aw.modifications || []).length;
+        aw.subawardsCount = (aw.subawards || []).length;
         filtered.push(aw);
       }
     }
-    window._renderRecompeteWatch(filtered, orgMap);
+    window._renderRecompeteWatch(filtered, nodes2);
   } catch (e) {
     var body = document.getElementById('recompete-watch-body');
     if (body) body.innerHTML = '<div style="padding:10px 14px;color:#b34040;font-size:11px">Error: ' + (e && e.message ? e.message : e) + '</div>';
@@ -35364,6 +35501,163 @@ window._goToProposedOpp = function(oppId) {
   } else {
     toast('Pursuit exists: ' + oppId);
   }
+};
+
+// ──────────────────────────────────────────────────────────────────────────
+// v1.1: Award Detail mini-modal — modifications history + FFATA subawards
+// Pulls the full Award record from RTDB; renders mods table chronologically
+// and subawards table sorted by amount.
+// ──────────────────────────────────────────────────────────────────────────
+window._openAwardDetail = async function(awardId) {
+  if (!currentWsId || !awardId) return;
+  // Ensure modal exists
+  var modal = document.getElementById('award-detail-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'award-detail-modal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:1500;background:rgba(7,13,24,.78);backdrop-filter:blur(2px);align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto';
+    modal.innerHTML =
+      '<div data-surface="light" style="background:var(--bg);max-width:880px;width:100%;border:1px solid var(--b1);border-radius:3px;box-shadow:0 18px 56px rgba(0,0,0,.55)">' +
+      '<div id="award-detail-body" style="padding:28px 32px">Loading…</div>' +
+      '</div>';
+    modal.addEventListener('click', function(e){ if (e.target === modal) modal.style.display='none'; });
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  var body = document.getElementById('award-detail-body');
+  body.innerHTML = 'Loading award detail…';
+  try {
+    var [awSnap, nodesSnap] = await Promise.all([
+      get(ref(db, 'workspaces/' + currentWsId + '/awards/' + awardId)),
+      get(ref(db, 'workspaces/' + currentWsId + '/nodes'))
+    ]);
+    if (!awSnap.exists()) {
+      body.innerHTML = '<div style="color:#b34040">Award not found.</div>';
+      return;
+    }
+    var aw = awSnap.val();
+    var nodes = nodesSnap.exists() ? nodesSnap.val() : {};
+    body.innerHTML = window._renderAwardDetail(aw, nodes);
+  } catch (e) {
+    body.innerHTML = '<div style="color:#b34040">Error loading: ' + ((e && e.message) || e) + '</div>';
+  }
+};
+
+window._renderAwardDetail = function(aw, nodes) {
+  var primeName = (nodes && nodes[aw.primeOrgId] && nodes[aw.primeOrgId].name) || aw.primeUei || '(unknown prime)';
+  var customerName = (nodes && nodes[aw.customerOrgId] && nodes[aw.customerOrgId].name) || '(unknown customer)';
+  var topName = (nodes && nodes[aw.customerToptierOrgId] && nodes[aw.customerToptierOrgId].name) || '';
+
+  var h = '';
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1;min-width:0">';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;letter-spacing:.16em;color:#3a8a5c;text-transform:uppercase;margin-bottom:5px">Award · ' + (aw.lifecycleState || 'unknown') + '</div>';
+  h += '    <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:22px;font-weight:700;color:var(--text);line-height:1.15;letter-spacing:-0.01em;margin-bottom:4px">' + primeName.replace(/</g,'&lt;') + '</div>';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--t2)">PIID ' + (aw.piid || '?').replace(/</g,'&lt;') + ' · ' + (topName || customerName).replace(/</g,'&lt;') + (topName && topName !== customerName ? ' / ' + customerName.replace(/</g,'&lt;') : '') + '</div>';
+  h += '  </div>';
+  h += '  <button onclick="document.getElementById(\'award-detail-modal\').style.display=\'none\'" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>';
+  h += '</div>';
+
+  // Financials + Timing grid
+  h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px">';
+  var grid = [
+    ['Obligated', _fmtDollars(aw.obligated || 0)],
+    ['Ceiling', _fmtDollars(aw.baseAndAllOptionsValue || aw.obligated || 0)],
+    ['Pop End', aw.popEnd ? new Date(aw.popEnd).toLocaleDateString() : '?'],
+    ['NAICS / PSC', (aw.naics || '?') + ' / ' + (aw.psc || '?')]
+  ];
+  grid.forEach(function(pair){
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:10px 12px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">' + pair[0] + '</div>';
+    h += '  <div style="font-size:13px;color:var(--text);font-weight:600">' + pair[1] + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Description
+  if (aw.description) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:12px 14px;margin-bottom:18px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Description</div>';
+    h += '  <div style="font-size:12px;color:var(--t2);line-height:1.55">' + (aw.description || '').replace(/</g,'&lt;').slice(0,800) + (aw.description && aw.description.length > 800 ? '…' : '') + '</div>';
+    h += '</div>';
+  }
+
+  // Modifications table
+  var mods = aw.modifications || [];
+  h += '<div style="margin-bottom:18px">';
+  h += '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  h += '    <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Modification History <span style="color:var(--t3);font-weight:400">· ' + mods.length + '</span></div>';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">' + (aw.modsLastSyncAt ? 'synced ' + new Date(aw.modsLastSyncAt).toLocaleDateString() : 'not yet synced') + '</div>';
+  h += '  </div>';
+  if (mods.length === 0) {
+    h += '<div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic;background:var(--s1);border:1px solid var(--b1);border-radius:2px">No modifications recorded. The nightly USAspending sync refreshes mod history for active and expiring awards (up to 50 per cycle).</div>';
+  } else {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;overflow:hidden">';
+    h += '  <table style="width:100%;border-collapse:collapse;font-size:11px">';
+    h += '    <thead><tr style="background:rgba(0,0,0,.04);border-bottom:1px solid var(--b1)"><th style="text-align:left;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Mod #</th><th style="text-align:left;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Date</th><th style="text-align:right;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Delta</th><th style="text-align:right;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Cumulative</th><th style="text-align:left;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Action</th></tr></thead>';
+    h += '    <tbody>';
+    for (var mi = 0; mi < mods.length; mi++) {
+      var m = mods[mi];
+      var deltaColor = m.obligationDelta < 0 ? '#b34040' : (m.obligationDelta > 0 ? '#3a8a5c' : 'var(--t2)');
+      var deltaSign = m.obligationDelta > 0 ? '+' : '';
+      h += '<tr style="border-bottom:1px solid rgba(0,0,0,.03)">';
+      h += '  <td style="padding:6px 10px;font-family:\'IBM Plex Mono\',monospace;color:var(--text);font-weight:600">' + (m.modNumber || '').replace(/</g,'&lt;') + '</td>';
+      h += '  <td style="padding:6px 10px;color:var(--t2)">' + (m.modifiedAt ? new Date(m.modifiedAt).toLocaleDateString() : '?') + '</td>';
+      h += '  <td style="padding:6px 10px;text-align:right;color:' + deltaColor + ';font-family:\'IBM Plex Mono\',monospace">' + deltaSign + _fmtDollars(m.obligationDelta || 0) + '</td>';
+      h += '  <td style="padding:6px 10px;text-align:right;color:var(--t2);font-family:\'IBM Plex Mono\',monospace">' + _fmtDollars(m.cumulativeObligated || 0) + '</td>';
+      h += '  <td style="padding:6px 10px;color:var(--t3);font-size:10px">' + ((m.actionTypeDescription || m.actionType || '').replace(/</g,'&lt;').slice(0,80)) + '</td>';
+      h += '</tr>';
+    }
+    h += '    </tbody></table>';
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // Subawards table
+  var subs = aw.subawards || [];
+  h += '<div style="margin-bottom:18px">';
+  h += '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  h += '    <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">FFATA Subawards <span style="color:var(--t3);font-weight:400">· ' + subs.length + '</span></div>';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">' + (aw.subawardsLastSyncAt ? 'synced ' + new Date(aw.subawardsLastSyncAt).toLocaleDateString() : 'not yet synced') + '</div>';
+  h += '  </div>';
+  if (subs.length === 0) {
+    h += '<div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic;background:var(--s1);border:1px solid var(--b1);border-radius:2px">No FFATA subawards reported. Subawards sync runs weekly (Saturdays 07:00 UTC). FFATA reporting lags primary awards by 30-180 days.</div>';
+  } else {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;overflow:hidden">';
+    h += '  <table style="width:100%;border-collapse:collapse;font-size:11px">';
+    h += '    <thead><tr style="background:rgba(0,0,0,.04);border-bottom:1px solid var(--b1)"><th style="text-align:left;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Subrecipient</th><th style="text-align:right;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Amount</th><th style="text-align:left;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Action Date</th><th style="text-align:left;padding:7px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">NAICS</th></tr></thead>';
+    h += '    <tbody>';
+    for (var si = 0; si < Math.min(subs.length, 25); si++) {
+      var s = subs[si];
+      var subName = (nodes && nodes[s.subOrgId] && nodes[s.subOrgId].name) || s.subRecipientName || '(unknown)';
+      h += '<tr style="border-bottom:1px solid rgba(0,0,0,.03)">';
+      h += '  <td style="padding:6px 10px;color:var(--text)">' + subName.replace(/</g,'&lt;') + '</td>';
+      h += '  <td style="padding:6px 10px;text-align:right;color:var(--text);font-family:\'IBM Plex Mono\',monospace">' + _fmtDollars(s.amount || 0) + '</td>';
+      h += '  <td style="padding:6px 10px;color:var(--t2)">' + (s.subawardActionDate ? new Date(s.subawardActionDate).toLocaleDateString() : '?') + '</td>';
+      h += '  <td style="padding:6px 10px;font-family:\'IBM Plex Mono\',monospace;color:var(--t3);font-size:10px">' + (s.naics || '?') + '</td>';
+      h += '</tr>';
+    }
+    h += '    </tbody></table>';
+    h += '</div>';
+    if (subs.length > 25) {
+      h += '<div style="padding:6px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em">Showing 25 of ' + subs.length + '</div>';
+    }
+  }
+  h += '</div>';
+
+  // Action row
+  h += '<div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--b1)">';
+  if (aw.source && aw.source.url) {
+    h += '  <a href="' + aw.source.url + '" target="_blank" rel="noopener" style="padding:8px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:11px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;display:inline-block">Open on USAspending.gov ↗</a>';
+  }
+  if (aw.lifecycleState === 'expiring' || aw.lifecycleState === 'expired') {
+    h += '  <button onclick="window._convertAwardToPursuit&&window._convertAwardToPursuit(\'' + aw.id + '\')" style="padding:8px 14px;border:1px solid rgba(58,138,92,.4);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">+ Convert to Pursuit</button>';
+  }
+  h += '</div>';
+
+  return h;
 };
 
 setTimeout(function(){ window._loadRecompeteWatch && window._loadRecompeteWatch(); }, 5000);
