@@ -3,17 +3,15 @@
 // Per architecture E-4 (LOCKED): every entity created or updated from an
 // external source carries a `source` attribute. Operator-input entities use
 // `system: 'operator_manual'` and are never overwritten by external feeds.
+//
+// Canonical type lives in framework/types/provenance.ts; this module
+// provides constructor helpers.
 
-export interface SourceProvenance {
-  system: string;
-  externalId: string | null;
-  url: string | null;
-  fetchedAt: number;
-  refreshedAt: number;
-  hash: string | null;
-}
+import type { SourceProvenance, SourceSystem } from "./types/provenance";
 
-export const OPERATOR_MANUAL_SYSTEM = "operator_manual";
+export type { SourceProvenance, SourceSystem };
+
+export const OPERATOR_MANUAL_SYSTEM: SourceSystem = "operator_manual";
 
 export function operatorManualProvenance(at: number = Date.now()): SourceProvenance {
   return {
@@ -27,7 +25,7 @@ export function operatorManualProvenance(at: number = Date.now()): SourceProvena
 }
 
 export function externalProvenance(
-  system: string,
+  system: SourceSystem,
   externalId: string,
   url: string | null = null,
   hash: string | null = null,

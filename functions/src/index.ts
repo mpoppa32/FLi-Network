@@ -14,3 +14,5 @@
 export { triggerInventory } from "./http/triggerInventory";
 export { triggerMigration } from "./http/triggerMigration";
 export { triggerRollback } from "./http/triggerRollback";
+export { triggerUsaSpendingSync } from "./http/triggerUsaSpendingSync";
+export { usaSpendingNightly } from "./jobs/usaSpendingNightly";
