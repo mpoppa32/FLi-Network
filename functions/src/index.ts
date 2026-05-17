@@ -54,3 +54,7 @@ export { dodNewsDaily } from "./jobs/dodNewsDaily";
 // Think Tanks (Phase 8.6.6 — bundled RSS aggregator)
 export { triggerThinkTanksSync } from "./http/triggerThinkTanksSync";
 export { thinkTanksDaily } from "./jobs/thinkTanksDaily";
+
+// DSCA FMS Notifications (Phase 8.6.2 — Tier 2 web scrape)
+export { triggerDscaFmsSync } from "./http/triggerDscaFmsSync";
+export { dscaFmsWeekly } from "./jobs/dscaFmsWeekly";

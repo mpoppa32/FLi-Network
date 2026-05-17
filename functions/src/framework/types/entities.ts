@@ -16,6 +16,7 @@ import type { SourceProvenance } from "./provenance";
 export type OrganizationType =
   | "company"
   | "government"
+  | "foreign_government"
   | "program"
   | "committee"
   | "lobby_firm"

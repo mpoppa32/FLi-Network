@@ -12,9 +12,9 @@ export type SourceSystem =
   | "gao_protest"
   | "sec_edgar"
   | "congress_gov"
-  // Tier 2 sources (Phase 8.6+, anticipated)
+  // Tier 2 sources (Phase 8.6+)
   | "faca"
-  | "dsca_fms"
+  | "dsca_fms" // Phase 8.6.2 — FMS notifications
   | "dod_comptroller"
   | "inside_defense"
   | "service_news"

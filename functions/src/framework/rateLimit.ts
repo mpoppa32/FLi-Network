@@ -29,6 +29,7 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // Tier 2 — Phase 8.6+
   faca: { capacity: 2, refillPerSecond: 0.5 }, // polite weekly cadence; no documented limit
   think_tank: { capacity: 3, refillPerSecond: 0.5 }, // polite per-tank polling; RSS-based
+  dsca_fms: { capacity: 1, refillPerSecond: 0.5 }, // polite scrape, weekly cadence
 };
 
 interface BucketState {
