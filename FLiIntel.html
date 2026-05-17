@@ -10308,6 +10308,16 @@ input[type="url"], textarea, select {
           <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">Prepare this workspace for external-source intelligence. Adds source provenance to existing entities; initializes Award entity + per-source config paths. Fully reversible.</div>
           <button onclick="window._showPhase85MigrationPanel&&window._showPhase85MigrationPanel()" style="padding:5px 12px;border:1px solid rgba(95,179,184,.35);border-radius:2px;background:rgba(95,179,184,.08);color:#5fb3b8;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Migration Panel</button>
         </div>
+
+        <!-- Phase 8.5.4 USAspending Source -->
+        <div style="background:var(--s1);border:1px solid rgba(58,138,92,.15);border-left:3px solid #3a8a5c;border-radius:2px;padding:12px 14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#3a8a5c;font-weight:600">USAspending.gov</div>
+            <span id="usaspending-source-status" style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px;border:1px solid var(--b1)">AWAITING MIGRATION</span>
+          </div>
+          <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">Federal contract awards. Powers Recompete Watch and competitor-wins view. Nightly sync runs at 06:00 UTC; manual sync available below. Requires Phase 8.5.1 migration first.</div>
+          <button onclick="window._showUsaSpendingSourcePanel&&window._showUsaSpendingSourcePanel()" style="padding:5px 12px;border:1px solid rgba(58,138,92,.35);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
+        </div>
       </div>
 
       <!-- ── FOOTER ── -->
@@ -34356,13 +34366,279 @@ window._rollbackPhase85Migration = async function() {
         var state = snap.exists() ? snap.val() : null;
         window._updatePhase85StatusBadge(state);
       }).catch(function(){});
+      window._refreshUsaSpendingBadge && window._refreshUsaSpendingBadge();
     } catch (e) {}
   }
-  // Refresh badge when settings modal opens (best effort: refresh every 30s while page open)
   setInterval(_refreshBadge, 30000);
-  // Also try once after a beat
   setTimeout(_refreshBadge, 2500);
 })();
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.5.4 — USASPENDING SOURCE PANEL
+// Operator-facing controls for the USAspending integration:
+//   - Run Sync Now (calls triggerUsaSpendingSync HTTPS callable)
+//   - View source health (lastSync, lastError, records)
+//   - Configure watchlist (NAICS, agencies, lookback, dollar threshold)
+//
+// State lives at:
+//   workspaces/{wsId}/sources/usaspending/config       (operator-set watchlist)
+//   workspaces/{wsId}/sources/usaspending/lastSync     (epoch ms)
+//   workspaces/{wsId}/sources/usaspending/lastError    (error object or null)
+//   workspaces/{wsId}/awards/{awardId}                 (entities created by sync)
+// ══════════════════════════════════════════════════════════════════════════
+
+window._showUsaSpendingSourcePanel = function() {
+  if (!currentWsId) { toast('Select a workspace first'); return; }
+  var modal = document.getElementById('usaspending-source-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'usaspending-source-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:760px;max-height:90vh;overflow-y:auto;padding:0">' +
+      '<div id="usaspending-modal-body" style="padding:28px 32px">Loading…</div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  window._refreshUsaSpendingSourceState();
+};
+
+window._refreshUsaSpendingSourceState = async function() {
+  if (!currentWsId) return;
+  var body = document.getElementById('usaspending-modal-body');
+  if (!body) return;
+  try {
+    var [migSnap, sourceSnap, awardsCountSnap] = await Promise.all([
+      get(ref(db, 'workspaces/' + currentWsId + '/migrations/8.5.1')),
+      get(ref(db, 'workspaces/' + currentWsId + '/sources/usaspending')),
+      get(ref(db, 'workspaces/' + currentWsId + '/awards'))
+    ]);
+    var migration = migSnap.exists() ? migSnap.val() : null;
+    var source = sourceSnap.exists() ? sourceSnap.val() : null;
+    var awardsCount = 0;
+    if (awardsCountSnap.exists()) {
+      var v = awardsCountSnap.val();
+      awardsCount = v && typeof v === 'object' ? Object.keys(v).length : 0;
+    }
+    body.innerHTML = window._renderUsaSpendingSourcePanel({
+      migration: migration,
+      source: source,
+      awardsCount: awardsCount
+    });
+    window._updateUsaSpendingStatusBadge({ migration: migration, source: source });
+  } catch (e) {
+    body.innerHTML = '<div style="color:#b34040;padding:24px">Error reading source state: ' + (e && e.message ? e.message : e) + '</div>';
+  }
+};
+
+window._refreshUsaSpendingBadge = async function() {
+  if (!currentWsId) return;
+  try {
+    var [migSnap, sourceSnap] = await Promise.all([
+      get(ref(db, 'workspaces/' + currentWsId + '/migrations/8.5.1')),
+      get(ref(db, 'workspaces/' + currentWsId + '/sources/usaspending'))
+    ]);
+    window._updateUsaSpendingStatusBadge({
+      migration: migSnap.exists() ? migSnap.val() : null,
+      source: sourceSnap.exists() ? sourceSnap.val() : null
+    });
+  } catch (e) {}
+};
+
+window._updateUsaSpendingStatusBadge = function(state) {
+  var badge = document.getElementById('usaspending-source-status');
+  if (!badge) return;
+  var label = 'AWAITING MIGRATION';
+  var bg = 'rgba(255,255,255,.04)';
+  var color = 'var(--t3)';
+  var migComplete = state.migration && state.migration.completedAt && state.migration.validationResult === 'pass';
+  if (!migComplete) {
+    label = 'AWAITING MIGRATION';
+  } else if (!state.source) {
+    label = 'NOT INITIALIZED';
+  } else if (state.source.lastError) {
+    label = 'ERROR';
+    bg = 'rgba(179,64,64,.15)';
+    color = '#b34040';
+  } else if (state.source.lastSync) {
+    var ageHours = (Date.now() - state.source.lastSync) / 3600000;
+    if (ageHours < 24) {
+      label = 'OPERATIONAL';
+      bg = 'rgba(58,138,92,.15)';
+      color = '#3a8a5c';
+    } else if (ageHours < 72) {
+      label = 'STALE (' + Math.floor(ageHours/24) + 'D)';
+      bg = 'rgba(212,130,58,.12)';
+      color = 'var(--gold)';
+    } else {
+      label = 'DEGRADED';
+      bg = 'rgba(179,64,64,.12)';
+      color = '#b34040';
+    }
+  } else {
+    label = 'READY · NO SYNCS';
+    bg = 'rgba(95,179,184,.12)';
+    color = '#5fb3b8';
+  }
+  badge.textContent = label;
+  badge.style.background = bg;
+  badge.style.color = color;
+};
+
+window._renderUsaSpendingSourcePanel = function(state) {
+  var h = '';
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:20px;margin-bottom:22px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:#3a8a5c;text-transform:uppercase;margin-bottom:6px">Phase 8.5.4 · USAspending.gov</div>';
+  h += '    <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;color:var(--text);line-height:1.15;letter-spacing:-0.01em;margin-bottom:6px">Federal contract awards</div>';
+  h += '    <div style="font-size:12px;color:var(--t2);line-height:1.6">Nightly sync of award records matching your NAICS / agency watchlist. Each award becomes an Award entity with prime + customer Organization links and lifecycle state derived from popEnd.</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'usaspending-source-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>';
+  h += '</div>';
+
+  // Migration prerequisite check
+  var migComplete = state.migration && state.migration.completedAt && state.migration.validationResult === 'pass';
+  if (!migComplete) {
+    h += '<div style="background:rgba(212,130,58,.08);border:1px solid rgba(212,130,58,.3);border-radius:3px;padding:14px 16px;margin-bottom:14px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Migration Required First</div>';
+    h += '  <div style="font-size:12px;color:var(--t2);line-height:1.6">USAspending sync only runs on workspaces where Phase 8.5.1 migration has completed. Open the Migration Panel from Settings and run Inventory → Approve → Apply.</div>';
+    h += '</div>';
+  }
+
+  // Current state
+  var s = state.source || {};
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:10px">Current State</div>';
+  h += '  <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 12px;font-size:12px;line-height:1.55">';
+
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Last Sync</div>';
+  if (s.lastSync) {
+    var ageMin = Math.floor((Date.now() - s.lastSync) / 60000);
+    var ageStr = ageMin < 60 ? ageMin + ' min ago' : (ageMin < 1440 ? Math.floor(ageMin/60) + ' hr ago' : Math.floor(ageMin/1440) + ' days ago');
+    h += '<div style="color:var(--text)">' + new Date(s.lastSync).toLocaleString() + ' <span style="color:var(--t3)">· ' + ageStr + '</span></div>';
+  } else {
+    h += '<div style="color:var(--t3);font-style:italic">Never</div>';
+  }
+
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Records</div>';
+  h += '<div style="color:var(--text)">' + (state.awardsCount || 0) + ' Awards in workspace · ' + (s.recordsLastSync || 0) + ' processed last sync (' + (s.recordsLastSkipped || 0) + ' unchanged · skipped)</div>';
+
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Last Error</div>';
+  if (s.lastError) {
+    h += '<div style="color:#b34040">' + (s.lastError.category || 'error') + ': ' + (s.lastError.message || '').replace(/</g,'&lt;').slice(0,200) + '</div>';
+  } else {
+    h += '<div style="color:#3a8a5c">None</div>';
+  }
+
+  h += '  </div>';
+  h += '</div>';
+
+  // Config / watchlist
+  var cfg = (s.config) || {};
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:10px">Watchlist</div>';
+  h += '  <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 12px;font-size:12px;line-height:1.55;margin-bottom:12px">';
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">NAICS</div>';
+  h += '<div style="color:var(--text);font-family:\'IBM Plex Mono\',monospace">' + ((cfg.naics && cfg.naics.length) ? cfg.naics.join(', ') : '<span style="color:var(--t3);font-style:italic">none configured</span>') + '</div>';
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Agencies</div>';
+  h += '<div style="color:var(--text)">' + ((cfg.agencies && cfg.agencies.length) ? cfg.agencies.join(', ') : '<span style="color:var(--t3);font-style:italic">none configured</span>') + '</div>';
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Lookback</div>';
+  h += '<div style="color:var(--text)">' + (cfg.lookBackMonths || 24) + ' months</div>';
+  if (cfg.minDollarThreshold) {
+    h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Min Dollar</div>';
+    h += '<div style="color:var(--text)">$' + cfg.minDollarThreshold.toLocaleString() + '</div>';
+  }
+  h += '  </div>';
+  h += '  <button onclick="window._editUsaSpendingWatchlist()" style="padding:6px 12px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:10px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">Edit Watchlist</button>';
+  h += '</div>';
+
+  // Actions
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:12px">Actions</div>';
+  var canSync = migComplete;
+  h += '  <button onclick="window._runUsaSpendingSync()" ' + (!canSync ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%;opacity:.55"' : 'style="padding:10px 14px;border:1px solid rgba(58,138,92,.45);border-radius:3px;background:rgba(58,138,92,.1);color:#3a8a5c;font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;width:100%"') + '>Run Sync Now <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">' + (canSync ? 'Fetches last 7 days of matching awards' : 'Migration required first') + '</span></button>';
+  h += '</div>';
+
+  // Last result
+  h += '<div id="usaspending-last-result" style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;min-height:50px">';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:8px">Last Action Result</div>';
+  h += '  <div id="usaspending-last-result-body" style="font-size:12px;color:var(--t2);line-height:1.6;font-family:\'IBM Plex Mono\',monospace">No actions taken in this session.</div>';
+  h += '</div>';
+
+  // Doctrine note
+  h += '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--b1);font-size:10px;color:var(--t3);line-height:1.6;font-family:\'IBM Plex Mono\',monospace">';
+  h += 'Sync respects operator-input fields per Doctrine §V. Hash-equality short-circuits unchanged records. Award entities link to prime + customer Organizations; new Organizations auto-create with `autoCreated:true` flag.';
+  h += '</div>';
+
+  return h;
+};
+
+window._setUsaSpendingResultBody = function(html) {
+  var el = document.getElementById('usaspending-last-result-body');
+  if (el) el.innerHTML = html;
+};
+
+window._runUsaSpendingSync = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  window._setUsaSpendingResultBody('<span style="color:#5fb3b8">Syncing… (typically 5–30s)</span>');
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerUsaSpendingSync');
+    var res = await callable({ workspaceId: currentWsId, sinceDays: 7, maxRecords: 300 });
+    var result = res && res.data && res.data.result;
+    if (!result) throw new Error('No result returned');
+    var lines = [];
+    lines.push('<span style="color:#3a8a5c">✓ Sync complete in ' + Math.round((result.durationMs||0)/100)/10 + 's.</span>');
+    lines.push('Records fetched: ' + (result.recordsFetched || 0) + ' · API calls: ' + (result.apiCallsCount || 0));
+    lines.push('Awards created: ' + (result.awardsCreated || 0) + ' · updated: ' + (result.awardsUpdated || 0) + ' · unchanged: ' + (result.awardsUnchanged || 0));
+    if (result.errors && result.errors.length) {
+      lines.push('<span style="color:var(--gold)">' + result.errors.length + ' record-level errors (recorded in source health)</span>');
+    }
+    if (result.filterSummary) {
+      lines.push('Filter: ' + result.filterSummary.naics + ' NAICS · ' + result.filterSummary.agencies + ' agencies · ' + result.filterSummary.competitors + ' competitors');
+    }
+    window._setUsaSpendingResultBody(lines.join('<br>'));
+    toast('USAspending sync complete · ' + (result.awardsCreated + result.awardsUpdated) + ' awards upserted');
+    window._refreshUsaSpendingSourceState();
+  } catch (e) {
+    window._setUsaSpendingResultBody('<span style="color:#b34040">Error: ' + (e && e.message ? e.message : e) + '</span>');
+    toast('Sync failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._editUsaSpendingWatchlist = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  // V1 minimal editor: prompt for NAICS + agencies + threshold
+  var cfgSnap = await get(ref(db, 'workspaces/' + currentWsId + '/sources/usaspending/config'));
+  var cfg = cfgSnap.exists() ? cfgSnap.val() : {};
+  var naicsStr = prompt('NAICS codes (comma-separated, e.g. 541330,541512):', (cfg.naics||[]).join(','));
+  if (naicsStr === null) return; // cancelled
+  var agenciesStr = prompt('Toptier agencies (comma-separated, e.g. Department of Defense):', (cfg.agencies||[]).join(','));
+  if (agenciesStr === null) return;
+  var thresholdStr = prompt('Minimum award dollar threshold (e.g. 100000 for $100k):', String(cfg.minDollarThreshold || ''));
+  if (thresholdStr === null) return;
+
+  var newCfg = {
+    naics: naicsStr.split(',').map(function(s){return s.trim();}).filter(Boolean),
+    agencies: agenciesStr.split(',').map(function(s){return s.trim();}).filter(Boolean),
+    competitorOrgs: cfg.competitorOrgs || [],
+    lookBackMonths: cfg.lookBackMonths || 24,
+    recompeteWatchHorizonMonths: cfg.recompeteWatchHorizonMonths || 18,
+    awardTypeCodes: cfg.awardTypeCodes || ['A','B','C','D'],
+    minDollarThreshold: thresholdStr ? Number(thresholdStr) : null,
+    initializedAt: cfg.initializedAt || Date.now()
+  };
+
+  try {
+    await fbSet('workspaces/' + currentWsId + '/sources/usaspending/config', newCfg);
+    toast('Watchlist updated');
+    window._refreshUsaSpendingSourceState();
+  } catch (e) {
+    toast('Save failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
 
 
 
