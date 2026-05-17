@@ -34951,21 +34951,24 @@ window._phase85Sources = {
   },
   sec_edgar: {
     displayName: 'SEC EDGAR',
-    subtitle: 'Phase 8.5.6 · Publicly Traded Filings',
+    subtitle: 'Phase 8.5.6 v1.2 · Filings + Form 4 Deep Parse',
     color: '#8b5cf6',
     callable: 'triggerSecEdgarSync',
     entityType: 'Signal',
     requiresKey: null,
     cadence: 'Every 4 hours · top of hour',
     cadenceCron: '0 */4 * * *',
-    description: 'SEC filings (8-K material events) for publicly-traded defense competitors. Maps to Signal entities with type "material_event". V1: 8-K only; V1.1 adds 10-K/Q, Form 4, DEF 14A.',
+    description: 'SEC filings for publicly-traded defense competitors. v1 surfaced 8-K material events; v1.1 added 10-K/Q + Form 4 + DEF 14A metadata; v1.2 deep-parses Form 4 XML — insider name, derived title (officer / director / 10%+ owner), transaction code (P/S/A/M/etc.), shares, price, total value, shares-owned-after, full per-transaction list. Insider entities auto-resolved as Corsair nodes; signed value color-coded in cross-source touches popover (green = insider buying, red = insider selling).',
     badgeId: 'sec-edgar-source-status',
     configPath: 'sources/sec_edgar/config',
     healthPath: 'sources/sec_edgar',
     fields: [
       { key: 'watchlistCiks', label: 'CIKs to track (10-digit zero-padded)', placeholder: '0000936468 (LMT), 0001133421 (NOC)…', kind: 'csv', defaultLabel: 'default: 17 top defense primes' },
       { key: 'filingTypes', label: 'Filing types', placeholder: '8-K', kind: 'csv', default: ['8-K'] },
-      { key: 'lookBackMonths', label: 'Lookback months', placeholder: '6', kind: 'number', default: 6 }
+      { key: 'lookBackMonths', label: 'Lookback months', placeholder: '6', kind: 'number', default: 6 },
+      { key: 'extractForm4Detail', label: 'Deep-parse Form 4 XML (v1.2)', kind: 'bool', default: true },
+      { key: 'maxForm4DeepParsesPerSync', label: 'Max Form 4 deep parses / sync', placeholder: '60', kind: 'number', default: 60 },
+      { key: 'skipMechanicalForm4Codes', label: 'Skip mechanical Form 4 codes (F=tax, G=gift)', kind: 'bool', default: false }
     ],
     entityCounter: { path: 'signals', filterType: 'material_event', label: 'material-event Signals' }
   },
@@ -35913,14 +35916,12 @@ window._renderEntityTouches = function(node, t, nodes) {
       };
     }));
   }
-  // Signals — protest signals get enriched rendering (GAO v1.1)
+  // Signals — type-aware enriched rendering (GAO protest v1.1, SEC Form 4 v1.2)
   if (t.signals.length > 0) {
     h += window._touchesSection('Signals (across all sources)', t.signals.length, 'var(--gold)', t.signals.slice(0,15).map(function(sig){
       var attrs = sig.attrs || {};
-      // GAO protest v1.1: outcome chip + awardee + corrective action
-      if (sig.type === 'protest') {
-        return window._protestTouchRow(sig, attrs);
-      }
+      if (sig.type === 'protest') return window._protestTouchRow(sig, attrs);
+      if (sig.type === 'insider_transaction') return window._insiderTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36107,6 +36108,100 @@ window._protestTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + pal.bg + ';color:' + pal.fg + ';border:1px solid ' + pal.fg + '40">' + esc(pal.label) + '</span>';
 
   var clickUrl = attrs.decisionPdfUrl || attrs.decisionUrl || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// SEC EDGAR Form 4 v1.2: enriched touch-row renderer for insider_transaction
+// Signals. Surfaces insider name + title, transaction code + label, signed
+// value (color-coded by direction), and aggregate when multiple transactions
+// in one filing. Falls back to v1.1 metadata-only rendering when the
+// deepParsingPending flag is still set.
+window._insiderTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var fmtDollars = function(v){
+    var n = Math.abs(Number(v) || 0);
+    if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+    if (n >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K';
+    return '$' + Math.round(n).toLocaleString();
+  };
+  var fmtShares = function(v){
+    var n = Math.abs(Number(v) || 0);
+    if (n >= 1e6) return (n/1e6).toFixed(2) + 'M sh';
+    if (n >= 1e3) return Math.round(n/1e3) + 'K sh';
+    return Math.round(n).toLocaleString() + ' sh';
+  };
+
+  // v1.1 fallback — deep parse not yet run
+  if (attrs.deepParsingPending) {
+    return {
+      title: (attrs.insiderName || '(insider pending parse)') + ' · ' + (attrs.filerName || ''),
+      subtitle: 'Form 4 · ' + (attrs.ticker || attrs.cik || '?') + ' · ' + (attrs.filingDate || '?') + ' · awaiting v1.2 deep parse',
+      right: 'Form 4',
+      rightColor: 'var(--t3)',
+      onclick: attrs.documentUrl ? "window.open('" + attrs.documentUrl + "','_blank')" : ''
+    };
+  }
+
+  // Transaction code palette
+  // P = open-market purchase (insider buying — strong positive signal)
+  // S = open-market sale (insider selling — common; size matters)
+  // A = grant/award (compensation)
+  // M/X = exercise/conversion of derivative
+  // D = sale to issuer (repurchase)
+  // F = tax withholding (mechanical, low signal)
+  // G = gift (informational)
+  // J = other (worth flagging)
+  var code = (attrs.transactionCode || '').toString();
+  var acquired = attrs.acquiredDisposed === 'A';
+  var palette;
+  if (code === 'P') palette = { fg:'#3a8a5c', bg:'rgba(58,138,92,.12)' };
+  else if (code === 'S') palette = { fg:'#9a4040', bg:'rgba(154,64,64,.10)' };
+  else if (code === 'A') palette = { fg:'#d4823a', bg:'rgba(212,130,58,.10)' };
+  else if (code === 'M' || code === 'X' || code === 'C') palette = { fg:'#7d7669', bg:'rgba(125,118,105,.08)' };
+  else if (code === 'D') palette = { fg:'#9a4040', bg:'rgba(154,64,64,.08)' };
+  else if (code === 'F' || code === 'G') palette = { fg:'var(--t3)', bg:'rgba(125,118,105,.06)' };
+  else palette = { fg:'var(--gold)', bg:'rgba(212,130,58,.08)' };
+
+  var insiderName = attrs.insiderName || '(unknown insider)';
+  var insiderTitle = attrs.insiderTitle && attrs.insiderTitle !== '(parse pending)' ? attrs.insiderTitle : '';
+  var ticker = attrs.issuerTradingSymbol || attrs.ticker || '';
+  var date = attrs.transactionDate || attrs.filingDate || '';
+
+  var titleHtml = '<span>' + esc(insiderName) + '</span>';
+  if (insiderTitle) {
+    titleHtml += '<span style="color:var(--t3);font-weight:400"> · ' + esc(insiderTitle) + '</span>';
+  }
+
+  var subtitleParts = [];
+  if (ticker) subtitleParts.push(esc(ticker));
+  if (attrs.shares) subtitleParts.push((acquired ? '+' : '−') + fmtShares(attrs.shares));
+  if (attrs.pricePerShare) subtitleParts.push('@ $' + Number(attrs.pricePerShare).toFixed(2));
+  if (attrs.totalValue) {
+    var dollarStr = fmtDollars(attrs.totalValue);
+    var prefix = acquired ? '+' : '−';
+    var dollarColor = acquired ? '#3a8a5c' : '#9a4040';
+    subtitleParts.push('<span style="color:' + dollarColor + ';font-weight:600">' + prefix + dollarStr + '</span>');
+  }
+  if (date) subtitleParts.push(date);
+  if (attrs.transactionsCount && attrs.transactionsCount > 1) {
+    subtitleParts.push(attrs.transactionsCount + ' txns total · ' + fmtDollars(attrs.aggregateValue || 0));
+  }
+  var subtitleHtml = subtitleParts.join(' · ');
+
+  // Right chip: transaction code + label
+  var label = (attrs.transactionCodeLabel || '').toString();
+  var chipText = code + (label ? ' · ' + label : '');
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + palette.bg + ';color:' + palette.fg + ';border:1px solid ' + palette.fg + '40">' + esc(chipText) + '</span>';
+
+  var clickUrl = attrs.documentUrl || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,

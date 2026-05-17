@@ -1,15 +1,24 @@
 // SEC EDGAR — Filing → Signal mapper
 //
-// V1 scope: 8-K material events. Maps each filing to a Signal with type
-// 'material_event' and item-code attributes. Filer Organization resolved
-// (or auto-created) per orgResolver.
+// V1 scope: 8-K material events. v1.1 added 10-K/Q + Form 4 + DEF 14A as
+// metadata-only Signals with deepParsingPending:true. v1.2 lifts the
+// deepParsingPending flag for Form 4 by fetching the filing XML and parsing
+// out insider name/title/transaction-code/shares/price/value/sharesOwnedAfter.
+// 10-K/Q + DEF 14A deep parsing is still v1.2-pending in this commit.
 
 import { db, wsPath } from "../../framework/rtdb";
 import { externalProvenance } from "../../framework/provenance";
 import { hashFields } from "../../framework/hashing";
+import { Logger } from "../../framework/logger";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
 import type { Signal } from "../../framework/types/signals";
-import { buildDocumentUrl, type SecFilingRecord, type SecSubmissionResponse } from "./client";
+import {
+  buildDocumentUrl,
+  fetchFilingDoc,
+  type SecFilingRecord,
+  type SecSubmissionResponse,
+} from "./client";
+import { parseForm4Xml, type ParsedForm4 } from "./form4Parser";
 
 /** 8-K item code → human-readable description.
  *  Per SEC Form 8-K spec. Items split by comma in the API response. */
@@ -191,15 +200,44 @@ export async function mapPeriodicReportToSignal(
   };
 }
 
+export interface Form4MapOptions {
+  /** v1.2: fetch + parse the XML doc. When false, fall back to v1.1
+   *  metadata-only Signal. Default false (orchestrator decides). */
+  extractDeep?: boolean;
+  /** v1.2: per-fetch timeout (ms). */
+  timeoutMs?: number;
+}
+
+export interface Form4MapMetrics {
+  attempted: boolean;
+  succeeded: boolean;
+  parseFlags: string[];
+  insidersResolved: number;
+  transactionsParsed: number;
+  totalValue: number;
+  netSignedValue: number;
+  primaryCode: string | null;
+  errorMessage?: string;
+}
+
+export interface Form4MapResult {
+  signal: Signal;
+  metrics: Form4MapMetrics;
+}
+
 /**
- * Form 4 — insider transaction. v1.1 stores filing metadata; v1.2 will
- * parse the XML doc for insider name/title/shares/price.
+ * Form 4 — insider transaction. v1.2 fetches the XML doc when
+ * `options.extractDeep` is set, parses out insider + transaction detail,
+ * and resolves the insider as a Corsair entity. Falls back to v1.1
+ * metadata-only behavior when fetch/parse fails or extractDeep is false.
  */
 export async function mapForm4ToSignal(
   workspaceId: string,
   filing: SecFilingRecord,
-  submission: SecSubmissionResponse
-): Promise<Signal> {
+  submission: SecSubmissionResponse,
+  options: Form4MapOptions = {},
+  log?: Logger
+): Promise<Form4MapResult> {
   const filerName = submission.name;
   const ticker = submission.tickers?.[0];
   const { orgId: filerOrgId } = await resolveRecipientOrg(workspaceId, filerName, null, {
@@ -209,33 +247,176 @@ export async function mapForm4ToSignal(
   const documentUrl = buildDocumentUrl(filing.cik, filing.accessionNumber, filing.primaryDocument);
   const occurredAt = filing.filingDateMs || Date.now();
   const signalId = "sg_sec_" + filing.accessionNumber.replace(/[^A-Za-z0-9_-]/g, "_");
+
+  const metrics: Form4MapMetrics = {
+    attempted: false,
+    succeeded: false,
+    parseFlags: [],
+    insidersResolved: 0,
+    transactionsParsed: 0,
+    totalValue: 0,
+    netSignedValue: 0,
+    primaryCode: null,
+  };
+
+  // ─── v1.1 baseline attrs (used when deep parse fails or is off) ────────
+  const attrs: Record<string, unknown> = {
+    cik: filing.cik,
+    insiderCik: filing.cik,
+    insiderName: filing.primaryDocDescription || "(see filing document)",
+    insiderTitle: "(parse pending)",
+    transactionCode: "(parse pending)",
+    transactionType: "(parse pending)",
+    shares: 0,
+    documentUrl,
+    ticker: ticker || null,
+    filerName,
+    accessionNumber: filing.accessionNumber,
+    formType: filing.form,
+    filingDate: filing.filingDate,
+    deepParsingPending: true,
+  };
+  const subjectIds: string[] = [filerOrgId];
+  const relatedIds: string[] = [];
+
+  // ─── v1.2 deep extraction ──────────────────────────────────────────────
+  let parsed: ParsedForm4 | null = null;
+  if (options.extractDeep) {
+    metrics.attempted = true;
+    try {
+      const xml = await fetchFilingDoc(
+        documentUrl,
+        { timeoutMs: options.timeoutMs ?? 30_000 },
+        log
+      );
+      parsed = parseForm4Xml(xml);
+      metrics.parseFlags = parsed.flags;
+      // If parse didn't find any transactions AND no reporting owner, treat as failure
+      if (parsed.transactions.length === 0 && parsed.reportingOwners.length === 0) {
+        metrics.errorMessage = "parse_yielded_no_data";
+      } else {
+        metrics.succeeded = true;
+      }
+    } catch (err) {
+      metrics.errorMessage = (err as Error).message;
+      log?.warn("sec_edgar_form4_fetch_or_parse_failed", {
+        accession: filing.accessionNumber,
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  if (parsed && metrics.succeeded) {
+    // Pull out the parsed data and turn it into structured attrs
+    const primary = parsed.primaryTransaction;
+    const primaryOwner = parsed.reportingOwners[0];
+
+    // Resolve insider as Corsair entity (using "other" type per congressGov
+    // mapper precedent — orgResolver doesn't natively distinguish Persons,
+    // but stores them as nodes addressable for cross-source touches).
+    let insiderOrgId: string | null = null;
+    if (primaryOwner && primaryOwner.name) {
+      try {
+        const { orgId } = await resolveRecipientOrg(
+          workspaceId,
+          primaryOwner.name,
+          null,
+          { autoCreate: true, type: "other" }
+        );
+        insiderOrgId = orgId;
+        metrics.insidersResolved++;
+        if (!subjectIds.includes(orgId)) subjectIds.push(orgId);
+      } catch (e) {
+        log?.debug("sec_edgar_insider_resolve_failed", {
+          accession: filing.accessionNumber,
+          insiderName: primaryOwner.name,
+        });
+      }
+    }
+
+    metrics.transactionsParsed = parsed.transactions.length;
+    metrics.totalValue = parsed.totalValue;
+    metrics.netSignedValue = parsed.netSignedValue;
+    metrics.primaryCode = primary?.transactionCode ?? null;
+
+    // Replace v1.1 placeholders with parsed values
+    delete attrs.deepParsingPending;
+    if (primaryOwner) {
+      attrs.insiderCik = primaryOwner.cik || filing.cik;
+      attrs.insiderName = primaryOwner.name || attrs.insiderName;
+      attrs.insiderTitle = primaryOwner.derivedTitle;
+      attrs.insiderIsDirector = primaryOwner.isDirector;
+      attrs.insiderIsOfficer = primaryOwner.isOfficer;
+      attrs.insiderIsTenPercentOwner = primaryOwner.isTenPercentOwner;
+      if (insiderOrgId) attrs.insiderOrgId = insiderOrgId;
+    }
+    attrs.issuerCik = parsed.issuer.cik;
+    attrs.issuerName = parsed.issuer.name;
+    attrs.issuerTradingSymbol = parsed.issuer.tradingSymbol;
+    if (primary) {
+      attrs.transactionCode = primary.transactionCode;
+      attrs.transactionCodeLabel = primary.transactionCodeLabel;
+      attrs.transactionType = primary.acquiredDisposed === "A" ? "acquired" : "disposed";
+      attrs.transactionDate = primary.transactionDate;
+      attrs.shares = primary.shares;
+      attrs.pricePerShare = primary.pricePerShare;
+      attrs.totalValue = primary.value;
+      attrs.signedValue = primary.signedValue;
+      attrs.sharesOwnedAfter = primary.sharesOwnedFollowing;
+      attrs.acquiredDisposed = primary.acquiredDisposed;
+      attrs.directOrIndirect = primary.directOrIndirect;
+      attrs.securityTitle = primary.securityTitle;
+    }
+    // Full transaction list — operator can drill down
+    attrs.transactions = parsed.transactions.map((t) => ({
+      kind: t.kind,
+      date: t.transactionDate,
+      code: t.transactionCode,
+      label: t.transactionCodeLabel,
+      shares: t.shares,
+      price: t.pricePerShare,
+      value: t.value,
+      signedValue: t.signedValue,
+      acquiredDisposed: t.acquiredDisposed,
+      sharesOwnedFollowing: t.sharesOwnedFollowing,
+      directOrIndirect: t.directOrIndirect,
+      securityTitle: t.securityTitle,
+    }));
+    attrs.transactionsCount = parsed.transactions.length;
+    attrs.aggregateValue = parsed.totalValue;
+    attrs.netSignedValue = parsed.netSignedValue;
+    attrs.uniqueCodes = parsed.uniqueCodes;
+    attrs.periodOfReport = parsed.periodOfReport;
+    attrs.deepParsedAt = Date.now();
+    attrs.deepParseVersion = "1.2";
+  } else if (options.extractDeep) {
+    // attempted but failed — note this on the Signal so operator can see
+    attrs.deepParseFailed = true;
+    attrs.deepParseError = metrics.errorMessage || "unknown";
+  }
+
   const hash = hashFields(
-    { accessionNumber: filing.accessionNumber, form: filing.form },
-    ["accessionNumber", "form"]
+    {
+      accessionNumber: filing.accessionNumber,
+      form: filing.form,
+      // Include deep-parsed fields so re-runs after a successful parse
+      // update the existing Signal cleanly.
+      transactionCode: attrs.transactionCode || "",
+      shares: attrs.shares || 0,
+      pricePerShare: attrs.pricePerShare || 0,
+      insiderName: attrs.insiderName || "",
+      transactionsCount: attrs.transactionsCount || 0,
+    },
+    ["accessionNumber", "form", "transactionCode", "shares", "pricePerShare", "insiderName", "transactionsCount"]
   );
-  return {
+
+  const signal: Signal = {
     id: signalId,
     type: "insider_transaction",
-    subjectIds: [filerOrgId],
-    relatedIds: [],
+    subjectIds,
+    relatedIds,
     occurredAt,
-    attrs: {
-      cik: filing.cik,
-      // v1.1: insider metadata not yet parsed (deferred to v1.2)
-      insiderCik: filing.cik,
-      insiderName: filing.primaryDocDescription || "(see filing document)",
-      insiderTitle: "(parse pending)",
-      transactionCode: "(parse pending)",
-      transactionType: "(parse pending)",
-      shares: 0,
-      documentUrl,
-      ticker: ticker || null,
-      filerName,
-      accessionNumber: filing.accessionNumber,
-      formType: filing.form,
-      filingDate: filing.filingDate,
-      deepParsingPending: true,
-    },
+    attrs,
     source: externalProvenance(
       "sec_edgar",
       filing.accessionNumber,
@@ -244,6 +425,8 @@ export async function mapForm4ToSignal(
       Date.now()
     ),
   };
+
+  return { signal, metrics };
 }
 
 /**
@@ -295,23 +478,46 @@ export async function mapProxyStatementToSignal(
   };
 }
 
+export interface DispatchOptions {
+  /** v1.2: pass-through to mapForm4ToSignal. */
+  form4?: Form4MapOptions;
+}
+
+export interface DispatchResult {
+  signal: Signal | null;
+  /** Populated only when the filing was a Form 4 with deep-parse attempted. */
+  form4Metrics?: Form4MapMetrics;
+}
+
 /**
- * v1.1 dispatcher — choose the right mapper for a given form type.
- * Returns null if the form type isn't recognized (orchestrator should skip).
+ * v1.2 dispatcher — choose the right mapper for a given form type.
+ * Returns null signal if the form type isn't recognized (orchestrator
+ * should skip). Form 4 mapper additionally returns extraction metrics so
+ * the orchestrator can budget XML fetches and surface per-sync stats.
  */
 export async function mapFilingToSignal(
   workspaceId: string,
   filing: SecFilingRecord,
-  submission: SecSubmissionResponse
-): Promise<Signal | null> {
+  submission: SecSubmissionResponse,
+  options: DispatchOptions = {},
+  log?: Logger
+): Promise<DispatchResult> {
   const form = (filing.form || "").trim().toUpperCase();
-  if (form === "8-K") return await mapEightKToSignal(workspaceId, filing, submission);
+  if (form === "8-K") {
+    const s = await mapEightKToSignal(workspaceId, filing, submission);
+    return { signal: s };
+  }
   if (form === "10-K" || form === "10-Q" || form === "10-K/A" || form === "10-Q/A") {
-    return await mapPeriodicReportToSignal(workspaceId, filing, submission);
+    const s = await mapPeriodicReportToSignal(workspaceId, filing, submission);
+    return { signal: s };
   }
-  if (form === "4" || form === "4/A") return await mapForm4ToSignal(workspaceId, filing, submission);
+  if (form === "4" || form === "4/A") {
+    const r = await mapForm4ToSignal(workspaceId, filing, submission, options.form4 || {}, log);
+    return { signal: r.signal, form4Metrics: r.metrics };
+  }
   if (form === "DEF 14A" || form === "DEFM14A" || form === "PRE 14A") {
-    return await mapProxyStatementToSignal(workspaceId, filing, submission);
+    const s = await mapProxyStatementToSignal(workspaceId, filing, submission);
+    return { signal: s };
   }
-  return null;
+  return { signal: null };
 }

@@ -135,3 +135,65 @@ export function buildDocumentUrl(cik: string, accessionNumber: string, primaryDo
   const cikInt = String(parseInt(cik, 10));
   return `https://www.sec.gov/Archives/edgar/data/${cikInt}/${accNoDashes}/${primaryDocument}`;
 }
+
+/**
+ * v1.2: fetch the raw body of a filing document (XML for Form 4, HTML for
+ * 10-K/Q and DEF 14A). Respects the SEC fair-access User-Agent header and
+ * the strict sec_edgar rate limit. Caller supplies the URL built via
+ * `buildDocumentUrl` from the filing record.
+ *
+ * Returns the body as a string. Throws on HTTP failure (caller is expected
+ * to catch + degrade gracefully — a Form 4 with no parsed body should still
+ * land as a metadata-only Signal, not block the whole sync).
+ */
+export async function fetchFilingDoc(
+  url: string,
+  options: { timeoutMs?: number; maxBytes?: number } = {},
+  log?: Logger
+): Promise<string> {
+  const userAgent = requireSecret("secEdgar").userAgent;
+  await acquireTokens("sec_edgar", 1);
+
+  const op = async (): Promise<string> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/xml,text/xml,text/html;q=0.9,*/*;q=0.5",
+          "User-Agent": userAgent,
+          "Accept-Encoding": "gzip, deflate",
+        },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "<no body>");
+        const err = new Error(
+          `SEC EDGAR doc fetch failed: HTTP ${response.status} ${url} — ${text.slice(0, 200)}`
+        );
+        (err as any).statusCode = response.status;
+        throw err;
+      }
+      const contentLength = Number(response.headers.get("content-length") || "0");
+      const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
+      if (contentLength > 0 && contentLength > maxBytes) {
+        const err = new Error(`SEC EDGAR doc too large: ${contentLength} bytes ${url}`);
+        (err as any).oversize = true;
+        throw err;
+      }
+      const ab = await response.arrayBuffer();
+      if (ab.byteLength > maxBytes) {
+        const err = new Error(
+          `SEC EDGAR doc too large after fetch: ${ab.byteLength} bytes ${url}`
+        );
+        (err as any).oversize = true;
+        throw err;
+      }
+      return Buffer.from(ab).toString("utf8");
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  return withRetry(op, { source: "sec_edgar", operationName: "fetch_filing_doc", log });
+}

@@ -13,6 +13,12 @@ export interface SecEdgarConfig {
   filingTypes: string[];
   /** Months of history to backfill on first sync. */
   lookBackMonths: number;
+  /** v1.2: fetch + parse Form 4 XML for insider transaction detail. Default true. */
+  extractForm4Detail?: boolean;
+  /** v1.2: cap on per-sync Form 4 XML fetches (each is one extra HTTP call). Default 60. */
+  maxForm4DeepParsesPerSync?: number;
+  /** v1.2: skip mechanical Form 4 codes (F=tax-withhold, G=gift) from deep extraction. Default false. */
+  skipMechanicalForm4Codes?: boolean;
   initializedAt?: number;
   disabled?: boolean;
 }
@@ -44,6 +50,9 @@ export const DEFAULT_SEC_EDGAR_CONFIG: SecEdgarConfig = {
   watchlistCiks: DEFAULT_CIK_WATCHLIST,
   filingTypes: ["8-K", "10-K", "10-Q", "4", "DEF 14A"],
   lookBackMonths: 6,
+  extractForm4Detail: true,
+  maxForm4DeepParsesPerSync: 60,
+  skipMechanicalForm4Codes: false,
 };
 
 export async function loadConfig(workspaceId: string, log?: Logger): Promise<SecEdgarConfig> {
