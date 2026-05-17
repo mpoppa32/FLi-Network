@@ -8,6 +8,17 @@ export interface GaoProtestConfig {
   trackedOrgs: string[];
   /** Months of history to consider on first sync. Per OQ-1 (LOCKED). */
   lookBackMonths: number;
+  /** v1.1: fetch + parse the decision PDF for each Signal. Default true. */
+  extractDecisionPdfs?: boolean;
+  /** v1.1: max PDF bytes to download. Default 8MB. */
+  maxPdfBytes?: number;
+  /** v1.1: max chars of extracted text retained on Signal. Default 60,000. */
+  maxDecisionTextChars?: number;
+  /** v1.1: per-PDF extraction timeout in ms. Default 45,000. */
+  pdfExtractionTimeoutMs?: number;
+  /** v1.1: cap on how many PDFs to extract in a single sync run. Default 30
+   *  (RSS publishes only newly-decided protests; this is a safety bound). */
+  maxPdfsPerSync?: number;
   initializedAt?: number;
   disabled?: boolean;
 }
@@ -15,6 +26,11 @@ export interface GaoProtestConfig {
 export const DEFAULT_GAO_CONFIG: GaoProtestConfig = {
   trackedOrgs: [],
   lookBackMonths: 12,
+  extractDecisionPdfs: true,
+  maxPdfBytes: 8 * 1024 * 1024,
+  maxDecisionTextChars: 60_000,
+  pdfExtractionTimeoutMs: 45_000,
+  maxPdfsPerSync: 30,
 };
 
 export async function loadConfig(workspaceId: string, log?: Logger): Promise<GaoProtestConfig> {

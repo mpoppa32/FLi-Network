@@ -34930,20 +34930,22 @@ window._phase85Sources = {
   },
   gao_protest: {
     displayName: 'GAO Bid Protest',
-    subtitle: 'Phase 8.5.5 · Protest Decisions',
+    subtitle: 'Phase 8.5.5 v1.1 · Protest Decisions + PDF Extraction',
     color: '#b34040',
     callable: 'triggerGaoProtestSync',
     entityType: 'Signal',
     requiresKey: null,
     cadence: 'Daily · 13:00 UTC (08:00 ET)',
     cadenceCron: '0 13 * * *',
-    description: 'GAO bid protest decisions via RSS. Maps each decision to a Signal entity with type "protest". Cross-source linkage to existing Opportunities by solicitation number (V1.1).',
+    description: 'GAO bid protest decisions via RSS. v1.1 fetches each decision PDF and extracts outcome (sustained/denied/dismissed/withdrawn/settled), awardee company, agency, solicitation + contract numbers, filed/decided dates, and corrective-action text. Awardee + agency Orgs auto-resolved; visible as colored outcome chips in cross-source touches popover.',
     badgeId: 'gao-protest-source-status',
     configPath: 'sources/gao_protest/config',
     healthPath: 'sources/gao_protest',
     fields: [
       { key: 'trackedOrgs', label: 'Track specific orgs (Org IDs)', placeholder: '(empty = track all protests)', kind: 'csv' },
-      { key: 'lookBackMonths', label: 'Lookback months', placeholder: '12', kind: 'number', default: 12 }
+      { key: 'lookBackMonths', label: 'Lookback months', placeholder: '12', kind: 'number', default: 12 },
+      { key: 'extractDecisionPdfs', label: 'Extract decision PDFs (v1.1)', kind: 'bool', default: true },
+      { key: 'maxPdfsPerSync', label: 'Max PDFs per sync', placeholder: '30', kind: 'number', default: 30 }
     ],
     entityCounter: { path: 'signals', filterType: 'protest', label: 'protest Signals' }
   },
@@ -35911,10 +35913,14 @@ window._renderEntityTouches = function(node, t, nodes) {
       };
     }));
   }
-  // Signals
+  // Signals — protest signals get enriched rendering (GAO v1.1)
   if (t.signals.length > 0) {
     h += window._touchesSection('Signals (across all sources)', t.signals.length, 'var(--gold)', t.signals.slice(0,15).map(function(sig){
       var attrs = sig.attrs || {};
+      // GAO protest v1.1: outcome chip + awardee + corrective action
+      if (sig.type === 'protest') {
+        return window._protestTouchRow(sig, attrs);
+      }
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36050,13 +36056,63 @@ window._touchesSection = function(label, count, color, rows) {
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     h += '<div ' + (r.onclick ? 'onclick="' + r.onclick + '" style="cursor:pointer;' : 'style="') + 'padding:7px 12px;border-bottom:1px solid rgba(0,0,0,.04);display:flex;justify-content:space-between;gap:10px;align-items:baseline" onmouseover="this.style.backgroundColor=\'rgba(0,0,0,.03)\'" onmouseout="this.style.backgroundColor=\'\'">';
-    h += '<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (r.title||'').toString().replace(/</g,'&lt;') + '</div>';
-    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (r.subtitle||'').toString().replace(/</g,'&lt;') + '</div></div>';
-    if (r.right) h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + color + ';text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">' + (r.right||'').toString().replace(/</g,'&lt;') + '</span>';
+    h += '<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (r.titleHtml || (r.title||'').toString().replace(/</g,'&lt;')) + '</div>';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (r.subtitleHtml || (r.subtitle||'').toString().replace(/</g,'&lt;')) + '</div></div>';
+    if (r.rightHtml) h += r.rightHtml;
+    else if (r.right) h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + (r.rightColor || color) + ';text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">' + (r.right||'').toString().replace(/</g,'&lt;') + '</span>';
     h += '</div>';
   }
   h += '</div></div>';
   return h;
+};
+
+// GAO Bid Protest v1.1: enriched touch-row renderer for protest Signals.
+// Surfaces outcome chip (color-coded), awardee, docket, decision date,
+// and corrective-action indicator from the v1.1-extracted ProtestAttrs.
+window._protestTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+  var protestor = attrs.protestorName || '(unknown protestor)';
+  var awardee = attrs.awardeeName || '';
+  var docket = attrs.docketNumber || '';
+  var decided = attrs.decidedAt || sig.occurredAt;
+  var outcome = (attrs.outcome || '').toString();
+  var hasCorrective = !!attrs.correctiveAction;
+  var solnum = attrs.solicitationNum || '';
+
+  // Outcome → palette mapping
+  var palette = {
+    'sustained':         { fg:'#3a8a5c', bg:'rgba(58,138,92,.12)',  label:'Sustained' },
+    'denied':            { fg:'#7d7669', bg:'rgba(125,118,105,.10)', label:'Denied' },
+    'dismissed_full':    { fg:'#9a4040', bg:'rgba(154,64,64,.10)',   label:'Dismissed' },
+    'dismissed_partial': { fg:'#9a4040', bg:'rgba(154,64,64,.10)',   label:'Dismissed (partial)' },
+    'withdrawn':         { fg:'#7d7669', bg:'rgba(125,118,105,.10)', label:'Withdrawn' },
+    'settled':           { fg:'#d4823a', bg:'rgba(212,130,58,.12)',  label:'Settled / Corrective' }
+  };
+  var pal = palette[outcome] || { fg:'var(--t3)', bg:'rgba(125,118,105,.06)', label:outcome.replace(/_/g,' ') || 'Decision' };
+
+  var titleHtml = '<span>' + esc(protestor) + '</span>';
+  if (awardee) {
+    titleHtml += '<span style="color:var(--t3);font-weight:400"> v. </span><span>' + esc(awardee) + '</span>';
+  }
+
+  var subtitleParts = [];
+  if (docket) subtitleParts.push(esc(docket));
+  if (solnum) subtitleParts.push('soln ' + esc(solnum));
+  if (decided) subtitleParts.push(new Date(decided).toLocaleDateString());
+  if (hasCorrective) subtitleParts.push('<span style="color:#d4823a">+ corrective action</span>');
+  if (attrs.decisionTextLength) subtitleParts.push(Math.round(attrs.decisionTextLength/1000) + 'k chars extracted');
+  var subtitleHtml = subtitleParts.join(' · ');
+
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + pal.bg + ';color:' + pal.fg + ';border:1px solid ' + pal.fg + '40">' + esc(pal.label) + '</span>';
+
+  var clickUrl = attrs.decisionPdfUrl || attrs.decisionUrl || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
 };
 
 // v1.2 admin: clear all Brief feedback (resets dismiss/pin/snooze state)

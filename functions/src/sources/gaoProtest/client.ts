@@ -140,4 +140,95 @@ export function extractDocketNumbers(item: GaoRssItem): string[] {
   return Array.from(set);
 }
 
+/**
+ * Resolve a GAO decision page URL to its PDF URL. GAO RSS `<link>` values
+ * usually point to an HTML product page (gao.gov/products/B-XXXXXX), not the
+ * PDF itself. This walks the HTML to find the PDF link.
+ *
+ * Strategy:
+ *   1. If the URL already ends in .pdf — return as-is.
+ *   2. Otherwise fetch the HTML page and scan for href="...{anything}.pdf"
+ *      under known GAO asset roots (`/assets/`, `legaldecisions`, etc.).
+ *   3. Return the first absolute-resolved PDF link, or null.
+ *
+ * Returns null on any failure; callers should treat null as "no PDF" and
+ * skip extraction rather than fail the sync.
+ */
+export async function findPdfUrlOnDecisionPage(
+  decisionPageUrl: string,
+  log?: Logger
+): Promise<string | null> {
+  if (!decisionPageUrl) return null;
+  // Direct PDF link case
+  if (/\.pdf($|\?)/i.test(decisionPageUrl)) return decisionPageUrl;
+
+  try {
+    await acquireTokens("gao_protest", 1);
+    const op = async (): Promise<string> => {
+      const r = await fetch(decisionPageUrl, {
+        headers: {
+          Accept: "text/html,application/xhtml+xml,*/*;q=0.5",
+          "User-Agent": USER_AGENT,
+        },
+      });
+      if (!r.ok) {
+        const err = new Error(
+          `GAO decision page fetch failed: HTTP ${r.status} ${decisionPageUrl}`
+        );
+        (err as any).statusCode = r.status;
+        throw err;
+      }
+      return await r.text();
+    };
+    const html = await withRetry(op, {
+      source: "gao_protest",
+      operationName: "fetch_decision_page",
+      log,
+    });
+
+    const candidates: string[] = [];
+    const hrefPattern = /href\s*=\s*["']([^"']+\.pdf(?:\?[^"']*)?)["']/gi;
+    let m: RegExpExecArray | null;
+    while ((m = hrefPattern.exec(html)) !== null) {
+      candidates.push(m[1]);
+    }
+    if (candidates.length === 0) return null;
+
+    // Prefer GAO asset URLs / legaldecisions paths over arbitrary PDFs
+    candidates.sort((a, b) => {
+      const score = (u: string) =>
+        (/\/assets\//i.test(u) ? 4 : 0) +
+        (/legaldecisions/i.test(u) ? 3 : 0) +
+        (/\.gao\.gov/i.test(u) ? 2 : 0) +
+        (/^https?:/i.test(u) ? 1 : 0);
+      return score(b) - score(a);
+    });
+
+    return resolveAbsoluteUrl(decisionPageUrl, candidates[0]);
+  } catch (err) {
+    log?.warn("gao_pdf_url_lookup_failed", {
+      url: decisionPageUrl,
+      message: (err as Error).message,
+    });
+    return null;
+  }
+}
+
+function resolveAbsoluteUrl(base: string, href: string): string {
+  if (/^https?:\/\//i.test(href)) return href;
+  try {
+    return new URL(href, base).toString();
+  } catch {
+    if (href.startsWith("/")) {
+      try {
+        const b = new URL(base);
+        return `${b.origin}${href}`;
+      } catch {
+        return href;
+      }
+    }
+    return href;
+  }
+}
+
 export { FALLBACK_URL };
