@@ -12,11 +12,11 @@ import {
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
 import { fetchSubmissions, flattenRecentFilings, filterFilings } from "./client";
-import { mapEightKToSignal, upsertSignal } from "./mapper";
+import { mapFilingToSignal, upsertSignal } from "./mapper";
 import { loadConfig, validateConfig, normalizeCik, type SecEdgarConfig } from "./config";
 
 export const SOURCE_NAME = "sec_edgar";
-export const SOURCE_VERSION = "0.1.0";
+export const SOURCE_VERSION = "1.1.0";
 
 export interface SecEdgarSyncOptions {
   /** Max filings per CIK to process. Default 30. */
@@ -90,9 +90,9 @@ export async function syncWorkspace(
         result.ciksProcessed++;
 
         for (const filing of filtered) {
-          if (filing.form !== "8-K") continue; // v1: 8-K only
           try {
-            const signal = await mapEightKToSignal(workspaceId, filing, submission);
+            const signal = await mapFilingToSignal(workspaceId, filing, submission);
+            if (!signal) continue; // unsupported form type — skip silently
             if (options.dryRun) continue;
             const r = await upsertSignal(workspaceId, signal);
             if (r.action === "created") result.signalsCreated++;

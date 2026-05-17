@@ -42,7 +42,7 @@ export const DEFAULT_CIK_WATCHLIST = [
 
 export const DEFAULT_SEC_EDGAR_CONFIG: SecEdgarConfig = {
   watchlistCiks: DEFAULT_CIK_WATCHLIST,
-  filingTypes: ["8-K"], // v1: 8-K only; v1.1 adds 10-K, 10-Q, 4, DEF 14A
+  filingTypes: ["8-K", "10-K", "10-Q", "4", "DEF 14A"],
   lookBackMonths: 6,
 };
 

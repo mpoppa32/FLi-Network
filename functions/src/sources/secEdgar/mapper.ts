@@ -132,3 +132,186 @@ export async function upsertSignal(
   await db.ref(path).set(signal);
   return { action: "updated", signalId: signal.id };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v1.1 — Additional filing types (metadata-only; deep doc parsing deferred)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 10-K / 10-Q — annual/quarterly periodic reports. v1.1 stores the filing
+ * metadata; v1.2 will add extractedSections (MD&A snippet, risk factors,
+ * defense segment backlog) via document fetch + parse.
+ */
+export async function mapPeriodicReportToSignal(
+  workspaceId: string,
+  filing: SecFilingRecord,
+  submission: SecSubmissionResponse
+): Promise<Signal> {
+  const filerName = submission.name;
+  const ticker = submission.tickers?.[0];
+  const { orgId: filerOrgId } = await resolveRecipientOrg(workspaceId, filerName, null, {
+    autoCreate: true,
+    type: "company",
+  });
+  const documentUrl = buildDocumentUrl(filing.cik, filing.accessionNumber, filing.primaryDocument);
+  const reportDate = filing.reportDate ? Date.parse(filing.reportDate) : 0;
+  const occurredAt = filing.filingDateMs || Date.now();
+  const signalId = "sg_sec_" + filing.accessionNumber.replace(/[^A-Za-z0-9_-]/g, "_");
+  const hash = hashFields(
+    { accessionNumber: filing.accessionNumber, form: filing.form, reportDate: filing.reportDate || "" },
+    ["accessionNumber", "form", "reportDate"]
+  );
+  return {
+    id: signalId,
+    type: "periodic_report",
+    subjectIds: [filerOrgId],
+    relatedIds: [],
+    occurredAt,
+    attrs: {
+      cik: filing.cik,
+      ticker: ticker || null,
+      filerName,
+      accessionNumber: filing.accessionNumber,
+      formType: filing.form,
+      reportDate: Number.isFinite(reportDate) ? reportDate : 0,
+      documentUrl,
+      extractedSections: {
+        // v1.2 will populate these via doc fetch + parse
+      },
+      filingDate: filing.filingDate,
+      primaryDocDescription: filing.primaryDocDescription,
+    },
+    source: externalProvenance(
+      "sec_edgar",
+      filing.accessionNumber,
+      documentUrl,
+      hash,
+      Date.now()
+    ),
+  };
+}
+
+/**
+ * Form 4 — insider transaction. v1.1 stores filing metadata; v1.2 will
+ * parse the XML doc for insider name/title/shares/price.
+ */
+export async function mapForm4ToSignal(
+  workspaceId: string,
+  filing: SecFilingRecord,
+  submission: SecSubmissionResponse
+): Promise<Signal> {
+  const filerName = submission.name;
+  const ticker = submission.tickers?.[0];
+  const { orgId: filerOrgId } = await resolveRecipientOrg(workspaceId, filerName, null, {
+    autoCreate: true,
+    type: "company",
+  });
+  const documentUrl = buildDocumentUrl(filing.cik, filing.accessionNumber, filing.primaryDocument);
+  const occurredAt = filing.filingDateMs || Date.now();
+  const signalId = "sg_sec_" + filing.accessionNumber.replace(/[^A-Za-z0-9_-]/g, "_");
+  const hash = hashFields(
+    { accessionNumber: filing.accessionNumber, form: filing.form },
+    ["accessionNumber", "form"]
+  );
+  return {
+    id: signalId,
+    type: "insider_transaction",
+    subjectIds: [filerOrgId],
+    relatedIds: [],
+    occurredAt,
+    attrs: {
+      cik: filing.cik,
+      // v1.1: insider metadata not yet parsed (deferred to v1.2)
+      insiderCik: filing.cik,
+      insiderName: filing.primaryDocDescription || "(see filing document)",
+      insiderTitle: "(parse pending)",
+      transactionCode: "(parse pending)",
+      transactionType: "(parse pending)",
+      shares: 0,
+      documentUrl,
+      ticker: ticker || null,
+      filerName,
+      accessionNumber: filing.accessionNumber,
+      formType: filing.form,
+      filingDate: filing.filingDate,
+      deepParsingPending: true,
+    },
+    source: externalProvenance(
+      "sec_edgar",
+      filing.accessionNumber,
+      documentUrl,
+      hash,
+      Date.now()
+    ),
+  };
+}
+
+/**
+ * DEF 14A — proxy statement. v1.1 stores filing metadata; future v1.2 will
+ * extract executive compensation tables and shareholder proposals.
+ */
+export async function mapProxyStatementToSignal(
+  workspaceId: string,
+  filing: SecFilingRecord,
+  submission: SecSubmissionResponse
+): Promise<Signal> {
+  const filerName = submission.name;
+  const ticker = submission.tickers?.[0];
+  const { orgId: filerOrgId } = await resolveRecipientOrg(workspaceId, filerName, null, {
+    autoCreate: true,
+    type: "company",
+  });
+  const documentUrl = buildDocumentUrl(filing.cik, filing.accessionNumber, filing.primaryDocument);
+  const occurredAt = filing.filingDateMs || Date.now();
+  const signalId = "sg_sec_" + filing.accessionNumber.replace(/[^A-Za-z0-9_-]/g, "_");
+  const hash = hashFields(
+    { accessionNumber: filing.accessionNumber, form: filing.form },
+    ["accessionNumber", "form"]
+  );
+  return {
+    id: signalId,
+    type: "proxy_statement",
+    subjectIds: [filerOrgId],
+    relatedIds: [],
+    occurredAt,
+    attrs: {
+      cik: filing.cik,
+      ticker: ticker || null,
+      filerName,
+      accessionNumber: filing.accessionNumber,
+      formType: filing.form,
+      documentUrl,
+      filingDate: filing.filingDate,
+      primaryDocDescription: filing.primaryDocDescription,
+      deepParsingPending: true,
+    },
+    source: externalProvenance(
+      "sec_edgar",
+      filing.accessionNumber,
+      documentUrl,
+      hash,
+      Date.now()
+    ),
+  };
+}
+
+/**
+ * v1.1 dispatcher — choose the right mapper for a given form type.
+ * Returns null if the form type isn't recognized (orchestrator should skip).
+ */
+export async function mapFilingToSignal(
+  workspaceId: string,
+  filing: SecFilingRecord,
+  submission: SecSubmissionResponse
+): Promise<Signal | null> {
+  const form = (filing.form || "").trim().toUpperCase();
+  if (form === "8-K") return await mapEightKToSignal(workspaceId, filing, submission);
+  if (form === "10-K" || form === "10-Q" || form === "10-K/A" || form === "10-Q/A") {
+    return await mapPeriodicReportToSignal(workspaceId, filing, submission);
+  }
+  if (form === "4" || form === "4/A") return await mapForm4ToSignal(workspaceId, filing, submission);
+  if (form === "DEF 14A" || form === "DEFM14A" || form === "PRE 14A") {
+    return await mapProxyStatementToSignal(workspaceId, filing, submission);
+  }
+  return null;
+}
