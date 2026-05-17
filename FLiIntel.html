@@ -8513,6 +8513,20 @@ input[type="url"], textarea, select {
           </div>
         </div>
 
+        <!-- ── Phase 8.5.4 v1: Recompete Watch — expiring Awards as Proposed Pursuits ── -->
+        <div id="recompete-watch-card" class="daily-brief-card" data-surface="light" style="margin-top:14px">
+          <div class="brief-card-header">
+            <span>◆ RECOMPETE WATCH · EXPIRING CONTRACTS</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span class="brief-date" id="recompete-watch-count">—</span>
+              <button id="recompete-watch-refresh" onclick="window._refreshRecompeteWatch&&window._refreshRecompeteWatch()" style="padding:3px 8px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase">Refresh</button>
+            </span>
+          </div>
+          <div id="recompete-watch-body" style="padding:12px 0">
+            <div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">Recompete Watch populates after USAspending sync writes Award entities with popEnd within 18 months. Open Settings → USAspending.gov → Run Sync Now to populate.</div>
+          </div>
+        </div>
+
         <!-- ── CAPTURE HEADER ──────────────────────────────────── -->
         <div class="cap-header">
           <div class="cap-eyebrow">
@@ -35168,6 +35182,192 @@ window._refreshExternalIntelligence = async function() {
 // Auto-load when workspace context changes; also retry on interval
 setTimeout(function(){ window._loadExternalIntelligence && window._loadExternalIntelligence(); }, 4000);
 setInterval(function(){ window._loadExternalIntelligence && window._loadExternalIntelligence(); }, 120000);
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.5.4 v1 — RECOMPETE WATCH (Brief surface)
+// Reads workspaces/{wsId}/awards filtered by lifecycleState in
+// ['expiring','expired'] and renders as "Proposed Pursuits" candidates.
+// Convert-to-Pursuit creates an Opportunity at stage 'awareness' with the
+// incumbent prime auto-populated in posture.adversaries.
+// ══════════════════════════════════════════════════════════════════════════
+
+function _fmtDollars(n) {
+  if (n == null || isNaN(n)) return '?';
+  if (n >= 1e9) return '$' + (n/1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K';
+  return '$' + n.toLocaleString();
+}
+
+window._renderRecompeteWatch = function(awards, orgMap) {
+  var body = document.getElementById('recompete-watch-body');
+  var countEl = document.getElementById('recompete-watch-count');
+  if (!body) return;
+  if (!awards || awards.length === 0) {
+    body.innerHTML = '<div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">No expiring contracts in your workspace yet. After USAspending sync runs, awards with popEnd within 18 months appear here as recompete candidates.</div>';
+    if (countEl) countEl.textContent = '0 items';
+    return;
+  }
+  // Sort by popEnd ascending (soonest first)
+  awards.sort(function(a, b) { return (a.popEnd || 0) - (b.popEnd || 0); });
+  if (countEl) countEl.textContent = awards.length + ' item' + (awards.length === 1 ? '' : 's');
+
+  var h = '';
+  var now = Date.now();
+  for (var i = 0; i < Math.min(awards.length, 25); i++) {
+    var aw = awards[i];
+    var daysToEnd = Math.floor(((aw.popEnd || 0) - now) / (24*60*60*1000));
+    var daysClass = daysToEnd < 0 ? 'color:#b34040'
+                  : daysToEnd < 90 ? 'color:#b34040'
+                  : daysToEnd < 180 ? 'color:var(--gold)'
+                  : 'color:#3a8a5c';
+    var primeName = (orgMap && orgMap[aw.primeOrgId] && orgMap[aw.primeOrgId].name) || aw.primeUei || aw.piid || '(unknown)';
+    var customerName = (orgMap && orgMap[aw.customerOrgId] && orgMap[aw.customerOrgId].name) || '(unknown customer)';
+    var dollars = _fmtDollars(aw.obligated || 0);
+    var lifecycleBadge = aw.lifecycleState === 'expired'
+      ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:#b34040;background:rgba(179,64,64,.1);padding:1px 5px;border-radius:2px;text-transform:uppercase">expired</span>'
+      : '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--gold);background:rgba(212,130,58,.1);padding:1px 5px;border-radius:2px;text-transform:uppercase">expiring</span>';
+    var hasProposed = aw._proposedOppId ? true : false;
+    h += '<div style="padding:9px 14px;border-bottom:1px solid rgba(0,0,0,.04);display:flex;gap:10px;align-items:flex-start">';
+    h += '  <div style="flex:1;min-width:0">';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (primeName || '').replace(/</g,'&lt;') + ' ' + lifecycleBadge + '</div>';
+    h += '    <div style="color:var(--t2);font-size:11px">' + (customerName || '').replace(/</g,'&lt;') + ' · NAICS ' + (aw.naics || '?') + ' · ' + dollars + '</div>';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:2px">PIID ' + (aw.piid || '').slice(0,40) + ' · popEnd ' + (aw.popEnd ? new Date(aw.popEnd).toLocaleDateString() : '?') + ' · <span style="' + daysClass + '">' + (daysToEnd >= 0 ? daysToEnd + ' days' : Math.abs(daysToEnd) + ' days past') + '</span></div>';
+    h += '  </div>';
+    if (hasProposed) {
+      h += '  <button onclick="(window._goToProposedOpp && window._goToProposedOpp(\'' + aw._proposedOppId + '\'))" style="padding:4px 10px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;align-self:center">View Pursuit</button>';
+    } else {
+      h += '  <button onclick="window._convertAwardToPursuit&&window._convertAwardToPursuit(\'' + aw.id + '\')" style="padding:4px 10px;border:1px solid rgba(58,138,92,.4);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;align-self:center">+ Pursue</button>';
+    }
+    h += '</div>';
+  }
+  if (awards.length > 25) {
+    h += '<div style="padding:8px 14px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">Showing 25 of ' + awards.length + ' total</div>';
+  }
+  body.innerHTML = h;
+};
+
+window._loadRecompeteWatch = async function() {
+  if (!currentWsId) return;
+  try {
+    var [awardsSnap, oppsSnap, nodesSnap] = await Promise.all([
+      get(ref(db, 'workspaces/' + currentWsId + '/awards')),
+      get(ref(db, 'workspaces/' + currentWsId + '/opportunities')),
+      get(ref(db, 'workspaces/' + currentWsId + '/nodes'))
+    ]);
+    var awards = awardsSnap.exists() ? awardsSnap.val() : {};
+    var opps = oppsSnap.exists() ? oppsSnap.val() : {};
+    var nodes = nodesSnap.exists() ? nodesSnap.val() : {};
+
+    // Build org-name lookup
+    var orgMap = nodes;
+
+    // Build proposed-opp-by-award lookup
+    var proposedByAward = {};
+    for (var oppId in opps) {
+      var opp = opps[oppId];
+      if (opp && opp._sourceAwardId) {
+        proposedByAward[opp._sourceAwardId] = oppId;
+      }
+    }
+
+    // Filter to expiring or recently expired Awards
+    var filtered = [];
+    for (var awId in awards) {
+      var aw = awards[awId];
+      if (!aw || !aw.lifecycleState) continue;
+      if (aw.lifecycleState === 'expiring' || aw.lifecycleState === 'expired') {
+        if (proposedByAward[awId]) aw._proposedOppId = proposedByAward[awId];
+        filtered.push(aw);
+      }
+    }
+    window._renderRecompeteWatch(filtered, orgMap);
+  } catch (e) {
+    var body = document.getElementById('recompete-watch-body');
+    if (body) body.innerHTML = '<div style="padding:10px 14px;color:#b34040;font-size:11px">Error: ' + (e && e.message ? e.message : e) + '</div>';
+  }
+};
+
+window._refreshRecompeteWatch = async function() {
+  var btn = document.getElementById('recompete-watch-refresh');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  await window._loadRecompeteWatch();
+  if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+};
+
+window._convertAwardToPursuit = async function(awardId) {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  try {
+    // Fetch the Award
+    var snap = await get(ref(db, 'workspaces/' + currentWsId + '/awards/' + awardId));
+    if (!snap.exists()) { toast('Award not found'); return; }
+    var aw = snap.val();
+    // Fetch the prime Organization for the name
+    var primeName = aw.primeUei || aw.piid || 'Unknown Prime';
+    try {
+      var primeSnap = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + aw.primeOrgId));
+      if (primeSnap.exists()) primeName = primeSnap.val().name || primeName;
+    } catch (e) {}
+
+    var customerName = '';
+    try {
+      var custSnap = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + aw.customerOrgId));
+      if (custSnap.exists()) customerName = custSnap.val().name || '';
+    } catch (e) {}
+
+    if (!confirm('Convert this expiring contract to a Pursuit?\n\nIncumbent: ' + primeName + '\nCustomer: ' + customerName + '\nNAICS: ' + (aw.naics||'?') + '\nPopEnd: ' + (aw.popEnd ? new Date(aw.popEnd).toLocaleDateString() : '?') + '\n\nA new Opportunity will be created at stage "awareness" with the incumbent in posture.adversaries.')) return;
+
+    var newOppId = 'opp_recompete_' + awardId.replace(/^aw_/, '').slice(0, 30) + '_' + Date.now().toString(36);
+    var opp = {
+      id: newOppId,
+      name: 'Recompete · ' + primeName + ' · NAICS ' + (aw.naics || '?'),
+      agency: customerName,
+      vehicle: '',
+      value: aw.baseAndAllOptionsValue ? '$' + (aw.baseAndAllOptionsValue/1e6).toFixed(1) + 'M (predecessor)' : '',
+      stage: 'awareness',
+      stageEnteredAt: Date.now(),
+      notes: 'Generated from Recompete Watch on ' + new Date().toLocaleDateString() + '.\n\nPredecessor Award:\n  PIID: ' + (aw.piid || '?') + '\n  Incumbent: ' + primeName + '\n  Customer: ' + customerName + '\n  PopEnd: ' + (aw.popEnd ? new Date(aw.popEnd).toISOString() : '?') + '\n  Award value: ' + (aw.baseAndAllOptionsValue ? '$' + aw.baseAndAllOptionsValue.toLocaleString() : '?'),
+      solicitationNumber: '',
+      meetings: [],
+      posture: { adversaries: aw.primeOrgId ? [aw.primeOrgId] : [] },
+      customerOrgId: aw.customerOrgId || '',
+      naicsCodes: aw.naics ? [aw.naics] : [],
+      pscCodes: aw.psc ? [aw.psc] : [],
+      _sourceAwardId: awardId,
+      source: {
+        system: 'operator_manual',
+        externalId: awardId,
+        url: null,
+        fetchedAt: Date.now(),
+        refreshedAt: Date.now(),
+        hash: null
+      },
+      updatedAt: new Date().toISOString()
+    };
+
+    await fbSet('workspaces/' + currentWsId + '/opportunities/' + newOppId, opp);
+    toast('Pursuit created · ' + primeName + ' added as adversary');
+    window._refreshRecompeteWatch();
+  } catch (e) {
+    toast('Convert failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._goToProposedOpp = function(oppId) {
+  if (!oppId) return;
+  // Try to navigate into the existing pipeline / inspector for this Opp
+  if (typeof window.openOppDetail === 'function') {
+    window.openOppDetail(oppId);
+  } else if (typeof window.openOpportunity === 'function') {
+    window.openOpportunity(oppId);
+  } else {
+    toast('Pursuit exists: ' + oppId);
+  }
+};
+
+setTimeout(function(){ window._loadRecompeteWatch && window._loadRecompeteWatch(); }, 5000);
+setInterval(function(){ window._loadRecompeteWatch && window._loadRecompeteWatch(); }, 180000);
 
 
 
