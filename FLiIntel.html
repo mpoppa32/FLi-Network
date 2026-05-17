@@ -10298,6 +10298,16 @@ input[type="url"], textarea, select {
             <div id="mcp-save-status" style="font-size:10px;color:var(--green);margin-top:4px;text-align:center"></div>
           </div>
         </div>
+
+        <!-- Phase 8.5 OSINT Migration -->
+        <div style="background:var(--s1);border:1px solid rgba(95,179,184,.15);border-left:3px solid #5fb3b8;border-radius:2px;padding:12px 14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#5fb3b8;font-weight:600">Phase 8.5 OSINT Migration</div>
+            <span id="phase85-migration-status" style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px;border:1px solid var(--b1)">NOT MIGRATED</span>
+          </div>
+          <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">Prepare this workspace for external-source intelligence. Adds source provenance to existing entities; initializes Award entity + per-source config paths. Fully reversible.</div>
+          <button onclick="window._showPhase85MigrationPanel&&window._showPhase85MigrationPanel()" style="padding:5px 12px;border:1px solid rgba(95,179,184,.35);border-radius:2px;background:rgba(95,179,184,.08);color:#5fb3b8;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Migration Panel</button>
+        </div>
       </div>
 
       <!-- ── FOOTER ── -->
@@ -10655,6 +10665,7 @@ input[type="url"], textarea, select {
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getDatabase, ref, set, get, onValue, remove, query, orderByChild, limitToLast, endBefore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
 var FB_CFG = {
   apiKey: "AIzaSyBQW49mGZbUHkWSZ47FgdoUNaoU-Iv9nVo",
@@ -10668,6 +10679,10 @@ var FB_CFG = {
 var fbApp = initializeApp(FB_CFG);
 var auth = getAuth(fbApp);
 var db = getDatabase(fbApp);
+var fbFunctions = getFunctions(fbApp, 'us-central1');
+// Expose to non-module scripts (Phase 8.5 OSINT migration panel uses these)
+window._fbFunctions = fbFunctions;
+window._httpsCallable = httpsCallable;
 
 // ── GOOGLE FEDCM/ONE-TAP KILLER ──────────────────────────────
 // Repeatedly cancels Chrome's injected sign-in prompt.
@@ -34028,6 +34043,326 @@ window._renderMcpSetup = function() {
   return h;
 };
 
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.5 OSINT MIGRATION PANEL
+// Client-side controls for invoking the deployed Cloud Functions:
+//   triggerInventory  — read-only pre-migration audit
+//   triggerMigration  — apply 5-step migration after operator approval
+//   triggerRollback   — revert migration (per-step or full)
+//
+// State lives at: workspaces/{wsId}/migrations/8.5.1/
+//   ├── inventory             (written by inventory; read-only snapshot)
+//   ├── operatorApprovedAt    (operator writes this to gate the migration)
+//   ├── steps/{1..5}          (written by migration as each step completes)
+//   ├── completedAt           (set when validation passes)
+//   ├── validationResult      ('pass' | 'fail')
+//   └── validationErrors      (hard failures from V-1..V-6)
+//
+// Doctrine §IV alignment: this surface shows the operator exactly what the
+// platform knows and what it doesn't. No silent retries; no auto-progression.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._phase85State = { workspaceId: null, snapshot: null };
+
+window._showPhase85MigrationPanel = function() {
+  if (!currentWsId) { toast('Select a workspace first'); return; }
+  var modal = document.getElementById('phase85-migration-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'phase85-migration-modal';
+    modal.className = 'overlay';
+    modal.style.display = 'none';
+    modal.innerHTML = '<div class="modal" style="max-width:760px;max-height:90vh;overflow-y:auto;padding:0">' +
+      '<div id="phase85-modal-body" style="padding:28px 32px">Loading…</div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  window._refreshPhase85MigrationState();
+};
+
+window._refreshPhase85MigrationState = async function() {
+  if (!currentWsId) return;
+  var body = document.getElementById('phase85-modal-body');
+  if (!body) return;
+  try {
+    var snap = await get(ref(db, 'workspaces/' + currentWsId + '/migrations/8.5.1'));
+    var state = snap.exists() ? snap.val() : null;
+    window._phase85State.workspaceId = currentWsId;
+    window._phase85State.snapshot = state;
+    body.innerHTML = window._renderPhase85MigrationPanel(state);
+    window._updatePhase85StatusBadge(state);
+  } catch (e) {
+    body.innerHTML = '<div style="color:#b34040;padding:24px">Error reading migration state: ' + (e && e.message ? e.message : e) + '</div>';
+  }
+};
+
+window._updatePhase85StatusBadge = function(state) {
+  var badge = document.getElementById('phase85-migration-status');
+  if (!badge) return;
+  var label = 'NOT MIGRATED';
+  var bg = 'rgba(255,255,255,.04)';
+  var color = 'var(--t3)';
+  if (state && state.completedAt && state.validationResult === 'pass') {
+    label = 'COMPLETE';
+    bg = 'rgba(58,138,92,.15)';
+    color = '#3a8a5c';
+  } else if (state && state.validationResult === 'fail') {
+    label = 'VALIDATION FAIL';
+    bg = 'rgba(179,64,64,.15)';
+    color = '#b34040';
+  } else if (state && state.operatorApprovedAt) {
+    label = 'APPROVED · READY';
+    bg = 'rgba(212,130,58,.15)';
+    color = 'var(--gold)';
+  } else if (state && state.inventory) {
+    label = 'INVENTORIED';
+    bg = 'rgba(95,179,184,.12)';
+    color = '#5fb3b8';
+  }
+  badge.textContent = label;
+  badge.style.background = bg;
+  badge.style.color = color;
+};
+
+window._renderPhase85MigrationPanel = function(state) {
+  var h = '';
+  // Header
+  h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:20px;margin-bottom:22px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1">';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;letter-spacing:0.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:6px">Phase 8.5.1 · Schema Migration</div>';
+  h += '    <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:24px;font-weight:700;color:var(--text);line-height:1.15;letter-spacing:-0.01em;margin-bottom:6px">Prepare workspace for external sources</div>';
+  h += '    <div style="font-size:12px;color:var(--t2);line-height:1.6">Adds source provenance to existing entities; initializes Award + per-source config paths. Fully reversible. No existing fields deleted or merged.</div>';
+  h += '  </div>';
+  h += '  <button onclick="closeModal(\'phase85-migration-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>';
+  h += '</div>';
+
+  // Workspace context
+  var wsName = (function(){
+    try { var w = (userWorkspaces||[]).find(function(x){return x.id===currentWsId;}); return w && w.name ? w.name : currentWsId; } catch(e){ return currentWsId; }
+  })();
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">';
+  h += '  <div>';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--t3);margin-bottom:3px">Workspace</div>';
+  h += '    <div style="font-size:13px;color:var(--text);font-weight:600">' + (wsName || '(unnamed)') + '</div>';
+  h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);margin-top:2px">' + currentWsId + '</div>';
+  h += '  </div>';
+  h += '  <button onclick="window._refreshPhase85MigrationState()" style="padding:5px 10px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:10px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">Refresh</button>';
+  h += '</div>';
+
+  // State summary
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:10px">Current State</div>';
+
+  var inv = state && state.inventory;
+  h += '  <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 12px;font-size:12px;line-height:1.55">';
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Inventory</div>';
+  if (inv) {
+    var counts = inv.entityCounts || {};
+    var totalNeed = (inv.schemaState && inv.schemaState.entitiesWithoutSource) || 0;
+    var anomalyRate = (inv.anomalyRatePercent != null) ? inv.anomalyRatePercent : '?';
+    h += '<div style="color:var(--text)">' + (counts.nodes && counts.nodes.total || 0) + ' nodes · ' + (counts.opportunities && counts.opportunities.total || 0) + ' pursuits · ' + (counts.meetings && counts.meetings.total || 0) + ' meetings · ' + (counts.signals && counts.signals.total || 0) + ' signals<br>';
+    h += '<span style="color:var(--t2);font-size:11px">' + totalNeed + ' entities need provenance · anomaly rate ' + anomalyRate + '% · est. duration ' + (inv.estimatedDurationSec||0) + 's</span></div>';
+  } else {
+    h += '<div style="color:var(--t3);font-style:italic">Not yet run. Click "Run Inventory" below.</div>';
+  }
+
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Approval</div>';
+  if (state && state.operatorApprovedAt) {
+    h += '<div style="color:#3a8a5c">Approved ' + new Date(state.operatorApprovedAt).toLocaleString() + '</div>';
+  } else {
+    h += '<div style="color:var(--t3);font-style:italic">Not approved</div>';
+  }
+
+  h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Migration</div>';
+  if (state && state.completedAt) {
+    h += '<div style="color:#3a8a5c">Complete ' + new Date(state.completedAt).toLocaleString();
+    if (state.recordsUpdated) {
+      var ru = state.recordsUpdated;
+      var total = (ru.nodes||0)+(ru.opportunities||0)+(ru.meetings||0)+(ru.signals||0);
+      h += ' · ' + total + ' entities updated · ' + (ru.pathsCreated||0) + ' paths created';
+    }
+    h += '</div>';
+  } else if (state && state.steps) {
+    var stepNums = Object.keys(state.steps);
+    h += '<div style="color:var(--gold)">Partial: ' + stepNums.length + '/5 steps recorded</div>';
+  } else {
+    h += '<div style="color:var(--t3);font-style:italic">Not started</div>';
+  }
+
+  if (state && state.validationResult) {
+    h += '    <div style="color:var(--t3);font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em">Validation</div>';
+    if (state.validationResult === 'pass') {
+      h += '<div style="color:#3a8a5c">Pass</div>';
+    } else {
+      h += '<div style="color:#b34040">Fail · ' + ((state.validationErrors||[]).length) + ' hard failures</div>';
+    }
+  }
+
+  h += '  </div>';
+  h += '</div>';
+
+  // Actions
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:12px">Actions</div>';
+  h += '  <div style="display:flex;flex-direction:column;gap:8px">';
+
+  // Inventory button — always enabled
+  h += '    <button onclick="window._runPhase85Inventory()" style="padding:10px 14px;border:1px solid rgba(95,179,184,.4);border-radius:3px;background:rgba(95,179,184,.08);color:#5fb3b8;font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left">1 · Run Inventory <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">Read-only audit; no writes to entities</span></button>';
+
+  // Approve button — enabled when inventory exists and not yet approved
+  var canApprove = !!(inv);
+  var alreadyApproved = !!(state && state.operatorApprovedAt);
+  var approveDisabled = !canApprove || alreadyApproved;
+  h += '    <button onclick="window._approvePhase85Migration()" ' + (approveDisabled ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;opacity:.55"' : 'style="padding:10px 14px;border:1px solid rgba(212,130,58,.45);border-radius:3px;background:rgba(212,130,58,.1);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left"') + '>2 · Approve Migration <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">' + (alreadyApproved ? 'Already approved' : (canApprove ? 'Confirm intent; gates the apply step' : 'Run inventory first')) + '</span></button>';
+
+  // Apply button — enabled when approved and not completed
+  var alreadyComplete = !!(state && state.completedAt && state.validationResult === 'pass');
+  var canApply = alreadyApproved && !alreadyComplete;
+  h += '    <button onclick="window._applyPhase85Migration()" ' + (!canApply ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;opacity:.55"' : 'style="padding:10px 14px;border:1px solid rgba(58,138,92,.45);border-radius:3px;background:rgba(58,138,92,.1);color:#3a8a5c;font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left"') + '>3 · Apply Migration <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">' + (alreadyComplete ? 'Already complete' : (canApply ? 'Runs steps 1–5; validates; commits' : 'Approval required first')) + '</span></button>';
+
+  // Rollback button — enabled when any step has been written
+  var hasAnyStep = !!(state && (state.steps || state.completedAt));
+  h += '    <button onclick="window._rollbackPhase85Migration()" ' + (!hasAnyStep ? 'disabled style="padding:10px 14px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t3);font-size:12px;font-weight:700;cursor:not-allowed;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left;opacity:.55"' : 'style="padding:10px 14px;border:1px solid rgba(179,64,64,.4);border-radius:3px;background:rgba(179,64,64,.08);color:#b34040;font-size:12px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-align:left"') + '>4 · Rollback Migration <span style="float:right;font-weight:400;font-family:IBM Plex Sans,sans-serif;text-transform:none;letter-spacing:0">' + (hasAnyStep ? 'Reverses all steps; restores prior state' : 'Nothing to roll back yet') + '</span></button>';
+
+  h += '  </div>';
+  h += '</div>';
+
+  // Last result display
+  h += '<div id="phase85-last-result" style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;min-height:50px">';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:14px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text);margin-bottom:8px">Last Action Result</div>';
+  h += '  <div id="phase85-last-result-body" style="font-size:12px;color:var(--t2);line-height:1.6;font-family:\'IBM Plex Mono\',monospace">' + (state && state.completedAt ? 'Migration completed at ' + new Date(state.completedAt).toLocaleString() + '. ' + ((state.errors && state.errors.length) ? state.errors.length + ' non-fatal error(s) recorded.' : 'No errors.') : 'No actions taken in this session.') + '</div>';
+  h += '</div>';
+
+  // Doctrine note
+  h += '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--b1);font-size:10px;color:var(--t3);line-height:1.6;font-family:\'IBM Plex Mono\',monospace">';
+  h += 'Migration is per-workspace. No existing fields are deleted or renamed. All writes additive. Operator-input data sacred per Doctrine §V. Full rollback available per migration spec Part Three.';
+  h += '</div>';
+
+  return h;
+};
+
+window._setPhase85ResultBody = function(html) {
+  var el = document.getElementById('phase85-last-result-body');
+  if (el) el.innerHTML = html;
+};
+
+window._runPhase85Inventory = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  window._setPhase85ResultBody('<span style="color:#5fb3b8">Running inventory…</span>');
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerInventory');
+    var res = await callable({ workspaceId: currentWsId });
+    var report = res && res.data && res.data.report;
+    if (!report) throw new Error('No report returned');
+    var counts = report.entityCounts || {};
+    var lines = [];
+    lines.push('<span style="color:#3a8a5c">✓ Inventory complete.</span>');
+    lines.push('Nodes: ' + (counts.nodes && counts.nodes.total || 0) + ' · Opps: ' + (counts.opportunities && counts.opportunities.total || 0) + ' · Meetings: ' + (counts.meetings && counts.meetings.total || 0));
+    lines.push('Entities needing provenance: ' + (report.schemaState && report.schemaState.entitiesWithoutSource || 0));
+    lines.push('Anomaly rate: ' + (report.anomalyRatePercent != null ? report.anomalyRatePercent + '%' : 'n/a') + ' · ' + (report.anomalies && report.anomalies.length || 0) + ' flagged');
+    lines.push('Estimated migration duration: ~' + (report.estimatedDurationSec||0) + 's');
+    window._setPhase85ResultBody(lines.join('<br>'));
+    toast('Inventory complete · review state and approve');
+    window._refreshPhase85MigrationState();
+  } catch (e) {
+    window._setPhase85ResultBody('<span style="color:#b34040">Error: ' + (e && e.message ? e.message : e) + '</span>');
+    toast('Inventory failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._approvePhase85Migration = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (!confirm('Approve Phase 8.5.1 migration for this workspace?\n\nThis writes the operator approval marker. The apply step still requires a separate explicit action. Approval can be revoked before apply by writing null to operatorApprovedAt.')) return;
+  try {
+    await fbSet('workspaces/' + currentWsId + '/migrations/8.5.1/operatorApprovedAt', Date.now());
+    window._setPhase85ResultBody('<span style="color:#3a8a5c">✓ Approval recorded. The Apply Migration button is now active.</span>');
+    toast('Migration approved');
+    window._refreshPhase85MigrationState();
+  } catch (e) {
+    window._setPhase85ResultBody('<span style="color:#b34040">Approval failed: ' + (e && e.message ? e.message : e) + '</span>');
+  }
+};
+
+window._applyPhase85Migration = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (!confirm('Apply Phase 8.5.1 migration to this workspace?\n\nRuns five steps (provenance, enum, edge schema, collections, validation). Fully reversible via rollback. Estimated duration: a few seconds for typical workspaces.')) return;
+  window._setPhase85ResultBody('<span style="color:#5fb3b8">Applying migration… (may take 10-60s depending on workspace size)</span>');
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerMigration');
+    var res = await callable({ workspaceId: currentWsId });
+    var outcome = res && res.data && res.data.outcome;
+    if (!outcome) throw new Error('No outcome returned');
+    if (outcome.aborted) {
+      window._setPhase85ResultBody('<span style="color:#b34040">Aborted: ' + (outcome.aborted.reason || 'unknown reason') + '</span>');
+      toast('Migration aborted');
+    } else if (outcome.validationResult === 'pass') {
+      var ru = outcome.recordsUpdated || {};
+      var totalEntities = (ru.nodes||0)+(ru.opportunities||0)+(ru.meetings||0)+(ru.signals||0);
+      var lines = [];
+      lines.push('<span style="color:#3a8a5c">✓ Migration complete · validation passed.</span>');
+      lines.push('Entities updated: ' + totalEntities + ' (nodes ' + (ru.nodes||0) + ', opps ' + (ru.opportunities||0) + ', meetings ' + (ru.meetings||0) + ', signals ' + (ru.signals||0) + ')');
+      lines.push('Paths created: ' + (ru.pathsCreated||0) + ' · Sources initialized: ' + (ru.sourcesInitialized||0));
+      lines.push('Job ID: ' + outcome.jobId);
+      window._setPhase85ResultBody(lines.join('<br>'));
+      toast('Migration complete · workspace 8.5.1-ready');
+    } else if (outcome.validationResult === 'fail') {
+      var ve = outcome.validationErrors || [];
+      var summary = ve.slice(0,3).map(function(e){return e.check + ': ' + e.issue;}).join('<br>');
+      window._setPhase85ResultBody('<span style="color:#b34040">Validation failed (' + ve.length + ' hard failures).</span><br>' + summary + (ve.length > 3 ? '<br>… and ' + (ve.length - 3) + ' more' : ''));
+      toast('Migration validation failed');
+    } else {
+      window._setPhase85ResultBody('<span style="color:var(--gold)">Migration completed with errors.</span><br>' + JSON.stringify(outcome.errors||[]).slice(0,400));
+    }
+    window._refreshPhase85MigrationState();
+  } catch (e) {
+    window._setPhase85ResultBody('<span style="color:#b34040">Error: ' + (e && e.message ? e.message : e) + '</span>');
+    toast('Migration failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._rollbackPhase85Migration = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (!confirm('Roll back Phase 8.5.1 migration for this workspace?\n\nReverses all migration steps in reverse order:\n  Step 5 → 4 → 3 → 2 → 1\n\nWorkspace returns to pre-migration state. Existing operator data is preserved.\n\nNote: rollback of Step 4 (new collections) is blocked if Phase 8.5.2+ has written Award entities or source data. In that case, pass forceUnsafe to bypass — but this loses data.')) return;
+  window._setPhase85ResultBody('<span style="color:#5fb3b8">Rolling back migration…</span>');
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerRollback');
+    var res = await callable({ workspaceId: currentWsId });
+    var result = res && res.data && res.data.result;
+    if (!result) throw new Error('No result returned');
+    if (result.aborted) {
+      window._setPhase85ResultBody('<span style="color:var(--gold)">Rollback aborted: ' + (result.reason || 'safety check failed') + '</span><br><span style="font-size:11px">Pass forceUnsafe=true to override (data loss).</span>');
+      toast('Rollback aborted by safety check');
+    } else {
+      var stepsRun = (result.steps || []).length;
+      window._setPhase85ResultBody('<span style="color:#3a8a5c">✓ Rollback complete. ' + stepsRun + ' steps reverted.</span><br>Workspace restored to pre-migration state.');
+      toast('Rollback complete');
+    }
+    window._refreshPhase85MigrationState();
+  } catch (e) {
+    window._setPhase85ResultBody('<span style="color:#b34040">Rollback error: ' + (e && e.message ? e.message : e) + '</span>');
+    toast('Rollback failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+// Initialize status badge on workspace switch / initial load
+(function() {
+  // Subscribe to workspace switches if possible; fall back to interval polling
+  function _refreshBadge() {
+    if (!currentWsId) return;
+    try {
+      get(ref(db, 'workspaces/' + currentWsId + '/migrations/8.5.1')).then(function(snap) {
+        var state = snap.exists() ? snap.val() : null;
+        window._updatePhase85StatusBadge(state);
+      }).catch(function(){});
+    } catch (e) {}
+  }
+  // Refresh badge when settings modal opens (best effort: refresh every 30s while page open)
+  setInterval(_refreshBadge, 30000);
+  // Also try once after a beat
+  setTimeout(_refreshBadge, 2500);
+})();
 
 
 
