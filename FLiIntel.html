@@ -8514,6 +8514,15 @@ input[type="url"], textarea, select {
           </div>
         </div>
 
+        <!-- ── Brief surface master refresh header ── -->
+        <div id="brief-master-refresh" data-surface="light" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;margin-bottom:12px">
+          <div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.12em;margin-bottom:2px">Brief Surface</div>
+            <div id="brief-master-status" style="font-family:'Antonio','Outfit',sans-serif;font-size:14px;color:var(--text);font-weight:600">Ready</div>
+          </div>
+          <button id="brief-master-refresh-btn" onclick="window._briefMasterRefresh&&window._briefMasterRefresh()" style="padding:7px 14px;border:1px solid rgba(95,179,184,.45);border-radius:2px;background:rgba(95,179,184,.10);color:#5fb3b8;font-size:11px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">↻ Refresh All</button>
+        </div>
+
         <!-- ── Adversary Leaderboard: top competitors by cross-source touches ── -->
         <div id="adversary-leaderboard-card" class="daily-brief-card" data-surface="light" style="margin-bottom:14px;display:none">
           <div class="brief-card-header">
@@ -36979,6 +36988,40 @@ window._loadAdversaryLeaderboard = async function() {
 
 setTimeout(function(){ window._loadAdversaryLeaderboard && window._loadAdversaryLeaderboard(); }, 5000);
 setInterval(function(){ window._loadAdversaryLeaderboard && window._loadAdversaryLeaderboard(); }, 180000);
+
+// ══════════════════════════════════════════════════════════════════════════
+// BRIEF MASTER REFRESH — single-click refresh of every Brief card
+// Coordinates: Brief synthesis (server) + Workspace Pulse + Adversary
+// Leaderboard + External Intelligence + Recompete (server rebuild) +
+// Source Health. Shows status text inline.
+// ══════════════════════════════════════════════════════════════════════════
+window._briefMasterRefresh = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  var btn = document.getElementById('brief-master-refresh-btn');
+  var status = document.getElementById('brief-master-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  if (status) status.textContent = 'Triggering Brief synthesis…';
+  try {
+    var briefCallable = httpsCallable(fbFunctions, 'triggerBriefSynthesis');
+    await briefCallable({ workspaceId: currentWsId, windowHours: 24 }).catch(function(){ /* tolerate failure */ });
+  } catch (e) {}
+  if (status) status.textContent = 'Rebuilding Recompete view…';
+  try {
+    var recompeteCallable = httpsCallable(fbFunctions, 'triggerRecompeteWatchRefresh');
+    await recompeteCallable({ workspaceId: currentWsId }).catch(function(){ /* tolerate */ });
+  } catch (e) {}
+  if (status) status.textContent = 'Reading derived views…';
+  await Promise.all([
+    window._loadWorkspacePulse && window._loadWorkspacePulse(),
+    window._loadAdversaryLeaderboard && window._loadAdversaryLeaderboard(),
+    window._loadExternalIntelligence && window._loadExternalIntelligence(),
+    window._loadRecompeteWatch && window._loadRecompeteWatch(),
+    window._loadSourceHealth && window._loadSourceHealth()
+  ].map(function(p){ return Promise.resolve(p).catch(function(){}); }));
+  if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh All'; }
+  if (status) status.textContent = 'Refreshed ' + new Date().toLocaleTimeString();
+  toast('Brief surface refreshed');
+};
 
 // ══════════════════════════════════════════════════════════════════════════
 // PHASE 8.5 ONBOARDING WIZARD — per onboarding-flow-v1
