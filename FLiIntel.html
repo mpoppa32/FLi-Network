@@ -36072,11 +36072,15 @@ window._renderRecompeteWatch = function(entries, orgMap, totals) {
     h += '    <div style="color:var(--t2);font-size:11px">' + (customerName || '').replace(/</g,'&lt;') + ' · NAICS ' + (aw.naics || '?') + ' · ' + dollars + '</div>';
     h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:2px">PIID ' + (aw.piid || '').slice(0,40) + ' · popEnd ' + (aw.popEnd ? new Date(aw.popEnd).toLocaleDateString() : '?') + ' · <span style="color:' + ts.color + '">' + (daysToEnd >= 0 ? daysToEnd + ' days' : Math.abs(daysToEnd) + ' days past') + '</span> · <a href="#" onclick="event.preventDefault();window._openAwardDetail&&window._openAwardDetail(\'' + awId + '\')" style="color:var(--t2);text-decoration:underline">details</a> · <a href="#" onclick="event.preventDefault();window._openEntityTouches&&window._openEntityTouches(\'' + aw.primeOrgId + '\',\'' + (primeName||'').replace(/\'/g,"\\\\'") + '\')" style="color:#5fb3b8;text-decoration:underline">touches</a></div>';
     h += '  </div>';
+    h += '  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;align-self:center">';
     if (hasProposed) {
-      h += '  <button onclick="(window._goToProposedOpp && window._goToProposedOpp(\'' + aw._proposedOppId + '\'))" style="padding:4px 10px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;align-self:center">View Pursuit</button>';
+      h += '    <button onclick="(window._goToProposedOpp && window._goToProposedOpp(\'' + aw._proposedOppId + '\'))" style="padding:4px 10px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">View Pursuit</button>';
     } else {
-      h += '  <button onclick="window._convertAwardToPursuit&&window._convertAwardToPursuit(\'' + awId + '\')" style="padding:4px 10px;border:1px solid rgba(58,138,92,.4);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;align-self:center">+ Pursue</button>';
+      h += '    <button onclick="window._convertAwardToPursuit&&window._convertAwardToPursuit(\'' + awId + '\')" style="padding:4px 10px;border:1px solid rgba(58,138,92,.4);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:9px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">+ Pursue</button>';
     }
+    // v1.1: dismiss recompete candidate (sets recompeteWatchDismissed:true; server view will filter on next rebuild)
+    h += '    <button onclick="window._dismissRecompete&&window._dismissRecompete(\'' + awId + '\')" title="Hide from Recompete Watch (not for me)" style="padding:2px 8px;border:1px solid var(--b1);border-radius:2px;background:transparent;color:var(--t3);font-size:8px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap">× Not for me</button>';
+    h += '  </div>';
     h += '</div>';
   }
   if (entries.length > cap) {
@@ -36218,6 +36222,26 @@ window._convertAwardToPursuit = async function(awardId) {
     window._refreshRecompeteWatch();
   } catch (e) {
     toast('Convert failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+// v1.1: dismiss a Recompete Watch entry — sets recompeteWatchDismissed:true
+// on the Award. Server-side derived view filters dismissed entries on next
+// rebuild; client triggers a refresh after dismissing.
+window._dismissRecompete = async function(awardId) {
+  if (!currentWsId || !awardId) return;
+  if (!confirm('Hide this expiring contract from Recompete Watch?\n\nIt will no longer appear in your Recompete Watch card. The underlying Award entity stays in your workspace.')) return;
+  try {
+    await fbSet('workspaces/' + currentWsId + '/awards/' + awardId + '/recompeteWatchDismissed', true);
+    toast('Hidden from Recompete Watch');
+    // Trigger server-side view rebuild so the dismissal takes effect immediately
+    try {
+      var callable = httpsCallable(fbFunctions, 'triggerRecompeteWatchRefresh');
+      await callable({ workspaceId: currentWsId });
+    } catch (e) { /* fallback — manual reload picks it up */ }
+    if (window._refreshRecompeteWatch) window._refreshRecompeteWatch();
+  } catch (e) {
+    toast('Dismiss failed: ' + ((e && e.message) || 'unknown'));
   }
 };
 
