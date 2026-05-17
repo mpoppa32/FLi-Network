@@ -35516,6 +35516,14 @@ window._renderExternalIntelligence = function(brief) {
     h += '<div style="padding:8px 14px;border-top:1px solid rgba(0,0,0,.05);font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">';
     h += brief.totalItems + ' items shown · ' + brief.counts.signals + ' signals · ' + brief.counts.awards + ' awards · ' + brief.counts.opportunities + ' opportunities (24h window)' + supText + fbText;
     h += '</div>';
+    // v1.3: dismiss-reason aggregate (suggestion line)
+    var agg = brief.counts.dismissReasonAggregate;
+    if (agg && agg.length > 0) {
+      var parts = agg.map(function(r){ return r.count + '× ' + r.reason; });
+      h += '<div style="padding:6px 14px;border-top:1px dashed rgba(0,0,0,.04);font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.04em">';
+      h += '<span style="color:var(--gold);text-transform:uppercase;letter-spacing:.1em">Dismissal patterns:</span> ' + parts.join(' · ') + ' — consider tightening your watchlist for these.';
+      h += '</div>';
+    }
   }
   body.innerHTML = h;
 };
@@ -35550,10 +35558,54 @@ window._briefRefreshAfterFeedback = async function() {
   }
 };
 
+// v1.3: dismiss with optional reason. Reasons are aggregated server-side
+// and surfaced in the Brief footer for tuning suggestions.
+window._BRIEF_DISMISS_REASONS = [
+  'not relevant',
+  'duplicate',
+  'wrong adversary',
+  'too low priority',
+  'too old / stale',
+];
+
 window._briefDismiss = async function(entityId) {
-  if (!confirm('Dismiss this item from your Brief?\n\nIt will be excluded from future Brief regenerations. You can clear all dismissals from Settings.')) return;
-  await window._briefWriteFeedback(entityId, { dismissedAt: Date.now() });
-  toast('Item dismissed');
+  if (!entityId) return;
+  // Lazy-init dismiss-reason picker
+  var modal = document.getElementById('brief-dismiss-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'brief-dismiss-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:1650;background:rgba(7,13,24,.82);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:40px 20px;overflow-y:auto';
+    document.body.appendChild(modal);
+    modal.addEventListener('click', function(e){ if (e.target === modal) modal.style.display='none'; });
+  }
+  var reasons = window._BRIEF_DISMISS_REASONS;
+  var h = '<div data-surface="light" style="background:var(--bg);max-width:440px;width:100%;border:1px solid var(--b1);border-radius:3px;padding:24px 26px;box-shadow:0 14px 40px rgba(0,0,0,.60)">';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#b34040;letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px">Dismiss item</div>';
+  h += '<div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:17px;font-weight:700;color:var(--text);line-height:1.25;margin-bottom:14px">Why are you dismissing this?</div>';
+  h += '<div style="font-size:11px;color:var(--t2);line-height:1.5;margin-bottom:14px">Optional. The reason helps Corsair suggest watchlist tuning over time.</div>';
+  h += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">';
+  for (var i = 0; i < reasons.length; i++) {
+    var r = reasons[i];
+    h += '<button onclick="window._briefDismissWithReason(\'' + entityId + '\',\'' + r.replace(/\'/g,"\\\\'") + '\')" style="text-align:left;padding:8px 12px;border:1px solid var(--b1);border-radius:2px;background:transparent;color:var(--text);font-size:12px;cursor:pointer;font-family:inherit">' + r + '</button>';
+  }
+  h += '</div>';
+  h += '<div style="display:flex;gap:8px;justify-content:space-between;padding-top:10px;border-top:1px solid var(--b1)">';
+  h += '<button onclick="window._briefDismissWithReason(\'' + entityId + '\',\'\')" style="padding:8px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Dismiss without reason</button>';
+  h += '<button onclick="document.getElementById(\'brief-dismiss-modal\').style.display=\'none\'" style="padding:8px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Cancel</button>';
+  h += '</div>';
+  h += '</div>';
+  modal.innerHTML = h;
+  modal.style.display = 'flex';
+};
+
+window._briefDismissWithReason = async function(entityId, reason) {
+  var modal = document.getElementById('brief-dismiss-modal');
+  if (modal) modal.style.display = 'none';
+  var patch = { dismissedAt: Date.now() };
+  if (reason) patch.dismissReason = reason;
+  await window._briefWriteFeedback(entityId, patch);
+  toast(reason ? 'Dismissed · ' + reason : 'Item dismissed');
   await window._briefRefreshAfterFeedback();
 };
 

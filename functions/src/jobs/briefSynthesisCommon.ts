@@ -78,6 +78,8 @@ export interface BriefOutput {
     snoozedActive?: number;
     pinnedActive?: number;
     pinnedShown?: number;
+    /** v1.3: dismiss-reason aggregate — top reasons + counts for tuning suggestions */
+    dismissReasonAggregate?: Array<{ reason: string; count: number }>;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -439,11 +441,21 @@ export async function synthesizeBrief(
   let dismissedCount = 0;
   let snoozedCount = 0;
   let pinnedTotal = 0;
+  const reasonTally: Map<string, number> = new Map();
   for (const fb of Object.values(feedback)) {
     if (fb.dismissedAt) dismissedCount++;
     if (fb.snoozedUntil && fb.snoozedUntil > nowMs) snoozedCount++;
     if (fb.pinnedAt) pinnedTotal++;
+    if (fb.dismissedAt && fb.dismissReason) {
+      const reason = String(fb.dismissReason).toLowerCase().trim().slice(0, 40);
+      reasonTally.set(reason, (reasonTally.get(reason) ?? 0) + 1);
+    }
   }
+  // Top 5 reasons (descending by count)
+  const dismissReasonAggregate = Array.from(reasonTally.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   const output: BriefOutput = {
     workspaceId,
@@ -465,8 +477,9 @@ export async function synthesizeBrief(
       snoozedActive: snoozedCount,
       pinnedActive: pinnedTotal,
       pinnedShown,
+      dismissReasonAggregate,
     },
-    scoringVersion: "1.2",
+    scoringVersion: "1.3",
     weightsApplied: SCORING_WEIGHTS,
   };
 
