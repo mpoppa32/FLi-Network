@@ -35993,17 +35993,20 @@ window._renderSourceHealth = function(perSource) {
   var aggregate = window._sourceHealthAggregate(perSource);
   agg.innerHTML = '<span style="color:' + aggregate.color + '">' + aggregate.glyph + '</span> <span style="color:' + aggregate.color + '">' + aggregate.text + '</span>';
 
+  // v1.2: stash for drawer access
+  window._latestSourceHealth = perSource;
+
   var h = '';
   for (var i = 0; i < perSource.length; i++) {
     var p = perSource[i];
     var meta = p.meta;
     var st = p.state;
-    h += '<div style="padding:8px 14px;border-top:1px solid rgba(0,0,0,.04);display:flex;gap:10px;align-items:flex-start">';
+    h += '<div onclick="window._openSourceHealthDrawer&&window._openSourceHealthDrawer(\'' + meta.key + '\')" style="padding:8px 14px;border-top:1px solid rgba(0,0,0,.04);display:flex;gap:10px;align-items:flex-start;cursor:pointer;transition:background-color .1s" onmouseover="this.style.backgroundColor=\'rgba(0,0,0,.03)\'" onmouseout="this.style.backgroundColor=\'\'">';
     h += '  <span style="color:' + st.color + ';font-weight:700;font-size:13px;line-height:1;width:18px">' + st.glyph + '</span>';
     h += '  <div style="flex:1;min-width:0">';
     h += '    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">';
     h += '      <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.06em">' + meta.label + '</div>';
-    h += '      <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3)">' + (p.raw && p.raw.lastSync ? new Date(p.raw.lastSync).toLocaleString() : 'never') + '</div>';
+    h += '      <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3)">' + (p.raw && p.raw.lastSync ? new Date(p.raw.lastSync).toLocaleString() : 'never') + ' <span style="color:var(--t2)">▸</span></div>';
     h += '    </div>';
     h += '    <div style="color:var(--t2);font-size:11px;line-height:1.4;margin-top:2px">' + st.label + '</div>';
     if (p.raw && p.raw.lastError && st.code !== 'stopped') {
@@ -36016,6 +36019,128 @@ window._renderSourceHealth = function(perSource) {
     h += '</div>';
   }
   body.innerHTML = h;
+};
+
+// v1.2: per-source detail drawer
+window._openSourceHealthDrawer = function(sourceKey) {
+  var meta = (window._SOURCE_HEALTH_META || []).find(function(m){ return m.key === sourceKey; });
+  var entry = (window._latestSourceHealth || []).find(function(p){ return p.meta && p.meta.key === sourceKey; });
+  if (!meta || !entry) return;
+  var modal = document.getElementById('source-health-drawer');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'source-health-drawer';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:1450;background:rgba(7,13,24,.78);backdrop-filter:blur(2px);align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto';
+    modal.innerHTML = '<div data-surface="light" style="background:var(--bg);max-width:640px;width:100%;border:1px solid var(--b1);border-radius:3px;box-shadow:0 18px 56px rgba(0,0,0,.55)"><div id="source-health-drawer-body" style="padding:28px 32px">Loading…</div></div>';
+    modal.addEventListener('click', function(e){ if (e.target === modal) modal.style.display='none'; });
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  window._renderSourceHealthDrawer(meta, entry);
+};
+
+window._renderSourceHealthDrawer = function(meta, entry) {
+  var body = document.getElementById('source-health-drawer-body');
+  if (!body) return;
+  var st = entry.state;
+  var raw = entry.raw || {};
+  var phase85Meta = (window._phase85Sources || {})[meta.key];
+
+  var h = '';
+  // Header
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:' + st.color + ';letter-spacing:.16em;text-transform:uppercase;margin-bottom:4px">' + st.glyph + ' ' + st.label + '</div>';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:22px;font-weight:700;color:var(--text);line-height:1.15">' + meta.label + '</div>';
+  if (phase85Meta) h += '<div style="font-size:11px;color:var(--t3);margin-top:3px">' + phase85Meta.subtitle + '</div>';
+  h += '  </div>';
+  h += '  <button onclick="document.getElementById(\'source-health-drawer\').style.display=\'none\'" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:16px;cursor:pointer;width:30px;height:30px;border-radius:50%">×</button>';
+  h += '</div>';
+
+  // State grid
+  h += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:18px">';
+  var ageStr = raw.lastSync ? window._formatSourceAge((Date.now() - raw.lastSync)/60000) + ' ago' : 'never';
+  var cells = [
+    ['Cadence', phase85Meta ? phase85Meta.cadence : (meta.cadenceMin + ' min')],
+    ['Last Sync', raw.lastSync ? new Date(raw.lastSync).toLocaleString() + ' (' + ageStr + ')' : '—'],
+    ['Records Last Sync', String(raw.recordsLastSync ?? 0) + ' upserted · ' + String(raw.recordsLastSkipped ?? 0) + ' unchanged'],
+    ['Duration / API Calls', (raw.durationLastSyncMs ? Math.round(raw.durationLastSyncMs/100)/10 + 's' : '—') + ' / ' + String(raw.apiCallsLastSync ?? 0) + ' calls']
+  ];
+  cells.forEach(function(c){
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:10px 12px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">' + c[0] + '</div>';
+    h += '  <div style="font-size:12px;color:var(--text);line-height:1.4">' + c[1] + '</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Last error (if present)
+  if (raw.lastError) {
+    h += '<div style="background:rgba(179,64,64,.05);border:1px solid rgba(179,64,64,.3);border-radius:2px;padding:12px 14px;margin-bottom:18px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#b34040;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Last Error · ' + (raw.lastError.category||'unknown') + (raw.lastError.retriable ? ' · retriable' : '') + '</div>';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--t2);line-height:1.5;word-break:break-word">' + (raw.lastError.message||'').replace(/</g,'&lt;') + '</div>';
+    if (raw.lastError.occurredAt) {
+      h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:5px">occurred at ' + new Date(raw.lastError.occurredAt).toLocaleString() + '</div>';
+    }
+    h += '</div>';
+  }
+
+  // Description (from _phase85Sources)
+  if (phase85Meta && phase85Meta.description) {
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:12px 14px;margin-bottom:18px">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">What this source does</div>';
+    h += '  <div style="font-size:12px;color:var(--t2);line-height:1.55">' + phase85Meta.description + '</div>';
+    h += '</div>';
+  }
+
+  // Actions
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--b1)">';
+  if (phase85Meta && phase85Meta.callable) {
+    h += '<button onclick="window._sourceHealthRunSync(\'' + meta.key + '\')" style="padding:8px 14px;border:1px solid rgba(58,138,92,.45);border-radius:2px;background:rgba(58,138,92,.10);color:#3a8a5c;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">Run Sync Now</button>';
+  }
+  if (phase85Meta) {
+    h += '<button onclick="document.getElementById(\'source-health-drawer\').style.display=\'none\';window._showSourcePanelGeneric&&window._showSourcePanelGeneric(\'' + meta.key + '\')" style="padding:8px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">Open Settings Panel</button>';
+  }
+  var toggleLabel = raw.config && raw.config.disabled ? 'Re-enable' : 'Disable';
+  var toggleColor = raw.config && raw.config.disabled ? '#3a8a5c' : '#b34040';
+  h += '<button onclick="window._sourceHealthToggleEnabled(\'' + meta.key + '\')" style="padding:8px 14px;border:1px solid ' + toggleColor + ';border-radius:2px;background:transparent;color:' + toggleColor + ';font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">' + toggleLabel + '</button>';
+  h += '</div>';
+
+  body.innerHTML = h;
+};
+
+window._sourceHealthRunSync = async function(sourceKey) {
+  var phase85Meta = (window._phase85Sources || {})[sourceKey];
+  if (!phase85Meta || !currentWsId) { toast('Cannot sync — missing context'); return; }
+  toast('Running ' + phase85Meta.displayName + ' sync…');
+  try {
+    var callable = httpsCallable(fbFunctions, phase85Meta.callable);
+    var res = await callable({ workspaceId: currentWsId });
+    var ok = res && res.data && res.data.ok !== false;
+    toast(phase85Meta.displayName + ' sync ' + (ok ? '✓ done' : 'finished'));
+    if (window._loadSourceHealth) await window._loadSourceHealth();
+    // Re-render drawer with fresh data
+    setTimeout(function(){ window._openSourceHealthDrawer(sourceKey); }, 500);
+  } catch (e) {
+    toast('Sync failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._sourceHealthToggleEnabled = async function(sourceKey) {
+  var phase85Meta = (window._phase85Sources || {})[sourceKey];
+  if (!phase85Meta || !currentWsId) return;
+  try {
+    var path = 'workspaces/' + currentWsId + '/' + phase85Meta.configPath;
+    var snap = await get(ref(db, path));
+    var cur = snap.exists() ? snap.val() : {};
+    cur.disabled = !cur.disabled;
+    cur.initializedAt = cur.initializedAt || Date.now();
+    await fbSet(path, cur);
+    toast(phase85Meta.displayName + (cur.disabled ? ' disabled' : ' re-enabled'));
+    if (window._loadSourceHealth) await window._loadSourceHealth();
+    setTimeout(function(){ window._openSourceHealthDrawer(sourceKey); }, 500);
+  } catch (e) {
+    toast('Toggle failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
 };
 
 window._loadSourceHealth = async function() {
