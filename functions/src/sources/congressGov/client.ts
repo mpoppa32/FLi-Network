@@ -108,3 +108,124 @@ export function currentCongress(): number {
   // Fallback calculation: Congress 1 = 1789, each congress = 2 years
   return Math.floor((year - 1789) / 2) + 1;
 }
+
+// ---------------------------------------------------------------------------
+// v1.1: Nominations
+// ---------------------------------------------------------------------------
+
+export interface NominationListItem {
+  congress: number;
+  number: number;
+  url?: string;
+  citation?: string;
+  receivedDate?: string;
+  updateDate?: string;
+  partNumber?: string;
+}
+
+export interface NominationDetail {
+  nomination: {
+    congress: number;
+    number: number;
+    citation?: string;
+    receivedDate?: string;
+    description?: string;
+    nominees?: Array<{
+      ordinal?: number;
+      firstName?: string;
+      middleName?: string;
+      lastName?: string;
+      organization?: string;
+      position?: string;
+      state?: string;
+      introText?: string;
+      nomineeRefText?: string;
+    }>;
+    committees?: Array<{ name: string; systemCode?: string; chamber?: string }>;
+    latestAction?: { actionDate?: string; text?: string };
+    actions?: { count?: number; url?: string };
+    isPrivileged?: boolean;
+    isList?: boolean;
+    isCivilian?: boolean;
+    confirmDate?: string;
+  };
+}
+
+export async function listNominations(
+  congress: number,
+  options: { fromDateTime?: string; toDateTime?: string; limit?: number; offset?: number } = {},
+  log?: Logger
+): Promise<{ nominations: NominationListItem[]; pagination: { count: number; next?: string } }> {
+  const params = new URLSearchParams();
+  if (options.fromDateTime) params.set("fromDateTime", options.fromDateTime);
+  if (options.toDateTime) params.set("toDateTime", options.toDateTime);
+  params.set("limit", String(options.limit ?? 100));
+  if (options.offset) params.set("offset", String(options.offset));
+  const url = `${BASE_URL}/nomination/${congress}?${params.toString()}`;
+  return fetchJson(url, log);
+}
+
+export async function fetchNominationDetail(
+  congress: number,
+  number: number,
+  log?: Logger
+): Promise<NominationDetail> {
+  const url = `${BASE_URL}/nomination/${congress}/${number}`;
+  return fetchJson<NominationDetail>(url, log);
+}
+
+// ---------------------------------------------------------------------------
+// v1.1: Bills + bill actions
+// ---------------------------------------------------------------------------
+
+export interface BillListItem {
+  congress: number;
+  type: string;       // hr, s, hjres, sjres, hconres, sconres, hres, sres
+  number: number;
+  title?: string;
+  updateDate?: string;
+  latestAction?: { actionDate?: string; text?: string };
+  url?: string;
+}
+
+export interface BillActionsResponse {
+  actions: Array<{
+    actionDate?: string;
+    actionTime?: string;
+    text?: string;
+    type?: string;
+    actionCode?: string;
+    committee?: { name?: string; systemCode?: string };
+  }>;
+  pagination: { count: number; next?: string };
+}
+
+/**
+ * List bills updated within a date window. Bills are filtered server-side
+ * by committee/topic in the mapper layer.
+ */
+export async function listBills(
+  congress: number,
+  options: { fromDateTime?: string; toDateTime?: string; billType?: string; limit?: number; offset?: number } = {},
+  log?: Logger
+): Promise<{ bills: BillListItem[]; pagination: { count: number; next?: string } }> {
+  const params = new URLSearchParams();
+  if (options.fromDateTime) params.set("fromDateTime", options.fromDateTime);
+  if (options.toDateTime) params.set("toDateTime", options.toDateTime);
+  params.set("limit", String(options.limit ?? 100));
+  if (options.offset) params.set("offset", String(options.offset));
+  const path = options.billType
+    ? `${BASE_URL}/bill/${congress}/${encodeURIComponent(options.billType)}?${params.toString()}`
+    : `${BASE_URL}/bill/${congress}?${params.toString()}`;
+  return fetchJson(path, log);
+}
+
+export async function fetchBillActions(
+  congress: number,
+  billType: string,
+  number: number,
+  log?: Logger
+): Promise<BillActionsResponse> {
+  const url = `${BASE_URL}/bill/${congress}/${encodeURIComponent(billType)}/${number}/actions?limit=50`;
+  return fetchJson<BillActionsResponse>(url, log);
+}

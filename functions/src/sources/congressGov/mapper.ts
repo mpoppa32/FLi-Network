@@ -138,3 +138,203 @@ export async function upsertSignal(
   await db.ref(path).set(signal);
   return { action: "updated", signalId: signal.id };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v1.1: Nominations
+// ─────────────────────────────────────────────────────────────────────────────
+
+import type { NominationDetail, BillListItem, BillActionsResponse } from "./client";
+
+function buildNomineeName(n: { firstName?: string; middleName?: string; lastName?: string }): string {
+  return [n.firstName, n.middleName, n.lastName].filter(Boolean).join(" ").trim();
+}
+
+/**
+ * Decide if a nomination is defense-relevant based on operator's tracked
+ * categories. Returns true if any category keyword appears in the
+ * organization or position string.
+ */
+export function isDefenseRelevantNomination(
+  detail: NominationDetail,
+  trackedCategories: string[]
+): boolean {
+  if (!trackedCategories || trackedCategories.length === 0) return true;
+  const nominees = detail.nomination.nominees || [];
+  for (const n of nominees) {
+    const haystack = `${n.organization || ""} ${n.position || ""}`.toLowerCase();
+    for (const cat of trackedCategories) {
+      if (haystack.indexOf(cat.toLowerCase()) >= 0) return true;
+    }
+  }
+  return false;
+}
+
+export async function mapNominationToSignal(
+  workspaceId: string,
+  detail: NominationDetail
+): Promise<Signal | null> {
+  const n = detail.nomination;
+  if (!n || !n.number) return null;
+
+  const nominees = n.nominees || [];
+  if (nominees.length === 0) return null;
+
+  const primaryNominee = nominees[0];
+  const nomineeName = buildNomineeName(primaryNominee);
+  if (!nomineeName) return null;
+
+  const receivedAt = n.receivedDate ? Date.parse(n.receivedDate) : Date.now();
+  const confirmedAt = n.confirmDate ? Date.parse(n.confirmDate) : undefined;
+  const targetOrgName = primaryNominee.organization || "Federal Government";
+
+  // Resolve nominee Person + target Org
+  const { orgId: targetOrgId } = await resolveRecipientOrg(workspaceId, targetOrgName, null, {
+    autoCreate: true,
+    type: "government",
+  });
+  const { orgId: nomineeOrgId } = await resolveRecipientOrg(workspaceId, nomineeName, null, {
+    autoCreate: true,
+    type: "other",
+  });
+
+  const signalId = "sg_cg_nom_" + n.congress + "_" + n.number;
+  const hash = hashFields(
+    {
+      congress: n.congress,
+      number: n.number,
+      receivedAt,
+      status: n.latestAction?.text || "",
+      confirmedAt: confirmedAt || 0,
+    } as Record<string, unknown>,
+    ["congress", "number", "receivedAt", "status", "confirmedAt"]
+  );
+
+  const status: "pending" | "confirmed" | "returned" | "withdrawn" = confirmedAt
+    ? "confirmed"
+    : /returned/i.test(n.latestAction?.text || "")
+    ? "returned"
+    : /withdrawn/i.test(n.latestAction?.text || "")
+    ? "withdrawn"
+    : "pending";
+
+  const signal: Signal = {
+    id: signalId,
+    type: "nomination",
+    subjectIds: [nomineeOrgId, targetOrgId],
+    relatedIds: [],
+    occurredAt: Number.isFinite(receivedAt) ? receivedAt : Date.now(),
+    attrs: {
+      congress: n.congress,
+      nominationNumber: n.number,
+      nomineeName,
+      position: primaryNominee.position || "(unspecified)",
+      targetOrgName,
+      receivedAt,
+      committeeName: n.committees?.[0]?.name,
+      confirmedAt,
+      status,
+      isCivilian: n.isCivilian !== false,
+      isPrivileged: !!n.isPrivileged,
+      actionTimeline: n.latestAction
+        ? [{ actionDate: Date.parse(n.latestAction.actionDate || "") || 0, text: n.latestAction.text || "" }]
+        : [],
+    },
+    source: externalProvenance(
+      "congress_gov",
+      `nomination/${n.congress}/${n.number}`,
+      `https://www.congress.gov/nomination/${n.congress}th-congress/${n.number}`,
+      hash,
+      Date.now()
+    ),
+  };
+  return signal;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v1.1: Bill action signals
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Map a bill action to a Signal. We emit one Signal per *latest* action to
+ * avoid Signal-explosion on bills with long action histories. The signal's
+ * hash includes the actionDate so a new action causes a new Signal version.
+ */
+export async function mapBillToActionSignal(
+  workspaceId: string,
+  bill: BillListItem,
+  actionsResponse: BillActionsResponse | null
+): Promise<Signal | null> {
+  const latestAction = actionsResponse?.actions?.[0] || bill.latestAction;
+  if (!latestAction) return null;
+  const occurredAt = Date.parse(latestAction.actionDate || "") || Date.now();
+
+  // Resolve a committee Org if action mentions one
+  let committeeOrgId: string | undefined;
+  const committee = (actionsResponse?.actions?.[0] as any)?.committee;
+  if (committee && committee.name) {
+    try {
+      const { orgId } = await resolveRecipientOrg(workspaceId, committee.name, null, {
+        autoCreate: true,
+        type: "committee",
+      });
+      committeeOrgId = orgId;
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const signalId = "sg_cg_bill_" + bill.congress + "_" + bill.type + "_" + bill.number;
+  const actionDateMs = Date.parse(latestAction.actionDate || "") || 0;
+  const hash = hashFields(
+    {
+      congress: bill.congress,
+      billType: bill.type,
+      number: bill.number,
+      actionDate: actionDateMs,
+      actionText: (latestAction.text || "").slice(0, 200),
+    } as Record<string, unknown>,
+    ["congress", "billType", "number", "actionDate", "actionText"]
+  );
+
+  const billLabel = `${bill.type.toUpperCase()} ${bill.number} (${bill.congress}th)`;
+  const signal: Signal = {
+    id: signalId,
+    type: "congressional_bill_action",
+    subjectIds: committeeOrgId ? [committeeOrgId] : [],
+    relatedIds: [],
+    occurredAt: Number.isFinite(occurredAt) ? occurredAt : Date.now(),
+    attrs: {
+      congress: bill.congress,
+      billType: bill.type,
+      billNumber: bill.number,
+      billLabel,
+      title: bill.title || "",
+      actionDate: actionDateMs,
+      actionText: latestAction.text || "",
+      committeeName: committee?.name,
+      committeeSystemCode: committee?.systemCode,
+      url: `https://www.congress.gov/bill/${bill.congress}th-congress/${bill.type}-bill/${bill.number}`,
+    },
+    source: externalProvenance(
+      "congress_gov",
+      `bill/${bill.congress}/${bill.type}/${bill.number}`,
+      `https://www.congress.gov/bill/${bill.congress}th-congress/${bill.type}-bill/${bill.number}`,
+      hash,
+      Date.now()
+    ),
+  };
+  return signal;
+}
+
+/**
+ * Filter bills by operator keyword list (substring on title).
+ * Empty keyword list = no filter (returns all).
+ */
+export function bilMatchesKeywords(bill: BillListItem, keywords: string[]): boolean {
+  if (!keywords || keywords.length === 0) return true;
+  const title = (bill.title || "").toLowerCase();
+  for (const k of keywords) {
+    if (k && title.indexOf(k.toLowerCase()) >= 0) return true;
+  }
+  return false;
+}

@@ -9,12 +9,23 @@ export interface CongressGovConfig {
   lookBackMonths: number;
   initializedAt?: number;
   disabled?: boolean;
+  // v1.1 additions
+  includeNominations?: boolean;
+  includeBillActions?: boolean;
+  /** Substring keywords against bill title to filter relevant bills */
+  billKeywords?: string[];
+  /** Bill types to consider (hr, s, hjres, sjres, hconres, sconres, hres, sres) */
+  billTypes?: string[];
 }
 
 export const DEFAULT_CONGRESSGOV_CONFIG: CongressGovConfig = {
   committees: ["hsas00", "hsap02", "hlig00", "ssas00", "ssap02", "slin00"],
   trackedNominationCategories: ["DoD", "Defense", "Air Force", "Navy", "Army", "Space Force"],
   lookBackMonths: 6,
+  includeNominations: true,
+  includeBillActions: true,
+  billKeywords: ["defense", "armed services", "intelligence", "Pentagon", "national security"],
+  billTypes: ["hr", "s", "hjres", "sjres"],
 };
 
 export async function loadConfig(workspaceId: string, log?: Logger): Promise<CongressGovConfig> {

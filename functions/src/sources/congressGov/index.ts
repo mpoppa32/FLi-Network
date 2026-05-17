@@ -1,8 +1,7 @@
 // Congress.gov source — orchestrator
 //
-// V1 scope: committee hearings only. Nominations and bill actions are V1.1.
-// Iterates watchlisted committees; fetches recent meetings; maps each to a
-// Signal entity.
+// v1.1 (2026-05-17): adds nominations + bill action sync alongside hearings.
+// All three pulled from the same /v3 API with operator-configurable filters.
 
 import { Logger } from "../../framework/logger";
 import {
@@ -15,16 +14,31 @@ import {
   currentCongress,
   fetchCommitteeMeetingDetail,
   listCommitteeMeetings,
+  listNominations,
+  fetchNominationDetail,
+  listBills,
+  fetchBillActions,
 } from "./client";
-import { mapHearingDetailToSignal, upsertSignal } from "./mapper";
+import {
+  mapHearingDetailToSignal,
+  mapNominationToSignal,
+  mapBillToActionSignal,
+  isDefenseRelevantNomination,
+  bilMatchesKeywords,
+  upsertSignal,
+} from "./mapper";
 import { loadConfig, validateConfig, type CongressGovConfig } from "./config";
 
 export const SOURCE_NAME = "congress_gov";
-export const SOURCE_VERSION = "0.1.0";
+export const SOURCE_VERSION = "1.1.0";
 
 export interface CongressGovSyncOptions {
   sinceDays?: number;
   maxMeetingsPerChamber?: number;
+  maxNominations?: number;
+  maxBills?: number;
+  skipNominations?: boolean;
+  skipBills?: boolean;
   dryRun?: boolean;
 }
 
@@ -34,6 +48,11 @@ export interface CongressGovSyncResult {
   completedAt: number;
   meetingsListed: number;
   meetingsDetailed: number;
+  /** v1.1 */
+  nominationsListed: number;
+  nominationsRelevant: number;
+  billsListed: number;
+  billsRelevant: number;
   signalsCreated: number;
   signalsUpdated: number;
   signalsUnchanged: number;
@@ -66,6 +85,10 @@ export async function syncWorkspace(
     completedAt: 0,
     meetingsListed: 0,
     meetingsDetailed: 0,
+    nominationsListed: 0,
+    nominationsRelevant: 0,
+    billsListed: 0,
+    billsRelevant: 0,
     signalsCreated: 0,
     signalsUpdated: 0,
     signalsUnchanged: 0,
@@ -176,6 +199,101 @@ export async function syncWorkspace(
       }
     }
 
+    // ── v1.1: Nominations ───────────────────────────────────────────────────
+    if (config.includeNominations !== false && !options.skipNominations) {
+      const maxNoms = options.maxNominations ?? 40;
+      try {
+        const noms = await listNominations(
+          congress,
+          { fromDateTime: toIsoForApi(since), toDateTime: toIsoForApi(until), limit: 100 },
+          log
+        );
+        result.apiCallsCount++;
+        const items = noms.nominations ?? [];
+        result.nominationsListed = items.length;
+        const trackedCats = config.trackedNominationCategories || [];
+        let processedNoms = 0;
+        for (const item of items) {
+          if (processedNoms >= maxNoms) break;
+          try {
+            const detail = await fetchNominationDetail(item.congress, item.number, log);
+            result.apiCallsCount++;
+            if (!isDefenseRelevantNomination(detail, trackedCats)) continue;
+            result.nominationsRelevant++;
+            const signal = await mapNominationToSignal(workspaceId, detail);
+            if (!signal) continue;
+            if (options.dryRun) { processedNoms++; continue; }
+            const r = await upsertSignal(workspaceId, signal);
+            if (r.action === "created") result.signalsCreated++;
+            else if (r.action === "updated") result.signalsUpdated++;
+            else result.signalsUnchanged++;
+            processedNoms++;
+          } catch (err) {
+            const e = err as Error;
+            result.errors.push({
+              recordId: `nom:${item.congress}/${item.number}`,
+              message: e.message ?? String(err),
+            });
+            log?.warn("congressgov_nomination_failed", {
+              congress: item.congress,
+              number: item.number,
+              message: e.message,
+            });
+          }
+        }
+      } catch (err) {
+        const e = err as Error;
+        result.errors.push({ recordId: "nominations_list", message: e.message ?? String(err) });
+        log?.warn("congressgov_nominations_list_failed", { message: e.message });
+      }
+    }
+
+    // ── v1.1: Bill actions ──────────────────────────────────────────────────
+    if (config.includeBillActions !== false && !options.skipBills) {
+      const maxBills = options.maxBills ?? 80;
+      const billKeywords = config.billKeywords || [];
+      const billTypes = config.billTypes || ["hr", "s"];
+      try {
+        for (const bt of billTypes) {
+          const billsResp = await listBills(
+            congress,
+            { fromDateTime: toIsoForApi(since), toDateTime: toIsoForApi(until), billType: bt, limit: 100 },
+            log
+          );
+          result.apiCallsCount++;
+          const bills = billsResp.bills ?? [];
+          result.billsListed += bills.length;
+          let processedBills = 0;
+          for (const bill of bills) {
+            if (processedBills >= Math.ceil(maxBills / billTypes.length)) break;
+            if (!bilMatchesKeywords(bill, billKeywords)) continue;
+            result.billsRelevant++;
+            try {
+              // Use the latestAction from list response (avoid extra fetch)
+              const signal = await mapBillToActionSignal(workspaceId, bill, null);
+              if (!signal) continue;
+              if (options.dryRun) { processedBills++; continue; }
+              const r = await upsertSignal(workspaceId, signal);
+              if (r.action === "created") result.signalsCreated++;
+              else if (r.action === "updated") result.signalsUpdated++;
+              else result.signalsUnchanged++;
+              processedBills++;
+            } catch (err) {
+              const e = err as Error;
+              result.errors.push({
+                recordId: `bill:${bill.congress}/${bill.type}/${bill.number}`,
+                message: e.message ?? String(err),
+              });
+            }
+          }
+        }
+      } catch (err) {
+        const e = err as Error;
+        result.errors.push({ recordId: "bills_list", message: e.message ?? String(err) });
+        log?.warn("congressgov_bills_list_failed", { message: e.message });
+      }
+    }
+
     result.completedAt = Date.now();
     result.durationMs = result.completedAt - result.startedAt;
 
@@ -195,6 +313,10 @@ export async function syncWorkspace(
       workspaceId,
       meetingsListed: result.meetingsListed,
       meetingsDetailed: result.meetingsDetailed,
+      nominationsListed: result.nominationsListed,
+      nominationsRelevant: result.nominationsRelevant,
+      billsListed: result.billsListed,
+      billsRelevant: result.billsRelevant,
       signalsCreated: result.signalsCreated,
     });
   } catch (err) {
