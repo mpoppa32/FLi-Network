@@ -35252,6 +35252,13 @@ var _PHASE85_CATEGORY_META = {
   context: { label: 'Background context', glyph: '·', color: 'var(--t3)' }
 };
 
+// v1.2 soft caps — must match server (briefSynthesisCommon.ts SOFT_CAPS).
+// Items beyond soft cap (but within hard cap) are kept by server and shown
+// when operator clicks "+ N more".
+var _PHASE85_SOFT_CAPS = { pursuit: 10, adversary: 5, customer: 5, capability: 5, context: 3 };
+
+window._briefCategoryExpanded = {}; // categoryKey → bool
+
 // v1.1: stash latest brief so "why" popover can fetch RelevanceComponents on demand
 window._latestBrief = null;
 
@@ -35280,9 +35287,14 @@ window._renderExternalIntelligence = function(brief) {
     var items = cats[key] || [];
     if (items.length === 0) continue;
     anyItems = true;
+    // v1.2: soft/hard cap split — show up to soft cap by default, "+ N more" reveals the rest
+    var softCap = _PHASE85_SOFT_CAPS[key] || items.length;
+    var expanded = !!window._briefCategoryExpanded[key];
+    var renderCount = expanded ? items.length : Math.min(softCap, items.length);
+    var hiddenCount = items.length - renderCount;
     h += '<div style="padding:8px 14px 6px;border-top:1px solid rgba(0,0,0,.05)">';
-    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + meta.color + ';text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">' + meta.glyph + ' ' + meta.label + ' · ' + items.length + '</div>';
-    for (var j = 0; j < items.length; j++) {
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + meta.color + ';text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">' + meta.glyph + ' ' + meta.label + ' · ' + items.length + (items.length > softCap ? ' (showing ' + renderCount + ')' : '') + '</div>';
+    for (var j = 0; j < renderCount; j++) {
       var it = items[j];
       var ageMin2 = Math.floor((Date.now() - it.occurredAt) / 60000);
       var ageStr = ageMin2 < 60 ? ageMin2 + 'm' : (ageMin2 < 1440 ? Math.floor(ageMin2/60) + 'h' : Math.floor(ageMin2/1440) + 'd');
@@ -35322,6 +35334,12 @@ window._renderExternalIntelligence = function(brief) {
       h += '    ' + actionsMenu;
       h += '  </div>';
       h += '</div>';
+    }
+    // v1.2: "+ N more" expand toggle if hidden items exist
+    if (hiddenCount > 0) {
+      h += '<div style="padding:4px 0;text-align:center"><button onclick="window._briefToggleCategory&&window._briefToggleCategory(\'' + key + '\')" style="background:transparent;border:1px dashed var(--b2);border-radius:2px;padding:4px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + meta.color + ';letter-spacing:.08em;text-transform:uppercase;cursor:pointer">+ ' + hiddenCount + ' more in ' + meta.label.toLowerCase() + '</button></div>';
+    } else if (expanded && items.length > (_PHASE85_SOFT_CAPS[key] || 0)) {
+      h += '<div style="padding:4px 0;text-align:center"><button onclick="window._briefToggleCategory&&window._briefToggleCategory(\'' + key + '\')" style="background:transparent;border:1px dashed var(--b2);border-radius:2px;padding:4px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;cursor:pointer">↑ Collapse</button></div>';
     }
     h += '</div>';
   }
@@ -35402,6 +35420,12 @@ window._briefSnooze = async function(entityId, days) {
   await window._briefWriteFeedback(entityId, { snoozedUntil: until });
   toast('Item snoozed for ' + (days || 7) + ' days');
   await window._briefRefreshAfterFeedback();
+};
+
+// v1.2: toggle expand/collapse per category (show-more-in-category)
+window._briefToggleCategory = function(categoryKey) {
+  window._briefCategoryExpanded[categoryKey] = !window._briefCategoryExpanded[categoryKey];
+  if (window._latestBrief) window._renderExternalIntelligence(window._latestBrief);
 };
 
 // v1.2 admin: clear all Brief feedback (resets dismiss/pin/snooze state)
