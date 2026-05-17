@@ -35435,6 +35435,46 @@ window._renderExternalIntelligence = function(brief) {
   var h = '';
   var anyItems = false;
   var order = ['pursuit', 'adversary', 'customer', 'capability', 'context'];
+
+  // v1.3: "Today's Top 5" — glance-first highest-relevance items across categories.
+  // Pinned items always lead; remaining slots filled by total relevance desc.
+  var allItems = [];
+  for (var oc = 0; oc < order.length; oc++) {
+    var cKey = order[oc];
+    var ciMeta = _PHASE85_CATEGORY_META[cKey];
+    var items = cats[cKey] || [];
+    for (var ii = 0; ii < items.length; ii++) {
+      allItems.push({ item: items[ii], categoryKey: cKey, categoryMeta: ciMeta, indexInCategory: ii });
+    }
+  }
+  allItems.sort(function(a, b) {
+    if (a.item.pinned && !b.item.pinned) return -1;
+    if (b.item.pinned && !a.item.pinned) return 1;
+    var ra = (a.item.relevance && a.item.relevance.total) || 0;
+    var rb = (b.item.relevance && b.item.relevance.total) || 0;
+    if (Math.abs(rb - ra) > 0.01) return rb - ra;
+    return (b.item.occurredAt || 0) - (a.item.occurredAt || 0);
+  });
+  var topN = allItems.slice(0, 5);
+  if (topN.length > 0) {
+    h += '<div style="padding:10px 14px 4px;border-top:1px solid rgba(0,0,0,.05);background:linear-gradient(180deg,rgba(95,179,184,.04),transparent)">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#5fb3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px;font-weight:700">▾ TODAY\'S TOP ' + topN.length + ' · GLANCE-FIRST</div>';
+    for (var tt = 0; tt < topN.length; tt++) {
+      var rowMeta = topN[tt].categoryMeta;
+      var rowItem = topN[tt].item;
+      var rowAgeMin = Math.floor((Date.now() - rowItem.occurredAt) / 60000);
+      var rowAge = rowAgeMin < 60 ? rowAgeMin + 'm' : (rowAgeMin < 1440 ? Math.floor(rowAgeMin/60) + 'h' : Math.floor(rowAgeMin/1440) + 'd');
+      var rowScore = (rowItem.relevance && typeof rowItem.relevance.total === 'number') ? rowItem.relevance.total.toFixed(1) : '—';
+      var pinPrefix = rowItem.pinned ? '<span style="color:var(--gold);font-size:10px">▼</span> ' : '';
+      h += '  <div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:11px;line-height:1.35">';
+      h += '    <span style="color:' + rowMeta.color + ';font-weight:700;font-size:12px">' + rowMeta.glyph + '</span>';
+      h += '    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + pinPrefix + '<span style="color:var(--text);font-weight:600">' + (rowItem.title||'').replace(/</g,'&lt;') + '</span> <span style="color:var(--t3)">— ' + (rowItem.subtitle||'').replace(/</g,'&lt;') + '</span></span>';
+      h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap">' + rowScore + ' · ' + rowItem.source + ' · ' + rowAge + '</span>';
+      h += '  </div>';
+    }
+    h += '</div>';
+  }
+
   for (var i = 0; i < order.length; i++) {
     var key = order[i];
     var meta = _PHASE85_CATEGORY_META[key];
