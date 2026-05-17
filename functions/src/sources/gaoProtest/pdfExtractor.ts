@@ -14,10 +14,14 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
+import { acquireTokens } from "../../framework/rateLimit";
 import { withRetry } from "../../framework/retry";
 import { Logger } from "../../framework/logger";
 
 const PDF_USER_AGENT = "Corsair Defense BD Intel (mpoppa32@gmail.com)";
+
+/** Default rate-limit/retry key when caller doesn't specify one. */
+const DEFAULT_SOURCE_KEY = "gao_protest";
 
 export interface PdfFetchResult {
   url: string;
@@ -43,10 +47,16 @@ export interface PdfExtractionOptions {
   maxTextChars?: number;
   /** Overall extraction timeout in ms. Default 45s. */
   timeoutMs?: number;
+  /** Rate-limit + retry source key. Default "gao_protest"; pass "gao_reports"
+   *  / "dod_news" / etc. when reusing this extractor from another source. */
+  source?: string;
 }
 
 /**
- * Fetch a PDF from a URL with size + content-type guards.
+ * Fetch a PDF from a URL with size + content-type guards. Rate-limited via
+ * the framework token bucket bound to `options.source` (default
+ * "gao_protest"); polite-scrape sources can share this helper by passing
+ * their own source key.
  */
 export async function fetchPdf(
   url: string,
@@ -54,6 +64,9 @@ export async function fetchPdf(
   log?: Logger
 ): Promise<PdfFetchResult> {
   const maxBytes = options.maxBytes ?? 8 * 1024 * 1024;
+  const sourceKey = options.source || DEFAULT_SOURCE_KEY;
+
+  await acquireTokens(sourceKey, 1);
 
   const op = async (): Promise<PdfFetchResult> => {
     const controller = new AbortController();
@@ -67,7 +80,7 @@ export async function fetchPdf(
         signal: controller.signal,
       });
       if (!response.ok) {
-        const err = new Error(`GAO PDF fetch failed: HTTP ${response.status} ${url}`);
+        const err = new Error(`PDF fetch failed: HTTP ${response.status} ${url}`);
         (err as any).statusCode = response.status;
         throw err;
       }
@@ -75,7 +88,7 @@ export async function fetchPdf(
       const contentLength = Number(response.headers.get("content-length") || "0");
       if (contentLength > 0 && contentLength > maxBytes) {
         const err = new Error(
-          `GAO PDF too large: ${contentLength} bytes (limit ${maxBytes}) ${url}`
+          `PDF too large: ${contentLength} bytes (limit ${maxBytes}) ${url}`
         );
         (err as any).oversize = true;
         throw err;
@@ -85,7 +98,7 @@ export async function fetchPdf(
       const buffer = Buffer.from(ab);
       if (buffer.byteLength > maxBytes) {
         const err = new Error(
-          `GAO PDF too large after fetch: ${buffer.byteLength} bytes (limit ${maxBytes}) ${url}`
+          `PDF too large after fetch: ${buffer.byteLength} bytes (limit ${maxBytes}) ${url}`
         );
         (err as any).oversize = true;
         throw err;
@@ -102,7 +115,7 @@ export async function fetchPdf(
   };
 
   return withRetry(op, {
-    source: "gao_protest",
+    source: sourceKey,
     operationName: "fetch_pdf",
     log,
   });

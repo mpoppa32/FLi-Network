@@ -1,7 +1,9 @@
 // GAO Reports — SourceClient implementation
 //
-// Phase 8.6.14 — programmatic GAO oversight reports (distinct from bid
-// protests at 8.5.5). RSS-based; defense-keyword filterable.
+// Phase 8.6.14 v1.0 — programmatic GAO oversight reports via RSS feed.
+// v1.1 — fetches the report PDF, extracts text, lifts findings,
+// recommendations, programs, contractors, and agency response posture
+// into the Signal attrs. Reuses pdf-parse infrastructure from gaoProtest.
 
 import { Logger } from "../../framework/logger";
 import {
@@ -15,11 +17,15 @@ import { fetchGaoReportsFeed } from "./client";
 import { upsertGaoReportSignal, matchesKeywords } from "./mapper";
 
 export const SOURCE_NAME = "gao_reports";
-export const SOURCE_VERSION = "1.0.0";
+export const SOURCE_VERSION = "1.1.0";
 
 export interface GaoReportsSyncOptions {
   itemCap?: number;
   dryRun?: boolean;
+  /** v1.1: override config.extractReportPdfs for this run. */
+  extractReportPdfs?: boolean;
+  /** v1.1: override config.maxPdfsPerSync for this run. */
+  maxPdfsPerSync?: number;
 }
 
 export interface GaoReportsSyncResult {
@@ -32,8 +38,21 @@ export interface GaoReportsSyncResult {
   signalsCreated: number;
   signalsUpdated: number;
   signalsUnchanged: number;
+  // v1.1 PDF extraction metrics
+  pdfExtractionsAttempted: number;
+  pdfExtractionsSucceeded: number;
+  pdfExtractionsFailed: number;
+  pdfBytesDownloaded: number;
+  pdfPagesProcessed: number;
+  findingsExtractedTotal: number;
+  recommendationsExtractedTotal: number;
+  contractorMentionsTotal: number;
+  programMentionsTotal: number;
+  agencyResponseConcurCount: number;
+  agencyResponseNonConcurCount: number;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
+  sourceVersion: string;
 }
 
 export async function syncWorkspace(
@@ -54,8 +73,20 @@ export async function syncWorkspace(
     signalsCreated: 0,
     signalsUpdated: 0,
     signalsUnchanged: 0,
+    pdfExtractionsAttempted: 0,
+    pdfExtractionsSucceeded: 0,
+    pdfExtractionsFailed: 0,
+    pdfBytesDownloaded: 0,
+    pdfPagesProcessed: 0,
+    findingsExtractedTotal: 0,
+    recommendationsExtractedTotal: 0,
+    contractorMentionsTotal: 0,
+    programMentionsTotal: 0,
+    agencyResponseConcurCount: 0,
+    agencyResponseNonConcurCount: 0,
     errors: [],
     apiCallsCount: 0,
+    sourceVersion: SOURCE_VERSION,
   };
 
   try {
@@ -87,10 +118,40 @@ export async function syncWorkspace(
     result.itemsConsidered = feed.length;
     result.itemsMatched = relevant.length;
 
+    const extractPdfs = options.extractReportPdfs ?? config.extractReportPdfs ?? true;
+    let pdfBudget = extractPdfs
+      ? options.maxPdfsPerSync ?? config.maxPdfsPerSync ?? 25
+      : 0;
+
     if (!options.dryRun) {
       for (const item of relevant) {
         try {
-          const r = await upsertGaoReportSignal(workspaceId, item, log);
+          const wantPdf = pdfBudget > 0;
+          const r = await upsertGaoReportSignal(workspaceId, item, log, {
+            extractPdf: wantPdf,
+            maxPdfBytes: config.maxPdfBytes,
+            maxReportTextChars: config.maxReportTextChars,
+            pdfExtractionTimeoutMs: config.pdfExtractionTimeoutMs,
+          });
+          if (r.metrics.pdfAttempted) {
+            pdfBudget--;
+            result.pdfExtractionsAttempted++;
+            // 1 product-page HTML fetch + 1 PDF fetch
+            result.apiCallsCount += 2;
+            if (r.metrics.pdfSucceeded) {
+              result.pdfExtractionsSucceeded++;
+              result.pdfBytesDownloaded += r.metrics.pdfBytes;
+              result.pdfPagesProcessed += r.metrics.pdfPages;
+              result.findingsExtractedTotal += r.metrics.findingsExtracted;
+              result.recommendationsExtractedTotal += r.metrics.recommendationsExtracted;
+              result.contractorMentionsTotal += r.metrics.contractorsMatched;
+              result.programMentionsTotal += r.metrics.programsMatched;
+              if (r.metrics.agencyResponse === "concur") result.agencyResponseConcurCount++;
+              else if (r.metrics.agencyResponse === "non_concur") result.agencyResponseNonConcurCount++;
+            } else {
+              result.pdfExtractionsFailed++;
+            }
+          }
           if (r.action === "created") result.signalsCreated++;
           else if (r.action === "updated") result.signalsUpdated++;
           else result.signalsUnchanged++;
@@ -117,10 +178,15 @@ export async function syncWorkspace(
 
     log?.info("gao_reports_sync_completed", {
       workspaceId,
+      sourceVersion: SOURCE_VERSION,
       durationMs: result.durationMs,
       itemsConsidered: result.itemsConsidered,
       itemsMatched: result.itemsMatched,
       signalsCreated: result.signalsCreated,
+      pdfExtractionsSucceeded: result.pdfExtractionsSucceeded,
+      pdfExtractionsFailed: result.pdfExtractionsFailed,
+      findingsExtractedTotal: result.findingsExtractedTotal,
+      contractorMentionsTotal: result.contractorMentionsTotal,
       errors: result.errors.length,
     });
   } catch (err) {

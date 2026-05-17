@@ -149,11 +149,12 @@ export async function mapRssItemToSignal(
   if (options.extractPdf && item.link) {
     metrics.pdfAttempted = true;
     try {
-      decisionPdfUrl = await findPdfUrlOnDecisionPage(item.link, log);
+      decisionPdfUrl = await findPdfUrlOnDecisionPage(item.link, log, "gao_protest");
       if (decisionPdfUrl) {
         const extraction = await fetchAndExtractPdf(
           decisionPdfUrl,
           {
+            source: "gao_protest",
             maxBytes: options.maxPdfBytes,
             timeoutMs: options.pdfExtractionTimeoutMs,
             maxTextChars: Math.max(options.maxDecisionTextChars || 60_000, 60_000),

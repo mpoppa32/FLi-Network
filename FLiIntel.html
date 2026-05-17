@@ -35017,14 +35017,14 @@ window._phase85Sources = {
   // Phase 8.6.14 — Tier 2 GAO Reports (oversight findings via RSS)
   gao_reports: {
     displayName: 'GAO Reports',
-    subtitle: 'Phase 8.6.14 · Oversight Findings',
+    subtitle: 'Phase 8.6.14 v1.1 · Oversight + PDF Deep Parse',
     color: '#9a4040',
     callable: 'triggerGaoReportsSync',
     entityType: 'oversight_finding Signal',
     requiresKey: null,
     cadence: 'Daily · 16:00 UTC',
     cadenceCron: '0 16 * * *',
-    description: 'GAO programmatic audit + evaluation reports (distinct from Bid Protests). Defense-keyword filtered by default. Each report → oversight_finding Signal with title/summary/reportId/URL. Adverse findings are leading indicators of contractor trouble.',
+    description: 'GAO programmatic audit + evaluation reports. v1 captured title/summary/reportId/URL; v1.1 fetches each report PDF and extracts findings ("What GAO Found"), recommendations, defense programs mentioned, contractor mentions (auto-resolved as Corsair Orgs), agency response posture (concur / partial / non-concur — adverse responses are leading indicators of contractor trouble). Reuses pdf-parse infrastructure from gaoProtest v1.1.',
     badgeId: 'gao-reports-source-status',
     configPath: 'sources/gao_reports/config',
     healthPath: 'sources/gao_reports',
@@ -35032,7 +35032,9 @@ window._phase85Sources = {
       { key: 'enabled', label: 'Enable GAO Reports sync', placeholder: 'true or false', kind: 'bool', default: true },
       { key: 'defenseOnly', label: 'Restrict to defense topics', placeholder: 'true or false', kind: 'bool', default: true },
       { key: 'keywords', label: 'Additional keywords (empty = none)', placeholder: 'F-35,Sentinel,Columbia', kind: 'csv' },
-      { key: 'lookbackDays', label: 'Lookback days', placeholder: '60', kind: 'number', default: 60 }
+      { key: 'lookbackDays', label: 'Lookback days', placeholder: '60', kind: 'number', default: 60 },
+      { key: 'extractReportPdfs', label: 'Extract report PDFs (v1.1)', kind: 'bool', default: true },
+      { key: 'maxPdfsPerSync', label: 'Max PDFs per sync', placeholder: '25', kind: 'number', default: 25 }
     ],
     entityCounter: { path: 'signals', filterType: 'oversight_finding', label: 'oversight_finding Signals' }
   },
@@ -35916,12 +35918,13 @@ window._renderEntityTouches = function(node, t, nodes) {
       };
     }));
   }
-  // Signals — type-aware enriched rendering (GAO protest v1.1, SEC Form 4 v1.2)
+  // Signals — type-aware enriched rendering (GAO protest v1.1, SEC Form 4 v1.2, GAO Reports v1.1)
   if (t.signals.length > 0) {
     h += window._touchesSection('Signals (across all sources)', t.signals.length, 'var(--gold)', t.signals.slice(0,15).map(function(sig){
       var attrs = sig.attrs || {};
       if (sig.type === 'protest') return window._protestTouchRow(sig, attrs);
       if (sig.type === 'insider_transaction') return window._insiderTouchRow(sig, attrs);
+      if (sig.type === 'oversight_finding') return window._oversightFindingTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36202,6 +36205,80 @@ window._insiderTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + palette.bg + ';color:' + palette.fg + ';border:1px solid ' + palette.fg + '40">' + esc(chipText) + '</span>';
 
   var clickUrl = attrs.documentUrl || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// GAO Reports v1.1: enriched touch-row renderer for oversight_finding
+// Signals. Surfaces report ID + kind + date + findings count + agency
+// response posture chip (concur=muted green, partial=amber, non-concur=
+// deep red — adversarial agency response is a leading indicator of
+// contractor trouble). Falls back to v1.0 metadata rendering when the
+// deepParsingPending flag is still set.
+window._oversightFindingTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  // v1.0 fallback — no deep parse yet
+  if (attrs.deepParsingPending) {
+    return {
+      title: (attrs.title || 'GAO Report').toString().slice(0, 120),
+      subtitle: (attrs.reportId || '') + ' · GAO Report · ' + (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '?') + ' · awaiting v1.1 deep parse',
+      right: 'Report',
+      rightColor: 'var(--t3)',
+      onclick: attrs.url ? "window.open('" + attrs.url + "','_blank')" : ''
+    };
+  }
+
+  // Agency-response palette
+  var response = (attrs.agencyResponse || '').toString();
+  var responsePalette;
+  if (response === 'concur') responsePalette = { fg:'#3a8a5c', bg:'rgba(58,138,92,.10)', label:'Agency concurs' };
+  else if (response === 'partial_concur') responsePalette = { fg:'#d4823a', bg:'rgba(212,130,58,.10)', label:'Partial concur' };
+  else if (response === 'non_concur') responsePalette = { fg:'#9a4040', bg:'rgba(154,64,64,.12)', label:'Agency disputes' };
+  else responsePalette = null;
+
+  // Report-kind label
+  var kind = (attrs.reportKind || '').toString();
+  var kindLabel = '';
+  if (kind === 'audit') kindLabel = 'Audit';
+  else if (kind === 'evaluation') kindLabel = 'Evaluation';
+  else if (kind === 'testimony') kindLabel = 'Testimony';
+  else if (kind === 'decision') kindLabel = 'Decision';
+  else kindLabel = 'Report';
+
+  var titleText = attrs.titleParsed || attrs.title || 'GAO Report';
+  var titleHtml = esc(titleText.toString().slice(0, 160));
+
+  var date = attrs.decidedAt ? new Date(attrs.decidedAt).toLocaleDateString()
+                              : (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '');
+  var subtitleParts = [];
+  if (attrs.reportId) subtitleParts.push(esc(attrs.reportId));
+  subtitleParts.push(kindLabel);
+  if (date) subtitleParts.push(date);
+  var findingsCount = Number(attrs.findings && attrs.findings.length) || 0;
+  var recCount = Number(attrs.recommendations && attrs.recommendations.length) || 0;
+  if (findingsCount) subtitleParts.push(findingsCount + ' findings');
+  if (recCount) subtitleParts.push(recCount + ' recs');
+  var programsCount = Number(attrs.programs && attrs.programs.length) || 0;
+  var contractorsCount = Number(attrs.contractors && attrs.contractors.length) || 0;
+  if (programsCount) subtitleParts.push(programsCount + ' programs');
+  if (contractorsCount) subtitleParts.push(contractorsCount + ' contractors');
+  var subtitleHtml = subtitleParts.join(' · ');
+
+  // Right chip: agency response if known, else report kind
+  var rightHtml;
+  if (responsePalette) {
+    rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + responsePalette.bg + ';color:' + responsePalette.fg + ';border:1px solid ' + responsePalette.fg + '40">' + esc(responsePalette.label) + '</span>';
+  } else {
+    rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:rgba(154,64,64,.06);color:#9a4040;border:1px solid rgba(154,64,64,.30)">' + esc(kindLabel) + '</span>';
+  }
+
+  var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,

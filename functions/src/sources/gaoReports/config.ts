@@ -12,6 +12,16 @@ export interface GaoReportsConfig {
   keywords: string[];
   /** If true, restrict to defense-relevant keywords by default. */
   defenseOnly: boolean;
+  /** v1.1: fetch + parse the report PDF for each Signal. Default true. */
+  extractReportPdfs?: boolean;
+  /** v1.1: max PDF bytes to download. Default 12MB (GAO reports can be longer). */
+  maxPdfBytes?: number;
+  /** v1.1: max chars of extracted text retained. Default 80,000. */
+  maxReportTextChars?: number;
+  /** v1.1: per-PDF extraction timeout in ms. Default 45,000. */
+  pdfExtractionTimeoutMs?: number;
+  /** v1.1: cap on PDFs extracted in a single sync run. Default 25. */
+  maxPdfsPerSync?: number;
   disabled?: boolean;
   initializedAt?: number;
 }
@@ -28,6 +38,11 @@ export const DEFAULT_GAO_REPORTS_CONFIG: GaoReportsConfig = {
   lookbackDays: 60,
   keywords: [],
   defenseOnly: true,
+  extractReportPdfs: true,
+  maxPdfBytes: 12 * 1024 * 1024,
+  maxReportTextChars: 80_000,
+  pdfExtractionTimeoutMs: 45_000,
+  maxPdfsPerSync: 25,
 };
 
 export async function loadConfig(workspaceId: string, log?: Logger): Promise<GaoReportsConfig> {

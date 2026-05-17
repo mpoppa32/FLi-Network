@@ -156,14 +156,15 @@ export function extractDocketNumbers(item: GaoRssItem): string[] {
  */
 export async function findPdfUrlOnDecisionPage(
   decisionPageUrl: string,
-  log?: Logger
+  log?: Logger,
+  sourceKey: string = "gao_protest"
 ): Promise<string | null> {
   if (!decisionPageUrl) return null;
   // Direct PDF link case
   if (/\.pdf($|\?)/i.test(decisionPageUrl)) return decisionPageUrl;
 
   try {
-    await acquireTokens("gao_protest", 1);
+    await acquireTokens(sourceKey, 1);
     const op = async (): Promise<string> => {
       const r = await fetch(decisionPageUrl, {
         headers: {
@@ -173,7 +174,7 @@ export async function findPdfUrlOnDecisionPage(
       });
       if (!r.ok) {
         const err = new Error(
-          `GAO decision page fetch failed: HTTP ${r.status} ${decisionPageUrl}`
+          `gao.gov page fetch failed: HTTP ${r.status} ${decisionPageUrl}`
         );
         (err as any).statusCode = r.status;
         throw err;
@@ -181,7 +182,7 @@ export async function findPdfUrlOnDecisionPage(
       return await r.text();
     };
     const html = await withRetry(op, {
-      source: "gao_protest",
+      source: sourceKey,
       operationName: "fetch_decision_page",
       log,
     });
