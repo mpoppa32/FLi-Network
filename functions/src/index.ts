@@ -35,3 +35,7 @@ export { samGovHourly } from "./jobs/samGovHourly";
 // Congress.gov (Phase 8.5.7) — requires CONGRESSGOV_API_KEY env var
 export { triggerCongressGovSync } from "./http/triggerCongressGovSync";
 export { congressGovDaily } from "./jobs/congressGovDaily";
+
+// Brief Synthesis (Phase 8.5.8) — composes all sources into a daily Brief
+export { triggerBriefSynthesis } from "./http/triggerBriefSynthesis";
+export { briefSynthesisNightly } from "./jobs/briefSynthesisNightly";

@@ -8498,6 +8498,21 @@ input[type="url"], textarea, select {
             </div>
           </div>
         </div>
+
+        <!-- ── Phase 8.5.8: External Intelligence Brief ───────────────── -->
+        <div id="ext-intel-card" class="daily-brief-card" data-surface="light" style="margin-top:14px">
+          <div class="brief-card-header">
+            <span>◆ EXTERNAL INTELLIGENCE · LAST 24H</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span class="brief-date" id="ext-intel-generated">—</span>
+              <button id="ext-intel-refresh" onclick="window._refreshExternalIntelligence&&window._refreshExternalIntelligence()" style="padding:3px 8px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase">Refresh</button>
+            </span>
+          </div>
+          <div id="ext-intel-body" style="padding:12px 0">
+            <div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">External Intelligence brief loads after Phase 8.5.1 migration and source syncs run. Open Settings → Phase 8.5 OSINT Migration to begin.</div>
+          </div>
+        </div>
+
         <!-- ── CAPTURE HEADER ──────────────────────────────────── -->
         <div class="cap-header">
           <div class="cap-eyebrow">
@@ -35050,6 +35065,109 @@ window._refreshAllSourceBadges = async function() {
 };
 setInterval(function(){ window._refreshAllSourceBadges && window._refreshAllSourceBadges(); }, 30000);
 setTimeout(function(){ window._refreshAllSourceBadges && window._refreshAllSourceBadges(); }, 3000);
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.5.8 — EXTERNAL INTELLIGENCE BRIEF (Brief surface section)
+// Reads workspaces/{wsId}/derivedViews/dailyBrief/latest and renders the
+// 5-category synthesis in the Brief surface.
+// ══════════════════════════════════════════════════════════════════════════
+
+var _PHASE85_CATEGORY_META = {
+  pursuit: { label: 'On your pursuits', glyph: '◆', color: '#3a8a5c' },
+  adversary: { label: 'Adversary activity', glyph: '◍', color: '#b34040' },
+  customer: { label: 'Customer terrain', glyph: '◊', color: '#5fb3b8' },
+  capability: { label: 'Your capability segment', glyph: '•', color: 'var(--gold)' },
+  context: { label: 'Background context', glyph: '·', color: 'var(--t3)' }
+};
+
+window._renderExternalIntelligence = function(brief) {
+  var body = document.getElementById('ext-intel-body');
+  var dateEl = document.getElementById('ext-intel-generated');
+  if (!body) return;
+  if (!brief) {
+    body.innerHTML = '<div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">No Brief synthesized yet. After migration + first source sync, click Refresh to generate.</div>';
+    if (dateEl) dateEl.textContent = '—';
+    return;
+  }
+  if (dateEl) {
+    var ageMin = Math.floor((Date.now() - brief.generatedAt) / 60000);
+    dateEl.textContent = ageMin < 60 ? ageMin + 'm ago' : Math.floor(ageMin/60) + 'h ago';
+  }
+  var cats = brief.itemsByCategory || {};
+  var h = '';
+  var anyItems = false;
+  var order = ['pursuit', 'adversary', 'customer', 'capability', 'context'];
+  for (var i = 0; i < order.length; i++) {
+    var key = order[i];
+    var meta = _PHASE85_CATEGORY_META[key];
+    var items = cats[key] || [];
+    if (items.length === 0) continue;
+    anyItems = true;
+    h += '<div style="padding:8px 14px 6px;border-top:1px solid rgba(0,0,0,.05)">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + meta.color + ';text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">' + meta.glyph + ' ' + meta.label + ' · ' + items.length + '</div>';
+    for (var j = 0; j < items.length; j++) {
+      var it = items[j];
+      var ageMin = Math.floor((Date.now() - it.occurredAt) / 60000);
+      var ageStr = ageMin < 60 ? ageMin + 'm' : (ageMin < 1440 ? Math.floor(ageMin/60) + 'h' : Math.floor(ageMin/1440) + 'd');
+      h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4">';
+      h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
+      h += '  <div style="flex:1;min-width:0">';
+      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + '</div>';
+      h += '    <div style="color:var(--t2);font-size:11px">' + (it.subtitle || '').replace(/</g,'&lt;') + '</div>';
+      h += '  </div>';
+      h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap;align-self:center">' + it.source + ' · ' + ageStr + (it.link ? ' · <a href="' + it.link + '" target="_blank" style="color:var(--t3)">open</a>' : '') + '</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  if (!anyItems) {
+    h = '<div style="padding:10px 14px;color:var(--t3);font-size:11px;font-style:italic">No external intelligence items in the last 24 hours. Source syncs may be inactive or watchlists may be empty.</div>';
+  }
+  // Counts summary
+  if (brief.counts) {
+    h += '<div style="padding:8px 14px;border-top:1px solid rgba(0,0,0,.05);font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">';
+    h += brief.totalItems + ' items shown · ' + brief.counts.signals + ' signals · ' + brief.counts.awards + ' awards · ' + brief.counts.opportunities + ' opportunities (24h window)';
+    h += '</div>';
+  }
+  body.innerHTML = h;
+};
+
+window._loadExternalIntelligence = async function() {
+  if (!currentWsId) return;
+  try {
+    var snap = await get(ref(db, 'workspaces/' + currentWsId + '/derivedViews/dailyBrief/latest'));
+    var brief = snap.exists() ? snap.val() : null;
+    window._renderExternalIntelligence(brief);
+  } catch (e) {
+    var body = document.getElementById('ext-intel-body');
+    if (body) body.innerHTML = '<div style="padding:10px 14px;color:#b34040;font-size:11px">Error: ' + (e && e.message ? e.message : e) + '</div>';
+  }
+};
+
+window._refreshExternalIntelligence = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  var btn = document.getElementById('ext-intel-refresh');
+  var origText;
+  if (btn) { origText = btn.textContent; btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerBriefSynthesis');
+    var res = await callable({ workspaceId: currentWsId, windowHours: 24 });
+    var output = res && res.data && res.data.output;
+    if (output) {
+      window._renderExternalIntelligence(output);
+      toast('External Intelligence refreshed · ' + (output.totalItems || 0) + ' items');
+    }
+  } catch (e) {
+    toast('Refresh failed: ' + (e && e.message ? e.message : 'unknown'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origText || 'Refresh'; }
+  }
+};
+
+// Auto-load when workspace context changes; also retry on interval
+setTimeout(function(){ window._loadExternalIntelligence && window._loadExternalIntelligence(); }, 4000);
+setInterval(function(){ window._loadExternalIntelligence && window._loadExternalIntelligence(); }, 120000);
 
 
 
