@@ -36963,22 +36963,60 @@ window._saveOnboardingWatchlist = async function() {
 window._renderOnboardStep5 = function() {
   var h = '';
   h += window._onboardingHeader('Initial Sync', 5);
-  h += '<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:16px">Run the initial USAspending + FACA syncs now. The other sources sync on their next scheduled cadence; SAM.gov + Congress.gov require API keys before they\'ll return data.</div>';
+  h += '<div style="font-size:12px;color:var(--t2);line-height:1.65;margin-bottom:16px">Run keyless source syncs now to validate end-to-end behavior. Sources that need API keys (SAM.gov / Congress.gov) will sync on their schedule once keys are set; you can also click <button onclick="window._obRunAll()" style="background:transparent;border:1px solid var(--b1);color:var(--gold);font-size:10px;padding:1px 6px;border-radius:2px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Run All</button> below to fire everything in sequence.</div>';
+  // Tier 1 — Awards
   h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
   h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
   h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">USAspending — Federal Awards</div>';
-  h += '<div style="font-size:11px;color:var(--t2)">Will run for ~30-60s. Creates Award entities + builds Recompete Watch.</div></div>';
+  h += '<div style="font-size:11px;color:var(--t2)">~30-60s. Creates Award entities + builds Recompete Watch.</div></div>';
   h += '<button id="ob-run-usa" onclick="window._obRunUsaSync()" style="padding:8px 14px;border:1px solid rgba(58,138,92,.45);border-radius:2px;background:rgba(58,138,92,.10);color:#3a8a5c;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
   h += '</div>';
   h += '<div id="ob-usa-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
   h += '</div>';
+  // DoD News (v1.2 reconciliation prototype)
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">DoD News Contracts</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">~10-20s. Scrapes today\'s $7.5M+ announcements → provisional Awards (reconciles with USAspending).</div></div>';
+  h += '<button id="ob-run-dn" onclick="window._obRunDnSync()" style="padding:8px 14px;border:1px solid rgba(74,144,226,.45);border-radius:2px;background:rgba(74,144,226,.10);color:#4a90e2;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
+  h += '</div>';
+  h += '<div id="ob-dn-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
+  h += '</div>';
+  // FACA
   h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
   h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
   h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">FACA Database — Committee Memberships</div>';
-  h += '<div style="font-size:11px;color:var(--t2)">Will run for ~60-120s. Resolves committee names to IDs, fetches members + meetings.</div></div>';
+  h += '<div style="font-size:11px;color:var(--t2)">~60-120s. Resolves committee names → IDs; fetches members + meetings.</div></div>';
   h += '<button id="ob-run-faca" onclick="window._obRunFacaSync()" style="padding:8px 14px;border:1px solid rgba(195,155,211,.45);border-radius:2px;background:rgba(195,155,211,.10);color:#c39bd3;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
   h += '</div>';
   h += '<div id="ob-faca-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
+  h += '</div>';
+  // Think tanks
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Defense Think Tanks</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">~30-60s. 9 think tanks (CSIS, RAND, CNAS...) → analysis_publication Signals.</div></div>';
+  h += '<button id="ob-run-tt" onclick="window._obRunTtSync()" style="padding:8px 14px;border:1px solid rgba(232,150,104,.45);border-radius:2px;background:rgba(232,150,104,.10);color:#e89668;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
+  h += '</div>';
+  h += '<div id="ob-tt-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
+  h += '</div>';
+  // Service-branch news
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Service-branch News</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">~20-40s. Army/Navy/AF/Marines/SpaceForce RSS → service_news Signals; leadership transitions auto-flagged.</div></div>';
+  h += '<button id="ob-run-sn" onclick="window._obRunSnSync()" style="padding:8px 14px;border:1px solid rgba(116,168,155,.45);border-radius:2px;background:rgba(116,168,155,.10);color:#74a89b;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
+  h += '</div>';
+  h += '<div id="ob-sn-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
+  h += '</div>';
+  // GAO Reports
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:14px">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
+  h += '<div style="flex:1"><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">GAO Reports</div>';
+  h += '<div style="font-size:11px;color:var(--t2)">~15-30s. Defense-filtered GAO audit + evaluation reports → oversight_finding Signals.</div></div>';
+  h += '<button id="ob-run-gr" onclick="window._obRunGrSync()" style="padding:8px 14px;border:1px solid rgba(154,64,64,.45);border-radius:2px;background:rgba(154,64,64,.10);color:#9a4040;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap">Run Now</button>';
+  h += '</div>';
+  h += '<div id="ob-gr-result" style="margin-top:10px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);min-height:14px"></div>';
   h += '</div>';
   h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:14px 16px;margin-bottom:18px">';
   h += '<div style="display:flex;justify-content:space-between;align-items:center;gap:14px">';
@@ -37025,6 +37063,92 @@ window._obRunFacaSync = async function() {
     if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
     if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
   }
+};
+
+// v1.1: DoD News sync handler
+window._obRunDnSync = async function() {
+  var btn = document.getElementById('ob-run-dn');
+  var out = document.getElementById('ob-dn-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (out) out.innerHTML = '<span style="color:#5fb3b8">Calling triggerDodNewsSync…</span>';
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerDodNewsSync');
+    var res = await callable({ workspaceId: currentWsId });
+    var r = res && res.data && res.data.result;
+    var enabledMsg = (r && r.enabled === false) ? '(source disabled in config — enable to sync)' : '';
+    if (out) out.innerHTML = '<span style="color:#3a8a5c">✓ ' + (r ? (r.provisionalCreated + ' provisional · ' + (r.observationsAppended||0) + ' observations · ' + r.paragraphsParsed + ' parsed') : 'done') + ' ' + enabledMsg + '</span>';
+    if (btn) { btn.textContent = '✓ Done'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+};
+
+// v1.1: Think tanks sync handler
+window._obRunTtSync = async function() {
+  var btn = document.getElementById('ob-run-tt');
+  var out = document.getElementById('ob-tt-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (out) out.innerHTML = '<span style="color:#5fb3b8">Calling triggerThinkTanksSync…</span>';
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerThinkTanksSync');
+    var res = await callable({ workspaceId: currentWsId });
+    var r = res && res.data && res.data.result;
+    if (out) out.innerHTML = '<span style="color:#3a8a5c">✓ ' + (r ? (r.tanksSyncedSuccessfully + ' tanks · ' + r.signalsCreated + ' new publications · ' + r.itemsMatched + ' matched') : 'done') + '</span>';
+    if (btn) { btn.textContent = '✓ Done'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+};
+
+// v1.1: Service-branch news sync handler
+window._obRunSnSync = async function() {
+  var btn = document.getElementById('ob-run-sn');
+  var out = document.getElementById('ob-sn-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (out) out.innerHTML = '<span style="color:#5fb3b8">Calling triggerServiceNewsSync…</span>';
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerServiceNewsSync');
+    var res = await callable({ workspaceId: currentWsId });
+    var r = res && res.data && res.data.result;
+    if (out) out.innerHTML = '<span style="color:#3a8a5c">✓ ' + (r ? (r.servicesSyncedSuccessfully + ' services · ' + r.signalsCreated + ' new items · ' + (r.leadershipAnnouncementsCreated || 0) + ' leadership') : 'done') + '</span>';
+    if (btn) { btn.textContent = '✓ Done'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+};
+
+// v1.1: GAO Reports sync handler
+window._obRunGrSync = async function() {
+  var btn = document.getElementById('ob-run-gr');
+  var out = document.getElementById('ob-gr-result');
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (out) out.innerHTML = '<span style="color:#5fb3b8">Calling triggerGaoReportsSync…</span>';
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerGaoReportsSync');
+    var res = await callable({ workspaceId: currentWsId });
+    var r = res && res.data && res.data.result;
+    if (out) out.innerHTML = '<span style="color:#3a8a5c">✓ ' + (r ? (r.signalsCreated + ' new · ' + r.itemsMatched + ' matched / ' + r.itemsConsidered + ' considered') : 'done') + '</span>';
+    if (btn) { btn.textContent = '✓ Done'; }
+  } catch (e) {
+    if (out) out.innerHTML = '<span style="color:#b34040">' + ((e && e.message) || e) + '</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+};
+
+// v1.1: Run all keyless sources in sequence
+window._obRunAll = async function() {
+  toast('Running all keyless sources in sequence — please wait');
+  await window._obRunUsaSync();
+  await window._obRunDnSync();
+  await window._obRunFacaSync();
+  await window._obRunTtSync();
+  await window._obRunSnSync();
+  await window._obRunGrSync();
+  await window._obRunBriefSync();
+  toast('All syncs complete — see results above');
 };
 
 window._obRunBriefSync = async function() {
