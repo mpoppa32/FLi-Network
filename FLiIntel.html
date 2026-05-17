@@ -35572,11 +35572,26 @@ window._renderExternalIntelligence = function(brief) {
       actionsMenu += '<button title="Snooze 7 days" onclick="window._briefSnooze&&window._briefSnooze(\'' + it.entityId + '\',7)" style="background:transparent;border:1px solid var(--b1);color:var(--t3);font-size:8px;cursor:pointer;padding:0 4px;border-radius:2px;font-family:inherit;letter-spacing:.05em;text-transform:uppercase">snooze</button>';
       actionsMenu += '<button title="Dismiss" onclick="window._briefDismiss&&window._briefDismiss(\'' + it.entityId + '\')" style="background:transparent;border:1px solid var(--b1);color:#b34040;font-size:8px;cursor:pointer;padding:0 4px;border-radius:2px;font-family:inherit;letter-spacing:.05em;text-transform:uppercase">×</button>';
       actionsMenu += '</span>';
+      // v1.4: key-fact annotation — surface the magnitude reasoning inline
+      // when the item is high-signal (magnitude >= 0.6). Pulls the last
+      // entry of whySurfaced[] which scoreSignal/Award/Opportunity always
+      // sets to the magnitude.why string.
+      var keyFact = '';
+      if (it.relevance && typeof it.relevance.magnitude === 'number' && it.relevance.magnitude >= 0.6
+          && Array.isArray(it.relevance.whySurfaced) && it.relevance.whySurfaced.length > 0) {
+        var why = it.relevance.whySurfaced[it.relevance.whySurfaced.length - 1];
+        if (why && why.length > 4) {
+          var keyFactColor = it.relevance.magnitude >= 0.85 ? 'var(--gold)' : 'var(--t2)';
+          var keyFactWeight = it.relevance.magnitude >= 0.85 ? '600' : '500';
+          keyFact = '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-style:italic;color:' + keyFactColor + ';font-weight:' + keyFactWeight + ';margin-top:1px;letter-spacing:.02em">' + String(why).replace(/</g,'&lt;') + '</div>';
+        }
+      }
       h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4">';
       h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
       h += '  <div style="flex:1;min-width:0">';
       h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + dedupChip + pinChip + '</div>';
       h += '    <div style="color:var(--t2);font-size:11px">' + (it.subtitle || '').replace(/</g,'&lt;') + '</div>';
+      h += keyFact;
       h += '  </div>';
       h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:3px">';
       h += '    <span>' + it.source + ' · ' + ageStr + (it.link ? ' · <a href="' + it.link + '" target="_blank" style="color:var(--t3)">open</a>' : '') + ' · <a href="#" onclick="event.preventDefault();window._briefItemTouches&&window._briefItemTouches(\'' + it.entityId + '\',\'' + it.kind + '\')" style="color:#5fb3b8;text-decoration:underline">touches</a></span>';
