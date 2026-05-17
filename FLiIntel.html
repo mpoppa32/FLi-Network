@@ -35459,6 +35459,198 @@ window._briefToggleCategory = function(categoryKey) {
   if (window._latestBrief) window._renderExternalIntelligence(window._latestBrief);
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// CROSS-SOURCE TOUCHES — show all touches for one entity across all sources
+// The "knowledge graph payoff" view: operator sees how a single Organization
+// or Person is mentioned across Awards, Signals, Opportunities, FACA
+// committees, think tank publications, etc. — all in one popover.
+// Callable from anywhere: window._openEntityTouches('org_xxx')
+// ══════════════════════════════════════════════════════════════════════════
+
+window._openEntityTouches = async function(entityId, displayName) {
+  if (!currentWsId || !entityId) return;
+  var modal = document.getElementById('entity-touches-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'entity-touches-modal';
+    modal.style.cssText = 'display:none;position:fixed;inset:0;z-index:1550;background:rgba(7,13,24,.80);backdrop-filter:blur(2px);align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto';
+    modal.innerHTML = '<div data-surface="light" style="background:var(--bg);max-width:780px;width:100%;border:1px solid var(--b1);border-radius:3px;box-shadow:0 18px 56px rgba(0,0,0,.60)"><div id="entity-touches-body" style="padding:28px 32px">Loading touches…</div></div>';
+    modal.addEventListener('click', function(e){ if (e.target === modal) modal.style.display='none'; });
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  var body = document.getElementById('entity-touches-body');
+  body.innerHTML = 'Loading cross-source touches for ' + (displayName || entityId) + '…';
+
+  try {
+    var [nodeSnap, awardsSnap, signalsSnap, oppsSnap, edgesSnap] = await Promise.all([
+      get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + entityId)),
+      get(ref(db, 'workspaces/' + currentWsId + '/awards')),
+      get(ref(db, 'workspaces/' + currentWsId + '/signals')),
+      get(ref(db, 'workspaces/' + currentWsId + '/opportunities')),
+      get(ref(db, 'workspaces/' + currentWsId + '/edges'))
+    ]);
+    var node = nodeSnap.exists() ? nodeSnap.val() : null;
+    var awards = awardsSnap.exists() ? awardsSnap.val() : {};
+    var signals = signalsSnap.exists() ? signalsSnap.val() : {};
+    var opps = oppsSnap.exists() ? oppsSnap.val() : {};
+    var edges = edgesSnap.exists() ? edgesSnap.val() : {};
+    var nodesSnap2 = await get(ref(db, 'workspaces/' + currentWsId + '/nodes'));
+    var nodes = nodesSnap2.exists() ? nodesSnap2.val() : {};
+
+    var touches = window._collectEntityTouches(entityId, { awards: awards, signals: signals, opps: opps, edges: edges, nodes: nodes });
+    body.innerHTML = window._renderEntityTouches(node || { id: entityId, name: displayName || '(unknown entity)' }, touches, nodes);
+  } catch (e) {
+    body.innerHTML = '<div style="color:#b34040">Error loading touches: ' + ((e && e.message) || e) + '</div>';
+  }
+};
+
+window._collectEntityTouches = function(entityId, data) {
+  var primeAwards = [];
+  var customerAwards = [];
+  var signals = [];
+  var ops = [];
+  var memberships = [];
+  for (var awId in data.awards) {
+    var aw = data.awards[awId];
+    if (!aw) continue;
+    if (aw.primeOrgId === entityId) primeAwards.push(aw);
+    if (aw.customerOrgId === entityId || aw.customerToptierOrgId === entityId) customerAwards.push(aw);
+    // also subaward sub-recipient
+    if (aw.subawards && aw.subawards.some && aw.subawards.some(function(s){ return s.subOrgId === entityId; })) {
+      if (primeAwards.indexOf(aw) < 0 && customerAwards.indexOf(aw) < 0) primeAwards.push(aw);
+    }
+  }
+  for (var sigId in data.signals) {
+    var sig = data.signals[sigId];
+    if (!sig) continue;
+    var ids = (sig.subjectIds || []).concat(sig.relatedIds || []);
+    if (ids.indexOf(entityId) >= 0) signals.push(sig);
+  }
+  for (var oppId in data.opps) {
+    var opp = data.opps[oppId];
+    if (!opp) continue;
+    if (opp.customerOrgId === entityId) ops.push(opp);
+    if (opp.posture && opp.posture.adversaries && opp.posture.adversaries.indexOf(entityId) >= 0) ops.push(opp);
+  }
+  // De-dup ops
+  var seenOpps = {};
+  ops = ops.filter(function(o){ if (seenOpps[o.id]) return false; seenOpps[o.id]=true; return true; });
+  // Memberships via edges (member_of)
+  for (var edgeId in data.edges) {
+    var ed = data.edges[edgeId];
+    if (!ed || ed.label !== 'member_of') continue;
+    if (ed.source === entityId || ed.target === entityId) memberships.push(ed);
+  }
+  return {
+    primeAwards: primeAwards.sort(function(a,b){return (b.popEnd||0)-(a.popEnd||0);}),
+    customerAwards: customerAwards.sort(function(a,b){return (b.popEnd||0)-(a.popEnd||0);}),
+    signals: signals.sort(function(a,b){return (b.occurredAt||0)-(a.occurredAt||0);}),
+    opportunities: ops,
+    memberships: memberships
+  };
+};
+
+window._renderEntityTouches = function(node, t, nodes) {
+  var h = '';
+  var total = t.primeAwards.length + t.customerAwards.length + t.signals.length + t.opportunities.length + t.memberships.length;
+
+  // Header
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:14px;margin-bottom:18px;border-bottom:1px solid var(--b1)">';
+  h += '  <div style="flex:1;min-width:0"><div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#5fb3b8;letter-spacing:.16em;text-transform:uppercase;margin-bottom:4px">Cross-source touches · ' + total + '</div>';
+  h += '  <div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:22px;font-weight:700;color:var(--text);line-height:1.15">' + ((node.name || node.id) || '').replace(/</g,'&lt;') + '</div>';
+  if (node.type) h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-top:3px">' + node.type + (node.uei ? ' · UEI ' + node.uei : '') + '</div>';
+  h += '  </div>';
+  h += '  <button onclick="document.getElementById(\'entity-touches-modal\').style.display=\'none\'" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:16px;cursor:pointer;width:30px;height:30px;border-radius:50%">×</button>';
+  h += '</div>';
+
+  if (total === 0) {
+    h += '<div style="padding:14px;text-align:center;color:var(--t3);font-style:italic;font-size:11px">No touches found across any source for this entity. As source syncs run, touches will appear here.</div>';
+    return h;
+  }
+
+  // Awards — prime
+  if (t.primeAwards.length > 0) {
+    h += window._touchesSection('Awards won (prime)', t.primeAwards.length, '#3a8a5c', t.primeAwards.slice(0,15).map(function(aw){
+      var customerName = (nodes[aw.customerOrgId] && nodes[aw.customerOrgId].name) || '(unknown customer)';
+      return {
+        title: aw.piid + ' · ' + customerName,
+        subtitle: _fmtDollars(aw.obligated || 0) + ' · NAICS ' + (aw.naics||'?') + ' · popEnd ' + (aw.popEnd ? new Date(aw.popEnd).toLocaleDateString() : '?'),
+        right: aw.lifecycleState,
+        onclick: 'window._openAwardDetail&&window._openAwardDetail(\'' + aw.id + '\')'
+      };
+    }));
+  }
+  // Awards — customer
+  if (t.customerAwards.length > 0) {
+    h += window._touchesSection('Awards (as customer agency)', t.customerAwards.length, '#5fb3b8', t.customerAwards.slice(0,15).map(function(aw){
+      var primeName = (nodes[aw.primeOrgId] && nodes[aw.primeOrgId].name) || '(unknown prime)';
+      return {
+        title: primeName + ' · ' + aw.piid,
+        subtitle: _fmtDollars(aw.obligated || 0) + ' · NAICS ' + (aw.naics||'?'),
+        right: aw.lifecycleState,
+        onclick: 'window._openAwardDetail&&window._openAwardDetail(\'' + aw.id + '\')'
+      };
+    }));
+  }
+  // Signals
+  if (t.signals.length > 0) {
+    h += window._touchesSection('Signals (across all sources)', t.signals.length, 'var(--gold)', t.signals.slice(0,15).map(function(sig){
+      var attrs = sig.attrs || {};
+      var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
+      return {
+        title: (title || '').toString().slice(0,120),
+        subtitle: sig.type + ' · ' + (sig.source && sig.source.system) + ' · ' + (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '?'),
+        right: sig.source && sig.source.system,
+        onclick: sig.source && sig.source.url ? 'window.open(\'' + sig.source.url + '\',\'_blank\')' : ''
+      };
+    }));
+  }
+  // Opportunities
+  if (t.opportunities.length > 0) {
+    h += window._touchesSection('Opportunities (pipeline)', t.opportunities.length, '#d4823a', t.opportunities.slice(0,15).map(function(opp){
+      return {
+        title: opp.name,
+        subtitle: (opp.agency||'') + ' · stage: ' + opp.stage,
+        right: opp.posture && opp.posture.adversaries && opp.posture.adversaries.indexOf(node.id) >= 0 ? 'adversary' : 'customer',
+        onclick: ''
+      };
+    }));
+  }
+  // Memberships
+  if (t.memberships.length > 0) {
+    h += window._touchesSection('Committee memberships (FACA)', t.memberships.length, '#c39bd3', t.memberships.slice(0,15).map(function(edge){
+      var otherId = edge.source === node.id ? edge.target : edge.source;
+      var otherName = (nodes[otherId] && nodes[otherId].name) || otherId;
+      var attrs = edge.attrs || {};
+      return {
+        title: otherName,
+        subtitle: (attrs.title||'') + (attrs.affiliation?' · '+attrs.affiliation:'') + (edge.start?' · since '+new Date(edge.start).toLocaleDateString():''),
+        right: edge.end ? 'former' : 'active',
+        onclick: ''
+      };
+    }));
+  }
+
+  return h;
+};
+
+window._touchesSection = function(label, count, color, rows) {
+  var h = '<div style="margin-bottom:18px">';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + color + ';text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">' + label + ' · ' + count + (count > rows.length ? ' (showing ' + rows.length + ')' : '') + '</div>';
+  h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;overflow:hidden">';
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    h += '<div ' + (r.onclick ? 'onclick="' + r.onclick + '" style="cursor:pointer;' : 'style="') + 'padding:7px 12px;border-bottom:1px solid rgba(0,0,0,.04);display:flex;justify-content:space-between;gap:10px;align-items:baseline" onmouseover="this.style.backgroundColor=\'rgba(0,0,0,.03)\'" onmouseout="this.style.backgroundColor=\'\'">';
+    h += '<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (r.title||'').toString().replace(/</g,'&lt;') + '</div>';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (r.subtitle||'').toString().replace(/</g,'&lt;') + '</div></div>';
+    if (r.right) h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + color + ';text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">' + (r.right||'').toString().replace(/</g,'&lt;') + '</span>';
+    h += '</div>';
+  }
+  h += '</div></div>';
+  return h;
+};
+
 // v1.2 admin: clear all Brief feedback (resets dismiss/pin/snooze state)
 window._briefClearAllFeedback = async function() {
   if (!currentWsId) { toast('No active workspace'); return; }
@@ -35969,10 +36161,12 @@ window._renderAwardDetail = function(aw, nodes) {
   h += '</div>';
 
   // Action row
-  h += '<div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--b1)">';
+  h += '<div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--b1);flex-wrap:wrap">';
   if (aw.source && aw.source.url) {
     h += '  <a href="' + aw.source.url + '" target="_blank" rel="noopener" style="padding:8px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:11px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase;text-decoration:none;display:inline-block">Open on USAspending.gov ↗</a>';
   }
+  // v1.3: cross-source touches button — show all touches for the prime org
+  h += '  <button onclick="window._openEntityTouches&&window._openEntityTouches(\'' + aw.primeOrgId + '\',\'' + (primeName||'').replace(/\'/g, "\\\\'") + '\')" style="padding:8px 14px;border:1px solid rgba(95,179,184,.4);border-radius:2px;background:rgba(95,179,184,.08);color:#5fb3b8;font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">Cross-source touches</button>';
   if (aw.lifecycleState === 'expiring' || aw.lifecycleState === 'expired') {
     h += '  <button onclick="window._convertAwardToPursuit&&window._convertAwardToPursuit(\'' + aw.id + '\')" style="padding:8px 14px;border:1px solid rgba(58,138,92,.4);border-radius:2px;background:rgba(58,138,92,.08);color:#3a8a5c;font-size:11px;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.08em;text-transform:uppercase">+ Convert to Pursuit</button>';
   }
