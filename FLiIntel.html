@@ -8514,6 +8514,18 @@ input[type="url"], textarea, select {
           </div>
         </div>
 
+        <!-- ── Adversary Leaderboard: top competitors by cross-source touches ── -->
+        <div id="adversary-leaderboard-card" class="daily-brief-card" data-surface="light" style="margin-bottom:14px;display:none">
+          <div class="brief-card-header">
+            <span>◍ ADVERSARY LEADERBOARD</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span class="brief-date" id="adversary-leaderboard-updated">—</span>
+              <button id="adversary-leaderboard-refresh" onclick="window._loadAdversaryLeaderboard&&window._loadAdversaryLeaderboard()" style="padding:3px 8px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:9px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase">Refresh</button>
+            </span>
+          </div>
+          <div id="adversary-leaderboard-body" style="padding:6px 0"></div>
+        </div>
+
         <!-- ── Workspace Pulse: at-a-glance counts across collections ── -->
         <div id="workspace-pulse-card" class="daily-brief-card" data-surface="light" style="margin-bottom:14px">
           <div class="brief-card-header">
@@ -36865,6 +36877,108 @@ window._refreshWorkspacePulse = function() {
 
 setTimeout(function(){ window._loadWorkspacePulse && window._loadWorkspacePulse(); }, 4500);
 setInterval(function(){ window._loadWorkspacePulse && window._loadWorkspacePulse(); }, 120000);
+
+// ══════════════════════════════════════════════════════════════════════════
+// ADVERSARY LEADERBOARD — top competitors by total cross-source touches
+// Counts touches per Org across: Award prime, Signal subjectIds/relatedIds,
+// Opportunity posture.adversaries. Hides itself when no touches exist.
+// ══════════════════════════════════════════════════════════════════════════
+window._loadAdversaryLeaderboard = async function() {
+  if (!currentWsId) return;
+  var card = document.getElementById('adversary-leaderboard-card');
+  var body = document.getElementById('adversary-leaderboard-body');
+  var upd = document.getElementById('adversary-leaderboard-updated');
+  if (!body || !card) return;
+  try {
+    var [awardsSnap, signalsSnap, oppsSnap, nodesSnap] = await Promise.all([
+      get(ref(db, 'workspaces/' + currentWsId + '/awards')),
+      get(ref(db, 'workspaces/' + currentWsId + '/signals')),
+      get(ref(db, 'workspaces/' + currentWsId + '/opportunities')),
+      get(ref(db, 'workspaces/' + currentWsId + '/nodes'))
+    ]);
+    var awards = awardsSnap.exists() ? awardsSnap.val() : {};
+    var signals = signalsSnap.exists() ? signalsSnap.val() : {};
+    var opps = oppsSnap.exists() ? oppsSnap.val() : {};
+    var nodes = nodesSnap.exists() ? nodesSnap.val() : {};
+
+    // Count touches per Org ID
+    var touches = {};
+    var bump = function(orgId, kind) {
+      if (!orgId) return;
+      if (!touches[orgId]) touches[orgId] = { awards: 0, signals: 0, oppAdversary: 0, recentSignals: 0 };
+      touches[orgId][kind] = (touches[orgId][kind] || 0) + 1;
+    };
+    var cutoff30d = Date.now() - 30*24*60*60*1000;
+
+    for (var aid in awards) {
+      var aw = awards[aid]; if (!aw) continue;
+      bump(aw.primeOrgId, 'awards');
+    }
+    for (var sid in signals) {
+      var sg = signals[sid]; if (!sg) continue;
+      var ids = (sg.subjectIds || []).concat(sg.relatedIds || []);
+      for (var i = 0; i < ids.length; i++) {
+        bump(ids[i], 'signals');
+        if (sg.occurredAt && sg.occurredAt >= cutoff30d) bump(ids[i], 'recentSignals');
+      }
+    }
+    var adversarySet = {};
+    for (var oid in opps) {
+      var opp = opps[oid]; if (!opp) continue;
+      var advs = (opp.posture && opp.posture.adversaries) || [];
+      for (var ai = 0; ai < advs.length; ai++) {
+        bump(advs[ai], 'oppAdversary');
+        adversarySet[advs[ai]] = true;
+      }
+    }
+
+    // Score: prioritize orgs that are BOTH adversaries AND have touches
+    var rows = [];
+    for (var orgId in touches) {
+      var t = touches[orgId];
+      var node = nodes[orgId];
+      if (!node) continue;
+      // Skip government / committee / foreign_government — leaderboard is for competitors
+      if (node.type === 'government' || node.type === 'committee' || node.type === 'foreign_government' || node.type === 'program') continue;
+      // Skip if it's the operator's own org (unknown without explicit flag); skip self-named orgs is hard, so include all companies
+      var total = (t.awards || 0) + (t.signals || 0) + (t.oppAdversary || 0) * 2; // double-weight adversary attribution
+      if (total === 0) continue;
+      rows.push({ orgId: orgId, name: node.name || orgId, total: total, touches: t, isAdversary: !!adversarySet[orgId] });
+    }
+    rows.sort(function(a, b) { return b.total - a.total; });
+    var top = rows.slice(0, 5);
+
+    if (upd) upd.textContent = new Date().toLocaleTimeString();
+    if (top.length === 0) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+
+    var h = '<div style="padding:0 14px 8px">';
+    for (var r = 0; r < top.length; r++) {
+      var row = top[r];
+      var rank = '#' + (r + 1);
+      var advChip = row.isAdversary
+        ? '<span title="In active pursuit posture.adversaries" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:#b34040;border:1px solid rgba(179,64,64,.3);padding:0 4px;border-radius:2px;margin-left:5px">tracked adversary</span>'
+        : '';
+      h += '<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-top:1px solid rgba(0,0,0,.04);font-size:11px">';
+      h += '  <span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t3);width:24px">' + rank + '</span>';
+      h += '  <span style="flex:1;color:var(--text);font-weight:600">' + row.name.replace(/</g,'&lt;') + '</span> ' + advChip;
+      h += '  <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap">' + (row.touches.awards||0) + ' awards · ' + (row.touches.signals||0) + ' signals · ' + (row.touches.recentSignals||0) + ' last 30d</span>';
+      h += '  <a href="#" onclick="event.preventDefault();window._openEntityTouches&&window._openEntityTouches(\'' + row.orgId + '\',\'' + row.name.replace(/\'/g,"\\\\'") + '\')" style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#5fb3b8;text-decoration:underline;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase">touches</a>';
+      h += '</div>';
+    }
+    h += '</div>';
+    body.innerHTML = h;
+  } catch (e) {
+    if (body) body.innerHTML = '<div style="padding:10px 14px;color:#b34040;font-size:11px">Error: ' + ((e && e.message) || e) + '</div>';
+    if (card) card.style.display = '';
+  }
+};
+
+setTimeout(function(){ window._loadAdversaryLeaderboard && window._loadAdversaryLeaderboard(); }, 5000);
+setInterval(function(){ window._loadAdversaryLeaderboard && window._loadAdversaryLeaderboard(); }, 180000);
 
 // ══════════════════════════════════════════════════════════════════════════
 // PHASE 8.5 ONBOARDING WIZARD — per onboarding-flow-v1
