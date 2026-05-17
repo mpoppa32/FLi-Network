@@ -35297,13 +35297,30 @@ window._renderExternalIntelligence = function(brief) {
       var dedupChip = it.dedupNote
         ? '<span title="' + (it.dedupNote || '').replace(/"/g,'&quot;') + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--t3);border:1px solid var(--b1);padding:0 4px;border-radius:2px;margin-left:5px">collapsed</span>'
         : '';
+      // v1.2: pinned indicator
+      var pinChip = it.pinned
+        ? '<span title="Pinned by operator" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--gold);border:1px solid var(--gold);padding:0 4px;border-radius:2px;margin-left:5px">▼ pinned</span>'
+        : '';
+      // v1.2: actions menu (dismiss / pin / snooze)
+      var actionsMenu = '<span class="brief-item-actions" style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap;display:inline-flex;gap:4px;margin-left:6px">';
+      if (it.pinned) {
+        actionsMenu += '<button title="Unpin" onclick="window._briefUnpin&&window._briefUnpin(\'' + it.entityId + '\')" style="background:transparent;border:1px solid var(--b1);color:var(--gold);font-size:8px;cursor:pointer;padding:0 4px;border-radius:2px;font-family:inherit;letter-spacing:.05em;text-transform:uppercase">unpin</button>';
+      } else {
+        actionsMenu += '<button title="Pin to top" onclick="window._briefPin&&window._briefPin(\'' + it.entityId + '\')" style="background:transparent;border:1px solid var(--b1);color:var(--t3);font-size:8px;cursor:pointer;padding:0 4px;border-radius:2px;font-family:inherit;letter-spacing:.05em;text-transform:uppercase">pin</button>';
+      }
+      actionsMenu += '<button title="Snooze 7 days" onclick="window._briefSnooze&&window._briefSnooze(\'' + it.entityId + '\',7)" style="background:transparent;border:1px solid var(--b1);color:var(--t3);font-size:8px;cursor:pointer;padding:0 4px;border-radius:2px;font-family:inherit;letter-spacing:.05em;text-transform:uppercase">snooze</button>';
+      actionsMenu += '<button title="Dismiss" onclick="window._briefDismiss&&window._briefDismiss(\'' + it.entityId + '\')" style="background:transparent;border:1px solid var(--b1);color:#b34040;font-size:8px;cursor:pointer;padding:0 4px;border-radius:2px;font-family:inherit;letter-spacing:.05em;text-transform:uppercase">×</button>';
+      actionsMenu += '</span>';
       h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4">';
       h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
       h += '  <div style="flex:1;min-width:0">';
-      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + dedupChip + '</div>';
+      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + dedupChip + pinChip + '</div>';
       h += '    <div style="color:var(--t2);font-size:11px">' + (it.subtitle || '').replace(/</g,'&lt;') + '</div>';
       h += '  </div>';
-      h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap;align-self:center">' + it.source + ' · ' + ageStr + (it.link ? ' · <a href="' + it.link + '" target="_blank" style="color:var(--t3)">open</a>' : '') + '</div>';
+      h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);white-space:nowrap;align-self:center;display:flex;flex-direction:column;align-items:flex-end;gap:3px">';
+      h += '    <span>' + it.source + ' · ' + ageStr + (it.link ? ' · <a href="' + it.link + '" target="_blank" style="color:var(--t3)">open</a>' : '') + '</span>';
+      h += '    ' + actionsMenu;
+      h += '  </div>';
       h += '</div>';
     }
     h += '</div>';
@@ -35316,11 +35333,88 @@ window._renderExternalIntelligence = function(brief) {
     var supText = brief.counts.suppressedByDedup
       ? ' · ' + brief.counts.suppressedByDedup + ' suppressed by dedup'
       : '';
+    var fbText = '';
+    if (brief.counts.pinnedActive || brief.counts.dismissedActive || brief.counts.snoozedActive) {
+      var parts = [];
+      if (brief.counts.pinnedActive) parts.push(brief.counts.pinnedActive + ' pinned');
+      if (brief.counts.dismissedActive) parts.push(brief.counts.dismissedActive + ' dismissed');
+      if (brief.counts.snoozedActive) parts.push(brief.counts.snoozedActive + ' snoozed');
+      fbText = ' · ' + parts.join(' · ');
+    }
     h += '<div style="padding:8px 14px;border-top:1px solid rgba(0,0,0,.05);font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">';
-    h += brief.totalItems + ' items shown · ' + brief.counts.signals + ' signals · ' + brief.counts.awards + ' awards · ' + brief.counts.opportunities + ' opportunities (24h window)' + supText;
+    h += brief.totalItems + ' items shown · ' + brief.counts.signals + ' signals · ' + brief.counts.awards + ' awards · ' + brief.counts.opportunities + ' opportunities (24h window)' + supText + fbText;
     h += '</div>';
   }
   body.innerHTML = h;
+};
+
+// ──────────────────────────────────────────────────────────────────────────
+// v1.2: Brief item feedback — dismiss / pin / snooze
+// Writes to workspaces/{wsId}/derivedViews/dailyBrief/feedback/{entityId}.
+// After each write, re-trigger Brief synthesis so the change reflects.
+// ──────────────────────────────────────────────────────────────────────────
+window._briefWriteFeedback = async function(entityId, patch) {
+  if (!currentWsId || !entityId) return;
+  try {
+    var path = 'workspaces/' + currentWsId + '/derivedViews/dailyBrief/feedback/' + entityId;
+    var snap = await get(ref(db, path));
+    var cur = snap.exists() ? snap.val() : {};
+    var merged = Object.assign({}, cur, patch);
+    await fbSet(path, merged);
+  } catch (e) {
+    toast('Feedback save failed: ' + (e && e.message ? e.message : 'unknown'));
+    throw e;
+  }
+};
+
+window._briefRefreshAfterFeedback = async function() {
+  try {
+    var callable = httpsCallable(fbFunctions, 'triggerBriefSynthesis');
+    await callable({ workspaceId: currentWsId, windowHours: 24 });
+    if (window._loadExternalIntelligence) await window._loadExternalIntelligence();
+  } catch (e) {
+    // Fallback: re-read latest derived view
+    if (window._loadExternalIntelligence) window._loadExternalIntelligence();
+  }
+};
+
+window._briefDismiss = async function(entityId) {
+  if (!confirm('Dismiss this item from your Brief?\n\nIt will be excluded from future Brief regenerations. You can clear all dismissals from Settings.')) return;
+  await window._briefWriteFeedback(entityId, { dismissedAt: Date.now() });
+  toast('Item dismissed');
+  await window._briefRefreshAfterFeedback();
+};
+
+window._briefPin = async function(entityId) {
+  await window._briefWriteFeedback(entityId, { pinnedAt: Date.now() });
+  toast('Item pinned to top of category');
+  await window._briefRefreshAfterFeedback();
+};
+
+window._briefUnpin = async function(entityId) {
+  await window._briefWriteFeedback(entityId, { pinnedAt: null });
+  toast('Item unpinned');
+  await window._briefRefreshAfterFeedback();
+};
+
+window._briefSnooze = async function(entityId, days) {
+  var until = Date.now() + (days || 7) * 24 * 60 * 60 * 1000;
+  await window._briefWriteFeedback(entityId, { snoozedUntil: until });
+  toast('Item snoozed for ' + (days || 7) + ' days');
+  await window._briefRefreshAfterFeedback();
+};
+
+// v1.2 admin: clear all Brief feedback (resets dismiss/pin/snooze state)
+window._briefClearAllFeedback = async function() {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (!confirm('Clear ALL dismiss/pin/snooze feedback for this workspace?\n\nAll dismissed items will reappear; all pinned items will lose their pin; all snoozed items will become eligible again. This cannot be undone.')) return;
+  try {
+    await fbSet('workspaces/' + currentWsId + '/derivedViews/dailyBrief/feedback', null);
+    toast('Brief feedback cleared');
+    await window._briefRefreshAfterFeedback();
+  } catch (e) {
+    toast('Clear failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
 };
 
 // v1.1: "Why this surfaced" popover — show per-component relevance breakdown

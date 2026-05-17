@@ -1,12 +1,12 @@
 // Phase 8.5.8 Brief Synthesis — shared logic
 //
-// V1.1 (2026-05-17): adds relevance scoring (Part Two §2), category
-// assignment by threshold (Part Two §3), cross-source deduplication
-// (Part Two §5), and per-item whySurfaced reasoning (Part Three §6).
+// V1.2 (2026-05-17): adds dismissal feedback + pinning + snoozing per spec
+// Part Four. Per-workspace feedback stored at
+// workspaces/{wsId}/derivedViews/dailyBrief/feedback/{entityId} as
+// { dismissedAt, pinnedAt, snoozedUntil, dismissReason }. Synthesis reads
+// this at run-time to filter/sort.
 //
-// Still deferred to v1.2:
-//   - Dismissal feedback loop (Part Four)
-//   - Pinning / snoozing
+// V1.1: relevance scoring + dedupe + whySurfaced (still in place).
 
 import { db, wsPath } from "../framework/rtdb";
 import { Logger } from "../framework/logger";
@@ -38,6 +38,19 @@ export interface BriefItem {
   relevance?: RelevanceComponents;
   /** v1.1: deduplication consequences */
   dedupNote?: string;
+  /** v1.2: pinned to top of category, bypasses soft caps */
+  pinned?: boolean;
+  /** v1.2: pinned timestamp for sort stability */
+  pinnedAt?: number;
+}
+
+/** v1.2: per-item operator feedback persisted across Brief regenerations. */
+export interface BriefFeedback {
+  dismissedAt?: number;
+  dismissReason?: string;
+  pinnedAt?: number;
+  /** ms timestamp — item hidden until this passes */
+  snoozedUntil?: number;
 }
 
 export type { RelevanceComponents };
@@ -60,6 +73,11 @@ export interface BriefOutput {
     opportunities: number;
     /** v1.1: items suppressed by deduplication */
     suppressedByDedup?: number;
+    /** v1.2: active feedback counts (items with dismiss/snooze/pin set) */
+    dismissedActive?: number;
+    snoozedActive?: number;
+    pinnedActive?: number;
+    pinnedShown?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -290,8 +308,16 @@ function deduplicate(
   return { kept: items.filter((i) => keep.has(i.id)), suppressed };
 }
 
+async function loadFeedback(workspaceId: string): Promise<Record<string, BriefFeedback>> {
+  const snap = await db
+    .ref(wsPath(workspaceId, "derivedViews", "dailyBrief", "feedback"))
+    .once("value");
+  return (snap.val() as Record<string, BriefFeedback> | null) ?? {};
+}
+
 /**
  * Synthesize a Brief for one workspace covering the past `windowHours`.
+ * v1.2: + dismissal / pinning / snoozing applied via feedback map.
  * v1.1: 6-factor relevance scoring + category-by-threshold + dedup.
  */
 export async function synthesizeBrief(
@@ -301,9 +327,25 @@ export async function synthesizeBrief(
 ): Promise<BriefOutput> {
   const nowMs = Date.now();
   const cutoff = nowMs - windowHours * 60 * 60 * 1000;
-  log?.info("brief_synthesis_started", { workspaceId, windowHours, version: "v1.1" });
+  log?.info("brief_synthesis_started", { workspaceId, windowHours, version: "v1.2" });
 
-  const ctx = await loadWorkspaceContext(workspaceId);
+  const [ctx, feedback] = await Promise.all([
+    loadWorkspaceContext(workspaceId),
+    loadFeedback(workspaceId),
+  ]);
+
+  // v1.2 helper: apply feedback per item (dismiss-skip, snooze-skip, pin-flag)
+  const applyFeedback = (entityId: string, item: BriefItem): BriefItem | null => {
+    const fb = feedback[entityId];
+    if (!fb) return item;
+    if (fb.dismissedAt) return null; // suppress dismissed
+    if (fb.snoozedUntil && fb.snoozedUntil > nowMs) return null; // suppress snoozed
+    if (fb.pinnedAt) {
+      item.pinned = true;
+      item.pinnedAt = fb.pinnedAt;
+    }
+    return item;
+  };
 
   // 1. Collect signals + score
   const sigSnap = await db.ref(wsPath(workspaceId, "signals")).once("value");
@@ -317,7 +359,8 @@ export async function synthesizeBrief(
     const category = categoryFromRelevance(relevance);
     const item = signalToItem(sig, category);
     item.relevance = relevance;
-    sigItems.push(item);
+    const kept = applyFeedback(sig.id, item);
+    if (kept) sigItems.push(kept);
   }
 
   // 2. Collect awards + score
@@ -331,7 +374,8 @@ export async function synthesizeBrief(
     const category = categoryFromRelevance(relevance);
     const item = awardToItem(award, category);
     item.relevance = relevance;
-    awardItems.push(item);
+    const kept = applyFeedback(award.id, item);
+    if (kept) awardItems.push(kept);
   }
 
   // 3. Collect opportunities + score
@@ -345,7 +389,8 @@ export async function synthesizeBrief(
     const category = categoryFromRelevance(relevance);
     const item = opportunityToItem(opp, category);
     item.relevance = relevance;
-    oppItems.push(item);
+    const kept = applyFeedback(opp.id, item);
+    if (kept) oppItems.push(kept);
   }
 
   const allItems = [...sigItems, ...awardItems, ...oppItems];
@@ -353,14 +398,19 @@ export async function synthesizeBrief(
   // 4. Dedupe
   const { kept, suppressed } = deduplicate(allItems, signals, ctx);
 
-  // 5. Sort by relevance descending, fall back to recency on ties
+  // 5. Sort: pinned first (by pinnedAt desc), then by relevance, then by recency
   kept.sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (b.pinned && !a.pinned) return 1;
+    if (a.pinned && b.pinned) {
+      return (b.pinnedAt || 0) - (a.pinnedAt || 0);
+    }
     const dr = (b.relevance?.total || 0) - (a.relevance?.total || 0);
     if (Math.abs(dr) > 0.01) return dr;
     return b.occurredAt - a.occurredAt;
   });
 
-  // 6. Bucket by category, apply soft caps
+  // 6. Bucket by category. Pinned items bypass soft caps but count toward hard.
   const byCategory: BriefOutput["itemsByCategory"] = {
     pursuit: [],
     adversary: [],
@@ -368,16 +418,31 @@ export async function synthesizeBrief(
     capability: [],
     context: [],
   };
+  let pinnedShown = 0;
   for (const item of kept) {
     const cap = SOFT_CAPS[item.category];
     const hardCap = HARD_CAPS[item.category];
     const bucket = byCategory[item.category];
-    if (bucket.length < cap) {
+    if (item.pinned) {
+      if (bucket.length < hardCap) {
+        bucket.push(item);
+        pinnedShown++;
+      }
+    } else if (bucket.length < cap) {
       bucket.push(item);
     } else if (bucket.length < hardCap) {
-      // Keep below soft cap for client-side "show more" expansion
       bucket.push(item);
     }
+  }
+
+  // Count feedback stats for transparency
+  let dismissedCount = 0;
+  let snoozedCount = 0;
+  let pinnedTotal = 0;
+  for (const fb of Object.values(feedback)) {
+    if (fb.dismissedAt) dismissedCount++;
+    if (fb.snoozedUntil && fb.snoozedUntil > nowMs) snoozedCount++;
+    if (fb.pinnedAt) pinnedTotal++;
   }
 
   const output: BriefOutput = {
@@ -396,8 +461,12 @@ export async function synthesizeBrief(
       awards: awardCount,
       opportunities: oppCount,
       suppressedByDedup: suppressed,
+      dismissedActive: dismissedCount,
+      snoozedActive: snoozedCount,
+      pinnedActive: pinnedTotal,
+      pinnedShown,
     },
-    scoringVersion: "1.1",
+    scoringVersion: "1.2",
     weightsApplied: SCORING_WEIGHTS,
   };
 
