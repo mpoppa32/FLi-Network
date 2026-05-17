@@ -46,3 +46,7 @@ export { briefSynthesisNightly } from "./jobs/briefSynthesisNightly";
 // FACA Database (Phase 8.6.1 — first Tier 2 source)
 export { triggerFacaDatabaseSync } from "./http/triggerFacaDatabaseSync";
 export { facaDatabaseWeekly } from "./jobs/facaDatabaseWeekly";
+
+// DoD News Contracts (Phase 8.5.4 v1.2 — multi-source reconciliation)
+export { triggerDodNewsSync } from "./http/triggerDodNewsSync";
+export { dodNewsDaily } from "./jobs/dodNewsDaily";
