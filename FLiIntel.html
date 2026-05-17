@@ -10456,6 +10456,16 @@ input[type="url"], textarea, select {
           <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">Foreign Military Sales notifications to Congress from dsca.mil → fms_notification Signals + foreign_government Organizations. Weekly Saturday 09:00 UTC. Keyless. <span style="color:var(--gold)">Opt-in: set enabled:true in config.</span> Leading indicator 1-3 years ahead of actual award.</div>
           <button onclick="window._showSourcePanelGeneric('dsca_fms')" style="padding:5px 12px;border:1px solid rgba(122,184,216,.35);border-radius:2px;background:rgba(122,184,216,.08);color:#7ab8d8;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
         </div>
+
+        <!-- Phase 8.6.5 Service-branch News (Tier 2 bundled RSS aggregator) -->
+        <div style="background:var(--s1);border:1px solid rgba(116,168,155,.15);border-left:3px solid #74a89b;border-radius:2px;padding:12px 14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#74a89b;font-weight:600">Service-branch News <span style="color:var(--t3);font-weight:400;font-size:8px">· Tier 2</span></div>
+            <span id="service-news-source-status" style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px;border:1px solid var(--b1)">AWAITING MIGRATION</span>
+          </div>
+          <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">RSS aggregator for 6 US military service branches (Army, Navy, Air Force, Marines, Space Force, Coast Guard) → service_news Signals. Leadership change announcements auto-flagged. Daily 15:00 UTC. Keyless.</div>
+          <button onclick="window._showSourcePanelGeneric('service_news')" style="padding:5px 12px;border:1px solid rgba(116,168,155,.35);border-radius:2px;background:rgba(116,168,155,.08);color:#74a89b;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
+        </div>
       </div>
 
       <!-- ── FOOTER ── -->
@@ -34952,6 +34962,28 @@ window._phase85Sources = {
     ],
     entityCounter: { path: 'awards', filterType: 'award', label: 'Award entities (provisional + active)' }
   },
+  // Phase 8.6.5 — Tier 2 service-branch news (RSS aggregator)
+  service_news: {
+    displayName: 'Service-branch News',
+    subtitle: 'Phase 8.6.5 · Army / Navy / Air Force / Marines / Space Force',
+    color: '#74a89b',
+    callable: 'triggerServiceNewsSync',
+    entityType: 'service_news Signal',
+    requiresKey: null,
+    cadence: 'Daily · 15:00 UTC',
+    cadenceCron: '0 15 * * *',
+    description: 'Bundled RSS aggregator for 6 US military service branches (Army, Navy, Air Force, Marines, Space Force, Coast Guard) → service_news Signals. Leadership change announcements (assumes command / sworn in / nominated / confirmed / retired) auto-flagged with isLeadershipAnnouncement:true for posture-layer prioritization.',
+    badgeId: 'service-news-source-status',
+    configPath: 'sources/service_news/config',
+    healthPath: 'sources/service_news',
+    fields: [
+      { key: 'enabledServices', label: 'Service keys', placeholder: 'army,navy,air_force,marines,space_force', kind: 'csv', default: ['army','navy','air_force','marines','space_force'] },
+      { key: 'keywords', label: 'Keyword filter (empty = all)', placeholder: 'AI, autonomy, hypersonic', kind: 'csv' },
+      { key: 'leadershipOnly', label: 'Leadership announcements only', placeholder: 'true or false', kind: 'bool', default: false },
+      { key: 'lookbackDays', label: 'Lookback days', placeholder: '14', kind: 'number', default: 14 }
+    ],
+    entityCounter: { path: 'signals', filterType: 'service_news', label: 'service-news Signals' }
+  },
   // Phase 8.6.2 — Tier 2 DSCA FMS notifications (web scrape)
   dsca_fms: {
     displayName: 'DSCA FMS Notifications',
@@ -36252,7 +36284,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'congress_gov', label: 'Congress.gov',     cadenceMin: 1440, accent: '#f4ede0' },
   { key: 'faca',         label: 'FACA Database',    cadenceMin: 10080, accent: '#c39bd3' },
   { key: 'think_tank',   label: 'Defense Think Tanks', cadenceMin: 1440, accent: '#e89668' },
-  { key: 'dsca_fms',     label: 'DSCA FMS Notifications', cadenceMin: 10080, accent: '#7ab8d8' }
+  { key: 'dsca_fms',     label: 'DSCA FMS Notifications', cadenceMin: 10080, accent: '#7ab8d8' },
+  { key: 'service_news', label: 'Service-branch News', cadenceMin: 1440, accent: '#74a89b' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -36677,7 +36710,8 @@ window._renderOnboardStep3 = function() {
     { key:'congress_gov',label:'Congress.gov',      desc:'Defense committee hearings → Signal entities · Daily · Requires CONGRESSGOV_API_KEY', color:'#f4ede0' },
     { key:'faca',        label:'FACA Database (Tier 2)', desc:'DBB/DSB/DIB membership + meetings → committee Orgs + Persons + Signals · Weekly · Keyless', color:'#c39bd3' },
     { key:'think_tank',  label:'Defense Think Tanks (Tier 2)', desc:'CSIS/RAND/CNAS/Hudson/AEI/Brookings/Heritage/Atlantic Council/Stimson publications → analysis_publication Signals · Daily · Keyless RSS', color:'#e89668' },
-    { key:'dsca_fms',    label:'DSCA FMS Notifications (Tier 2)', desc:'Foreign Military Sales notifications → fms_notification Signals + foreign_government Orgs · Weekly · Keyless · Opt-in', color:'#7ab8d8' }
+    { key:'dsca_fms',    label:'DSCA FMS Notifications (Tier 2)', desc:'Foreign Military Sales notifications → fms_notification Signals + foreign_government Orgs · Weekly · Keyless · Opt-in', color:'#7ab8d8' },
+    { key:'service_news',label:'Service-branch News (Tier 2)', desc:'Army/Navy/Air Force/Marines/Space Force/Coast Guard RSS → service_news Signals; leadership transitions auto-flagged · Daily · Keyless', color:'#74a89b' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -36695,7 +36729,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });
