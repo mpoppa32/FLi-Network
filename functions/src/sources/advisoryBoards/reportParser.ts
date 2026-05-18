@@ -72,6 +72,22 @@ const CONTRACTOR_PATTERNS = [
 
 export type AdvisoryReportKind = "study" | "memo" | "annual_report" | "letter" | "report";
 
+/** v1.1: detected board member with best-effort honorific + role split. */
+export interface ParsedAdvisoryBoardMember {
+  /** Cleaned display name (no honorifics). */
+  name: string;
+  /** Honorific from the source line if present ("Dr.", "Hon.", "Gen.",
+   *  "Adm.", "Amb.", "RDML", "Lt Gen", etc.). */
+  honorific: string | null;
+  /** Role/title clause when the source line carries one ("Chair",
+   *  "Vice Chair", "Member", "Task Force Lead"). */
+  role: string | null;
+  /** Affiliation parsed from the source line ("Lockheed Martin",
+   *  "Brookings Institution", "MIT") when it appears after a comma or
+   *  dash. */
+  affiliation: string | null;
+}
+
 export interface ParsedAdvisoryReport {
   title: string | null;
   reportKind: AdvisoryReportKind;
@@ -92,6 +108,8 @@ export interface ParsedAdvisoryReport {
   agencyMentions: string[];
   /** Free-text executive summary if the section anchor was found. */
   executiveSummary: string | null;
+  /** v1.1: detected board members from membership / roster sections. */
+  members: ParsedAdvisoryBoardMember[];
   flags: string[];
 }
 
@@ -114,6 +132,7 @@ export function parseAdvisoryReportText(text: string): ParsedAdvisoryReport {
   const programs = extractMatchingKeywords(text, PROGRAM_KEYWORDS);
   const contractors = extractContractorMentions(text);
   const agencyMentions = extractAgencyMentions(text);
+  const members = extractBoardMembers(text);
 
   if (findings.length === 0 && recommendations.length === 0 && text.length > 500) {
     flags.push("no_findings_or_recommendations_detected");
@@ -122,6 +141,7 @@ export function parseAdvisoryReportText(text: string): ParsedAdvisoryReport {
     flags.push("no_program_or_contractor_matches");
   }
   if (!boardSelfReference) flags.push("no_board_self_reference");
+  if (members.length === 0) flags.push("no_members_detected");
 
   return {
     title,
@@ -134,7 +154,142 @@ export function parseAdvisoryReportText(text: string): ParsedAdvisoryReport {
     contractors,
     agencyMentions,
     executiveSummary,
+    members,
     flags,
+  };
+}
+
+// ─── v1.1: board member roster extraction ─────────────────────────────────
+//
+// DSB / DBB / DIB reports typically list members in one of these locations:
+//   - Cover page or page 2: bare list of names, sometimes with affiliations
+//   - "Task Force Membership" / "Board Members" appendix
+//   - "Members of the Board" or "Membership" front matter section
+//
+// We anchor on a roster header and walk forward parsing each line as a
+// candidate member entry. Stop conditions: empty paragraph break, next
+// section header, max 80 candidates (cap on roster length to avoid
+// runaway parsing).
+//
+// Per-line patterns we accept:
+//   "Dr. Jane A. Smith"
+//   "Dr. Jane A. Smith, Chair"
+//   "Dr. Jane A. Smith, Chair, Brookings Institution"
+//   "The Honorable Robert F. Hale, Hon."
+//   "Gen Mark A. Welsh III, USAF (Ret.)"
+//   "Lt Gen Lori J. Robinson, USAF (Ret.)"
+//   "ADM Sandy Winnefeld, USN (Ret.)"
+//
+// Per-line filters (reject):
+//   - Lines shorter than 6 chars or longer than 200
+//   - Lines starting with a digit (page number, footnote)
+//   - Lines that look like dates ("January 15, 2026")
+//   - Lines without at least 2 capitalized words (name heuristic)
+//   - Stop words: "Page", "Table", "Figure", "Appendix", "Chapter"
+
+const ROSTER_HEADER_RE = /(?:^|\n)\s*(?:Task\s+Force\s+Membership|Board\s+Members|Membership|Members\s+of\s+the\s+(?:Board|Task\s+Force|Committee|Panel)|Defense\s+(?:Science|Business|Innovation)\s+Board\s+(?:Members|Membership))\b[:.\s]*(?:\r?\n)/i;
+
+const HONORIFIC_RE = /^(Dr\.|Mr\.|Mrs\.|Ms\.|Hon\.|The\s+Honorable|Gen\.?|Lt\s+Gen\.?|Maj\s+Gen\.?|Brig\s+Gen\.?|LTG|MG|BG|CSM|Adm\.?|VAdm\.?|RDML|ADM|VADM|RADM|Capt\.?|Col\.?|LtCol\.?|Maj\.?|Sgt\.?|Amb\.?|Prof\.?|Sen\.?|Rep\.?)\s+/i;
+
+const STOP_HEADER_RE = /^(?:Appendix|Chapter|Section|Conclusion|References|Acknowledgments|Annex|Acknowledgements|Acronyms|Glossary|Background|Charter)\b/i;
+
+const NAME_LIKE_RE = /^[A-Z][a-zA-Z'\-\.]+(?:\s+[A-Z][a-zA-Z'\-\.]+){1,4}(?:\s+(?:Jr\.?|Sr\.?|III|II|IV))?$/;
+
+function extractBoardMembers(text: string): ParsedAdvisoryBoardMember[] {
+  const header = text.match(ROSTER_HEADER_RE);
+  if (!header || header.index === undefined) return [];
+  const startOffset = header.index + header[0].length;
+  // Scan up to ~6000 chars forward looking for member lines, stopping at
+  // a clear section break.
+  const window = text.slice(startOffset, Math.min(text.length, startOffset + 6000));
+  const lines = window.split(/\r?\n/);
+
+  const out: ParsedAdvisoryBoardMember[] = [];
+  const seenNames = new Set<string>();
+  let consecutiveBlank = 0;
+
+  for (const rawLine of lines) {
+    if (out.length >= 80) break;
+    const line = rawLine.trim();
+    if (!line) {
+      consecutiveBlank++;
+      // Two+ blanks in a row = section ended
+      if (consecutiveBlank >= 2 && out.length > 0) break;
+      continue;
+    }
+    consecutiveBlank = 0;
+
+    // Stop at a new section header
+    if (STOP_HEADER_RE.test(line)) break;
+    // Skip page numbers / footnotes
+    if (/^\d+\s*$/.test(line)) continue;
+    if (/^Page\s+\d/i.test(line)) continue;
+    // Skip dates
+    if (/^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}$/.test(line)) continue;
+    if (line.length < 6 || line.length > 200) continue;
+
+    const member = parseMemberLine(line);
+    if (!member) continue;
+    const key = member.name.toLowerCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+    out.push(member);
+  }
+  return out;
+}
+
+function parseMemberLine(line: string): ParsedAdvisoryBoardMember | null {
+  // Strip a leading honorific
+  let working = line;
+  let honorific: string | null = null;
+  const honMatch = working.match(HONORIFIC_RE);
+  if (honMatch) {
+    honorific = honMatch[1].trim().replace(/\s+/g, " ");
+    working = working.slice(honMatch[0].length).trim();
+  }
+
+  // Split on comma → [name, ...rest]
+  const parts = working.split(/,\s*/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  let namePart = parts[0];
+  // Strip trailing "(Ret.)" suffix and military branch suffix from name
+  namePart = namePart
+    .replace(/\s+\(Ret\.?\)\s*$/i, "")
+    .replace(/\s+USA[F]?\s*\(?Ret\.?\)?\s*$/i, "")
+    .replace(/\s+USN\s*\(?Ret\.?\)?\s*$/i, "")
+    .replace(/\s+USMC\s*\(?Ret\.?\)?\s*$/i, "")
+    .replace(/\s+USCG\s*\(?Ret\.?\)?\s*$/i, "")
+    .replace(/\s+USSF\s*\(?Ret\.?\)?\s*$/i, "")
+    .trim();
+
+  if (!NAME_LIKE_RE.test(namePart)) return null;
+  // Reject obvious non-names (one-word "Membership", "Acknowledgments", etc.)
+  const wordCount = namePart.split(/\s+/).length;
+  if (wordCount < 2) return null;
+
+  // Role detection from subsequent parts — short clauses near the front
+  // tend to be roles ("Chair", "Vice Chair", "Member"), longer clauses
+  // tend to be affiliations.
+  let role: string | null = null;
+  let affiliation: string | null = null;
+  const ROLE_RE = /^(Chair|Co-?Chair|Vice\s+Chair|Member|Task\s+Force\s+Lead|Lead|Sub-?Committee\s+(?:Chair|Member)|Ex-?Officio)$/i;
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i];
+    if (!role && ROLE_RE.test(p)) {
+      role = p;
+      continue;
+    }
+    if (!affiliation && p.length >= 4 && p.length <= 100) {
+      affiliation = p;
+    }
+  }
+
+  return {
+    name: namePart,
+    honorific,
+    role,
+    affiliation,
   };
 }
 

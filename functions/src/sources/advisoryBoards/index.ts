@@ -50,6 +50,11 @@ export interface AdvisoryBoardsSyncResult {
   contractorMentionsTotal: number;
   programMentionsTotal: number;
   agencyMentionsTotal: number;
+  /** v1.1: member roster + Person resolution totals. */
+  membersDetectedTotal: number;
+  memberPersonsCreatedTotal: number;
+  memberPersonsMatchedTotal: number;
+  memberEdgesUpsertedTotal: number;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
   sourceVersion: string;
@@ -95,6 +100,10 @@ export async function syncWorkspace(
     contractorMentionsTotal: 0,
     programMentionsTotal: 0,
     agencyMentionsTotal: 0,
+    membersDetectedTotal: 0,
+    memberPersonsCreatedTotal: 0,
+    memberPersonsMatchedTotal: 0,
+    memberEdgesUpsertedTotal: 0,
     errors: [],
     apiCallsCount: 0,
     sourceVersion: SOURCE_VERSION,
@@ -178,6 +187,10 @@ export async function syncWorkspace(
               result.contractorMentionsTotal += r.metrics.contractorsMatched;
               result.programMentionsTotal += r.metrics.programsMatched;
               result.agencyMentionsTotal += r.metrics.agencyMentionsExtracted;
+              result.membersDetectedTotal += r.metrics.membersDetected;
+              result.memberPersonsCreatedTotal += r.metrics.membersPersonsCreated;
+              result.memberPersonsMatchedTotal += r.metrics.membersPersonsMatched;
+              result.memberEdgesUpsertedTotal += r.metrics.memberEdgesUpserted;
             } else {
               result.pdfExtractionsFailed++;
             }
