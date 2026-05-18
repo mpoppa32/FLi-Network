@@ -138,6 +138,9 @@ export interface BriefOutput {
      *  incoming formerly_at Edges (workspace has registered-lobbyist
      *  Persons who formerly worked there) */
     revolvingDoorTouchBumps?: number;
+    /** v1.18: count of Signal items bumped for accumulating ≥3 distinct
+     *  bump axes from v1.11-v1.17 (nexus convergence) */
+    nexusBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1133,6 +1136,61 @@ export async function synthesizeBrief(
     return b.signalCount - a.signalCount;
   });
 
+  // 3.13. v1.18 — confluence-of-confluences nexus bump.
+  //
+  // After all prior bump passes (v1.11-v1.17), count how many distinct
+  // scoring axes fired on each Signal item by scanning its whySurfaced[]
+  // for axis-anchor prefixes. When ≥3 axes hit on a single item, the
+  // operator should know — multi-axis confluence is the strongest
+  // single indicator that the platform's signals have converged on
+  // one event.
+  //
+  //   3 axes:  +0.08 magnitude
+  //   4 axes:  +0.12
+  //   5+ axes: +0.15
+  //
+  // Caps with the existing magnitude max of 1.0. Adds a single
+  // whySurfaced line that names the count + a stable "NEXUS" anchor so
+  // the client touch-row chip can detect and render it.
+  let nexusBumps = 0;
+  if (sigItems.length > 0) {
+    const AXIS_PREFIXES = [
+      "Cross-source convergence",
+      "Tight cross-source",
+      "Customer landscape in flux",
+      "Procurement-reset confluence",
+      "Posture path: Adversary",
+      "Posture path: Liberator",
+      "Posture trajectory:",
+      "Mentions budget PE",
+      "Revolving-door touch",
+    ];
+    for (const item of sigItems) {
+      if (!item.relevance) continue;
+      const lines = item.relevance.whySurfaced || [];
+      const seenAxes = new Set<string>();
+      for (const line of lines) {
+        if (typeof line !== "string") continue;
+        for (const prefix of AXIS_PREFIXES) {
+          if (line.startsWith(prefix)) {
+            seenAxes.add(prefix);
+            break;
+          }
+        }
+      }
+      if (seenAxes.size < 3) continue;
+      let bump = 0.08;
+      if (seenAxes.size >= 5) bump = 0.15;
+      else if (seenAxes.size === 4) bump = 0.12;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Nexus convergence — ${seenAxes.size} scoring axes fired on this item`
+      );
+      nexusBumps++;
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -1224,10 +1282,11 @@ export async function synthesizeBrief(
       postureTrajectoryBumps,
       peMentionBumps,
       revolvingDoorTouchBumps,
+      nexusBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.17",
+    scoringVersion: "1.18",
     weightsApplied: SCORING_WEIGHTS,
   };
 
