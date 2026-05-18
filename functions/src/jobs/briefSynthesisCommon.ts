@@ -479,7 +479,7 @@ export async function synthesizeBrief(
       pinnedShown,
       dismissReasonAggregate,
     },
-    scoringVersion: "1.7",
+    scoringVersion: "1.8",
     weightsApplied: SCORING_WEIGHTS,
   };
 

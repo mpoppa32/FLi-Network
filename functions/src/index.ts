@@ -76,3 +76,8 @@ export { advisoryBoardsWeekly } from "./jobs/advisoryBoardsWeekly";
 // from lda.senate.gov REST API; keyless v1.0)
 export { triggerSenateLdaSync } from "./http/triggerSenateLdaSync";
 export { senateLdaWeekly } from "./jobs/senateLdaWeekly";
+
+// DoD Comptroller — budget materials PE catalog (Phase 8.6.3 — Tier 2
+// R-2/P-1 PDF walk; PE-level Signals; reuses framework/pdfExtractor)
+export { triggerDodComptrollerSync } from "./http/triggerDodComptrollerSync";
+export { dodComptrollerMonthly } from "./jobs/dodComptrollerMonthly";

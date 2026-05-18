@@ -271,6 +271,47 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       }
       return { score: 0.3, why: `DEF 14A proxy statement` };
     }
+    case "budget_change": {
+      // v1.8 — DoD Comptroller v1.0 PE catalog baselines. v1.0 does not
+      // carry FY funding amounts (deferred to v1.1 table-aware
+      // extraction). Magnitude is shaped by whether the PE has a
+      // substantive narrative paragraph (signal of an active program
+      // line) vs. a bare PE-number-only entry.
+      const pe = (attrs.pe as string | undefined) || "";
+      const narrative = (attrs.narrative as string | undefined) || "";
+      const narrativeLen = narrative.length;
+      const baseline = !!attrs.baseline;
+      const bookType = (attrs.bookType as string | undefined) || "";
+      const service = (attrs.serviceLabel as string | undefined) || (attrs.service as string | undefined) || "";
+
+      // R-2 (RDT&E) is more forward-looking than P-1 (procurement) for
+      // BD operators — new programs and capability bets show up here
+      // before they hit procurement. Bias R-2 up.
+      const isRdte = /^R-?2/.test(bookType);
+
+      if (narrativeLen >= 1500) {
+        return {
+          score: isRdte ? 0.7 : 0.6,
+          why: `${service ? service + " " : ""}${bookType || "budget"} PE ${pe} — substantive narrative (${narrativeLen} chars)`,
+        };
+      }
+      if (narrativeLen >= 400) {
+        return {
+          score: isRdte ? 0.55 : 0.5,
+          why: `${service ? service + " " : ""}${bookType || "budget"} PE ${pe}`,
+        };
+      }
+      if (baseline) {
+        return {
+          score: 0.4,
+          why: `${service ? service + " " : ""}${bookType || "budget"} PE ${pe} baseline catalog entry`,
+        };
+      }
+      return {
+        score: 0.35,
+        why: `Budget PE ${pe || "(unknown)"}`,
+      };
+    }
     case "lobbying_disclosure": {
       // v1.7 — Senate LDA v1.0 lobbying_disclosure Signals. BD-operator
       // magnitude is driven by (1) dollar amount (intensity of spend),

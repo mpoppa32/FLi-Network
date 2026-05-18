@@ -35949,6 +35949,7 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'proxy_statement') return window._proxyStatementTouchRow(sig, attrs);
       if (sig.type === 'advisory_body_report') return window._advisoryBodyReportTouchRow(sig, attrs);
       if (sig.type === 'lobbying_disclosure') return window._lobbyingDisclosureTouchRow(sig, attrs);
+      if (sig.type === 'budget_change') return window._budgetChangeTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36371,6 +36372,52 @@ window._advisoryBodyReportTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// DoD Comptroller v1.0: enriched touch-row renderer for budget_change
+// Signals. v1.0 emits PE catalog baselines (no FY funding tables yet);
+// the row surfaces PE number, title, service, book type, and FY. The PE
+// number renders in monospace as the right chip — operators recognize
+// PE numbers like 0603308D8Z visually, and the chip lets them confirm
+// at a glance which program element a Signal touches.
+window._budgetChangeTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var pe = (attrs.pe || '').toString();
+  var titleText = attrs.title || ('PE ' + pe);
+  var narrative = (attrs.narrative || '').toString();
+  var serviceLabel = (attrs.serviceLabel || attrs.service || '').toString();
+  var bookType = (attrs.bookType || '').toString();
+  var fy = (attrs.fiscalYear || '').toString();
+  var baseline = !!attrs.baseline;
+
+  var titleHtml = esc(titleText.toString().slice(0, 160));
+
+  var subParts = [];
+  if (serviceLabel) subParts.push(serviceLabel.replace(/^Department of (the )?/, ''));
+  if (bookType) subParts.push(bookType);
+  if (fy) subParts.push('FY' + fy);
+  if (baseline) subParts.push('baseline');
+  if (narrative) {
+    var snippet = narrative.replace(/\s+/g, ' ').slice(0, 140);
+    if (narrative.length > 140) snippet += '…';
+    subParts.push(esc(snippet));
+  }
+  var subtitleHtml = subParts.join(' · ');
+
+  // Right chip: PE number in monospace olive
+  var rightHtml = pe
+    ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:rgba(156,138,94,.10);color:#9c8a5e;border:1px solid rgba(156,138,94,.30)">' + esc(pe) + '</span>'
+    : '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:rgba(156,138,94,.08);color:#9c8a5e;border:1px solid rgba(156,138,94,.30)">' + esc(bookType || 'Budget') + '</span>';
+
+  var clickUrl = attrs.bookUrl || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
@@ -37153,7 +37200,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'service_news', label: 'Service-branch News', cadenceMin: 1440, accent: '#74a89b' },
   { key: 'gao_reports',  label: 'GAO Reports',         cadenceMin: 1440, accent: '#9a4040' },
   { key: 'advisory_boards', label: 'Advisory Boards (DSB/DBB/DIB)', cadenceMin: 10080, accent: '#5e7a9c' },
-  { key: 'senate_lda',      label: 'Senate Lobbying Disclosure', cadenceMin: 10080, accent: '#a87c5a' }
+  { key: 'senate_lda',      label: 'Senate Lobbying Disclosure', cadenceMin: 10080, accent: '#a87c5a' },
+  { key: 'dod_comptroller', label: 'DoD Comptroller Budget',     cadenceMin: 43200, accent: '#9c8a5e' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -37918,7 +37966,8 @@ window._renderOnboardStep3 = function() {
     { key:'service_news',label:'Service-branch News (Tier 2)', desc:'Army/Navy/Air Force/Marines/Space Force/Coast Guard RSS → service_news Signals; leadership transitions auto-flagged · Daily · Keyless', color:'#74a89b' },
     { key:'gao_reports', label:'GAO Reports (Tier 2)', desc:'GAO programmatic audit/evaluation reports → oversight_finding Signals; defense-keyword filtered · Daily · Keyless', color:'#9a4040' },
     { key:'advisory_boards', label:'Advisory Boards — DSB/DBB/DIB (Tier 2)', desc:'Defense Science / Business / Innovation Board reports → advisory_body_report Signals; PDF deep-parse for findings + recommendations + programs + contractors · Weekly · Keyless', color:'#5e7a9c' },
-    { key:'senate_lda', label:'Senate Lobbying Disclosure (Tier 2)', desc:'LD-1/LD-2 filings from lda.senate.gov → lobbying_disclosure Signals; defense issue-code filtered; ties competitor lobbying spend + revolving-door lobbyists to specific issues + agencies · Weekly · Keyless', color:'#a87c5a' }
+    { key:'senate_lda', label:'Senate Lobbying Disclosure (Tier 2)', desc:'LD-1/LD-2 filings from lda.senate.gov → lobbying_disclosure Signals; defense issue-code filtered; ties competitor lobbying spend + revolving-door lobbyists to specific issues + agencies · Weekly · Keyless', color:'#a87c5a' },
+    { key:'dod_comptroller', label:'DoD Comptroller Budget (Tier 2)', desc:'Annual R-2 / P-1 budget justification books from comptroller.defense.gov → budget_change Signals; PE-level catalog with title + narrative; v1.0 baseline pass, v1.1 will add FY funding tables + YoY deltas · Monthly · Keyless', color:'#9c8a5e' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -37936,7 +37985,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda','dod_comptroller'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });
