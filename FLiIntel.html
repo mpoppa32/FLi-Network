@@ -35947,6 +35947,7 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'oversight_finding') return window._oversightFindingTouchRow(sig, attrs);
       if (sig.type === 'periodic_report') return window._periodicReportTouchRow(sig, attrs);
       if (sig.type === 'proxy_statement') return window._proxyStatementTouchRow(sig, attrs);
+      if (sig.type === 'advisory_body_report') return window._advisoryBodyReportTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36299,6 +36300,74 @@ window._oversightFindingTouchRow = function(sig, attrs) {
   } else {
     rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:rgba(154,64,64,.06);color:#9a4040;border:1px solid rgba(154,64,64,.30)">' + esc(kindLabel) + '</span>';
   }
+
+  var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// Advisory Boards v1.0: enriched touch-row renderer for advisory_body_report
+// Signals (DSB / DBB / DIB). Surfaces board badge color-coded by body, report
+// title, kind (study / memo / annual_report / letter), date, and counts of
+// findings / recommendations / programs / contractors when deep-parsed.
+// Falls back to v1.0 metadata-only rendering when deepParsingPending is set.
+window._advisoryBodyReportTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  // Per-board palette — steel-blue family, board-distinct
+  var board = (attrs.board || '').toString();
+  var boardLabel = (attrs.boardLabel || board || 'BOARD').toString().toUpperCase();
+  var boardPalette;
+  if (board === 'dsb') boardPalette = { fg:'#5e7a9c', bg:'rgba(94,122,156,.10)' };
+  else if (board === 'dbb') boardPalette = { fg:'#7a6b9c', bg:'rgba(122,107,156,.10)' };
+  else if (board === 'dib') boardPalette = { fg:'#5e9c8b', bg:'rgba(94,156,139,.10)' };
+  else boardPalette = { fg:'#5e7a9c', bg:'rgba(94,122,156,.10)' };
+
+  // v1.0 fallback — no deep parse yet
+  if (attrs.deepParsingPending) {
+    return {
+      titleHtml: esc((attrs.title || boardLabel + ' Report').toString().slice(0, 160)),
+      subtitleHtml: boardLabel + ' · ' + (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '?') + ' · awaiting deep parse',
+      rightHtml: '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>',
+      onclick: attrs.url ? "window.open('" + attrs.url + "','_blank')" : ''
+    };
+  }
+
+  // Report-kind label
+  var kind = (attrs.reportKind || '').toString();
+  var kindLabel;
+  if (kind === 'study') kindLabel = 'Study';
+  else if (kind === 'memo') kindLabel = 'Memo';
+  else if (kind === 'annual_report') kindLabel = 'Annual Report';
+  else if (kind === 'letter') kindLabel = 'Letter';
+  else kindLabel = 'Report';
+
+  var titleText = attrs.titleParsed || attrs.title || (boardLabel + ' Report');
+  var titleHtml = esc(titleText.toString().slice(0, 160));
+
+  var date = attrs.decidedAt ? new Date(attrs.decidedAt).toLocaleDateString()
+                              : (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '');
+  var subtitleParts = [];
+  subtitleParts.push(boardLabel);
+  subtitleParts.push(kindLabel);
+  if (date) subtitleParts.push(date);
+  var findingsCount = Number(attrs.findings && attrs.findings.length) || 0;
+  var recCount = Number(attrs.recommendations && attrs.recommendations.length) || 0;
+  if (findingsCount) subtitleParts.push(findingsCount + ' findings');
+  if (recCount) subtitleParts.push(recCount + ' recs');
+  var programsCount = Number(attrs.programs && attrs.programs.length) || 0;
+  var contractorsCount = Number(attrs.contractors && attrs.contractors.length) || 0;
+  if (programsCount) subtitleParts.push(programsCount + ' programs');
+  if (contractorsCount) subtitleParts.push(contractorsCount + ' contractors');
+  var subtitleHtml = subtitleParts.join(' · ');
+
+  // Right chip: board badge
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
   return {
@@ -37011,7 +37080,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'think_tank',   label: 'Defense Think Tanks', cadenceMin: 1440, accent: '#e89668' },
   { key: 'dsca_fms',     label: 'DSCA FMS Notifications', cadenceMin: 10080, accent: '#7ab8d8' },
   { key: 'service_news', label: 'Service-branch News', cadenceMin: 1440, accent: '#74a89b' },
-  { key: 'gao_reports',  label: 'GAO Reports',         cadenceMin: 1440, accent: '#9a4040' }
+  { key: 'gao_reports',  label: 'GAO Reports',         cadenceMin: 1440, accent: '#9a4040' },
+  { key: 'advisory_boards', label: 'Advisory Boards (DSB/DBB/DIB)', cadenceMin: 10080, accent: '#5e7a9c' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -37774,7 +37844,8 @@ window._renderOnboardStep3 = function() {
     { key:'think_tank',  label:'Defense Think Tanks (Tier 2)', desc:'CSIS/RAND/CNAS/Hudson/AEI/Brookings/Heritage/Atlantic Council/Stimson publications → analysis_publication Signals · Daily · Keyless RSS', color:'#e89668' },
     { key:'dsca_fms',    label:'DSCA FMS Notifications (Tier 2)', desc:'Foreign Military Sales notifications → fms_notification Signals + foreign_government Orgs · Weekly · Keyless · Opt-in', color:'#7ab8d8' },
     { key:'service_news',label:'Service-branch News (Tier 2)', desc:'Army/Navy/Air Force/Marines/Space Force/Coast Guard RSS → service_news Signals; leadership transitions auto-flagged · Daily · Keyless', color:'#74a89b' },
-    { key:'gao_reports', label:'GAO Reports (Tier 2)', desc:'GAO programmatic audit/evaluation reports → oversight_finding Signals; defense-keyword filtered · Daily · Keyless', color:'#9a4040' }
+    { key:'gao_reports', label:'GAO Reports (Tier 2)', desc:'GAO programmatic audit/evaluation reports → oversight_finding Signals; defense-keyword filtered · Daily · Keyless', color:'#9a4040' },
+    { key:'advisory_boards', label:'Advisory Boards — DSB/DBB/DIB (Tier 2)', desc:'Defense Science / Business / Innovation Board reports → advisory_body_report Signals; PDF deep-parse for findings + recommendations + programs + contractors · Weekly · Keyless', color:'#5e7a9c' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -37792,7 +37863,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });

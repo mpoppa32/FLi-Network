@@ -66,3 +66,8 @@ export { serviceNewsDaily } from "./jobs/serviceNewsDaily";
 // GAO Reports (Phase 8.6.14 — Tier 2 oversight findings via RSS)
 export { triggerGaoReportsSync } from "./http/triggerGaoReportsSync";
 export { gaoReportsDaily } from "./jobs/gaoReportsDaily";
+
+// Advisory Boards — DSB / DBB / DIB (Phase 8.6.8 — Tier 2 advisory body
+// reports via HTML index walk + PDF deep parse; reuses framework/pdfExtractor)
+export { triggerAdvisoryBoardsSync } from "./http/triggerAdvisoryBoardsSync";
+export { advisoryBoardsWeekly } from "./jobs/advisoryBoardsWeekly";

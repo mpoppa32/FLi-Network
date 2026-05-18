@@ -19,7 +19,7 @@ export type SourceSystem =
   | "inside_defense"
   | "service_news"
   | "think_tank"
-  | "dsb_dbb_dib"
+  | "advisory_boards"
   | "house_lobbying"
   | "plum_book"
   | "industry_assoc"
