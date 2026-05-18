@@ -62,6 +62,23 @@ export interface BriefScoringContext {
 // Component scoring helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Hard-program mention check — quick keyword scan for marquee defense
+ * programs/systems. Used by analysis_publication / service_news
+ * magnitude scoring (v1.10) to bump items that name a specific program
+ * over generic capability commentary.
+ *
+ * Intentionally narrow — these are the programs operators most
+ * frequently care about, not the exhaustive list. False negatives are
+ * fine (falls through to default scoring); false positives are not.
+ */
+const HARD_PROGRAM_RE = /\b(F-?35|F-?22|F-?15EX|B-?21|KC-?46|CCA\b|NGAD\b|Sentinel|GBSD|Columbia(?:-class)?|Virginia(?:-class)?|Ford(?:-class)?|Constellation|FFG\(?X\)?|DDG\s?51|DDG\(?X\)?|SSN\(?X\)?|M1\s+Abrams|Stryker|Bradley|AMPV|OMFV|FLRAA|FARA|JLTV|Patriot|THAAD|JADC2|ABMS|Replicator|Hypersonic|LRHW|SBIRS|GPS\s+III|Next\s+Generation\s+OPIR|Trident\s+II|Tomahawk|AEGIS|F-?47)\b/i;
+
+function mentionsHardProgram(text: string): boolean {
+  if (!text) return false;
+  return HARD_PROGRAM_RE.test(text);
+}
+
 function recencyFactor(occurredAtMs: number, nowMs: number): number {
   const hours = (nowMs - occurredAtMs) / 3600000;
   if (hours < 0) return 1.0;
@@ -548,6 +565,90 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       return { score: 0.5, why: "Award modification" };
     case "award_terminated":
       return { score: 0.85, why: "Award terminated (T4D/T4C) — competitive opening" };
+    case "analysis_publication": {
+      // v1.10 — think_tank publication. Magnitude is shaped by:
+      //   (1) hard-program mention in title (concrete topic, not survey),
+      //   (2) author presence (named expert > aggregated commentary),
+      //   (3) tank tier (CSIS / RAND / CNAS are higher-signal than smaller
+      //   shops — but tier weighting is per-workspace operator preference,
+      //   so v1.10 stays tank-agnostic; the cross-source touches popover
+      //   shows the tank already).
+      const title = (attrs.title as string | undefined) || "";
+      const author = (attrs.author as string | undefined) || "";
+      const tankName = (attrs.tankName as string | undefined) || "Think tank";
+      if (mentionsHardProgram(title)) {
+        return {
+          score: 0.65,
+          why: `${tankName} analysis names a hard program: "${title.slice(0, 80)}"`,
+        };
+      }
+      if (author && title.length > 100) {
+        return {
+          score: 0.55,
+          why: `${tankName} authored analysis by ${author}`,
+        };
+      }
+      if (author) {
+        return { score: 0.5, why: `${tankName} analysis by ${author}` };
+      }
+      return { score: 0.4, why: `${tankName} publication` };
+    }
+    case "service_news": {
+      // v1.10 — service-branch news. Leadership transitions are the
+      // strongest BD signal in this stream — new SES / GO/FO assignment
+      // resets the customer landscape on every pursuit touching that
+      // command. Hard-program mentions in service-branch press releases
+      // also tend to be substantive (rather than recruiting / PA filler).
+      const isLeadership = !!attrs.isLeadershipAnnouncement;
+      const title = (attrs.title as string | undefined) || "";
+      const serviceName = (attrs.serviceName as string | undefined) || "Service";
+      if (isLeadership) {
+        return {
+          score: 0.75,
+          why: `${serviceName} leadership announcement: "${title.slice(0, 100)}"`,
+        };
+      }
+      if (mentionsHardProgram(title)) {
+        return {
+          score: 0.6,
+          why: `${serviceName} news names a hard program: "${title.slice(0, 100)}"`,
+        };
+      }
+      return { score: 0.4, why: `${serviceName} news` };
+    }
+    case "fms_notification": {
+      // v1.10 — DSCA Foreign Military Sales notification. Dollar value is
+      // the dominant magnitude axis. isMde (Major Defense Equipment) flags
+      // the high-end qualitative tier per DSCA classification.
+      const dv = Number(attrs.dollarValue ?? 0);
+      const country = (attrs.country as string | undefined) || "buyer";
+      const platform = (attrs.platform as string | undefined) || "platform";
+      const isMde = !!attrs.isMde;
+      if (dv >= 5_000_000_000) {
+        return { score: 1.0, why: `FMS to ${country}: ${platform} $${(dv / 1e9).toFixed(1)}B — top-tier sale` };
+      }
+      if (dv >= 1_000_000_000) {
+        return { score: 0.85, why: `FMS to ${country}: ${platform} $${(dv / 1e9).toFixed(2)}B` };
+      }
+      if (dv >= 250_000_000) {
+        return { score: 0.7, why: `FMS to ${country}: ${platform} $${(dv / 1e6).toFixed(0)}M` };
+      }
+      if (dv >= 50_000_000) {
+        return { score: 0.55, why: `FMS to ${country}: ${platform} $${(dv / 1e6).toFixed(0)}M` };
+      }
+      if (isMde) {
+        return { score: 0.6, why: `FMS to ${country}: MDE ${platform}` };
+      }
+      if (dv > 0) {
+        return { score: 0.45, why: `FMS to ${country}: ${platform} $${(dv / 1e6).toFixed(1)}M` };
+      }
+      return { score: 0.4, why: `FMS notification: ${platform} to ${country}` };
+    }
+    case "committee_recommendation":
+      // v1.10 — FACA committee recommendation. By definition an action
+      // signal (recommendations vs. meeting minutes). Bumped above the
+      // committee_meeting baseline (0.5) without being noise-level.
+      return { score: 0.6, why: "FACA committee recommendation issued" };
     default:
       return { score: 0.3, why: `${signal.type.replace(/_/g, " ")} signal` };
   }
