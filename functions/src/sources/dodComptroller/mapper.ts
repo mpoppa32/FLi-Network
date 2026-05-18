@@ -93,9 +93,20 @@ export async function upsertBudgetPeSignal(
     bookUrl: ctx.bookUrl,
     bookFilename: ctx.bookFilename,
     baseline: true,
-    deepParsingPending: true, // FY funding tables land in v1.1
     extractedAt: Date.now(),
   };
+
+  // v1.1: best-effort FY funding lifted by budgetParser. When present,
+  // deepParsingPending is cleared and Brief Synthesis scores on dollar
+  // magnitude rather than narrative length alone.
+  if (pe.fyFunding && pe.fyFunding.length > 0) {
+    attrs.fyFunding = pe.fyFunding;
+    attrs.fyFundingTotalMillions = pe.fyFundingTotalMillions;
+    attrs.latestFy = pe.latestFy;
+    attrs.latestFyAmountMillions = pe.latestFyAmountMillions;
+  } else {
+    attrs.deepParsingPending = true;
+  }
 
   const hash = hashFields(
     {
@@ -108,8 +119,20 @@ export async function upsertBudgetPeSignal(
       narrativeHash: pe.narrative
         ? createHash("sha1").update(pe.narrative).digest("hex").slice(0, 16)
         : "",
+      fyFundingTotal: pe.fyFundingTotalMillions || 0,
+      latestFyAmount: pe.latestFyAmountMillions || 0,
     } as Record<string, unknown>,
-    ["pe", "title", "service", "fiscalYear", "bookType", "bookUrl", "narrativeHash"]
+    [
+      "pe",
+      "title",
+      "service",
+      "fiscalYear",
+      "bookType",
+      "bookUrl",
+      "narrativeHash",
+      "fyFundingTotal",
+      "latestFyAmount",
+    ]
   );
 
   const provenance = externalProvenance(

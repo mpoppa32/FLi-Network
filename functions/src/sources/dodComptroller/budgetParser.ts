@@ -29,6 +29,18 @@
 const PE_REGEX = /\b(0[1-9]\d{5}[A-Z]{0,3})\b/g;
 const EXHIBIT_HEADER_RE = /Exhibit\s+(R-?\d[A-Z]?|P-?\d+|O-?\d+|M-?\d+)\b/i;
 
+export interface FyFundingPoint {
+  /** Fiscal year as a 4-digit string ("2026"). */
+  fy: string;
+  /** Best-effort dollar amount in millions (the unit budget books use). */
+  amountMillions: number;
+  /** Best-effort confidence: "header" (anchored on FY column header),
+   *  "proximity" (extracted from nearby text without column structure),
+   *  "fallback" (loose match). v1.1 errs toward over-collection; the
+   *  Brief scorer can weight by confidence. */
+  confidence: "header" | "proximity" | "fallback";
+}
+
 export interface ParsedProgramElement {
   /** PE number, e.g., "0603308D8Z" — uppercase, no spaces. */
   pe: string;
@@ -40,6 +52,15 @@ export interface ParsedProgramElement {
   narrative: string | null;
   /** Inferred exhibit kind (e.g., "R-2" / "P-1"). */
   exhibit: string | null;
+  /** v1.1: best-effort FY funding points parsed from the budget table near
+   *  this PE. Empty if no table was detected. */
+  fyFunding: FyFundingPoint[];
+  /** v1.1: total of all detected FY funding points (millions). 0 if none. */
+  fyFundingTotalMillions: number;
+  /** v1.1: latest FY for which we found a funding point. null if none. */
+  latestFy: string | null;
+  /** v1.1: amount for the latest FY (millions). 0 if no latest-FY point. */
+  latestFyAmountMillions: number;
   /** Char offset of the PE marker in source text — useful for debugging
    *  but not stored on the Signal. */
   offset: number;
@@ -58,6 +79,103 @@ export interface ParsedBudgetBook {
 
 function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * v1.1: best-effort FY funding extraction from the budget-table region
+ * immediately following a PE marker. R-2 / P-1 exhibits typically present
+ * funding as a table:
+ *
+ *   Cost ($ in Millions)            FY 2024     FY 2025     FY 2026   FY 2027
+ *   Some Project Line A               12.345      15.678      22.100    24.500
+ *   Total Program Element             45.200      48.100      52.300    55.000
+ *
+ * After PDF text extraction the rows often collapse to space-separated
+ * sequences, sometimes column-by-column instead of row-by-row. v1.1 uses
+ * three extraction strategies in order:
+ *
+ *   1) "header" — find an "FY 20XX" header line, then read the next 6 lines
+ *      looking for total/program-element row dollar values aligned to the
+ *      column positions. Most confident.
+ *   2) "proximity" — scan for "FY 20XX ... $N.NN" patterns within ~2000
+ *      chars of the PE marker. Anchored on year + dollar value, in either
+ *      order.
+ *   3) "fallback" — if neither yields anything, scan for "Cost ($ in Millions)"
+ *      and grab the next 4 numbers, pairing them with sequential FYs from a
+ *      detected header row.
+ *
+ * v1.1 is intentionally permissive — over-collection is fine because the
+ * Brief scorer can weight by confidence. v1.2 will tighten with positional
+ * extraction if PDF.js positional metadata becomes available.
+ */
+function extractFyFundingNear(text: string, peOffset: number, pe: string): FyFundingPoint[] {
+  const windowStart = peOffset + pe.length;
+  const windowEnd = Math.min(text.length, windowStart + 4000);
+  const window = text.slice(windowStart, windowEnd);
+
+  const found: FyFundingPoint[] = [];
+  const seenKey = new Set<string>();
+  const push = (fy: string, amount: number, confidence: FyFundingPoint["confidence"]) => {
+    if (!fy || !Number.isFinite(amount)) return;
+    const key = fy;
+    if (seenKey.has(key)) return;
+    seenKey.add(key);
+    found.push({ fy, amountMillions: Math.round(amount * 1000) / 1000, confidence });
+  };
+
+  // Strategy 1 + 2 combined: search for FY 20XX patterns with a nearby
+  // dollar value. Either order — "FY 2026 ... $52.3" or "$52.3 ... FY 2026".
+  // Walk through all FY occurrences in the window and look at the surrounding
+  // ~120 chars for a number.
+  const fyRe = /\bFY\s*(20\d{2})\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = fyRe.exec(window)) !== null) {
+    const fy = m[1];
+    const idx = m.index;
+    // Look ahead first (most common pattern: FY 2026 ... $52.3)
+    const ahead = window.slice(idx, Math.min(window.length, idx + 200));
+    const aheadMatch = ahead.match(/(?:FY\s*20\d{2}\s+)([\d,]+\.?\d*)\b/);
+    if (aheadMatch) {
+      const num = parseFloat(aheadMatch[1].replace(/,/g, ""));
+      if (Number.isFinite(num) && num > 0 && num < 100000) {
+        push(fy, num, "header");
+        continue;
+      }
+    }
+    // Look behind ($52.3 ... FY 2026)
+    const behind = window.slice(Math.max(0, idx - 100), idx);
+    const behindMatch = behind.match(/\$?\s*([\d,]+\.?\d*)\s+(?:FY\s*20\d{2})?$/);
+    if (behindMatch) {
+      const num = parseFloat(behindMatch[1].replace(/,/g, ""));
+      if (Number.isFinite(num) && num > 0 && num < 100000) {
+        push(fy, num, "proximity");
+      }
+    }
+  }
+
+  // Strategy 3 fallback: "Cost ($ in Millions)" anchor + next 4-6 numbers
+  // paired with sequential FYs. Only run if we got nothing from strategies
+  // 1-2.
+  if (found.length === 0) {
+    const costAnchor = window.search(/Cost\s*\(\$\s*in\s*Millions\)/i);
+    if (costAnchor >= 0) {
+      // Grab next 600 chars and pull all FY headers + numbers
+      const tail = window.slice(costAnchor, Math.min(window.length, costAnchor + 800));
+      const fyHeaderMatch = tail.match(/FY\s*(20\d{2})\s+FY\s*(20\d{2})\s+FY\s*(20\d{2})\s+FY\s*(20\d{2})/i);
+      const numbersMatch = tail.match(/\b([\d,]+\.\d{1,3})\s+([\d,]+\.\d{1,3})\s+([\d,]+\.\d{1,3})\s+([\d,]+\.\d{1,3})\b/);
+      if (fyHeaderMatch && numbersMatch) {
+        for (let i = 0; i < 4; i++) {
+          const fy = fyHeaderMatch[i + 1];
+          const num = parseFloat(numbersMatch[i + 1].replace(/,/g, ""));
+          push(fy, num, "fallback");
+        }
+      }
+    }
+  }
+
+  // Sort by FY ascending
+  found.sort((a, b) => a.fy.localeCompare(b.fy));
+  return found;
 }
 
 function detectBookTypeFromText(headText: string): string | null {
@@ -184,12 +302,23 @@ export function parseBudgetBookText(
 
     const title = extractTitleAfterPE(text, offset, pe);
     const narrative = extractNarrativeAfterPE(text, offset, pe, maxNarrative);
+    const fyFunding = extractFyFundingNear(text, offset, pe);
+    const fyFundingTotalMillions = fyFunding.reduce((s, p) => s + p.amountMillions, 0);
+    const latestPoint = fyFunding.length
+      ? fyFunding.reduce((a, b) => (b.fy > a.fy ? b : a))
+      : null;
+    const latestFy = latestPoint ? latestPoint.fy : null;
+    const latestFyAmountMillions = latestPoint ? latestPoint.amountMillions : 0;
 
     programElements.push({
       pe,
       title,
       narrative,
       exhibit: currentExhibit,
+      fyFunding,
+      fyFundingTotalMillions,
+      latestFy,
+      latestFyAmountMillions,
       offset,
     });
   }

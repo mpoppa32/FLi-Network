@@ -36404,7 +36404,20 @@ window._budgetChangeTouchRow = function(sig, attrs) {
   if (serviceLabel) subParts.push(serviceLabel.replace(/^Department of (the )?/, ''));
   if (bookType) subParts.push(bookType);
   if (fy) subParts.push('FY' + fy);
-  if (baseline) subParts.push('baseline');
+
+  // v1.1: surface latest FY funding when present
+  var latestFy = (attrs.latestFy || '').toString();
+  var latestFyAmount = Number(attrs.latestFyAmountMillions || 0);
+  if (latestFy && latestFyAmount > 0) {
+    var $M;
+    if (latestFyAmount >= 1000) $M = '$' + (latestFyAmount / 1000).toFixed(2) + 'B';
+    else if (latestFyAmount >= 1) $M = '$' + latestFyAmount.toFixed(1) + 'M';
+    else $M = '$' + (latestFyAmount * 1000).toFixed(0) + 'K';
+    subParts.push('FY' + latestFy + ' ' + $M);
+  } else if (baseline && !latestFyAmount) {
+    subParts.push('baseline');
+  }
+
   if (narrative) {
     var snippet = narrative.replace(/\s+/g, ' ').slice(0, 140);
     if (narrative.length > 140) snippet += '…';

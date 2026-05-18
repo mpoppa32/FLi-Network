@@ -272,23 +272,61 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       return { score: 0.3, why: `DEF 14A proxy statement` };
     }
     case "budget_change": {
-      // v1.8 — DoD Comptroller v1.0 PE catalog baselines. v1.0 does not
-      // carry FY funding amounts (deferred to v1.1 table-aware
-      // extraction). Magnitude is shaped by whether the PE has a
-      // substantive narrative paragraph (signal of an active program
-      // line) vs. a bare PE-number-only entry.
+      // v1.9 — DoD Comptroller v1.1 lifts best-effort FY funding tables
+      // (latestFyAmountMillions, fyFundingTotalMillions). Magnitude
+      // now ranks on dollar amount when present, narrative length when
+      // funding parse missed.
       const pe = (attrs.pe as string | undefined) || "";
       const narrative = (attrs.narrative as string | undefined) || "";
       const narrativeLen = narrative.length;
       const baseline = !!attrs.baseline;
       const bookType = (attrs.bookType as string | undefined) || "";
       const service = (attrs.serviceLabel as string | undefined) || (attrs.service as string | undefined) || "";
+      const latestFy = (attrs.latestFy as string | undefined) || "";
+      const latestFyAmount = Number(attrs.latestFyAmountMillions ?? 0);
+      const fyTotal = Number(attrs.fyFundingTotalMillions ?? 0);
 
       // R-2 (RDT&E) is more forward-looking than P-1 (procurement) for
       // BD operators — new programs and capability bets show up here
-      // before they hit procurement. Bias R-2 up.
+      // before they hit procurement. Bias R-2 up across all tiers.
       const isRdte = /^R-?2/.test(bookType);
 
+      // Dollar-based scoring takes precedence when v1.1 funding parse
+      // succeeded. Budget books use millions natively.
+      if (latestFyAmount > 0) {
+        const $M = latestFyAmount.toFixed(1);
+        const fyLabel = latestFy ? `FY${latestFy} ` : "";
+        if (latestFyAmount >= 1000) {
+          return {
+            score: 1.0,
+            why: `${service} ${bookType} PE ${pe} ${fyLabel}$${$M}M — major program line`,
+          };
+        }
+        if (latestFyAmount >= 250) {
+          return {
+            score: isRdte ? 0.9 : 0.85,
+            why: `${service} ${bookType} PE ${pe} ${fyLabel}$${$M}M`,
+          };
+        }
+        if (latestFyAmount >= 50) {
+          return {
+            score: isRdte ? 0.75 : 0.7,
+            why: `${service} ${bookType} PE ${pe} ${fyLabel}$${$M}M`,
+          };
+        }
+        if (latestFyAmount >= 10) {
+          return {
+            score: isRdte ? 0.6 : 0.55,
+            why: `${service} ${bookType} PE ${pe} ${fyLabel}$${$M}M`,
+          };
+        }
+        return {
+          score: isRdte ? 0.5 : 0.45,
+          why: `${service} ${bookType} PE ${pe} ${fyLabel}$${$M}M`,
+        };
+      }
+
+      // Fallback to v1.8 narrative-length tiers when no FY funding parsed
       if (narrativeLen >= 1500) {
         return {
           score: isRdte ? 0.7 : 0.6,
@@ -299,6 +337,13 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
         return {
           score: isRdte ? 0.55 : 0.5,
           why: `${service ? service + " " : ""}${bookType || "budget"} PE ${pe}`,
+        };
+      }
+      if (fyTotal > 0) {
+        // Has total but no latest — middle tier
+        return {
+          score: 0.45,
+          why: `${service ? service + " " : ""}${bookType || "budget"} PE ${pe} total $${fyTotal.toFixed(1)}M`,
         };
       }
       if (baseline) {
