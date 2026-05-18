@@ -35522,6 +35522,44 @@ window._renderExternalIntelligence = function(brief) {
     h += '</div>';
   }
 
+  // Customer Activity Rollup — mirror of the adversary card, keyed on
+  // customer agencies. Amber tint (matches the existing customer-
+  // terrain category color in _PHASE85_CATEGORY_META). Active customers
+  // (current watchlist) sort before historical.
+  if (Array.isArray(brief.customerRollup) && brief.customerRollup.length > 0) {
+    var custRoll = brief.customerRollup.slice(0, 6);
+    h += '<div style="margin:6px 0 14px;padding:10px 12px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.22);border-radius:3px">';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#5fb3b8;text-transform:uppercase;letter-spacing:.10em;font-weight:700;margin-bottom:6px">Customer terrain — last ' + Math.round((brief.windowHours || 168) / 24) + 'd</div>';
+    for (var rc = 0; rc < custRoll.length; rc++) {
+      var cEntry = custRoll[rc];
+      var cLabel = cEntry.orgName || cEntry.orgId;
+      var cEsc = String(cLabel).replace(/</g, '&lt;');
+      var cAgeMs = Date.now() - (cEntry.latestSignalAt || 0);
+      var cAgeDays = Math.floor(cAgeMs / (24 * 60 * 60 * 1000));
+      var cAgeStr = cAgeDays === 0 ? 'today' : cAgeDays === 1 ? '1d ago' : cAgeDays + 'd ago';
+      var cSrcChips = '';
+      var cSrcList = Array.isArray(cEntry.sources) ? cEntry.sources.slice(0, 4) : [];
+      for (var csi = 0; csi < cSrcList.length; csi++) {
+        cSrcChips += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:#5fb3b8;background:rgba(95,179,184,.10);border:1px solid rgba(95,179,184,.30);padding:0 4px;border-radius:2px;margin-left:4px;letter-spacing:.06em">' + String(cSrcList[csi]).replace(/</g, '&lt;').toUpperCase().replace(/_/g, ' ') + '</span>';
+      }
+      var cMoreChips = (cEntry.sources && cEntry.sources.length > 4) ? ' +' + (cEntry.sources.length - 4) : '';
+      var cActiveFlag = cEntry.active
+        ? '<span title="Active customer on the watchlist" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;color:#5fb3b8;border:1px solid #5fb3b8;padding:0 4px;border-radius:2px;margin-right:6px">WATCHLIST</span>'
+        : '<span title="Customer agency from prior pursuits" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--t3);border:1px solid var(--b2);padding:0 4px;border-radius:2px;margin-right:6px">HISTORY</span>';
+      var cWeight = (typeof cEntry.totalRelevance === 'number') ? cEntry.totalRelevance.toFixed(1) : '0.0';
+      var cClickHandler = "window.openEntityInspector&&window.openEntityInspector('" + String(cEntry.orgId).replace(/'/g, "\\'") + "')";
+      h += '<div onclick="' + cClickHandler + '" style="display:flex;gap:10px;align-items:center;padding:3px 0;font-size:11px;line-height:1.4;cursor:pointer" onmouseover="this.style.background=\'rgba(95,179,184,.04)\'" onmouseout="this.style.background=\'transparent\'">';
+      h += '  ' + cActiveFlag;
+      h += '  <div style="flex:1;min-width:0;color:var(--text);font-weight:600">' + cEsc + '<span style="color:var(--t3);font-weight:500;font-family:\'IBM Plex Mono\',monospace;font-size:9px;margin-left:8px">' + cEntry.signalCount + ' touch' + (cEntry.signalCount === 1 ? '' : 'es') + ' · last ' + cAgeStr + '</span>' + cSrcChips + (cMoreChips ? '<span style="color:var(--t3);font-size:9px;margin-left:4px">' + cMoreChips + '</span>' : '') + '</div>';
+      h += '  <div title="Sum of relevance.total across touches" style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#5fb3b8;font-weight:700;white-space:nowrap">' + cWeight + '</div>';
+      h += '</div>';
+    }
+    if (brief.customerRollup.length > 6) {
+      h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:4px;letter-spacing:.05em">+ ' + (brief.customerRollup.length - 6) + ' more customer agencies with activity</div>';
+    }
+    h += '</div>';
+  }
+
   // v1.3: "Today's Top 5" — glance-first highest-relevance items across categories.
   // Pinned items always lead; remaining slots filled by total relevance desc.
   var allItems = [];

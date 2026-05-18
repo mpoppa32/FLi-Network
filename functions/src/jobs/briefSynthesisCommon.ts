@@ -79,6 +79,22 @@ export interface AdversaryRollupEntry {
   active: boolean;
 }
 
+/** Per-customer entry in the Brief Customer Activity Rollup. Same shape
+ *  as AdversaryRollupEntry but the `active` flag means "customer is on
+ *  the operator's current watchlist" rather than "active pursuit". */
+export interface CustomerRollupEntry {
+  orgId: string;
+  orgName?: string | null;
+  signalCount: number;
+  latestSignalAt: number;
+  recentSignalIds: string[];
+  sources: string[];
+  totalRelevance: number;
+  /** True when in ctx.customerOrgIds (active watchlist); false when only
+   *  in ctx.customerHistoryOrgIds (historical pursuits). */
+  active: boolean;
+}
+
 export interface BriefOutput {
   workspaceId: string;
   generatedAt: number;
@@ -127,6 +143,9 @@ export interface BriefOutput {
    *  recent touching Signals. The Brief surface can render this as a
    *  dashboard card without re-walking the full Signal corpus. */
   adversaryRollup?: AdversaryRollupEntry[];
+  /** Per-customer Org summary of recent touching Signals. Mirrors
+   *  adversaryRollup but keyed on the customer watchlist + history. */
+  customerRollup?: CustomerRollupEntry[];
   /** v1.1: scoring metadata */
   scoringVersion?: string;
   weightsApplied?: typeof SCORING_WEIGHTS;
@@ -1018,6 +1037,102 @@ export async function synthesizeBrief(
     return b.signalCount - a.signalCount;
   });
 
+  // 3.12. Customer Activity Rollup — mirrors the adversary pass but
+  // keyed on customerOrgIds (active watchlist) ∪ customerHistoryOrgIds
+  // (historical pursuits). Customer agencies generally see more Signal
+  // activity than adversaries because Congress.gov hearings + GAO
+  // reports + FACA committees + service news all touch them regularly;
+  // the rollup makes "which of my customer agencies is the busiest
+  // this week" answerable at a glance.
+  const customerUnion = new Set<string>();
+  ctx.customerOrgIds.forEach((id) => customerUnion.add(id));
+  ctx.customerHistoryOrgIds.forEach((id) => customerUnion.add(id));
+
+  const customerNameById = new Map<string, string>();
+  if (customerUnion.size > 0) {
+    try {
+      const nodesForCustomerSnap = await db
+        .ref(wsPath(workspaceId, "nodes"))
+        .once("value");
+      const nodesForCustomer =
+        (nodesForCustomerSnap.val() as Record<string, { name?: string }> | null) ?? {};
+      for (const id of customerUnion) {
+        const n = nodesForCustomer[id];
+        if (n && typeof n.name === "string" && n.name.trim()) {
+          customerNameById.set(id, n.name.trim());
+        }
+      }
+    } catch {
+      // best-effort; id-only display fallback
+    }
+  }
+
+  const customerRollupByOrg = new Map<
+    string,
+    {
+      orgId: string;
+      orgName: string | null;
+      touches: Array<{ sigId: string; at: number; relevance: number; system: string }>;
+      sources: Set<string>;
+      active: boolean;
+    }
+  >();
+
+  if (customerUnion.size > 0 && sigItems.length > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      const system = sig.source?.system || "unknown";
+      for (const id of allIds) {
+        if (!customerUnion.has(id)) continue;
+        if (!customerRollupByOrg.has(id)) {
+          customerRollupByOrg.set(id, {
+            orgId: id,
+            orgName: customerNameById.get(id) || null,
+            touches: [],
+            sources: new Set(),
+            active: ctx.customerOrgIds.has(id),
+          });
+        }
+        const entry = customerRollupByOrg.get(id)!;
+        entry.touches.push({
+          sigId: sig.id,
+          at: sig.occurredAt || 0,
+          relevance: item.relevance.total,
+          system,
+        });
+        entry.sources.add(system);
+      }
+    }
+  }
+
+  const customerRollup: CustomerRollupEntry[] = [];
+  for (const entry of customerRollupByOrg.values()) {
+    if (entry.touches.length === 0) continue;
+    entry.touches.sort((a, b) => b.at - a.at);
+    const totalRelevance = entry.touches.reduce((s, t) => s + t.relevance, 0);
+    customerRollup.push({
+      orgId: entry.orgId,
+      orgName: entry.orgName,
+      signalCount: entry.touches.length,
+      latestSignalAt: entry.touches[0].at,
+      recentSignalIds: entry.touches.slice(0, 8).map((t) => t.sigId),
+      sources: Array.from(entry.sources).sort(),
+      totalRelevance: Math.round(totalRelevance * 100) / 100,
+      active: entry.active,
+    });
+  }
+  customerRollup.sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    const dr = b.totalRelevance - a.totalRelevance;
+    if (Math.abs(dr) > 0.01) return dr;
+    return b.signalCount - a.signalCount;
+  });
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -1111,6 +1226,7 @@ export async function synthesizeBrief(
       revolvingDoorTouchBumps,
     },
     adversaryRollup,
+    customerRollup,
     scoringVersion: "1.17",
     weightsApplied: SCORING_WEIGHTS,
   };
