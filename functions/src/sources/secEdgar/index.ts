@@ -17,10 +17,11 @@ import { mapFilingToSignal, upsertSignal } from "./mapper";
 import { loadConfig, validateConfig, normalizeCik, type SecEdgarConfig } from "./config";
 
 export const SOURCE_NAME = "sec_edgar";
-export const SOURCE_VERSION = "1.2.1";
+export const SOURCE_VERSION = "1.2.2";
 
 const MECHANICAL_FORM4_CODES = new Set(["F", "G"]);
 const PERIODIC_FORMS = new Set(["10-K", "10-Q", "10-K/A", "10-Q/A"]);
+const PROXY_FORMS = new Set(["DEF 14A", "DEFM14A", "PRE 14A"]);
 
 export interface SecEdgarSyncOptions {
   /** Max filings per CIK to process. Default 30. */
@@ -36,6 +37,10 @@ export interface SecEdgarSyncOptions {
   extractPeriodicReportDetail?: boolean;
   /** v1.2.1: override config.maxPeriodicReportDeepParsesPerSync for this run. */
   maxPeriodicReportDeepParsesPerSync?: number;
+  /** v1.2.2: override config.extractProxyDetail for this run. */
+  extractProxyDetail?: boolean;
+  /** v1.2.2: override config.maxProxyDeepParsesPerSync for this run. */
+  maxProxyDeepParsesPerSync?: number;
 }
 
 export interface SecEdgarSyncResult {
@@ -63,6 +68,14 @@ export interface SecEdgarSyncResult {
   periodicReportMdaCharsExtractedTotal: number;
   periodicReportBacklogMentionsTotal: number;
   periodicReportBacklogDefenseSumUSD: number;
+  // v1.2.2 DEF 14A deep-parse metrics
+  proxyDeepParseAttempted: number;
+  proxyDeepParseSucceeded: number;
+  proxyDeepParseFailed: number;
+  proxyExecutivesParsedTotal: number;
+  proxyCeoTotalCompSum: number;
+  proxyShareholderProposalCountTotal: number;
+  proxySayOnPayCount: number;
   errors: Array<{ recordId: string; message: string }>;
   durationMs: number;
   apiCallsCount: number;
@@ -100,6 +113,13 @@ export async function syncWorkspace(
     periodicReportMdaCharsExtractedTotal: 0,
     periodicReportBacklogMentionsTotal: 0,
     periodicReportBacklogDefenseSumUSD: 0,
+    proxyDeepParseAttempted: 0,
+    proxyDeepParseSucceeded: 0,
+    proxyDeepParseFailed: 0,
+    proxyExecutivesParsedTotal: 0,
+    proxyCeoTotalCompSum: 0,
+    proxyShareholderProposalCountTotal: 0,
+    proxySayOnPayCount: 0,
     errors: [],
     durationMs: 0,
     apiCallsCount: 0,
@@ -132,6 +152,11 @@ export async function syncWorkspace(
     let periodicBudget =
       options.maxPeriodicReportDeepParsesPerSync ?? config.maxPeriodicReportDeepParsesPerSync ?? 20;
 
+    const extractProxyDetail =
+      options.extractProxyDetail ?? config.extractProxyDetail ?? true;
+    let proxyBudget =
+      options.maxProxyDeepParsesPerSync ?? config.maxProxyDeepParsesPerSync ?? 12;
+
     for (const rawCik of config.watchlistCiks) {
       const cik = normalizeCik(rawCik);
       try {
@@ -147,8 +172,10 @@ export async function syncWorkspace(
             const form = (filing.form || "").trim().toUpperCase();
             const isForm4 = form === "4" || form === "4/A";
             const isPeriodic = PERIODIC_FORMS.has(form);
+            const isProxy = PROXY_FORMS.has(form);
             const wantForm4Deep = isForm4 && extractForm4Detail && form4Budget > 0;
             const wantPeriodicDeep = isPeriodic && extractPeriodicReportDetail && periodicBudget > 0;
+            const wantProxyDeep = isProxy && extractProxyDetail && proxyBudget > 0;
             const dispatchOptions: Record<string, unknown> = {};
             if (wantForm4Deep) dispatchOptions.form4 = { extractDeep: true };
             if (wantPeriodicDeep) {
@@ -156,6 +183,12 @@ export async function syncWorkspace(
                 extractDeep: true,
                 maxMdaChars: config.maxMdaChars,
                 maxRiskFactorsChars: config.maxRiskFactorsChars,
+              };
+            }
+            if (wantProxyDeep) {
+              dispatchOptions.proxy = {
+                extractDeep: true,
+                maxExecutives: config.maxProxyExecutives,
               };
             }
             const dispatch = await mapFilingToSignal(
@@ -198,6 +231,23 @@ export async function syncWorkspace(
                   }
                 } else {
                   result.periodicReportDeepParseFailed++;
+                }
+              }
+            }
+            if (dispatch.proxyMetrics) {
+              const m = dispatch.proxyMetrics;
+              if (m.attempted) {
+                proxyBudget--;
+                result.proxyDeepParseAttempted++;
+                result.apiCallsCount++; // one extra HTTP call per attempt
+                if (m.succeeded) {
+                  result.proxyDeepParseSucceeded++;
+                  result.proxyExecutivesParsedTotal += m.executivesParsed;
+                  if (m.ceoTotalComp) result.proxyCeoTotalCompSum += m.ceoTotalComp;
+                  result.proxyShareholderProposalCountTotal += m.shareholderProposalCount;
+                  if (m.hasSayOnPay) result.proxySayOnPayCount++;
+                } else {
+                  result.proxyDeepParseFailed++;
                 }
               }
             }
@@ -268,6 +318,9 @@ export async function syncWorkspace(
       periodicReportDeepParseSucceeded: result.periodicReportDeepParseSucceeded,
       periodicReportDeepParseFailed: result.periodicReportDeepParseFailed,
       periodicReportBacklogMentionsTotal: result.periodicReportBacklogMentionsTotal,
+      proxyDeepParseSucceeded: result.proxyDeepParseSucceeded,
+      proxyDeepParseFailed: result.proxyDeepParseFailed,
+      proxyExecutivesParsedTotal: result.proxyExecutivesParsedTotal,
     });
   } catch (err) {
     const e = err as Error;

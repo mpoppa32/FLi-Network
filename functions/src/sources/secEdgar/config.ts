@@ -28,6 +28,12 @@ export interface SecEdgarConfig {
   maxMdaChars?: number;
   /** v1.2.1: max risk-factors snippet chars to retain on Signal. Default 3000. */
   maxRiskFactorsChars?: number;
+  /** v1.2.2: fetch + parse DEF 14A HTML for Summary Compensation Table. Default true. */
+  extractProxyDetail?: boolean;
+  /** v1.2.2: per-sync cap on DEF 14A deep parses. Default 12 (proxies are large). */
+  maxProxyDeepParsesPerSync?: number;
+  /** v1.2.2: max executive rows to retain in Summary Compensation Table. Default 8. */
+  maxProxyExecutives?: number;
   initializedAt?: number;
   disabled?: boolean;
 }
@@ -66,6 +72,9 @@ export const DEFAULT_SEC_EDGAR_CONFIG: SecEdgarConfig = {
   maxPeriodicReportDeepParsesPerSync: 20,
   maxMdaChars: 4000,
   maxRiskFactorsChars: 3000,
+  extractProxyDetail: true,
+  maxProxyDeepParsesPerSync: 12,
+  maxProxyExecutives: 8,
 };
 
 export async function loadConfig(workspaceId: string, log?: Logger): Promise<SecEdgarConfig> {

@@ -23,6 +23,10 @@ import {
   parsePeriodicReportHtml,
   type ParsedPeriodicReport,
 } from "./periodicReportParser";
+import {
+  parseProxyStatementHtml,
+  type ParsedProxyStatement,
+} from "./proxyStatementParser";
 
 /** 8-K item code → human-readable description.
  *  Per SEC Form 8-K spec. Items split by comma in the API response. */
@@ -551,15 +555,48 @@ export async function mapForm4ToSignal(
   return { signal, metrics };
 }
 
+export interface ProxyMapOptions {
+  /** v1.2.2: fetch + parse the HTML doc. */
+  extractDeep?: boolean;
+  /** v1.2.2: HTML fetch timeout (ms). */
+  timeoutMs?: number;
+  /** v1.2.2: max executive rows to retain. */
+  maxExecutives?: number;
+}
+
+export interface ProxyMapMetrics {
+  attempted: boolean;
+  succeeded: boolean;
+  executivesParsed: number;
+  ceoTotalComp: number | null;
+  top5TotalComp: number;
+  shareholderProposalCount: number;
+  hasSayOnPay: boolean;
+  parseFlags: string[];
+  errorMessage?: string;
+}
+
+export interface ProxyMapResult {
+  signal: Signal;
+  metrics: ProxyMapMetrics;
+}
+
 /**
- * DEF 14A — proxy statement. v1.1 stores filing metadata; future v1.2 will
- * extract executive compensation tables and shareholder proposals.
+ * DEF 14A — proxy statement.
+ *
+ * v1.1: filing metadata only (deepParsingPending:true).
+ * v1.2.2: when options.extractDeep is set, fetches the HTML body, parses
+ *   out the Summary Compensation Table (CEO + top NEOs with salary /
+ *   bonus / stock / option / non-equity / other / total), shareholder
+ *   proposal count, say-on-pay vote mention.
  */
 export async function mapProxyStatementToSignal(
   workspaceId: string,
   filing: SecFilingRecord,
-  submission: SecSubmissionResponse
-): Promise<Signal> {
+  submission: SecSubmissionResponse,
+  options: ProxyMapOptions = {},
+  log?: Logger
+): Promise<ProxyMapResult> {
   const filerName = submission.name;
   const ticker = submission.tickers?.[0];
   const { orgId: filerOrgId } = await resolveRecipientOrg(workspaceId, filerName, null, {
@@ -569,27 +606,104 @@ export async function mapProxyStatementToSignal(
   const documentUrl = buildDocumentUrl(filing.cik, filing.accessionNumber, filing.primaryDocument);
   const occurredAt = filing.filingDateMs || Date.now();
   const signalId = "sg_sec_" + filing.accessionNumber.replace(/[^A-Za-z0-9_-]/g, "_");
+
+  const metrics: ProxyMapMetrics = {
+    attempted: false,
+    succeeded: false,
+    executivesParsed: 0,
+    ceoTotalComp: null,
+    top5TotalComp: 0,
+    shareholderProposalCount: 0,
+    hasSayOnPay: false,
+    parseFlags: [],
+  };
+
+  const attrs: Record<string, unknown> = {
+    cik: filing.cik,
+    ticker: ticker || null,
+    filerName,
+    accessionNumber: filing.accessionNumber,
+    formType: filing.form,
+    documentUrl,
+    filingDate: filing.filingDate,
+    primaryDocDescription: filing.primaryDocDescription,
+    deepParsingPending: true,
+  };
+
+  let parsed: ParsedProxyStatement | null = null;
+  if (options.extractDeep) {
+    metrics.attempted = true;
+    try {
+      const html = await fetchFilingDoc(
+        documentUrl,
+        { timeoutMs: options.timeoutMs ?? 30_000 },
+        log
+      );
+      parsed = parseProxyStatementHtml(html, { maxExecutives: options.maxExecutives });
+      metrics.parseFlags = parsed.flags;
+      // Treat as success if we extracted any executive rows OR meaningful
+      // governance signals (say-on-pay, shareholder proposals)
+      if (
+        parsed.executiveCompensation.length > 0 ||
+        parsed.shareholderProposalCount > 0 ||
+        parsed.hasSayOnPay
+      ) {
+        metrics.succeeded = true;
+      } else {
+        metrics.errorMessage = "parse_yielded_no_data";
+      }
+    } catch (err) {
+      metrics.errorMessage = (err as Error).message;
+      log?.warn("sec_edgar_proxy_fetch_or_parse_failed", {
+        accession: filing.accessionNumber,
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  if (parsed && metrics.succeeded) {
+    delete attrs.deepParsingPending;
+    metrics.executivesParsed = parsed.executiveCompensation.length;
+    metrics.ceoTotalComp = parsed.ceoTotalComp;
+    metrics.top5TotalComp = parsed.top5TotalComp;
+    metrics.shareholderProposalCount = parsed.shareholderProposalCount;
+    metrics.hasSayOnPay = parsed.hasSayOnPay;
+
+    if (parsed.executiveCompensation.length > 0) {
+      attrs.executiveCompensation = parsed.executiveCompensation;
+    }
+    if (parsed.ceoName) attrs.ceoName = parsed.ceoName;
+    if (parsed.ceoTotalComp !== null) attrs.ceoTotalComp = parsed.ceoTotalComp;
+    if (parsed.top5TotalComp > 0) attrs.top5TotalComp = parsed.top5TotalComp;
+    attrs.shareholderProposalCount = parsed.shareholderProposalCount;
+    attrs.hasSayOnPay = parsed.hasSayOnPay;
+    attrs.hasBoardDeclassification = parsed.hasBoardDeclassification;
+    if (parsed.flags.length > 0) attrs.parseFlags = parsed.flags;
+    attrs.deepParsedAt = Date.now();
+    attrs.deepParseVersion = "1.2.2";
+  } else if (options.extractDeep) {
+    attrs.deepParseFailed = true;
+    attrs.deepParseError = metrics.errorMessage || "unknown";
+  }
+
   const hash = hashFields(
-    { accessionNumber: filing.accessionNumber, form: filing.form },
-    ["accessionNumber", "form"]
+    {
+      accessionNumber: filing.accessionNumber,
+      form: filing.form,
+      ceoTotalComp: metrics.ceoTotalComp ?? 0,
+      executivesParsed: metrics.executivesParsed,
+      shareholderProposalCount: metrics.shareholderProposalCount,
+    } as Record<string, unknown>,
+    ["accessionNumber", "form", "ceoTotalComp", "executivesParsed", "shareholderProposalCount"]
   );
-  return {
+
+  const signal: Signal = {
     id: signalId,
     type: "proxy_statement",
     subjectIds: [filerOrgId],
     relatedIds: [],
     occurredAt,
-    attrs: {
-      cik: filing.cik,
-      ticker: ticker || null,
-      filerName,
-      accessionNumber: filing.accessionNumber,
-      formType: filing.form,
-      documentUrl,
-      filingDate: filing.filingDate,
-      primaryDocDescription: filing.primaryDocDescription,
-      deepParsingPending: true,
-    },
+    attrs,
     source: externalProvenance(
       "sec_edgar",
       filing.accessionNumber,
@@ -598,6 +712,8 @@ export async function mapProxyStatementToSignal(
       Date.now()
     ),
   };
+
+  return { signal, metrics };
 }
 
 export interface DispatchOptions {
@@ -605,6 +721,8 @@ export interface DispatchOptions {
   form4?: Form4MapOptions;
   /** v1.2.1: pass-through to mapPeriodicReportToSignal. */
   periodicReport?: PeriodicReportMapOptions;
+  /** v1.2.2: pass-through to mapProxyStatementToSignal. */
+  proxy?: ProxyMapOptions;
 }
 
 export interface DispatchResult {
@@ -613,6 +731,8 @@ export interface DispatchResult {
   form4Metrics?: Form4MapMetrics;
   /** Populated only when the filing was a 10-K/Q with deep-parse attempted. */
   periodicReportMetrics?: PeriodicReportMapMetrics;
+  /** Populated only when the filing was a DEF 14A with deep-parse attempted. */
+  proxyMetrics?: ProxyMapMetrics;
 }
 
 /**
@@ -649,8 +769,14 @@ export async function mapFilingToSignal(
     return { signal: r.signal, form4Metrics: r.metrics };
   }
   if (form === "DEF 14A" || form === "DEFM14A" || form === "PRE 14A") {
-    const s = await mapProxyStatementToSignal(workspaceId, filing, submission);
-    return { signal: s };
+    const r = await mapProxyStatementToSignal(
+      workspaceId,
+      filing,
+      submission,
+      options.proxy || {},
+      log
+    );
+    return { signal: r.signal, proxyMetrics: r.metrics };
   }
   return { signal: null };
 }

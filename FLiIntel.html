@@ -34951,14 +34951,14 @@ window._phase85Sources = {
   },
   sec_edgar: {
     displayName: 'SEC EDGAR',
-    subtitle: 'Phase 8.5.6 v1.2.1 · Filings + Form 4 + 10-K/Q Deep Parse',
+    subtitle: 'Phase 8.5.6 v1.2.2 · 8-K + Form 4 + 10-K/Q + DEF 14A Deep Parse',
     color: '#8b5cf6',
     callable: 'triggerSecEdgarSync',
     entityType: 'Signal',
     requiresKey: null,
     cadence: 'Every 4 hours · top of hour',
     cadenceCron: '0 */4 * * *',
-    description: 'SEC filings for publicly-traded defense competitors. v1 surfaced 8-K material events; v1.1 added 10-K/Q + Form 4 + DEF 14A metadata; v1.2 deep-parses Form 4 XML (insider name + role + transaction code/shares/price/value); v1.2.1 deep-parses 10-K + 10-Q HTML (MD&A snippet, risk factors snippet, defense-segment names, backlog mentions with parsed USD values — total backlog + defense-tagged backlog separated). Backlog values + Form 4 signed values feed Brief Synthesis v1.4 magnitude scoring. DEF 14A executive compensation tables remain v1.2.2-pending.',
+    description: 'SEC filings for publicly-traded defense competitors. All four filing classes deep-parsed: 8-K (material events + item codes), Form 4 XML (insider name + role + transaction code/shares/price/value), 10-K + 10-Q HTML (MD&A snippet, risk factors, defense-segment names, backlog USD), DEF 14A HTML (Summary Compensation Table — CEO name + total comp, top-5 NEO comp, shareholder proposal count, say-on-pay vote). No deepParsingPending flags remain on any SEC EDGAR Signal type. Backlog + Form 4 signed values feed Brief Synthesis v1.4 magnitude scoring.',
     badgeId: 'sec-edgar-source-status',
     configPath: 'sources/sec_edgar/config',
     healthPath: 'sources/sec_edgar',
@@ -34970,7 +34970,9 @@ window._phase85Sources = {
       { key: 'maxForm4DeepParsesPerSync', label: 'Max Form 4 deep parses / sync', placeholder: '60', kind: 'number', default: 60 },
       { key: 'skipMechanicalForm4Codes', label: 'Skip mechanical Form 4 codes (F=tax, G=gift)', kind: 'bool', default: false },
       { key: 'extractPeriodicReportDetail', label: 'Deep-parse 10-K/10-Q HTML (v1.2.1)', kind: 'bool', default: true },
-      { key: 'maxPeriodicReportDeepParsesPerSync', label: 'Max 10-K/Q deep parses / sync', placeholder: '20', kind: 'number', default: 20 }
+      { key: 'maxPeriodicReportDeepParsesPerSync', label: 'Max 10-K/Q deep parses / sync', placeholder: '20', kind: 'number', default: 20 },
+      { key: 'extractProxyDetail', label: 'Deep-parse DEF 14A HTML (v1.2.2)', kind: 'bool', default: true },
+      { key: 'maxProxyDeepParsesPerSync', label: 'Max DEF 14A deep parses / sync', placeholder: '12', kind: 'number', default: 12 }
     ],
     entityCounter: { path: 'signals', filterType: 'material_event', label: 'material-event Signals' }
   },
@@ -35936,7 +35938,7 @@ window._renderEntityTouches = function(node, t, nodes) {
     }));
   }
   // Signals — type-aware enriched rendering
-  // (GAO protest v1.1, SEC Form 4 v1.2, GAO Reports v1.1, SEC 10-K/Q v1.2.1)
+  // (GAO protest v1.1, SEC Form 4 v1.2, GAO Reports v1.1, SEC 10-K/Q v1.2.1, SEC DEF 14A v1.2.2)
   if (t.signals.length > 0) {
     h += window._touchesSection('Signals (across all sources)', t.signals.length, 'var(--gold)', t.signals.slice(0,15).map(function(sig){
       var attrs = sig.attrs || {};
@@ -35944,6 +35946,7 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'insider_transaction') return window._insiderTouchRow(sig, attrs);
       if (sig.type === 'oversight_finding') return window._oversightFindingTouchRow(sig, attrs);
       if (sig.type === 'periodic_report') return window._periodicReportTouchRow(sig, attrs);
+      if (sig.type === 'proxy_statement') return window._proxyStatementTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36371,6 +36374,65 @@ window._periodicReportTouchRow = function(sig, attrs) {
     palette = { fg:'var(--t3)', bg:'rgba(125,118,105,.06)' };
   }
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + palette.bg + ';color:' + palette.fg + ';border:1px solid ' + palette.fg + '40">' + esc(form) + '</span>';
+
+  var clickUrl = attrs.documentUrl || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// SEC EDGAR DEF 14A v1.2.2: enriched touch-row renderer for proxy_statement
+// Signals. Surfaces filer + ticker, CEO name + total comp, top-5 total,
+// shareholder proposal count, say-on-pay flag. Falls back to v1.1 metadata
+// when deepParsingPending is still set.
+window._proxyStatementTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+  var fmtDollars = function(v){
+    var n = Math.abs(Number(v) || 0);
+    if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return '$' + Math.round(n/1e3) + 'K';
+    return '$' + Math.round(n).toLocaleString();
+  };
+
+  var filerName = attrs.filerName || '(unknown filer)';
+  var ticker = attrs.ticker || '';
+  var deepParsed = !attrs.deepParsingPending;
+
+  var titleHtml = '<span>' + esc(filerName) + '</span>';
+  if (ticker) titleHtml += '<span style="color:var(--t3);font-weight:400"> · ' + esc(ticker) + '</span>';
+
+  var subtitleParts = [];
+  if (attrs.filingDate) subtitleParts.push('filed ' + attrs.filingDate);
+  if (deepParsed) {
+    if (attrs.ceoName && attrs.ceoTotalComp) {
+      subtitleParts.push('<span style="color:var(--gold);font-weight:600">CEO ' + esc(attrs.ceoName) + ' ' + fmtDollars(attrs.ceoTotalComp) + '</span>');
+    } else if (attrs.ceoTotalComp) {
+      subtitleParts.push('<span style="color:var(--gold);font-weight:600">CEO comp ' + fmtDollars(attrs.ceoTotalComp) + '</span>');
+    }
+    if (attrs.top5TotalComp && attrs.top5TotalComp > 0) {
+      subtitleParts.push('top-5 ' + fmtDollars(attrs.top5TotalComp));
+    }
+    var execCount = Array.isArray(attrs.executiveCompensation) ? attrs.executiveCompensation.length : 0;
+    if (execCount > 0) subtitleParts.push(execCount + ' NEOs');
+    if (attrs.shareholderProposalCount && Number(attrs.shareholderProposalCount) > 0) {
+      subtitleParts.push(attrs.shareholderProposalCount + ' SH proposals');
+    }
+    if (attrs.hasSayOnPay) subtitleParts.push('say-on-pay');
+    if (attrs.hasBoardDeclassification) subtitleParts.push('board declass.');
+  } else {
+    subtitleParts.push('awaiting v1.2.2 deep parse');
+  }
+  var subtitleHtml = subtitleParts.join(' · ');
+
+  var palette = deepParsed
+    ? { fg:'#d4823a', bg:'rgba(212,130,58,.10)' }
+    : { fg:'var(--t3)', bg:'rgba(125,118,105,.06)' };
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + palette.bg + ';color:' + palette.fg + ';border:1px solid ' + palette.fg + '40">DEF 14A</span>';
 
   var clickUrl = attrs.documentUrl || (sig.source && sig.source.url) || '';
   return {
