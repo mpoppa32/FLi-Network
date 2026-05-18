@@ -940,6 +940,28 @@ export async function synthesizeBrief(
     }
   >();
 
+  // Resolve adversary Org names by reading the workspace nodes once.
+  // The display label improves the rollup card readability — opaque
+  // Org ids are useless without names.
+  const adversaryNameById = new Map<string, string>();
+  if (adversaryUnion.size > 0) {
+    try {
+      const nodesForRollupSnap = await db
+        .ref(wsPath(workspaceId, "nodes"))
+        .once("value");
+      const nodesForRollup =
+        (nodesForRollupSnap.val() as Record<string, { name?: string }> | null) ?? {};
+      for (const id of adversaryUnion) {
+        const n = nodesForRollup[id];
+        if (n && typeof n.name === "string" && n.name.trim()) {
+          adversaryNameById.set(id, n.name.trim());
+        }
+      }
+    } catch {
+      // best-effort; fall through to id-only display
+    }
+  }
+
   if (adversaryUnion.size > 0 && sigItems.length > 0) {
     for (const item of sigItems) {
       const sig = signals[item.id];
@@ -954,7 +976,7 @@ export async function synthesizeBrief(
         if (!rollupByOrg.has(id)) {
           rollupByOrg.set(id, {
             orgId: id,
-            orgName: null,
+            orgName: adversaryNameById.get(id) || null,
             touches: [],
             sources: new Set(),
             active: ctx.activeAdversaryOrgIds.has(id),
