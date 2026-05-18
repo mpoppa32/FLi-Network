@@ -86,6 +86,8 @@ export interface BriefOutput {
     tightClusterBumps?: number;
     /** v1.13: count of Signal items bumped because a touched Org had a recent leadership announcement */
     leadershipFluxBumps?: number;
+    /** v1.14: count of protest/opportunity_amendment pairs bumped for procurement-reset confluence */
+    protestAmendmentBumps?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -566,6 +568,79 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.7. v1.14 — protest + opportunity_amendment confluence.
+  //
+  // When a protest Signal and an opportunity_amendment Signal touch the
+  // same Org within ±45 days of each other, both bump. The two together
+  // signal "procurement just got reset" — protest decisions correlate with
+  // amendment cycles, and operators care more about either Signal in
+  // isolation than they care about the confluence (which is a high-signal
+  // intervention moment).
+  //
+  // 45-day window accounts for the typical GAO 100-day decision timeline
+  // running against SAM.gov amendment cycles for the affected solicitation.
+  // Bump: +0.15 (highest single confluence rule — procurement-reset is
+  // operator-actionable in the next-call sense).
+  let protestAmendmentBumps = 0;
+  const PROTEST_AMENDMENT_WINDOW_MS = 45 * 24 * 60 * 60 * 1000;
+  if (sigItems.length > 0) {
+    // Build per-Org indices of the two types
+    const orgToProtest = new Map<string, number[]>();
+    const orgToAmendment = new Map<string, number[]>();
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig) continue;
+      let bucket: Map<string, number[]> | null = null;
+      if (sig.type === "protest") bucket = orgToProtest;
+      else if (sig.type === "opportunity_amendment") bucket = orgToAmendment;
+      if (!bucket) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      for (const id of allIds) {
+        if (!id) continue;
+        if (!bucket.has(id)) bucket.set(id, []);
+        bucket.get(id)!.push(sig.occurredAt || 0);
+      }
+    }
+    // Apply confluence bump
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      if (sig.type !== "protest" && sig.type !== "opportunity_amendment") continue;
+      const myAt = sig.occurredAt || 0;
+      const otherBucket =
+        sig.type === "protest" ? orgToAmendment : orgToProtest;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let counterpartAt = 0;
+      for (const id of allIds) {
+        const times = otherBucket.get(id);
+        if (!times) continue;
+        for (const t of times) {
+          if (Math.abs(t - myAt) <= PROTEST_AMENDMENT_WINDOW_MS && t > counterpartAt) {
+            counterpartAt = t;
+          }
+        }
+      }
+      if (counterpartAt > 0) {
+        const bump = 0.15;
+        item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+        item.relevance.total = Math.min(13, item.relevance.total + bump);
+        const daysApart = Math.max(0, Math.floor(Math.abs(myAt - counterpartAt) / (24 * 60 * 60 * 1000)));
+        const counterpartLabel =
+          sig.type === "protest" ? "opportunity amendment" : "GAO protest";
+        item.relevance.whySurfaced.push(
+          `Procurement-reset confluence — a ${counterpartLabel} touched the same entity ${daysApart}d ${myAt < counterpartAt ? "later" : "earlier"}`
+        );
+        protestAmendmentBumps++;
+      }
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -652,8 +727,9 @@ export async function synthesizeBrief(
       crossSourceBumps,
       tightClusterBumps,
       leadershipFluxBumps,
+      protestAmendmentBumps,
     },
-    scoringVersion: "1.13",
+    scoringVersion: "1.14",
     weightsApplied: SCORING_WEIGHTS,
   };
 
