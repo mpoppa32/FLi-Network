@@ -17,9 +17,10 @@ import { mapFilingToSignal, upsertSignal } from "./mapper";
 import { loadConfig, validateConfig, normalizeCik, type SecEdgarConfig } from "./config";
 
 export const SOURCE_NAME = "sec_edgar";
-export const SOURCE_VERSION = "1.2.0";
+export const SOURCE_VERSION = "1.2.1";
 
 const MECHANICAL_FORM4_CODES = new Set(["F", "G"]);
+const PERIODIC_FORMS = new Set(["10-K", "10-Q", "10-K/A", "10-Q/A"]);
 
 export interface SecEdgarSyncOptions {
   /** Max filings per CIK to process. Default 30. */
@@ -31,6 +32,10 @@ export interface SecEdgarSyncOptions {
   extractForm4Detail?: boolean;
   /** v1.2: override config.maxForm4DeepParsesPerSync for this run. */
   maxForm4DeepParsesPerSync?: number;
+  /** v1.2.1: override config.extractPeriodicReportDetail for this run. */
+  extractPeriodicReportDetail?: boolean;
+  /** v1.2.1: override config.maxPeriodicReportDeepParsesPerSync for this run. */
+  maxPeriodicReportDeepParsesPerSync?: number;
 }
 
 export interface SecEdgarSyncResult {
@@ -51,6 +56,13 @@ export interface SecEdgarSyncResult {
   form4TransactionsParsed: number;
   form4AggregateValue: number;
   form4NetSignedValue: number;
+  // v1.2.1 10-K/Q deep-parse metrics
+  periodicReportDeepParseAttempted: number;
+  periodicReportDeepParseSucceeded: number;
+  periodicReportDeepParseFailed: number;
+  periodicReportMdaCharsExtractedTotal: number;
+  periodicReportBacklogMentionsTotal: number;
+  periodicReportBacklogDefenseSumUSD: number;
   errors: Array<{ recordId: string; message: string }>;
   durationMs: number;
   apiCallsCount: number;
@@ -82,6 +94,12 @@ export async function syncWorkspace(
     form4TransactionsParsed: 0,
     form4AggregateValue: 0,
     form4NetSignedValue: 0,
+    periodicReportDeepParseAttempted: 0,
+    periodicReportDeepParseSucceeded: 0,
+    periodicReportDeepParseFailed: 0,
+    periodicReportMdaCharsExtractedTotal: 0,
+    periodicReportBacklogMentionsTotal: 0,
+    periodicReportBacklogDefenseSumUSD: 0,
     errors: [],
     durationMs: 0,
     apiCallsCount: 0,
@@ -109,6 +127,11 @@ export async function syncWorkspace(
       options.maxForm4DeepParsesPerSync ?? config.maxForm4DeepParsesPerSync ?? 60;
     const skipMechanical = !!config.skipMechanicalForm4Codes;
 
+    const extractPeriodicReportDetail =
+      options.extractPeriodicReportDetail ?? config.extractPeriodicReportDetail ?? true;
+    let periodicBudget =
+      options.maxPeriodicReportDeepParsesPerSync ?? config.maxPeriodicReportDeepParsesPerSync ?? 20;
+
     for (const rawCik of config.watchlistCiks) {
       const cik = normalizeCik(rawCik);
       try {
@@ -123,12 +146,23 @@ export async function syncWorkspace(
           try {
             const form = (filing.form || "").trim().toUpperCase();
             const isForm4 = form === "4" || form === "4/A";
-            const wantDeep = isForm4 && extractForm4Detail && form4Budget > 0;
+            const isPeriodic = PERIODIC_FORMS.has(form);
+            const wantForm4Deep = isForm4 && extractForm4Detail && form4Budget > 0;
+            const wantPeriodicDeep = isPeriodic && extractPeriodicReportDetail && periodicBudget > 0;
+            const dispatchOptions: Record<string, unknown> = {};
+            if (wantForm4Deep) dispatchOptions.form4 = { extractDeep: true };
+            if (wantPeriodicDeep) {
+              dispatchOptions.periodicReport = {
+                extractDeep: true,
+                maxMdaChars: config.maxMdaChars,
+                maxRiskFactorsChars: config.maxRiskFactorsChars,
+              };
+            }
             const dispatch = await mapFilingToSignal(
               workspaceId,
               filing,
               submission,
-              wantDeep ? { form4: { extractDeep: true } } : {},
+              dispatchOptions,
               log
             );
             const signal = dispatch.signal;
@@ -146,6 +180,24 @@ export async function syncWorkspace(
                   result.form4NetSignedValue += m.netSignedValue;
                 } else {
                   result.form4DeepParseFailed++;
+                }
+              }
+            }
+            if (dispatch.periodicReportMetrics) {
+              const m = dispatch.periodicReportMetrics;
+              if (m.attempted) {
+                periodicBudget--;
+                result.periodicReportDeepParseAttempted++;
+                result.apiCallsCount++; // one extra HTTP call per attempt
+                if (m.succeeded) {
+                  result.periodicReportDeepParseSucceeded++;
+                  result.periodicReportMdaCharsExtractedTotal += m.mdaCharsExtracted;
+                  result.periodicReportBacklogMentionsTotal += m.backlogMentionsCount;
+                  if (m.backlogDefenseUSD) {
+                    result.periodicReportBacklogDefenseSumUSD += m.backlogDefenseUSD;
+                  }
+                } else {
+                  result.periodicReportDeepParseFailed++;
                 }
               }
             }
@@ -213,6 +265,9 @@ export async function syncWorkspace(
       form4DeepParseSucceeded: result.form4DeepParseSucceeded,
       form4DeepParseFailed: result.form4DeepParseFailed,
       form4TransactionsParsed: result.form4TransactionsParsed,
+      periodicReportDeepParseSucceeded: result.periodicReportDeepParseSucceeded,
+      periodicReportDeepParseFailed: result.periodicReportDeepParseFailed,
+      periodicReportBacklogMentionsTotal: result.periodicReportBacklogMentionsTotal,
     });
   } catch (err) {
     const e = err as Error;

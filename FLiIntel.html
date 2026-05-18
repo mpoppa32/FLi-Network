@@ -34951,14 +34951,14 @@ window._phase85Sources = {
   },
   sec_edgar: {
     displayName: 'SEC EDGAR',
-    subtitle: 'Phase 8.5.6 v1.2 · Filings + Form 4 Deep Parse',
+    subtitle: 'Phase 8.5.6 v1.2.1 · Filings + Form 4 + 10-K/Q Deep Parse',
     color: '#8b5cf6',
     callable: 'triggerSecEdgarSync',
     entityType: 'Signal',
     requiresKey: null,
     cadence: 'Every 4 hours · top of hour',
     cadenceCron: '0 */4 * * *',
-    description: 'SEC filings for publicly-traded defense competitors. v1 surfaced 8-K material events; v1.1 added 10-K/Q + Form 4 + DEF 14A metadata; v1.2 deep-parses Form 4 XML — insider name, derived title (officer / director / 10%+ owner), transaction code (P/S/A/M/etc.), shares, price, total value, shares-owned-after, full per-transaction list. Insider entities auto-resolved as Corsair nodes; signed value color-coded in cross-source touches popover (green = insider buying, red = insider selling).',
+    description: 'SEC filings for publicly-traded defense competitors. v1 surfaced 8-K material events; v1.1 added 10-K/Q + Form 4 + DEF 14A metadata; v1.2 deep-parses Form 4 XML (insider name + role + transaction code/shares/price/value); v1.2.1 deep-parses 10-K + 10-Q HTML (MD&A snippet, risk factors snippet, defense-segment names, backlog mentions with parsed USD values — total backlog + defense-tagged backlog separated). Backlog values + Form 4 signed values feed Brief Synthesis v1.4 magnitude scoring. DEF 14A executive compensation tables remain v1.2.2-pending.',
     badgeId: 'sec-edgar-source-status',
     configPath: 'sources/sec_edgar/config',
     healthPath: 'sources/sec_edgar',
@@ -34968,7 +34968,9 @@ window._phase85Sources = {
       { key: 'lookBackMonths', label: 'Lookback months', placeholder: '6', kind: 'number', default: 6 },
       { key: 'extractForm4Detail', label: 'Deep-parse Form 4 XML (v1.2)', kind: 'bool', default: true },
       { key: 'maxForm4DeepParsesPerSync', label: 'Max Form 4 deep parses / sync', placeholder: '60', kind: 'number', default: 60 },
-      { key: 'skipMechanicalForm4Codes', label: 'Skip mechanical Form 4 codes (F=tax, G=gift)', kind: 'bool', default: false }
+      { key: 'skipMechanicalForm4Codes', label: 'Skip mechanical Form 4 codes (F=tax, G=gift)', kind: 'bool', default: false },
+      { key: 'extractPeriodicReportDetail', label: 'Deep-parse 10-K/10-Q HTML (v1.2.1)', kind: 'bool', default: true },
+      { key: 'maxPeriodicReportDeepParsesPerSync', label: 'Max 10-K/Q deep parses / sync', placeholder: '20', kind: 'number', default: 20 }
     ],
     entityCounter: { path: 'signals', filterType: 'material_event', label: 'material-event Signals' }
   },
@@ -35933,13 +35935,15 @@ window._renderEntityTouches = function(node, t, nodes) {
       };
     }));
   }
-  // Signals — type-aware enriched rendering (GAO protest v1.1, SEC Form 4 v1.2, GAO Reports v1.1)
+  // Signals — type-aware enriched rendering
+  // (GAO protest v1.1, SEC Form 4 v1.2, GAO Reports v1.1, SEC 10-K/Q v1.2.1)
   if (t.signals.length > 0) {
     h += window._touchesSection('Signals (across all sources)', t.signals.length, 'var(--gold)', t.signals.slice(0,15).map(function(sig){
       var attrs = sig.attrs || {};
       if (sig.type === 'protest') return window._protestTouchRow(sig, attrs);
       if (sig.type === 'insider_transaction') return window._insiderTouchRow(sig, attrs);
       if (sig.type === 'oversight_finding') return window._oversightFindingTouchRow(sig, attrs);
+      if (sig.type === 'periodic_report') return window._periodicReportTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36294,6 +36298,81 @@ window._oversightFindingTouchRow = function(sig, attrs) {
   }
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// SEC EDGAR 10-K/Q v1.2.1: enriched touch-row renderer for periodic_report
+// Signals. Surfaces form type, filer ticker, report date, defense-segment
+// backlog ($X.XB), MD&A snippet preview when deep-parsed. Falls back to
+// v1.1 metadata-only rendering when the deepParsingPending flag is still
+// set.
+window._periodicReportTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+  var fmtDollars = function(v){
+    var n = Math.abs(Number(v) || 0);
+    if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+    if (n >= 1e6) return '$' + (n/1e6).toFixed(0) + 'M';
+    return '$' + Math.round(n).toLocaleString();
+  };
+
+  var filerName = attrs.filerName || '(unknown filer)';
+  var ticker = attrs.ticker || '';
+  var form = (attrs.formType || '10-K/Q').toString();
+  var reportDate = attrs.reportDate ? new Date(attrs.reportDate).toLocaleDateString() : '';
+  var filingDate = attrs.filingDate || '';
+
+  // Deep-parse state
+  var deepParsed = !attrs.deepParsingPending;
+  var extracted = (attrs.extractedSections && typeof attrs.extractedSections === 'object') ? attrs.extractedSections : {};
+  var backlogDefense = extracted.backlogDefense || 0;
+  var backlogTotal = extracted.backlogTotal || 0;
+  var mdaSnippet = extracted.mdaSnippet || '';
+
+  var titleHtml = '<span>' + esc(filerName) + '</span>';
+  if (ticker) titleHtml += '<span style="color:var(--t3);font-weight:400"> · ' + esc(ticker) + '</span>';
+
+  var subtitleParts = [];
+  if (reportDate) subtitleParts.push('FY ' + reportDate);
+  else if (filingDate) subtitleParts.push('filed ' + filingDate);
+  if (deepParsed) {
+    if (backlogDefense) {
+      subtitleParts.push('<span style="color:#3a8a5c;font-weight:600">defense backlog ' + fmtDollars(backlogDefense) + '</span>');
+    } else if (backlogTotal) {
+      subtitleParts.push('total backlog ' + fmtDollars(backlogTotal));
+    }
+    var segMentions = Array.isArray(attrs.defenseSegmentMentions) ? attrs.defenseSegmentMentions : [];
+    if (segMentions.length > 0) {
+      subtitleParts.push(segMentions.length + ' defense segments');
+    }
+    var blMentions = Array.isArray(attrs.backlogMentions) ? attrs.backlogMentions : [];
+    if (blMentions.length > 0 && !backlogDefense && !backlogTotal) {
+      subtitleParts.push(blMentions.length + ' backlog mention' + (blMentions.length > 1 ? 's' : ''));
+    }
+    if (mdaSnippet && mdaSnippet.length > 100) {
+      subtitleParts.push(Math.round(mdaSnippet.length / 1000) + 'k MD&A chars');
+    }
+  } else {
+    subtitleParts.push('awaiting v1.2.1 deep parse');
+  }
+  var subtitleHtml = subtitleParts.join(' · ');
+
+  // Right chip: form type, colored by deep-parse state
+  var palette;
+  if (deepParsed) {
+    if (form.startsWith('10-K')) palette = { fg:'#5fb3b8', bg:'rgba(95,179,184,.10)' };
+    else palette = { fg:'#8b5cf6', bg:'rgba(139,92,246,.10)' };
+  } else {
+    palette = { fg:'var(--t3)', bg:'rgba(125,118,105,.06)' };
+  }
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + palette.bg + ';color:' + palette.fg + ';border:1px solid ' + palette.fg + '40">' + esc(form) + '</span>';
+
+  var clickUrl = attrs.documentUrl || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,

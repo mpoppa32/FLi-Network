@@ -19,6 +19,15 @@ export interface SecEdgarConfig {
   maxForm4DeepParsesPerSync?: number;
   /** v1.2: skip mechanical Form 4 codes (F=tax-withhold, G=gift) from deep extraction. Default false. */
   skipMechanicalForm4Codes?: boolean;
+  /** v1.2.1: fetch + parse 10-K/10-Q HTML for MD&A + backlog. Default true. */
+  extractPeriodicReportDetail?: boolean;
+  /** v1.2.1: per-sync cap on 10-K/Q deep parses. Default 20 (each is one
+   *  extra HTTP call returning a multi-hundred-KB doc). */
+  maxPeriodicReportDeepParsesPerSync?: number;
+  /** v1.2.1: max MD&A snippet chars to retain on Signal. Default 4000. */
+  maxMdaChars?: number;
+  /** v1.2.1: max risk-factors snippet chars to retain on Signal. Default 3000. */
+  maxRiskFactorsChars?: number;
   initializedAt?: number;
   disabled?: boolean;
 }
@@ -53,6 +62,10 @@ export const DEFAULT_SEC_EDGAR_CONFIG: SecEdgarConfig = {
   extractForm4Detail: true,
   maxForm4DeepParsesPerSync: 60,
   skipMechanicalForm4Codes: false,
+  extractPeriodicReportDetail: true,
+  maxPeriodicReportDeepParsesPerSync: 20,
+  maxMdaChars: 4000,
+  maxRiskFactorsChars: 3000,
 };
 
 export async function loadConfig(workspaceId: string, log?: Logger): Promise<SecEdgarConfig> {

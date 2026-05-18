@@ -19,6 +19,10 @@ import {
   type SecSubmissionResponse,
 } from "./client";
 import { parseForm4Xml, type ParsedForm4 } from "./form4Parser";
+import {
+  parsePeriodicReportHtml,
+  type ParsedPeriodicReport,
+} from "./periodicReportParser";
 
 /** 8-K item code → human-readable description.
  *  Per SEC Form 8-K spec. Items split by comma in the API response. */
@@ -146,16 +150,51 @@ export async function upsertSignal(
 // v1.1 — Additional filing types (metadata-only; deep doc parsing deferred)
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface PeriodicReportMapOptions {
+  /** v1.2.1: fetch + parse the HTML doc. */
+  extractDeep?: boolean;
+  /** v1.2.1: HTML fetch timeout (ms). */
+  timeoutMs?: number;
+  /** v1.2.1: max MD&A snippet chars to retain. */
+  maxMdaChars?: number;
+  /** v1.2.1: max risk-factors snippet chars to retain. */
+  maxRiskFactorsChars?: number;
+}
+
+export interface PeriodicReportMapMetrics {
+  attempted: boolean;
+  succeeded: boolean;
+  mdaCharsExtracted: number;
+  riskFactorsCharsExtracted: number;
+  backlogMentionsCount: number;
+  defenseSegmentMentionsCount: number;
+  backlogTotalUSD: number | null;
+  backlogDefenseUSD: number | null;
+  parseFlags: string[];
+  errorMessage?: string;
+}
+
+export interface PeriodicReportMapResult {
+  signal: Signal;
+  metrics: PeriodicReportMapMetrics;
+}
+
 /**
- * 10-K / 10-Q — annual/quarterly periodic reports. v1.1 stores the filing
- * metadata; v1.2 will add extractedSections (MD&A snippet, risk factors,
- * defense segment backlog) via document fetch + parse.
+ * 10-K / 10-Q — annual/quarterly periodic reports.
+ *
+ * v1.1: filing metadata only (deepParsingPending:true).
+ * v1.2.1: when options.extractDeep is set, fetches the HTML body, parses
+ *   out MD&A snippet, risk factors snippet, defense-segment snippet,
+ *   backlog mentions with parsed USD values, defense-segment-name list.
+ *   `attrs.extractedSections` populated per PeriodicReportAttrs schema.
  */
 export async function mapPeriodicReportToSignal(
   workspaceId: string,
   filing: SecFilingRecord,
-  submission: SecSubmissionResponse
-): Promise<Signal> {
+  submission: SecSubmissionResponse,
+  options: PeriodicReportMapOptions = {},
+  log?: Logger
+): Promise<PeriodicReportMapResult> {
   const filerName = submission.name;
   const ticker = submission.tickers?.[0];
   const { orgId: filerOrgId } = await resolveRecipientOrg(workspaceId, filerName, null, {
@@ -166,30 +205,111 @@ export async function mapPeriodicReportToSignal(
   const reportDate = filing.reportDate ? Date.parse(filing.reportDate) : 0;
   const occurredAt = filing.filingDateMs || Date.now();
   const signalId = "sg_sec_" + filing.accessionNumber.replace(/[^A-Za-z0-9_-]/g, "_");
+
+  const metrics: PeriodicReportMapMetrics = {
+    attempted: false,
+    succeeded: false,
+    mdaCharsExtracted: 0,
+    riskFactorsCharsExtracted: 0,
+    backlogMentionsCount: 0,
+    defenseSegmentMentionsCount: 0,
+    backlogTotalUSD: null,
+    backlogDefenseUSD: null,
+    parseFlags: [],
+  };
+
+  const attrs: Record<string, unknown> = {
+    cik: filing.cik,
+    ticker: ticker || null,
+    filerName,
+    accessionNumber: filing.accessionNumber,
+    formType: filing.form,
+    reportDate: Number.isFinite(reportDate) ? reportDate : 0,
+    documentUrl,
+    extractedSections: {},
+    filingDate: filing.filingDate,
+    primaryDocDescription: filing.primaryDocDescription,
+    deepParsingPending: true,
+  };
+
+  let parsed: ParsedPeriodicReport | null = null;
+  if (options.extractDeep) {
+    metrics.attempted = true;
+    try {
+      const html = await fetchFilingDoc(
+        documentUrl,
+        { timeoutMs: options.timeoutMs ?? 30_000 },
+        log
+      );
+      parsed = parsePeriodicReportHtml(html, filing.form, {
+        maxMdaChars: options.maxMdaChars,
+        maxRiskFactorsChars: options.maxRiskFactorsChars,
+      });
+      metrics.parseFlags = parsed.flags;
+      // Treat as success if we got *anything* useful — MD&A snippet or
+      // a backlog mention. Pure failure (both null + empty) is a deep
+      // parse fail.
+      if (parsed.mdaSnippet || parsed.backlogMentions.length > 0) {
+        metrics.succeeded = true;
+      } else {
+        metrics.errorMessage = "parse_yielded_no_data";
+      }
+    } catch (err) {
+      metrics.errorMessage = (err as Error).message;
+      log?.warn("sec_edgar_periodic_fetch_or_parse_failed", {
+        accession: filing.accessionNumber,
+        form: filing.form,
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  if (parsed && metrics.succeeded) {
+    delete attrs.deepParsingPending;
+    metrics.mdaCharsExtracted = parsed.mdaLength;
+    metrics.riskFactorsCharsExtracted = parsed.riskFactorsSnippet ? parsed.riskFactorsSnippet.length : 0;
+    metrics.backlogMentionsCount = parsed.backlogMentions.length;
+    metrics.defenseSegmentMentionsCount = parsed.defenseSegmentMentions.length;
+    metrics.backlogTotalUSD = parsed.backlogTotalUSD;
+    metrics.backlogDefenseUSD = parsed.backlogDefenseUSD;
+
+    const extractedSections: Record<string, unknown> = {};
+    if (parsed.mdaSnippet) extractedSections.mdaSnippet = parsed.mdaSnippet;
+    if (parsed.riskFactorsSnippet) extractedSections.riskFactorsSnippet = parsed.riskFactorsSnippet;
+    if (parsed.defenseSegmentSnippet) extractedSections.defenseSegment = parsed.defenseSegmentSnippet;
+    if (parsed.backlogTotalUSD !== null) extractedSections.backlogTotal = parsed.backlogTotalUSD;
+    if (parsed.backlogDefenseUSD !== null) extractedSections.backlogDefense = parsed.backlogDefenseUSD;
+    attrs.extractedSections = extractedSections;
+
+    if (parsed.backlogMentions.length > 0) attrs.backlogMentions = parsed.backlogMentions;
+    if (parsed.defenseSegmentMentions.length > 0) attrs.defenseSegmentMentions = parsed.defenseSegmentMentions;
+    if (parsed.flags.length > 0) attrs.parseFlags = parsed.flags;
+    attrs.deepParsedAt = Date.now();
+    attrs.deepParseVersion = "1.2.1";
+  } else if (options.extractDeep) {
+    attrs.deepParseFailed = true;
+    attrs.deepParseError = metrics.errorMessage || "unknown";
+  }
+
   const hash = hashFields(
-    { accessionNumber: filing.accessionNumber, form: filing.form, reportDate: filing.reportDate || "" },
-    ["accessionNumber", "form", "reportDate"]
+    {
+      accessionNumber: filing.accessionNumber,
+      form: filing.form,
+      reportDate: filing.reportDate || "",
+      backlogTotalUSD: metrics.backlogTotalUSD ?? 0,
+      backlogDefenseUSD: metrics.backlogDefenseUSD ?? 0,
+      mdaCharsExtracted: metrics.mdaCharsExtracted,
+    } as Record<string, unknown>,
+    ["accessionNumber", "form", "reportDate", "backlogTotalUSD", "backlogDefenseUSD", "mdaCharsExtracted"]
   );
-  return {
+
+  const signal: Signal = {
     id: signalId,
     type: "periodic_report",
     subjectIds: [filerOrgId],
     relatedIds: [],
     occurredAt,
-    attrs: {
-      cik: filing.cik,
-      ticker: ticker || null,
-      filerName,
-      accessionNumber: filing.accessionNumber,
-      formType: filing.form,
-      reportDate: Number.isFinite(reportDate) ? reportDate : 0,
-      documentUrl,
-      extractedSections: {
-        // v1.2 will populate these via doc fetch + parse
-      },
-      filingDate: filing.filingDate,
-      primaryDocDescription: filing.primaryDocDescription,
-    },
+    attrs,
     source: externalProvenance(
       "sec_edgar",
       filing.accessionNumber,
@@ -198,6 +318,8 @@ export async function mapPeriodicReportToSignal(
       Date.now()
     ),
   };
+
+  return { signal, metrics };
 }
 
 export interface Form4MapOptions {
@@ -481,19 +603,24 @@ export async function mapProxyStatementToSignal(
 export interface DispatchOptions {
   /** v1.2: pass-through to mapForm4ToSignal. */
   form4?: Form4MapOptions;
+  /** v1.2.1: pass-through to mapPeriodicReportToSignal. */
+  periodicReport?: PeriodicReportMapOptions;
 }
 
 export interface DispatchResult {
   signal: Signal | null;
   /** Populated only when the filing was a Form 4 with deep-parse attempted. */
   form4Metrics?: Form4MapMetrics;
+  /** Populated only when the filing was a 10-K/Q with deep-parse attempted. */
+  periodicReportMetrics?: PeriodicReportMapMetrics;
 }
 
 /**
- * v1.2 dispatcher — choose the right mapper for a given form type.
+ * v1.2.1 dispatcher — choose the right mapper for a given form type.
  * Returns null signal if the form type isn't recognized (orchestrator
- * should skip). Form 4 mapper additionally returns extraction metrics so
- * the orchestrator can budget XML fetches and surface per-sync stats.
+ * should skip). Form 4 + 10-K/Q mappers additionally return extraction
+ * metrics so the orchestrator can budget HTTP fetches and surface per-
+ * sync stats.
  */
 export async function mapFilingToSignal(
   workspaceId: string,
@@ -508,8 +635,14 @@ export async function mapFilingToSignal(
     return { signal: s };
   }
   if (form === "10-K" || form === "10-Q" || form === "10-K/A" || form === "10-Q/A") {
-    const s = await mapPeriodicReportToSignal(workspaceId, filing, submission);
-    return { signal: s };
+    const r = await mapPeriodicReportToSignal(
+      workspaceId,
+      filing,
+      submission,
+      options.periodicReport || {},
+      log
+    );
+    return { signal: r.signal, periodicReportMetrics: r.metrics };
   }
   if (form === "4" || form === "4/A") {
     const r = await mapForm4ToSignal(workspaceId, filing, submission, options.form4 || {}, log);
