@@ -82,6 +82,8 @@ export interface BriefOutput {
     dismissReasonAggregate?: Array<{ reason: string; count: number }>;
     /** v1.11: count of Signal items that received a cross-source convergence bump */
     crossSourceBumps?: number;
+    /** v1.12: subset of crossSourceBumps that hit the tight 72-hour cluster tier */
+    tightClusterBumps?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -397,62 +399,101 @@ export async function synthesizeBrief(
     if (kept) oppItems.push(kept);
   }
 
-  // 3.5. v1.11 — cross-source correlation pass.
+  // 3.5. v1.12 — cross-source correlation pass with time-window weighting.
   //
-  // Build an index of Org id → distinct source systems touching it via
-  // this week's Signal items. Any Signal item whose subjectIds/relatedIds
-  // include an Org that's been touched by 2+ different source systems
-  // receives a magnitude bump:
-  //   3+ distinct sources: +0.10 magnitude (cross-source convergence —
-  //     strong posture indicator that multiple feeds are surfacing the
-  //     same entity simultaneously)
-  //   2 distinct sources:  +0.05 magnitude
+  // Build an index of Org id → Map<sourceSystem, latestOccurredAt[]>. For
+  // each Signal item, evaluate two convergence windows:
   //
-  // The bump is capped so magnitude stays in [0, 1] and total in [0, 13].
+  //   tight cluster (72-hour window centered on this item's occurredAt):
+  //     3+ distinct sources within 72h: +0.15 (strong real-time convergence)
+  //     2 distinct sources within 72h:  +0.08
+  //
+  //   wide cluster (this week's Brief window, v1.11 baseline):
+  //     3+ distinct sources:            +0.10
+  //     2 distinct sources:             +0.05
+  //
+  // Each item picks the highest applicable bump (not stacked). Tight-cluster
+  // convergence is much stronger BD signal than 30-day-spread convergence —
+  // a defense prime appearing in an SEC 8-K + a GAO protest + a Congress.gov
+  // hearing all within 72 hours is procurement-grade intelligence; the same
+  // touches spread across a month is background noise.
+  //
   // SCORING_WEIGHTS.magnitude is 1.0, so the bump applies to total 1:1.
-  // Operator-visible via a whySurfaced line citing the source-system count.
-  //
   // Awards and opportunities are not included in the index — both are
-  // workspace-internal items that already pin to a specific Org by
-  // construction. The cross-source signal we want to surface is when
-  // *external feeds* converge on the same entity.
+  // workspace-internal items that already pin to a specific Org. The cross-
+  // source signal we want is *external feeds* converging on the same entity.
   let crossSourceBumps = 0;
+  let tightClusterBumps = 0;
+  const TIGHT_WINDOW_MS = 72 * 60 * 60 * 1000;
   if (sigItems.length > 0) {
-    const orgToSources = new Map<string, Set<string>>();
+    // Build index: orgId → Map<sourceSystem, occurredAt[]>
+    const orgToSourceTimes = new Map<string, Map<string, number[]>>();
     for (const item of sigItems) {
       const sig = signals[item.id];
       if (!sig) continue;
       const sys = sig.source?.system;
       if (!sys) continue;
+      const occurred = sig.occurredAt || 0;
       const allIds = [
         ...(sig.subjectIds || []),
         ...(sig.relatedIds || []),
       ];
       for (const id of allIds) {
         if (!id) continue;
-        if (!orgToSources.has(id)) orgToSources.set(id, new Set());
-        orgToSources.get(id)!.add(sys);
+        if (!orgToSourceTimes.has(id)) orgToSourceTimes.set(id, new Map());
+        const sysMap = orgToSourceTimes.get(id)!;
+        if (!sysMap.has(sys)) sysMap.set(sys, []);
+        sysMap.get(sys)!.push(occurred);
       }
     }
     for (const item of sigItems) {
       const sig = signals[item.id];
       if (!sig || !item.relevance) continue;
+      const itemAt = sig.occurredAt || 0;
       const allIds = [
         ...(sig.subjectIds || []),
         ...(sig.relatedIds || []),
       ];
-      let maxSources = 1;
+      let maxWideSources = 1;
+      let maxTightSources = 1;
       for (const id of allIds) {
-        const sources = orgToSources.get(id);
-        if (sources && sources.size > maxSources) maxSources = sources.size;
+        const sysMap = orgToSourceTimes.get(id);
+        if (!sysMap) continue;
+        if (sysMap.size > maxWideSources) maxWideSources = sysMap.size;
+        // Count systems with at least one touch within ±72h of this item
+        let tightCount = 0;
+        for (const [, times] of sysMap) {
+          for (const t of times) {
+            if (Math.abs(t - itemAt) <= TIGHT_WINDOW_MS) {
+              tightCount++;
+              break; // count system once
+            }
+          }
+        }
+        if (tightCount > maxTightSources) maxTightSources = tightCount;
       }
-      if (maxSources >= 2) {
-        const bump = maxSources >= 3 ? 0.10 : 0.05;
+      // Pick highest applicable bump
+      let bump = 0;
+      let reason = "";
+      if (maxTightSources >= 3) {
+        bump = 0.15;
+        reason = `Tight cross-source cluster — ${maxTightSources} different source systems touched within 72h`;
+        tightClusterBumps++;
+      } else if (maxWideSources >= 3) {
+        bump = 0.10;
+        reason = `Cross-source convergence — entity touched by ${maxWideSources} different source systems this week`;
+      } else if (maxTightSources >= 2) {
+        bump = 0.08;
+        reason = `Tight cross-source pair — ${maxTightSources} different source systems touched within 72h`;
+        tightClusterBumps++;
+      } else if (maxWideSources >= 2) {
+        bump = 0.05;
+        reason = `Cross-source convergence — entity touched by ${maxWideSources} different source systems this week`;
+      }
+      if (bump > 0) {
         item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
         item.relevance.total = Math.min(13, item.relevance.total + bump);
-        item.relevance.whySurfaced.push(
-          `Cross-source convergence — entity touched by ${maxSources} different source systems this week`
-        );
+        item.relevance.whySurfaced.push(reason);
         crossSourceBumps++;
       }
     }
@@ -542,8 +583,9 @@ export async function synthesizeBrief(
       pinnedShown,
       dismissReasonAggregate,
       crossSourceBumps,
+      tightClusterBumps,
     },
-    scoringVersion: "1.11",
+    scoringVersion: "1.12",
     weightsApplied: SCORING_WEIGHTS,
   };
 
