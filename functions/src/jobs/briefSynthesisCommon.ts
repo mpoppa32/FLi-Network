@@ -80,6 +80,8 @@ export interface BriefOutput {
     pinnedShown?: number;
     /** v1.3: dismiss-reason aggregate — top reasons + counts for tuning suggestions */
     dismissReasonAggregate?: Array<{ reason: string; count: number }>;
+    /** v1.11: count of Signal items that received a cross-source convergence bump */
+    crossSourceBumps?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -395,6 +397,67 @@ export async function synthesizeBrief(
     if (kept) oppItems.push(kept);
   }
 
+  // 3.5. v1.11 — cross-source correlation pass.
+  //
+  // Build an index of Org id → distinct source systems touching it via
+  // this week's Signal items. Any Signal item whose subjectIds/relatedIds
+  // include an Org that's been touched by 2+ different source systems
+  // receives a magnitude bump:
+  //   3+ distinct sources: +0.10 magnitude (cross-source convergence —
+  //     strong posture indicator that multiple feeds are surfacing the
+  //     same entity simultaneously)
+  //   2 distinct sources:  +0.05 magnitude
+  //
+  // The bump is capped so magnitude stays in [0, 1] and total in [0, 13].
+  // SCORING_WEIGHTS.magnitude is 1.0, so the bump applies to total 1:1.
+  // Operator-visible via a whySurfaced line citing the source-system count.
+  //
+  // Awards and opportunities are not included in the index — both are
+  // workspace-internal items that already pin to a specific Org by
+  // construction. The cross-source signal we want to surface is when
+  // *external feeds* converge on the same entity.
+  let crossSourceBumps = 0;
+  if (sigItems.length > 0) {
+    const orgToSources = new Map<string, Set<string>>();
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig) continue;
+      const sys = sig.source?.system;
+      if (!sys) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      for (const id of allIds) {
+        if (!id) continue;
+        if (!orgToSources.has(id)) orgToSources.set(id, new Set());
+        orgToSources.get(id)!.add(sys);
+      }
+    }
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxSources = 1;
+      for (const id of allIds) {
+        const sources = orgToSources.get(id);
+        if (sources && sources.size > maxSources) maxSources = sources.size;
+      }
+      if (maxSources >= 2) {
+        const bump = maxSources >= 3 ? 0.10 : 0.05;
+        item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+        item.relevance.total = Math.min(13, item.relevance.total + bump);
+        item.relevance.whySurfaced.push(
+          `Cross-source convergence — entity touched by ${maxSources} different source systems this week`
+        );
+        crossSourceBumps++;
+      }
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -478,8 +541,9 @@ export async function synthesizeBrief(
       pinnedActive: pinnedTotal,
       pinnedShown,
       dismissReasonAggregate,
+      crossSourceBumps,
     },
-    scoringVersion: "1.10",
+    scoringVersion: "1.11",
     weightsApplied: SCORING_WEIGHTS,
   };
 
