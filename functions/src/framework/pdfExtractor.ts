@@ -150,6 +150,111 @@ export async function extractPdfText(
 }
 
 /**
+ * v1.2 (additive): positional PDF item with x/y coordinates.
+ *
+ * pdf-parse wraps pdfjs-dist; we hook the per-page render callback to
+ * capture textContent.items, which carry the transform matrix (positions)
+ * and width/height. Y values increase top-down in pdfjs convention.
+ *
+ * Y-clustering on these items reconstructs table rows — items within a
+ * narrow Y band belong to the same row. For dod_comptroller budget books
+ * this is how FY funding tables get rebuilt cleanly without depending on
+ * the lossy text reflow.
+ */
+export interface PositionalPdfItem {
+  /** Text content of the item (one span as pdfjs sees it). */
+  str: string;
+  /** X position of the item's anchor (left edge). */
+  x: number;
+  /** Y position (top edge in pdfjs convention; higher = upper). */
+  y: number;
+  /** Item width in PDF user units. */
+  width: number;
+  /** Item height in PDF user units. */
+  height: number;
+  /** 1-indexed page number. */
+  pageNum: number;
+}
+
+export interface PdfExtractionWithPositionalResult extends PdfExtractionResult {
+  /** Positional items captured via pagerender callback. */
+  positionalItems: PositionalPdfItem[];
+}
+
+/**
+ * v1.2: fetch + extract with positional metadata captured via pdfjs
+ * page.getTextContent. The returned `text` field stays identical to the
+ * v1.0 extractor (same joined-string render) so existing call sites can
+ * use this version transparently if they want both. Use `positionalItems`
+ * when the caller needs column / row reconstruction.
+ *
+ * Cost: roughly 1.5-2x the time of plain text extraction, because every
+ * item is captured into the outer array. For dod_comptroller budget books
+ * (50-100MB, hundreds of pages) this adds 10-30s vs. plain extraction.
+ * Callers should set `timeoutMs` accordingly (default 60s; budget books
+ * config 120s).
+ */
+export async function fetchAndExtractPdfWithPositional(
+  url: string,
+  options: PdfExtractionOptions = {},
+  log?: Logger
+): Promise<PdfExtractionWithPositionalResult> {
+  const startedAt = Date.now();
+  const fetched = await fetchPdf(url, options, log);
+  const maxTextChars = options.maxTextChars ?? 200_000;
+
+  const positionalItems: PositionalPdfItem[] = [];
+  let pageCounter = 0;
+
+  const pagerender = async (pageData: any): Promise<string> => {
+    pageCounter++;
+    const textContent = await pageData.getTextContent({
+      normalizeWhitespace: false,
+      disableCombineTextItems: false,
+    });
+    const items: Array<{ str: string; transform: number[]; width: number; height: number }> =
+      textContent.items || [];
+    const pageStrings: string[] = [];
+    for (const it of items) {
+      if (!it || typeof it.str !== "string") continue;
+      pageStrings.push(it.str);
+      // transform = [scaleX, skewY, skewX, scaleY, translateX, translateY]
+      const x = Array.isArray(it.transform) ? Number(it.transform[4]) : 0;
+      const y = Array.isArray(it.transform) ? Number(it.transform[5]) : 0;
+      positionalItems.push({
+        str: it.str,
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+        width: Number(it.width) || 0,
+        height: Number(it.height) || 0,
+        pageNum: pageCounter,
+      });
+    }
+    return pageStrings.join(" ");
+  };
+
+  const data = await pdfParse(fetched.buffer, { max: 0, pagerender });
+  const rawText = String(data?.text ?? "");
+  const normalized = normalizePdfText(rawText);
+  let text = normalized;
+  let truncated = false;
+  if (text.length > maxTextChars) {
+    text = text.slice(0, maxTextChars);
+    truncated = true;
+  }
+  return {
+    url: fetched.url,
+    bytes: fetched.bytes,
+    pages: Number(data?.numpages || pageCounter),
+    text,
+    textLength: text.length,
+    truncated,
+    positionalItems,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+/**
  * Full pipeline: fetch + extract.
  */
 export async function fetchAndExtractPdf(

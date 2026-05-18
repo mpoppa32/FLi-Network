@@ -71,6 +71,12 @@ export interface DodComptrollerConfig {
    *  has 200-300 PE entries; the cap protects against runaway extraction
    *  on a malformed PDF. */
   maxPesPerPdf?: number;
+  /** v1.2 (opt-in): use positional PDF extraction (pdfjs-via-pdf-parse
+   *  pagerender callback) to capture x/y coordinates per text item, then
+   *  reconstruct FY funding tables via Y-clustering. Slower (~1.5-2x) but
+   *  more reliable for tabular budget data than the v1.1 regex strategy.
+   *  Default OFF until operator validation on real workspaces. */
+  usePositionalExtraction?: boolean;
   disabled?: boolean;
   initializedAt?: number;
 }
@@ -86,6 +92,7 @@ export const DEFAULT_DOD_COMPTROLLER_CONFIG: DodComptrollerConfig = {
   pdfExtractionTimeoutMs: 120_000,
   maxPeNarrativeChars: 4000,
   maxPesPerPdf: 400,
+  usePositionalExtraction: false,
 };
 
 export async function loadConfig(

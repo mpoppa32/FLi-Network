@@ -28,7 +28,11 @@ import {
   resolveLatestFiscalYear,
   type BudgetBookCandidate,
 } from "./client";
-import { fetchAndExtractPdf } from "../../framework/pdfExtractor";
+import {
+  fetchAndExtractPdf,
+  fetchAndExtractPdfWithPositional,
+  type PositionalPdfItem,
+} from "../../framework/pdfExtractor";
 import { parseBudgetBookText } from "./budgetParser";
 import { upsertBudgetPeSignal } from "./mapper";
 
@@ -199,24 +203,50 @@ export async function syncWorkspace(
     if (!options.dryRun) {
       for (const candidate of toFetch) {
         try {
-          const extraction = await fetchAndExtractPdf(
-            candidate.url,
-            {
-              source: "dod_comptroller",
-              maxBytes: config.maxPdfBytes,
-              timeoutMs: config.pdfExtractionTimeoutMs,
-              maxTextChars: 8_000_000, // PE catalog walks across whole book
-            },
-            log
-          );
+          const usePositional = !!config.usePositionalExtraction;
+          let extractionText: string;
+          let extractionBytes: number;
+          let extractionPages: number;
+          let positionalItems: PositionalPdfItem[] | undefined;
+          if (usePositional) {
+            const extraction = await fetchAndExtractPdfWithPositional(
+              candidate.url,
+              {
+                source: "dod_comptroller",
+                maxBytes: config.maxPdfBytes,
+                timeoutMs: config.pdfExtractionTimeoutMs,
+                maxTextChars: 8_000_000,
+              },
+              log
+            );
+            extractionText = extraction.text;
+            extractionBytes = extraction.bytes;
+            extractionPages = extraction.pages;
+            positionalItems = extraction.positionalItems;
+          } else {
+            const extraction = await fetchAndExtractPdf(
+              candidate.url,
+              {
+                source: "dod_comptroller",
+                maxBytes: config.maxPdfBytes,
+                timeoutMs: config.pdfExtractionTimeoutMs,
+                maxTextChars: 8_000_000,
+              },
+              log
+            );
+            extractionText = extraction.text;
+            extractionBytes = extraction.bytes;
+            extractionPages = extraction.pages;
+          }
           result.apiCallsCount++;
           result.pdfsDownloaded++;
-          result.pdfBytesDownloaded += extraction.bytes;
-          result.pdfPagesProcessed += extraction.pages;
+          result.pdfBytesDownloaded += extractionBytes;
+          result.pdfPagesProcessed += extractionPages;
 
-          const parsed = parseBudgetBookText(extraction.text, {
+          const parsed = parseBudgetBookText(extractionText, {
             maxPesPerBook: config.maxPesPerPdf,
             maxNarrativeChars: config.maxPeNarrativeChars,
+            positionalItems,
           });
           result.programElementsParsed += parsed.programElements.length;
 

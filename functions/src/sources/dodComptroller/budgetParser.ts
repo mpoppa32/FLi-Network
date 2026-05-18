@@ -26,6 +26,8 @@
 // the v1.1 problem. v1.0 emits PE catalog records that can be cross-linked
 // from SAM.gov / Congress.gov mentions today.
 
+import type { PositionalPdfItem } from "../../framework/pdfExtractor";
+
 const PE_REGEX = /\b(0[1-9]\d{5}[A-Z]{0,3})\b/g;
 const EXHIBIT_HEADER_RE = /Exhibit\s+(R-?\d[A-Z]?|P-?\d+|O-?\d+|M-?\d+)\b/i;
 
@@ -79,6 +81,159 @@ export interface ParsedBudgetBook {
 
 function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * v1.2 (opt-in): extract FY funding for a specific PE using positional PDF
+ * items captured via fetchAndExtractPdfWithPositional. This is the table-
+ * aware strategy v1.1 deferred — by working in PDF coordinate space rather
+ * than reflowed text, we can reconstruct table rows reliably.
+ *
+ * Algorithm:
+ *   1. Find positional items whose `str` includes the PE number; pick the
+ *      first hit (most PEs appear once per book on the exhibit page).
+ *   2. Filter items to the same page, with y-coordinate in a window below
+ *      the PE marker (pdfjs y decreases as you move DOWN the page — keep
+ *      items with y in [PE.y - 600, PE.y - 10]).
+ *   3. Cluster items by Y coordinate into rows (within 2.5 units = same
+ *      row). Sort items left-to-right within each row.
+ *   4. Find the header row containing "FY 20XX" columns; record their X
+ *      positions.
+ *   5. Find the data row(s) containing "Cost", "Total Program Element",
+ *      "Program Element", or the PE number itself in the leftmost column.
+ *   6. Read each data row's numeric items, snapping each to the closest
+ *      header column by X position.
+ *
+ * Returns [] when no positional reconstruction can be done (PE not found
+ * in positionalItems, no header row detected, etc.). Caller should fall
+ * back to the v1.1 regex strategy in that case.
+ */
+export function extractFyFundingPositional(
+  positionalItems: PositionalPdfItem[],
+  pe: string
+): FyFundingPoint[] {
+  if (!positionalItems || positionalItems.length === 0) return [];
+
+  // Find first positional item containing the PE number
+  let peItem: PositionalPdfItem | null = null;
+  for (const it of positionalItems) {
+    if (it.str && it.str.indexOf(pe) >= 0) {
+      peItem = it;
+      break;
+    }
+  }
+  if (!peItem) return [];
+
+  // Filter to same page, items below the PE marker within reasonable Y range
+  // (pdfjs y decreases as you move down; budget tables sit ~50-500 units below)
+  const Y_WINDOW = 600;
+  const onPage = positionalItems.filter(
+    (it) =>
+      it.pageNum === peItem!.pageNum &&
+      it.y < peItem!.y - 10 &&
+      it.y > peItem!.y - Y_WINDOW
+  );
+  if (onPage.length === 0) return [];
+
+  // Cluster items by Y position into rows
+  const Y_TOLERANCE = 2.5;
+  const sortedByY = [...onPage].sort((a, b) => b.y - a.y); // top-to-bottom
+  const rows: PositionalPdfItem[][] = [];
+  let currentRow: PositionalPdfItem[] = [];
+  let currentY = sortedByY[0]?.y ?? 0;
+  for (const it of sortedByY) {
+    if (Math.abs(it.y - currentY) <= Y_TOLERANCE) {
+      currentRow.push(it);
+    } else {
+      if (currentRow.length > 0) rows.push(currentRow);
+      currentRow = [it];
+      currentY = it.y;
+    }
+  }
+  if (currentRow.length > 0) rows.push(currentRow);
+
+  // Sort each row left-to-right
+  for (const row of rows) row.sort((a, b) => a.x - b.x);
+
+  // Find a header row with FY 20XX entries
+  const fyHeaderRe = /\bFY\s*(20\d{2})\b/i;
+  type HeaderColumn = { fy: string; x: number };
+  let headerColumns: HeaderColumn[] | null = null;
+  for (const row of rows) {
+    // Reconstruct row text by joining items left-to-right
+    const rowText = row.map((it) => it.str).join(" ");
+    if (!fyHeaderRe.test(rowText)) continue;
+    // Find each FY 20XX in the row and its X position
+    const cols: HeaderColumn[] = [];
+    for (const it of row) {
+      const m = it.str.match(fyHeaderRe);
+      if (m && m[1]) {
+        cols.push({ fy: m[1], x: it.x });
+      }
+    }
+    // Some FY headers might be split across two items ("FY", "2026") — try
+    // pairing adjacent items if cols is too thin
+    if (cols.length === 0) {
+      for (let i = 0; i < row.length - 1; i++) {
+        const aStr = row[i].str.trim();
+        const bStr = row[i + 1].str.trim();
+        if (/^FY\b/i.test(aStr) && /^20\d{2}$/.test(bStr)) {
+          cols.push({ fy: bStr, x: row[i].x });
+        }
+      }
+    }
+    if (cols.length >= 2) {
+      headerColumns = cols;
+      break;
+    }
+  }
+  if (!headerColumns || headerColumns.length < 2) return [];
+
+  // Find a data row anchored on "Cost", "Total Program Element", or the PE
+  const dataAnchorRe = /^(Cost|Total\s+Program\s+Element|Program\s+Element|Total\s+Cost)/i;
+  let dataRow: PositionalPdfItem[] | null = null;
+  for (const row of rows) {
+    const rowText = row
+      .map((it) => it.str)
+      .join(" ")
+      .trim();
+    if (dataAnchorRe.test(rowText) || rowText.startsWith(pe)) {
+      dataRow = row;
+      break;
+    }
+  }
+  if (!dataRow) return [];
+
+  // Snap each numeric item in the data row to the closest header column
+  const numericRe = /^([\d,]+\.\d{1,3}|[\d,]+)$/;
+  const found: FyFundingPoint[] = [];
+  const seenFys = new Set<string>();
+  for (const it of dataRow) {
+    const cleaned = it.str.replace(/[,$\s]/g, "");
+    if (!numericRe.test(it.str.trim()) && !numericRe.test(cleaned)) continue;
+    const num = parseFloat(cleaned);
+    if (!Number.isFinite(num) || num <= 0 || num > 100000) continue;
+    // Find closest header column by X distance
+    let bestCol: HeaderColumn | null = null;
+    let bestDist = Infinity;
+    for (const col of headerColumns) {
+      const d = Math.abs(it.x - col.x);
+      if (d < bestDist) {
+        bestDist = d;
+        bestCol = col;
+      }
+    }
+    if (!bestCol || bestDist > 60) continue; // 60 PDF units max snap
+    if (seenFys.has(bestCol.fy)) continue;
+    seenFys.add(bestCol.fy);
+    found.push({
+      fy: bestCol.fy,
+      amountMillions: Math.round(num * 1000) / 1000,
+      confidence: "header",
+    });
+  }
+  found.sort((a, b) => a.fy.localeCompare(b.fy));
+  return found;
 }
 
 /**
@@ -252,7 +407,13 @@ function extractNarrativeAfterPE(
 
 export function parseBudgetBookText(
   text: string,
-  options: { maxPesPerBook?: number; maxNarrativeChars?: number } = {}
+  options: {
+    maxPesPerBook?: number;
+    maxNarrativeChars?: number;
+    /** v1.2 (opt-in): when supplied, the positional FY-funding strategy
+     *  runs first per PE; the regex strategy fills in the gaps. */
+    positionalItems?: PositionalPdfItem[];
+  } = {}
 ): ParsedBudgetBook {
   const flags: string[] = [];
   if (text.length < 500) flags.push("text_too_short");
@@ -302,7 +463,18 @@ export function parseBudgetBookText(
 
     const title = extractTitleAfterPE(text, offset, pe);
     const narrative = extractNarrativeAfterPE(text, offset, pe, maxNarrative);
-    const fyFunding = extractFyFundingNear(text, offset, pe);
+
+    // v1.2 (opt-in): positional strategy first. If it returns nothing,
+    // fall back to the v1.1 regex extractor. Positional results are
+    // tagged confidence:"header" by the extractor.
+    let fyFunding: FyFundingPoint[] = [];
+    if (options.positionalItems && options.positionalItems.length > 0) {
+      fyFunding = extractFyFundingPositional(options.positionalItems, pe);
+    }
+    if (fyFunding.length === 0) {
+      fyFunding = extractFyFundingNear(text, offset, pe);
+    }
+
     const fyFundingTotalMillions = fyFunding.reduce((s, p) => s + p.amountMillions, 0);
     const latestPoint = fyFunding.length
       ? fyFunding.reduce((a, b) => (b.fy > a.fy ? b : a))
