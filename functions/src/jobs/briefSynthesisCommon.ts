@@ -88,6 +88,10 @@ export interface BriefOutput {
     leadershipFluxBumps?: number;
     /** v1.14: count of protest/opportunity_amendment pairs bumped for procurement-reset confluence */
     protestAmendmentBumps?: number;
+    /** v1.15: count of Signal items bumped for operator-authored Posture path */
+    posturePathBumps?: number;
+    /** v1.15: count of Signal items bumped for operator-authored Posture trajectory */
+    postureTrajectoryBumps?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -113,16 +117,18 @@ const HARD_CAPS = {
 const ARCHIVED_STAGES = new Set(["won", "lost"]);
 
 async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringContext> {
-  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap] = await Promise.all([
+  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap, nodesSnap] = await Promise.all([
     db.ref(wsPath(workspaceId, "opportunities")).once("value"),
     db.ref(wsPath(workspaceId, "awards")).once("value"),
     db.ref(wsPath(workspaceId, "sources", "usaspending", "config")).once("value"),
     db.ref(wsPath(workspaceId, "sources", "sam_gov", "config")).once("value"),
+    db.ref(wsPath(workspaceId, "nodes")).once("value"),
   ]);
   const opps = (oppSnap.val() as Record<string, Opportunity> | null) ?? {};
   const awards = (awardSnap.val() as Record<string, Award> | null) ?? {};
   const usaCfg = (usaCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
   const samCfg = (samCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
+  const nodes = (nodesSnap.val() as Record<string, { id?: string; posture?: { path?: string; trajectory?: string } }> | null) ?? {};
 
   const activeAdversaryOrgIds = new Set<string>();
   const archivedAdversaryOrgIds = new Set<string>();
@@ -161,6 +167,30 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
   (usaCfg.naics || []).forEach((n) => watchlistNaics.add(n));
   (samCfg.naics || []).forEach((n) => watchlistNaics.add(n));
 
+  // v1.15: build Posture-layer sets from node records. The operator
+  // authors Posture data on Person nodes (path / trajectory / per-pursuit
+  // position) via the Inspector POSTURE tab. Brief Synthesis v1.15 uses
+  // path and trajectory as cross-cutting magnitude axes — operator-tagged
+  // adversaries and falling-influence entities deserve attention on every
+  // touching Signal.
+  const posturePathAdversaryIds = new Set<string>();
+  const posturePathLiberatorIds = new Set<string>();
+  const postureRisingIds = new Set<string>();
+  const postureFallingIds = new Set<string>();
+  for (const [nodeId, node] of Object.entries(nodes)) {
+    if (!node || typeof node !== "object") continue;
+    const posture = (node as any).posture;
+    if (!posture || typeof posture !== "object") continue;
+    const path = (posture.path as string | undefined) || "";
+    const trajectory = (posture.trajectory as string | undefined) || "";
+    const pathLc = path.toLowerCase();
+    const trajLc = trajectory.toLowerCase();
+    if (pathLc === "adversary") posturePathAdversaryIds.add(nodeId);
+    else if (pathLc === "liberator") posturePathLiberatorIds.add(nodeId);
+    if (trajLc === "rising") postureRisingIds.add(nodeId);
+    else if (trajLc === "falling") postureFallingIds.add(nodeId);
+  }
+
   return {
     trackedOppIds: new Set(Object.keys(opps)),
     trackedAwardIds: new Set(Object.keys(awards)),
@@ -174,6 +204,10 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     opportunities: new Map(Object.entries(opps)),
     awards: new Map(Object.entries(awards)),
     awardByPiid,
+    posturePathAdversaryIds,
+    posturePathLiberatorIds,
+    postureRisingIds,
+    postureFallingIds,
   };
 }
 
@@ -641,6 +675,85 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.8. v1.15 — Posture-layer integration.
+  //
+  // The operator authors Posture data on entity nodes via the Inspector
+  // POSTURE tab (path: Sovereign/Liberator/Operator/Unaware; trajectory:
+  // Rising/Falling/Repositioning/Stable). Brief Synthesis v1.15 wires that
+  // operator-authored context into every touching Signal:
+  //
+  //   path === 'Adversary':  +0.12 (highest single-attribute bump —
+  //                                  operator has explicitly tagged this
+  //                                  entity as adversary in workspace
+  //                                  Posture, distinct from per-pursuit
+  //                                  adversary tagging)
+  //   path === 'Liberator':  +0.10 (ethically out-of-bounds operators per
+  //                                  the doctrine — operator wants visibility)
+  //   trajectory === 'Rising':  +0.05 (entity ascending in influence;
+  //                                    Signals about them gain BD weight)
+  //   trajectory === 'Falling': +0.05 (entity losing pull; symmetric)
+  //
+  // Bumps stack across attributes — a Falling Adversary would get +0.17
+  // total. Magnitude cap at 1.0 protects the upper bound.
+  //
+  // This is additive on top of v1.11/v1.12/v1.13/v1.14. The Posture layer
+  // is operator-authored ground truth; the other bumps are derived signals.
+  let posturePathBumps = 0;
+  let postureTrajectoryBumps = 0;
+  const adversarySet = ctx.posturePathAdversaryIds;
+  const liberatorSet = ctx.posturePathLiberatorIds;
+  const risingSet = ctx.postureRisingIds;
+  const fallingSet = ctx.postureFallingIds;
+  if (
+    sigItems.length > 0 &&
+    ((adversarySet && adversarySet.size > 0) ||
+      (liberatorSet && liberatorSet.size > 0) ||
+      (risingSet && risingSet.size > 0) ||
+      (fallingSet && fallingSet.size > 0))
+  ) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let pathBump = 0;
+      let pathLabel = "";
+      let trajectoryBump = 0;
+      let trajectoryLabel = "";
+      for (const id of allIds) {
+        if (!id) continue;
+        if (adversarySet && adversarySet.has(id) && pathBump < 0.12) {
+          pathBump = 0.12;
+          pathLabel = "Posture path: Adversary";
+        } else if (liberatorSet && liberatorSet.has(id) && pathBump < 0.10) {
+          pathBump = 0.10;
+          pathLabel = "Posture path: Liberator";
+        }
+        if (risingSet && risingSet.has(id) && trajectoryBump < 0.05) {
+          trajectoryBump = 0.05;
+          trajectoryLabel = "Posture trajectory: Rising";
+        } else if (fallingSet && fallingSet.has(id) && trajectoryBump < 0.05) {
+          trajectoryBump = 0.05;
+          trajectoryLabel = "Posture trajectory: Falling";
+        }
+      }
+      if (pathBump > 0) {
+        item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + pathBump);
+        item.relevance.total = Math.min(13, item.relevance.total + pathBump);
+        item.relevance.whySurfaced.push(pathLabel);
+        posturePathBumps++;
+      }
+      if (trajectoryBump > 0) {
+        item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + trajectoryBump);
+        item.relevance.total = Math.min(13, item.relevance.total + trajectoryBump);
+        item.relevance.whySurfaced.push(trajectoryLabel);
+        postureTrajectoryBumps++;
+      }
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -728,8 +841,10 @@ export async function synthesizeBrief(
       tightClusterBumps,
       leadershipFluxBumps,
       protestAmendmentBumps,
+      posturePathBumps,
+      postureTrajectoryBumps,
     },
-    scoringVersion: "1.14",
+    scoringVersion: "1.15",
     weightsApplied: SCORING_WEIGHTS,
   };
 

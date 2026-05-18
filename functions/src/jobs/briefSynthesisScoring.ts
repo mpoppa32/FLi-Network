@@ -56,6 +56,17 @@ export interface BriefScoringContext {
   awards: Map<string, Award>;
   /** Map from PIID → awardId for fast 8-K↔Award dedupe */
   awardByPiid: Map<string, string>;
+  /** v1.15: node ids with operator-authored Posture path 'Adversary'.
+   *  Workspace-scoped (set by the operator on a Person record). */
+  posturePathAdversaryIds?: Set<string>;
+  /** v1.15: node ids with operator-authored Posture path 'Liberator' —
+   *  ethically out-of-bounds operators per the doctrine. Bumped because
+   *  the operator wants visibility into their activity. */
+  posturePathLiberatorIds?: Set<string>;
+  /** v1.15: node ids with operator-authored Posture trajectory 'Rising'. */
+  postureRisingIds?: Set<string>;
+  /** v1.15: node ids with operator-authored Posture trajectory 'Falling'. */
+  postureFallingIds?: Set<string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
