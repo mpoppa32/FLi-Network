@@ -55,6 +55,30 @@ export interface BriefFeedback {
 
 export type { RelevanceComponents };
 
+/** v1.18: per-adversary entry in the Brief Adversary Activity Rollup. */
+export interface AdversaryRollupEntry {
+  /** Org id of the adversary. */
+  orgId: string;
+  /** Best-effort display name (from a touching Signal's source plugin
+   *  or null if not derivable). */
+  orgName?: string | null;
+  /** Total Signal touches within the Brief window. */
+  signalCount: number;
+  /** Most-recent touching Signal occurredAt. */
+  latestSignalAt: number;
+  /** Signal ids of the most-recent touches (cap at 8). */
+  recentSignalIds: string[];
+  /** Distinct source systems contributing touches (e.g., ['sec_edgar',
+   *  'gao_protest']). */
+  sources: string[];
+  /** Sum of relevance.total across all touching Signals — proxies the
+   *  "weight of activity" for sorting the rollup. */
+  totalRelevance: number;
+  /** Active flag — true when the adversary is on a non-terminal pursuit
+   *  (matches ctx.activeAdversaryOrgIds), false when only on archived. */
+  active: boolean;
+}
+
 export interface BriefOutput {
   workspaceId: string;
   generatedAt: number;
@@ -99,6 +123,10 @@ export interface BriefOutput {
      *  Persons who formerly worked there) */
     revolvingDoorTouchBumps?: number;
   };
+  /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
+   *  recent touching Signals. The Brief surface can render this as a
+   *  dashboard card without re-walking the full Signal corpus. */
+  adversaryRollup?: AdversaryRollupEntry[];
   /** v1.1: scoring metadata */
   scoringVersion?: string;
   weightsApplied?: typeof SCORING_WEIGHTS;
@@ -883,6 +911,91 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.11. v1.18 — Adversary Activity Rollup.
+  //
+  // For each adversary Org (active or archived per the operator's pursuit
+  // posture data), summarize this Brief window's Signal touches:
+  //   - signalCount, latestSignalAt
+  //   - recentSignalIds[] (top 8 most-recent touching Signals)
+  //   - sources[] (distinct external feeds contributing touches)
+  //   - totalRelevance (sum of relevance.total across all touches —
+  //     proxies "weight of activity" and sorts the rollup by intensity)
+  //   - active (true when on non-terminal pursuit, false when archived
+  //     adversary only)
+  //
+  // The Brief client can render this as a dashboard card alongside the
+  // category buckets without re-walking the full Signal corpus.
+  const adversaryUnion = new Set<string>();
+  ctx.activeAdversaryOrgIds.forEach((id) => adversaryUnion.add(id));
+  ctx.archivedAdversaryOrgIds.forEach((id) => adversaryUnion.add(id));
+
+  const rollupByOrg = new Map<
+    string,
+    {
+      orgId: string;
+      orgName: string | null;
+      touches: Array<{ sigId: string; at: number; relevance: number; system: string }>;
+      sources: Set<string>;
+      active: boolean;
+    }
+  >();
+
+  if (adversaryUnion.size > 0 && sigItems.length > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      const system = sig.source?.system || "unknown";
+      for (const id of allIds) {
+        if (!adversaryUnion.has(id)) continue;
+        if (!rollupByOrg.has(id)) {
+          rollupByOrg.set(id, {
+            orgId: id,
+            orgName: null,
+            touches: [],
+            sources: new Set(),
+            active: ctx.activeAdversaryOrgIds.has(id),
+          });
+        }
+        const entry = rollupByOrg.get(id)!;
+        entry.touches.push({
+          sigId: sig.id,
+          at: sig.occurredAt || 0,
+          relevance: item.relevance.total,
+          system,
+        });
+        entry.sources.add(system);
+      }
+    }
+  }
+
+  const adversaryRollup: AdversaryRollupEntry[] = [];
+  for (const entry of rollupByOrg.values()) {
+    if (entry.touches.length === 0) continue;
+    entry.touches.sort((a, b) => b.at - a.at);
+    const totalRelevance = entry.touches.reduce((s, t) => s + t.relevance, 0);
+    adversaryRollup.push({
+      orgId: entry.orgId,
+      orgName: entry.orgName,
+      signalCount: entry.touches.length,
+      latestSignalAt: entry.touches[0].at,
+      recentSignalIds: entry.touches.slice(0, 8).map((t) => t.sigId),
+      sources: Array.from(entry.sources).sort(),
+      totalRelevance: Math.round(totalRelevance * 100) / 100,
+      active: entry.active,
+    });
+  }
+  // Sort: active first, then totalRelevance desc, then signalCount tiebreak
+  adversaryRollup.sort((a, b) => {
+    if (a.active !== b.active) return a.active ? -1 : 1;
+    const dr = b.totalRelevance - a.totalRelevance;
+    if (Math.abs(dr) > 0.01) return dr;
+    return b.signalCount - a.signalCount;
+  });
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -975,6 +1088,7 @@ export async function synthesizeBrief(
       peMentionBumps,
       revolvingDoorTouchBumps,
     },
+    adversaryRollup,
     scoringVersion: "1.17",
     weightsApplied: SCORING_WEIGHTS,
   };

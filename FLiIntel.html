@@ -35484,6 +35484,43 @@ window._renderExternalIntelligence = function(brief) {
   var anyItems = false;
   var order = ['pursuit', 'adversary', 'customer', 'capability', 'context'];
 
+  // v1.18 (Adversary Activity Rollup): render a compact card listing the
+  // top adversaries by activity weight in this Brief window. Active
+  // adversaries first, then archived; rendered only when the server-side
+  // rollup has entries.
+  if (Array.isArray(brief.adversaryRollup) && brief.adversaryRollup.length > 0) {
+    var roll = brief.adversaryRollup.slice(0, 6);
+    h += '<div style="margin:6px 0 14px;padding:10px 12px;background:rgba(179,64,64,.06);border:1px solid rgba(179,64,64,.22);border-radius:3px">';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#b34040;text-transform:uppercase;letter-spacing:.10em;font-weight:700;margin-bottom:6px">Adversary activity — last ' + Math.round((brief.windowHours || 168) / 24) + 'd</div>';
+    for (var ri = 0; ri < roll.length; ri++) {
+      var rEntry = roll[ri];
+      var orgLabel = rEntry.orgName || rEntry.orgId;
+      var orgEsc = String(orgLabel).replace(/</g, '&lt;');
+      var ageMs = Date.now() - (rEntry.latestSignalAt || 0);
+      var ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+      var ageStr = ageDays === 0 ? 'today' : ageDays === 1 ? '1d ago' : ageDays + 'd ago';
+      var srcChips = '';
+      var srcList = Array.isArray(rEntry.sources) ? rEntry.sources.slice(0, 4) : [];
+      for (var si2 = 0; si2 < srcList.length; si2++) {
+        srcChips += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:#b34040;background:rgba(179,64,64,.10);border:1px solid rgba(179,64,64,.30);padding:0 4px;border-radius:2px;margin-left:4px;letter-spacing:.06em">' + String(srcList[si2]).replace(/</g, '&lt;').toUpperCase().replace(/_/g, ' ') + '</span>';
+      }
+      var moreChips = (rEntry.sources && rEntry.sources.length > 4) ? ' +' + (rEntry.sources.length - 4) : '';
+      var activeFlag = rEntry.active
+        ? '<span title="Active adversary on a non-terminal pursuit" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;color:#b34040;border:1px solid #b34040;padding:0 4px;border-radius:2px;margin-right:6px">ACTIVE</span>'
+        : '<span title="Adversary from an archived pursuit" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--t3);border:1px solid var(--b2);padding:0 4px;border-radius:2px;margin-right:6px">ARCHIVED</span>';
+      var weight = (typeof rEntry.totalRelevance === 'number') ? rEntry.totalRelevance.toFixed(1) : '0.0';
+      h += '<div style="display:flex;gap:10px;align-items:center;padding:3px 0;font-size:11px;line-height:1.4">';
+      h += '  ' + activeFlag;
+      h += '  <div style="flex:1;min-width:0;color:var(--text);font-weight:600">' + orgEsc + '<span style="color:var(--t3);font-weight:500;font-family:\'IBM Plex Mono\',monospace;font-size:9px;margin-left:8px">' + rEntry.signalCount + ' touch' + (rEntry.signalCount === 1 ? '' : 'es') + ' · last ' + ageStr + '</span>' + srcChips + (moreChips ? '<span style="color:var(--t3);font-size:9px;margin-left:4px">' + moreChips + '</span>' : '') + '</div>';
+      h += '  <div title="Sum of relevance.total across touches" style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#b34040;font-weight:700;white-space:nowrap">' + weight + '</div>';
+      h += '</div>';
+    }
+    if (brief.adversaryRollup.length > 6) {
+      h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-top:4px;letter-spacing:.05em">+ ' + (brief.adversaryRollup.length - 6) + ' more adversaries with activity</div>';
+    }
+    h += '</div>';
+  }
+
   // v1.3: "Today's Top 5" — glance-first highest-relevance items across categories.
   // Pinned items always lead; remaining slots filled by total relevance desc.
   var allItems = [];
