@@ -35950,6 +35950,8 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'advisory_body_report') return window._advisoryBodyReportTouchRow(sig, attrs);
       if (sig.type === 'lobbying_disclosure') return window._lobbyingDisclosureTouchRow(sig, attrs);
       if (sig.type === 'budget_change') return window._budgetChangeTouchRow(sig, attrs);
+      if (sig.type === 'analysis_publication') return window._analysisPublicationTouchRow(sig, attrs);
+      if (sig.type === 'service_news') return window._serviceNewsTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36372,6 +36374,81 @@ window._advisoryBodyReportTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// Think tank v1.0: enriched touch-row renderer for analysis_publication
+// Signals. Title verbatim; subtitle composes tankName + author + date +
+// first category; right chip carries the tank's category label
+// (think_tank / ffrdc / academic). Click opens the publication.
+window._analysisPublicationTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var titleText = attrs.title || 'Analysis publication';
+  var titleHtml = esc(titleText.toString().slice(0, 200));
+
+  var tankName = (attrs.tankName || '').toString();
+  var tankCategory = (attrs.tankCategory || 'analysis').toString();
+  var author = (attrs.author || '').toString();
+  var date = sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '';
+  var categories = Array.isArray(attrs.categories) ? attrs.categories : [];
+
+  var subParts = [];
+  if (tankName) subParts.push(esc(tankName));
+  if (author) subParts.push('by ' + esc(author));
+  if (date) subParts.push(date);
+  if (categories.length) subParts.push(esc(categories[0]));
+  var subtitleHtml = subParts.join(' · ');
+
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:rgba(232,150,104,.10);color:#e89668;border:1px solid rgba(232,150,104,.30)">' + esc(tankCategory) + '</span>';
+
+  var clickUrl = attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// Service-branch news v1.0: enriched touch-row renderer for service_news
+// Signals. When attrs.isLeadershipAnnouncement is true, the right chip
+// reads "LEADERSHIP" in amber — the operator-relevant cue. Title verbatim;
+// subtitle composes serviceName + date + first category.
+window._serviceNewsTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var titleText = attrs.title || 'Service news';
+  var titleHtml = esc(titleText.toString().slice(0, 200));
+
+  var serviceName = (attrs.serviceName || attrs.service || '').toString();
+  var isLeadership = !!attrs.isLeadershipAnnouncement;
+  var date = sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '';
+  var categories = Array.isArray(attrs.categories) ? attrs.categories : [];
+  var author = (attrs.author || '').toString();
+
+  var subParts = [];
+  if (serviceName) subParts.push(esc(serviceName));
+  if (date) subParts.push(date);
+  if (author) subParts.push('by ' + esc(author));
+  if (categories.length) subParts.push(esc(categories[0]));
+  var subtitleHtml = subParts.join(' · ');
+
+  var rightHtml;
+  if (isLeadership) {
+    rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:rgba(212,130,58,.12);color:#d4823a;border:1px solid rgba(212,130,58,.40)">Leadership</span>';
+  } else {
+    rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:rgba(116,168,155,.08);color:#74a89b;border:1px solid rgba(116,168,155,.30)">News</span>';
+  }
+
+  var clickUrl = attrs.url || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
