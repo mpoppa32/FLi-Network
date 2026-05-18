@@ -11,9 +11,19 @@ import { externalProvenance } from "../../framework/provenance";
 import { db, wsPath } from "../../framework/rtdb";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
+import type { Person } from "../../framework/types/entities";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
 import type { LdaFiling, LdaLobbyingActivity, LdaLobbyistEntry } from "./client";
 import { ldaFilingPublicUrl } from "./client";
+
+interface LdaEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  dir: "to" | "from" | "both";
+  attrs?: Record<string, unknown>;
+}
 
 function signalId(filingUuid: string): string {
   const safe = (filingUuid || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
@@ -36,6 +46,21 @@ function lobbyistDisplayName(entry: LdaLobbyistEntry): string {
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
+/** v1.1: lobbyist entry now carries the LDA id (for Person dedupe) +
+ *  derived title fields. */
+interface LobbyistEntry {
+  /** LDA API lobbyist.id when present — preferred Person dedupe key. */
+  lobbyistId: number | null;
+  /** Display name "{first} [middle] {last}". */
+  name: string;
+  /** First name (for Person.name dedupe fallback). */
+  firstName: string;
+  /** Last name (for Person.name dedupe fallback). */
+  lastName: string;
+  /** Full text of LDA "covered_position" — empty when no revolving-door. */
+  coveredPosition: string;
+}
+
 function summarizeActivities(activities: LdaLobbyingActivity[]): {
   issueCodes: string[];
   issueCodeDisplays: string[];
@@ -43,7 +68,7 @@ function summarizeActivities(activities: LdaLobbyingActivity[]): {
   governmentEntityNames: string[];
   lobbyistsCount: number;
   revolvingDoorCount: number;
-  topLobbyists: Array<{ name: string; coveredPosition: string }>;
+  topLobbyists: LobbyistEntry[];
 } {
   const issueCodes = new Set<string>();
   const issueCodeDisplays = new Set<string>();
@@ -51,7 +76,7 @@ function summarizeActivities(activities: LdaLobbyingActivity[]): {
   const govEntityNames = new Set<string>();
   const lobbyistSet = new Set<string>();
   let revolvingDoorCount = 0;
-  const lobbyistEntries: Array<{ name: string; coveredPosition: string }> = [];
+  const lobbyistEntries: LobbyistEntry[] = [];
 
   for (const a of activities) {
     if (a.general_issue_code) issueCodes.add(a.general_issue_code);
@@ -69,12 +94,22 @@ function summarizeActivities(activities: LdaLobbyingActivity[]): {
       for (const lo of a.lobbyists) {
         const name = lobbyistDisplayName(lo);
         if (!name) continue;
-        if (!lobbyistSet.has(name)) {
-          lobbyistSet.add(name);
-          const covered = (lo.covered_position || "").toString().trim();
-          if (covered) revolvingDoorCount++;
-          lobbyistEntries.push({ name, coveredPosition: covered });
-        }
+        // Dedupe within this filing — same lobbyist may appear under
+        // multiple lobbying activities; we want one entry per person
+        const dedupeKey = lo.lobbyist?.id
+          ? `id:${lo.lobbyist.id}`
+          : `name:${name.toLowerCase()}`;
+        if (lobbyistSet.has(dedupeKey)) continue;
+        lobbyistSet.add(dedupeKey);
+        const covered = (lo.covered_position || "").toString().trim();
+        if (covered) revolvingDoorCount++;
+        lobbyistEntries.push({
+          lobbyistId: lo.lobbyist?.id ?? null,
+          name,
+          firstName: (lo.lobbyist?.first_name || "").toString().trim(),
+          lastName: (lo.lobbyist?.last_name || "").toString().trim(),
+          coveredPosition: covered,
+        });
       }
     }
   }
@@ -98,10 +133,37 @@ function summarizeActivities(activities: LdaLobbyingActivity[]): {
   };
 }
 
+/** v1.1: deterministic Person id for an LDA lobbyist. Prefer LDA id when
+ *  present (stable across filings), otherwise fall back to normalized
+ *  display name. */
+function ldaLobbyistPersonId(entry: LobbyistEntry): string {
+  if (entry.lobbyistId != null && Number.isFinite(entry.lobbyistId)) {
+    return "pers_lda_" + String(entry.lobbyistId);
+  }
+  const norm = entry.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return "pers_lda_n_" + (norm || String(Date.now()));
+}
+
+/** v1.1: deterministic Edge id for a lobbyist-at-firm relationship. */
+function lobbyistEdgeId(personId: string, registrantOrgId: string): string {
+  return "edge_lda_lobbyist_" + personId.slice(0, 24) + "__" + registrantOrgId.slice(0, 24);
+}
+
 export interface LdaUpsertMetrics {
   clientOrgResolved: boolean;
   registrantOrgResolved: boolean;
   governmentEntitiesResolved: number;
+  /** v1.1: number of lobbyist Persons created (revolving-door entries —
+   *  lobbyists with non-empty covered_position). */
+  revolvingDoorPersonsCreated: number;
+  /** v1.1: number of lobbyist Persons matched to an existing node. */
+  revolvingDoorPersonsMatched: number;
+  /** v1.1: number of lobbyist→registrant Edges upserted. */
+  revolvingDoorEdgesUpserted: number;
   durationMs: number;
 }
 
@@ -121,6 +183,9 @@ export async function upsertLdaSignal(
     clientOrgResolved: false,
     registrantOrgResolved: false,
     governmentEntitiesResolved: 0,
+    revolvingDoorPersonsCreated: 0,
+    revolvingDoorPersonsMatched: 0,
+    revolvingDoorEdgesUpserted: 0,
     durationMs: 0,
   };
 
@@ -163,12 +228,14 @@ export async function upsertLdaSignal(
   }
 
   // Resolve registrant (lobby firm) → company Org, related context.
+  let registrantOrgId: string | null = null;
   if (registrantName) {
     try {
       const { orgId } = await resolveRecipientOrg(workspaceId, registrantName, null, {
         autoCreate: true,
         type: "company",
       });
+      registrantOrgId = orgId;
       if (!relatedIds.includes(orgId)) relatedIds.push(orgId);
       metrics.registrantOrgResolved = true;
     } catch (e) {
@@ -176,6 +243,35 @@ export async function upsertLdaSignal(
         registrantName,
         message: (e as Error).message,
       });
+    }
+  }
+
+  // v1.1: upsert Person + lobbyist_at Edge for each revolving-door
+  // lobbyist (covered_position is the BD intel cue — former Hill / agency
+  // staff now lobbying for the same client). Non-revolving-door lobbyists
+  // stay in attrs.topLobbyists only; we don't churn Person records for
+  // every named lobbyist on every filing.
+  if (registrantOrgId) {
+    for (const lobbyist of activitiesSummary.topLobbyists) {
+      if (!lobbyist.coveredPosition) continue;
+      try {
+        const r = await upsertLdaLobbyistPerson(
+          workspaceId,
+          lobbyist,
+          registrantOrgId,
+          registrantName,
+          filing.filing_uuid,
+          log
+        );
+        if (r.personAction === "created") metrics.revolvingDoorPersonsCreated++;
+        else if (r.personAction === "matched") metrics.revolvingDoorPersonsMatched++;
+        if (r.edgeUpserted) metrics.revolvingDoorEdgesUpserted++;
+      } catch (e) {
+        log?.debug("senate_lda_lobbyist_resolve_failed", {
+          name: lobbyist.name,
+          message: (e as Error).message,
+        });
+      }
     }
   }
 
@@ -295,4 +391,125 @@ export async function upsertLdaSignal(
 
   metrics.durationMs = Date.now() - startedAt;
   return { signalId: id, action, metrics };
+}
+
+/**
+ * v1.1: upsert a Person record for a revolving-door lobbyist + an Edge
+ * from that Person to the registrant (lobby firm) Org. Idempotent: re-
+ * ingestion of the same filing or later filings re-upsert the Edge and
+ * may update the Person's coveredPositionLastSeen.
+ *
+ * Person id is the LDA lobbyist.id when present (stable across filings),
+ * otherwise derived from the normalized display name (so a lobbyist who
+ * shows up without an id still gets a node, just less reliably deduped).
+ *
+ * Edge `attrs.coveredPosition` carries the LDA covered_position string
+ * verbatim — that's the revolving-door narrative the operator wants to
+ * search ("former Senate Armed Services Committee staff"). Edge
+ * `attrs.lastSeenOnFiling` carries the most recent filing UUID we saw
+ * this lobbyist on, useful for "still active?" queries.
+ */
+async function upsertLdaLobbyistPerson(
+  workspaceId: string,
+  lobbyist: LobbyistEntry,
+  registrantOrgId: string,
+  registrantName: string,
+  filingUuid: string,
+  log?: Logger
+): Promise<{
+  personId: string;
+  personAction: "created" | "matched" | "updated";
+  edgeUpserted: boolean;
+}> {
+  const pId = ldaLobbyistPersonId(lobbyist);
+  const personPath = wsPath(workspaceId, "nodes", pId);
+  const now = Date.now();
+
+  const personHash = hashFields(
+    {
+      name: lobbyist.name,
+      coveredPosition: lobbyist.coveredPosition,
+      registrantOrgId,
+    } as Record<string, unknown>,
+    ["name", "coveredPosition", "registrantOrgId"]
+  );
+
+  const provenance = externalProvenance(
+    "senate_lda",
+    lobbyist.lobbyistId != null ? String(lobbyist.lobbyistId) : `name:${lobbyist.name}`,
+    null,
+    personHash,
+    now
+  );
+
+  const personSnap = await db.ref(personPath).once("value");
+  let personAction: "created" | "matched" | "updated";
+  if (!personSnap.exists()) {
+    const person: Person = {
+      id: pId,
+      type: "person",
+      name: lobbyist.name,
+      role: "Registered lobbyist",
+      org: registrantName,
+      created: new Date().toISOString(),
+      source: provenance,
+    };
+    await db.ref(personPath).set(person);
+    personAction = "created";
+    log?.debug("senate_lda_lobbyist_person_created", {
+      personId: pId,
+      name: lobbyist.name,
+    });
+  } else {
+    const existing = personSnap.val() as Person;
+    // Don't overwrite operator_manual records or operator-named fields
+    if (existing.source?.system === "operator_manual") {
+      personAction = "matched";
+    } else if (existing.source?.hash === personHash) {
+      await db.ref(`${personPath}/source/refreshedAt`).set(now);
+      personAction = "matched";
+    } else {
+      const merged: Person = {
+        ...existing,
+        name: existing.name || lobbyist.name,
+        role: existing.role || "Registered lobbyist",
+        org: existing.org || registrantName,
+        source: provenance,
+      };
+      await db.ref(personPath).set(merged);
+      personAction = "updated";
+    }
+  }
+
+  // Upsert the lobbyist_at Edge
+  const eId = lobbyistEdgeId(pId, registrantOrgId);
+  const edgePath = wsPath(workspaceId, "edges", eId);
+  const edgeSnap = await db.ref(edgePath).once("value");
+  const edgeAttrs: Record<string, unknown> = {
+    coveredPosition: lobbyist.coveredPosition,
+    lobbyistLdaId: lobbyist.lobbyistId,
+    lastSeenOnFiling: filingUuid,
+    lastSeenAt: now,
+  };
+  const edge: LdaEdge = {
+    id: eId,
+    source: pId,
+    target: registrantOrgId,
+    label: "lobbyist_at",
+    dir: "to",
+    attrs: edgeAttrs,
+  };
+  let edgeUpserted = false;
+  if (!edgeSnap.exists()) {
+    await db.ref(edgePath).set(edge);
+    edgeUpserted = true;
+  } else {
+    // Preserve operator-input fields; just bump lastSeenAt + lastSeenOnFiling
+    const existing = edgeSnap.val() as LdaEdge;
+    const mergedAttrs = { ...(existing.attrs || {}), ...edgeAttrs };
+    await db.ref(edgePath).set({ ...existing, attrs: mergedAttrs });
+    edgeUpserted = true;
+  }
+
+  return { personId: pId, personAction, edgeUpserted };
 }
