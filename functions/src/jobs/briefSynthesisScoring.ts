@@ -271,6 +271,87 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       }
       return { score: 0.3, why: `DEF 14A proxy statement` };
     }
+    case "advisory_body_report": {
+      // v1.6 — leverages Advisory Boards (DSB/DBB/DIB) v1.0 deep-parsed
+      // report attrs. These bodies advise OSD on capability, business, and
+      // innovation policy; their recommendations often anticipate 12-24-
+      // month budget direction. BD-operator-actionable magnitude is driven
+      // by (1) presence of contractor + program mentions (concrete vs.
+      // abstract), (2) recommendations count (concrete vs. survey), and
+      // (3) report kind — memos and letters tend to be more urgent than
+      // annual reports or surveys.
+      const board = (attrs.board as string | undefined) || "";
+      const boardLabel = (attrs.boardLabel as string | undefined) || board.toUpperCase() || "Advisory";
+      const kind = (attrs.reportKind as string | undefined) || "";
+      const recCount = Array.isArray(attrs.recommendations)
+        ? (attrs.recommendations as unknown[]).length
+        : 0;
+      const findingsCount = Array.isArray(attrs.findings)
+        ? (attrs.findings as unknown[]).length
+        : 0;
+      const contractorsCount = Array.isArray(attrs.contractors)
+        ? (attrs.contractors as unknown[]).length
+        : 0;
+      const programsCount = Array.isArray(attrs.programs)
+        ? (attrs.programs as unknown[]).length
+        : 0;
+
+      // Concrete + actionable: contractors named + recommendations made
+      if (recCount >= 3 && contractorsCount >= 3) {
+        return {
+          score: 0.85,
+          why: `${boardLabel} ${kind || "report"} — ${recCount} recommendations touching ${contractorsCount} contractor(s)`,
+        };
+      }
+      // Memos and letters: short-form by definition → operator-relevant
+      // bias toward urgent. Bump when they carry recommendations.
+      if (kind === "memo" || kind === "letter") {
+        if (recCount >= 1) {
+          return {
+            score: 0.7,
+            why: `${boardLabel} ${kind} with ${recCount} recommendation(s) — short-form urgent`,
+          };
+        }
+        return { score: kind === "memo" ? 0.6 : 0.5, why: `${boardLabel} ${kind}` };
+      }
+      // Substantive recommendations or substantive findings with program scope
+      if (recCount >= 3) {
+        return {
+          score: 0.7,
+          why: `${boardLabel} ${kind || "report"} with ${recCount} recommendations`,
+        };
+      }
+      if (findingsCount >= 3 && programsCount >= 1) {
+        return {
+          score: 0.65,
+          why: `${boardLabel} ${kind || "report"} — ${findingsCount} findings touching ${programsCount} program(s)`,
+        };
+      }
+      if (findingsCount >= 1 && contractorsCount >= 1) {
+        return {
+          score: 0.55,
+          why: `${boardLabel} ${kind || "report"} — ${findingsCount} findings, ${contractorsCount} contractor(s) named`,
+        };
+      }
+      // Studies: substantive by their nature even when our parser missed
+      // the structured bullets — bias up vs. annual reports.
+      if (kind === "study") {
+        return { score: 0.55, why: `${boardLabel} study` };
+      }
+      // Annual reports: institutional ceremony unless specifically
+      // mentioning programs/contractors.
+      if (kind === "annual_report") {
+        if (programsCount >= 2 || contractorsCount >= 2) {
+          return {
+            score: 0.5,
+            why: `${boardLabel} annual report mentions ${programsCount} program(s) / ${contractorsCount} contractor(s)`,
+          };
+        }
+        return { score: 0.35, why: `${boardLabel} annual report` };
+      }
+      // Fallback — generic advisory body report
+      return { score: 0.4, why: `${boardLabel} ${kind || "advisory body report"}` };
+    }
     case "oversight_finding": {
       // v1.4 — leverages GAO Reports v1.1 deep-parsed report attrs.
       // Non-concurrence by the agency is the highest-signal posture event:
