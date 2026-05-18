@@ -94,6 +94,10 @@ export interface BriefOutput {
     postureTrajectoryBumps?: number;
     /** v1.16: count of Signal items bumped for mentioning a known budget PE */
     peMentionBumps?: number;
+    /** v1.17: count of Signal items bumped for touching an Org with
+     *  incoming formerly_at Edges (workspace has registered-lobbyist
+     *  Persons who formerly worked there) */
+    revolvingDoorTouchBumps?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -119,18 +123,20 @@ const HARD_CAPS = {
 const ARCHIVED_STAGES = new Set(["won", "lost"]);
 
 async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringContext> {
-  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap, nodesSnap] = await Promise.all([
+  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap, nodesSnap, edgesSnap] = await Promise.all([
     db.ref(wsPath(workspaceId, "opportunities")).once("value"),
     db.ref(wsPath(workspaceId, "awards")).once("value"),
     db.ref(wsPath(workspaceId, "sources", "usaspending", "config")).once("value"),
     db.ref(wsPath(workspaceId, "sources", "sam_gov", "config")).once("value"),
     db.ref(wsPath(workspaceId, "nodes")).once("value"),
+    db.ref(wsPath(workspaceId, "edges")).once("value"),
   ]);
   const opps = (oppSnap.val() as Record<string, Opportunity> | null) ?? {};
   const awards = (awardSnap.val() as Record<string, Award> | null) ?? {};
   const usaCfg = (usaCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
   const samCfg = (samCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
   const nodes = (nodesSnap.val() as Record<string, { id?: string; posture?: { path?: string; trajectory?: string } }> | null) ?? {};
+  const edges = (edgesSnap.val() as Record<string, { source?: string; target?: string; label?: string }> | null) ?? {};
 
   const activeAdversaryOrgIds = new Set<string>();
   const archivedAdversaryOrgIds = new Set<string>();
@@ -193,6 +199,20 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     else if (trajLc === "falling") postureFallingIds.add(nodeId);
   }
 
+  // v1.17: build Map<orgId, count of incoming formerly_at Edges>. Used
+  // by the revolving-door touch warning to bump Signals touching Orgs
+  // that have lobbyist Persons in the workspace pointing back at them.
+  const formerlyAtIncomingCountByOrg = new Map<string, number>();
+  for (const edge of Object.values(edges)) {
+    if (!edge || edge.label !== "formerly_at") continue;
+    const target = edge.target;
+    if (!target) continue;
+    formerlyAtIncomingCountByOrg.set(
+      target,
+      (formerlyAtIncomingCountByOrg.get(target) || 0) + 1
+    );
+  }
+
   return {
     trackedOppIds: new Set(Object.keys(opps)),
     trackedAwardIds: new Set(Object.keys(awards)),
@@ -210,6 +230,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     posturePathLiberatorIds,
     postureRisingIds,
     postureFallingIds,
+    formerlyAtIncomingCountByOrg,
   };
 }
 
@@ -818,6 +839,50 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10. v1.17 — revolving-door touch warning.
+  //
+  // When a Signal touches an Org that has incoming `formerly_at` Edges
+  // (= the workspace has registered-lobbyist Persons who formerly
+  // worked at that institution), bump magnitude. The operator should
+  // know when external Signals are flowing into customer-side
+  // institutions where competitor lobbyists hold institutional history.
+  //
+  //   1 incoming formerly_at edge:     +0.06 magnitude
+  //   2+ incoming formerly_at edges:   +0.10 magnitude
+  //
+  // Additive to all prior bump passes. Doesn't double-count with
+  // v1.15 Posture bumps (those use the operator-tagged adversary set;
+  // this uses the lobbyist-Person graph data from senate_lda v1.2).
+  let revolvingDoorTouchBumps = 0;
+  const formerlyAtIncoming = ctx.formerlyAtIncomingCountByOrg;
+  if (
+    sigItems.length > 0 &&
+    formerlyAtIncoming &&
+    formerlyAtIncoming.size > 0
+  ) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxIncoming = 0;
+      for (const id of allIds) {
+        const c = formerlyAtIncoming.get(id) || 0;
+        if (c > maxIncoming) maxIncoming = c;
+      }
+      if (maxIncoming === 0) continue;
+      const bump = maxIncoming >= 2 ? 0.10 : 0.06;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Revolving-door touch — ${maxIncoming} lobbyist Person(s) in workspace formerly at a touched institution`
+      );
+      revolvingDoorTouchBumps++;
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -908,8 +973,9 @@ export async function synthesizeBrief(
       posturePathBumps,
       postureTrajectoryBumps,
       peMentionBumps,
+      revolvingDoorTouchBumps,
     },
-    scoringVersion: "1.16",
+    scoringVersion: "1.17",
     weightsApplied: SCORING_WEIGHTS,
   };
 

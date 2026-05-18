@@ -67,6 +67,11 @@ export interface BriefScoringContext {
   postureRisingIds?: Set<string>;
   /** v1.15: node ids with operator-authored Posture trajectory 'Falling'. */
   postureFallingIds?: Set<string>;
+  /** v1.17: count of incoming formerly_at Edges per Org id (from
+   *  senate_lda v1.2 revolving-door Person resolution). A non-zero count
+   *  means the workspace has registered-lobbyist Persons who formerly
+   *  worked at that institution. */
+  formerlyAtIncomingCountByOrg?: Map<string, number>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
