@@ -14,7 +14,7 @@ import { db, wsPath } from "../../framework/rtdb";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
-import { fetchAndExtractPdf } from "../gaoProtest/pdfExtractor";
+import { fetchAndExtractPdf } from "../../framework/pdfExtractor";
 import { findPdfUrlOnDecisionPage } from "../gaoProtest/client";
 import { parseGaoReportText, type ParsedGaoReport } from "./reportParser";
 import type { GaoReportRssItem } from "./client";

@@ -8,7 +8,7 @@
 //   - Conclusion: "The protest is sustained / denied / dismissed"
 //
 // This parser uses defensive regexes against the normalized text from
-// pdfExtractor.normalizeText. Each field returns null when not found.
+// framework/pdfExtractor.normalizePdfText. Each field returns null when not found.
 // Outcomes / dates / corrective-action statements are the highest-value
 // extractions for the BD operator; we surface confidence on each.
 

@@ -1,10 +1,14 @@
-// GAO Bid Protest source — PDF decision text extractor (v1.1)
+// Corsair framework — generic PDF fetch + text extractor
 //
-// Per signal-sources-v1 Part One §GAO v1.1: GAO publishes the full decision
-// as a PDF on each docket. v1.0 captures the RSS description (~200-400 chars
-// of summary). v1.1 fetches the PDF, extracts the full text, and feeds the
-// downstream decisionParser to lift outcome / awardee / solnum / agency /
-// corrective action fields into structured ProtestAttrs.
+// Promoted from sources/gaoProtest/ once a second source (gaoReports) needed
+// the same helpers — the rule of three says wait until the third user to
+// extract, but the cross-source-import smell across two siblings was
+// already enough friction; 2026-05-17 continuation arc.
+//
+// Future PDF-heavy sources (T2-3 DoD Comptroller budget PDFs, T2-8
+// DSB/DBB/DIB advisory body reports, FACA committee meeting minutes,
+// SEC EDGAR exhibit attachments) import these helpers and pass their own
+// `source` key for the rate-limit + retry scope.
 //
 // Uses pdf-parse via its inner module path to bypass the package's test-on-
 // import behavior (the default `require('pdf-parse')` tries to read a bundled
@@ -14,9 +18,9 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
-import { acquireTokens } from "../../framework/rateLimit";
-import { withRetry } from "../../framework/retry";
-import { Logger } from "../../framework/logger";
+import { acquireTokens } from "./rateLimit";
+import { withRetry } from "./retry";
+import { Logger } from "./logger";
 
 const PDF_USER_AGENT = "Corsair Defense BD Intel (mpoppa32@gmail.com)";
 
@@ -131,7 +135,7 @@ export async function extractPdfText(
   const maxTextChars = options.maxTextChars ?? 200_000;
   const data = await pdfParse(buffer, { max: 0 });
   const rawText = String(data?.text ?? "");
-  const normalized = normalizeText(rawText);
+  const normalized = normalizePdfText(rawText);
   let text = normalized;
   let truncated = false;
   if (text.length > maxTextChars) {
@@ -168,18 +172,20 @@ export async function fetchAndExtractPdf(
 }
 
 /**
- * GAO decision PDFs contain a lot of soft-wrap line breaks, page headers,
- * and footer artifacts. We collapse runs of whitespace, normalize line
- * endings, drop common GAO header/footer noise, and stitch hyphenated word
- * breaks at line ends so regex-based field extraction is reliable.
+ * Normalize PDF text: stitch hyphenated breaks across line ends, drop
+ * common page header/footer noise patterns, collapse interior whitespace
+ * while preserving paragraph breaks. Tuned for government report PDFs
+ * (GAO, FACA, DSB-class advisory bodies, DoD Comptroller R-documents)
+ * but generic enough to handle most well-formed PDFs.
  */
-function normalizeText(input: string): string {
+export function normalizePdfText(input: string): string {
   let s = input.replace(/\r\n?/g, "\n");
   // Stitch hyphenated breaks: "contrac-\ntor" → "contractor"
   s = s.replace(/(\w)-\n(\w)/g, "$1$2");
-  // GAO page footers like "Page N of M" or "GAO-XX-NNNNNN" alone on a line
+  // GAO page footers
   s = s.replace(/^\s*Page \d+ of \d+\s*$/gim, "");
   s = s.replace(/^\s*B-\d{5,7}(?:\.\d+)?\s*$/gim, "");
+  s = s.replace(/^\s*GAO-\d{2}-\d{4,7}[A-Z]?\s*$/gim, "");
   // Collapse multiple blank lines but preserve paragraph breaks
   s = s.replace(/\n{3,}/g, "\n\n");
   // Squeeze interior whitespace (but preserve newlines)

@@ -20,7 +20,7 @@ import { resolveRecipientOrg } from "../usaSpending/orgResolver";
 import type { Signal } from "../../framework/types/signals";
 import type { GaoRssItem } from "./client";
 import { extractDocketNumbers, findPdfUrlOnDecisionPage } from "./client";
-import { fetchAndExtractPdf } from "./pdfExtractor";
+import { fetchAndExtractPdf } from "../../framework/pdfExtractor";
 import { parseDecisionText, type ParsedDecision } from "./decisionParser";
 
 /** Try to extract the protestor name from a GAO decision title.
