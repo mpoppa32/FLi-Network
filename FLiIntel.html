@@ -35554,6 +35554,43 @@ window._renderExternalIntelligence = function(brief) {
         var scColor = sc >= 7 ? '#3a8a5c' : sc >= 4 ? 'var(--gold)' : 'var(--t3)';
         scoreBadge = '<span title="Relevance score — click for breakdown" style="cursor:pointer;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:' + scColor + ';border:1px solid currentColor;padding:1px 5px;border-radius:2px;margin-left:6px;font-weight:600" onclick="window._showWhySurfaced&&window._showWhySurfaced(\'' + key + '\',' + j + ')">' + sc.toFixed(1) + '</span>';
       }
+      // v2.0 UI: scoring-trail chips — surface which Brief Synthesis
+      // bump axes fired on this item. Walks whySurfaced[] for known
+      // prefixes and emits a compact chip per match. Hover reveals the
+      // full whySurfaced line.
+      var trailChips = '';
+      if (it.relevance && Array.isArray(it.relevance.whySurfaced)) {
+        var chipDefs = [
+          { match: /^Procurement-reset confluence/, label: 'RESET', fg: '#9a4040', bg: 'rgba(154,64,64,.10)' },
+          { match: /^Posture path: Adversary/, label: 'ADV', fg: '#9a4040', bg: 'rgba(154,64,64,.10)' },
+          { match: /^Posture path: Liberator/, label: 'LIB', fg: '#a64ca6', bg: 'rgba(166,76,166,.10)' },
+          { match: /^Tight cross-source (cluster|pair)/, label: 'TIGHT', fg: '#3a6fb5', bg: 'rgba(58,111,181,.10)' },
+          { match: /^Customer landscape in flux/, label: 'FLUX', fg: '#d4823a', bg: 'rgba(212,130,58,.10)' },
+          { match: /^Cross-source convergence/, label: 'CONV', fg: '#3a6fb5', bg: 'rgba(58,111,181,.08)' },
+          { match: /^Mentions budget PE/, label: 'PE', fg: '#9c8a5e', bg: 'rgba(156,138,94,.10)' },
+          { match: /^Posture trajectory: Rising/, label: 'RISE', fg: '#3a8a5c', bg: 'rgba(58,138,92,.08)' },
+          { match: /^Posture trajectory: Falling/, label: 'FALL', fg: '#a85a5a', bg: 'rgba(168,90,90,.08)' }
+        ];
+        var matchedChips = [];
+        var seenLabels = {};
+        for (var wsi = 0; wsi < it.relevance.whySurfaced.length; wsi++) {
+          var wsLine = it.relevance.whySurfaced[wsi];
+          if (typeof wsLine !== 'string') continue;
+          for (var cdi = 0; cdi < chipDefs.length; cdi++) {
+            var cd = chipDefs[cdi];
+            if (cd.match.test(wsLine) && !seenLabels[cd.label]) {
+              seenLabels[cd.label] = 1;
+              matchedChips.push({ def: cd, line: wsLine });
+              break;
+            }
+          }
+        }
+        for (var mci = 0; mci < matchedChips.length; mci++) {
+          var mc = matchedChips[mci];
+          var t = String(mc.line).replace(/"/g, '&quot;').slice(0, 200);
+          trailChips += '<span title="' + t + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:600;color:' + mc.def.fg + ';background:' + mc.def.bg + ';border:1px solid ' + mc.def.fg + '40;padding:1px 4px;border-radius:2px;margin-left:4px;letter-spacing:.06em">' + mc.def.label + '</span>';
+        }
+      }
       // v1.1: dedup note as small chip
       var dedupChip = it.dedupNote
         ? '<span title="' + (it.dedupNote || '').replace(/"/g,'&quot;') + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;color:var(--t3);border:1px solid var(--b1);padding:0 4px;border-radius:2px;margin-left:5px">collapsed</span>'
@@ -35593,7 +35630,7 @@ window._renderExternalIntelligence = function(brief) {
       h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4">';
       h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
       h += '  <div style="flex:1;min-width:0">';
-      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + dedupChip + pinChip + '</div>';
+      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + trailChips + dedupChip + pinChip + '</div>';
       h += '    <div style="color:var(--t2);font-size:11px">' + (it.subtitle || '').replace(/</g,'&lt;') + '</div>';
       h += keyFact;
       h += '  </div>';
