@@ -92,6 +92,8 @@ export interface BriefOutput {
     posturePathBumps?: number;
     /** v1.15: count of Signal items bumped for operator-authored Posture trajectory */
     postureTrajectoryBumps?: number;
+    /** v1.16: count of Signal items bumped for mentioning a known budget PE */
+    peMentionBumps?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -754,6 +756,68 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.9. v1.16 — cross-source PE-mention confluence.
+  //
+  // When a non-budget Signal's text fields mention a Program Element
+  // number that we also have a budget_change Signal for, bump the
+  // mentioning Signal as lateral cross-source convergence. The fact that
+  // a Congress.gov hearing transcript or a GAO report mentions PE
+  // 0603308D8Z and we ALSO have a DoD Comptroller budget catalog entry
+  // for the same PE is real operator-actionable cross-source linkage —
+  // shows the PE is appearing in oversight/policy discussions, not just
+  // dormant in a budget book.
+  //
+  // Bump: +0.10 magnitude. Lower than the type-specific confluence rules
+  // (v1.14 protest+amendment is +0.15) because PE mentions in narrative
+  // text are weaker signals than structured confluence — but +0.10 is
+  // still enough to clearly lift mentioned-PE Signals above non-mentioned
+  // ones.
+  let peMentionBumps = 0;
+  const PE_REGEX = /\b(0[1-9]\d{5}[A-Z]{0,3})\b/g;
+  if (sigItems.length > 0) {
+    // Build Set<peNumber> of PEs we have budget_change Signals for
+    const indexedPes = new Set<string>();
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || sig.type !== "budget_change") continue;
+      const pe = (sig.attrs as Record<string, unknown> | undefined)?.pe;
+      if (typeof pe === "string" && pe) indexedPes.add(pe);
+    }
+    if (indexedPes.size > 0) {
+      for (const item of sigItems) {
+        const sig = signals[item.id];
+        if (!sig || !item.relevance) continue;
+        if (sig.type === "budget_change") continue; // skip self
+        // Scan the Signal's attrs for PE mentions via JSON.stringify pass
+        // (cheaper than walking each known text field by name)
+        let attrsText = "";
+        try {
+          attrsText = JSON.stringify(sig.attrs || {});
+        } catch {
+          continue;
+        }
+        if (attrsText.length === 0) continue;
+        const matchedPes = new Set<string>();
+        PE_REGEX.lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = PE_REGEX.exec(attrsText)) !== null) {
+          const candidate = m[1];
+          if (indexedPes.has(candidate)) matchedPes.add(candidate);
+        }
+        if (matchedPes.size === 0) continue;
+        const bump = 0.10;
+        item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+        item.relevance.total = Math.min(13, item.relevance.total + bump);
+        const peList = Array.from(matchedPes).slice(0, 3).join(", ");
+        const moreLabel = matchedPes.size > 3 ? ` (+${matchedPes.size - 3} more)` : "";
+        item.relevance.whySurfaced.push(
+          `Mentions budget PE ${peList}${moreLabel} — cross-source program-element link`
+        );
+        peMentionBumps++;
+      }
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -843,8 +907,9 @@ export async function synthesizeBrief(
       protestAmendmentBumps,
       posturePathBumps,
       postureTrajectoryBumps,
+      peMentionBumps,
     },
-    scoringVersion: "1.15",
+    scoringVersion: "1.16",
     weightsApplied: SCORING_WEIGHTS,
   };
 
