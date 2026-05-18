@@ -20,7 +20,7 @@ export type SourceSystem =
   | "service_news"
   | "think_tank"
   | "advisory_boards"
-  | "house_lobbying"
+  | "senate_lda"
   | "plum_book"
   | "industry_assoc"
   | "conference"

@@ -271,6 +271,79 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       }
       return { score: 0.3, why: `DEF 14A proxy statement` };
     }
+    case "lobbying_disclosure": {
+      // v1.7 — Senate LDA v1.0 lobbying_disclosure Signals. BD-operator
+      // magnitude is driven by (1) dollar amount (intensity of spend),
+      // (2) revolving-door lobbyist count (former Hill/agency staff
+      // lobbying on the same issue they used to oversee — strong posture
+      // signal), and (3) defense-specific issue codes mentioned.
+      const amount = Number(attrs.income ?? attrs.expenses ?? attrs.reportedDollarAmount ?? 0);
+      const revolvingDoor = Number(attrs.revolvingDoorCount ?? 0);
+      const issueCodes = Array.isArray(attrs.issueCodes)
+        ? (attrs.issueCodes as string[])
+        : [];
+      const isDefenseIssue = issueCodes.indexOf("DEF") >= 0;
+      const govEntitiesCount = Array.isArray(attrs.governmentEntities)
+        ? (attrs.governmentEntities as unknown[]).length
+        : 0;
+
+      // Revolving-door lobbyists are the strongest qualitative posture
+      // signal — a former HASC staffer lobbying for a defense prime on
+      // an NDAA section is operator-actionable intelligence.
+      if (revolvingDoor >= 5 && isDefenseIssue) {
+        return {
+          score: 0.95,
+          why: `LDA filing — ${revolvingDoor} revolving-door lobbyists on defense issues`,
+        };
+      }
+      if (revolvingDoor >= 3) {
+        return {
+          score: 0.85,
+          why: `LDA filing — ${revolvingDoor} revolving-door lobbyists`,
+        };
+      }
+      // Heavy spend is the quantitative signal
+      if (amount >= 1_000_000 && isDefenseIssue) {
+        return {
+          score: 0.8,
+          why: `LDA filing $${(amount / 1e6).toFixed(2)}M on defense issues`,
+        };
+      }
+      if (amount >= 1_000_000) {
+        return {
+          score: 0.65,
+          why: `LDA filing $${(amount / 1e6).toFixed(2)}M`,
+        };
+      }
+      if (revolvingDoor >= 1 && isDefenseIssue) {
+        return {
+          score: 0.7,
+          why: `LDA filing — ${revolvingDoor} revolving-door lobbyist(s) on defense`,
+        };
+      }
+      if (amount >= 250_000 && isDefenseIssue) {
+        return {
+          score: 0.6,
+          why: `LDA filing $${Math.round(amount / 1e3)}K on defense issues`,
+        };
+      }
+      if (amount >= 250_000) {
+        return {
+          score: 0.45,
+          why: `LDA filing $${Math.round(amount / 1e3)}K`,
+        };
+      }
+      if (govEntitiesCount >= 5) {
+        return {
+          score: 0.5,
+          why: `LDA filing touching ${govEntitiesCount} government entities`,
+        };
+      }
+      if (isDefenseIssue) {
+        return { score: 0.5, why: `LDA filing on defense issues` };
+      }
+      return { score: 0.3, why: `LDA filing` };
+    }
     case "advisory_body_report": {
       // v1.6 — leverages Advisory Boards (DSB/DBB/DIB) v1.0 deep-parsed
       // report attrs. These bodies advise OSD on capability, business, and

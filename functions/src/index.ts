@@ -71,3 +71,8 @@ export { gaoReportsDaily } from "./jobs/gaoReportsDaily";
 // reports via HTML index walk + PDF deep parse; reuses framework/pdfExtractor)
 export { triggerAdvisoryBoardsSync } from "./http/triggerAdvisoryBoardsSync";
 export { advisoryBoardsWeekly } from "./jobs/advisoryBoardsWeekly";
+
+// Senate LDA — lobbying disclosure filings (Phase 8.6.9 — Tier 2 LD-1/LD-2
+// from lda.senate.gov REST API; keyless v1.0)
+export { triggerSenateLdaSync } from "./http/triggerSenateLdaSync";
+export { senateLdaWeekly } from "./jobs/senateLdaWeekly";

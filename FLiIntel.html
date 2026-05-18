@@ -35948,6 +35948,7 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'periodic_report') return window._periodicReportTouchRow(sig, attrs);
       if (sig.type === 'proxy_statement') return window._proxyStatementTouchRow(sig, attrs);
       if (sig.type === 'advisory_body_report') return window._advisoryBodyReportTouchRow(sig, attrs);
+      if (sig.type === 'lobbying_disclosure') return window._lobbyingDisclosureTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36370,6 +36371,76 @@ window._advisoryBodyReportTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// Senate LDA v1.0: enriched touch-row renderer for lobbying_disclosure
+// Signals. Surfaces client (paying company), registrant (lobby firm),
+// quarterly dollar amount, defense issue code chip, and revolving-door
+// count when present. The revolving-door count is the BD-operator gold —
+// covered_position lobbyists are former Hill / agency staff who came back
+// to lobby on the same issue they used to oversee. Click opens the public
+// filing page on lda.senate.gov.
+window._lobbyingDisclosureTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var clientName = (attrs.clientName || '').toString();
+  var registrantName = (attrs.registrantName || '').toString();
+  var filingType = (attrs.filingType || '').toString();
+  var period = (attrs.filingPeriodDisplay || attrs.filingPeriod || '').toString();
+  var year = attrs.filingYear || '';
+  var income = Number(attrs.income || 0);
+  var expenses = Number(attrs.expenses || 0);
+  var amount = income > 0 ? income : expenses;
+  var revolvingDoor = Number(attrs.revolvingDoorCount || 0);
+  var lobbyistsCount = Number(attrs.lobbyistsCount || 0);
+  var issueCodes = Array.isArray(attrs.issueCodes) ? attrs.issueCodes : [];
+  var govEntities = Array.isArray(attrs.governmentEntities) ? attrs.governmentEntities : [];
+
+  // Title: client name (the company paying — the BD-relevant subject)
+  var titleText = clientName || ('LDA filing ' + (filingType || ''));
+  var titleHtml = esc(titleText.slice(0, 160));
+
+  // Subtitle composition
+  var subParts = [];
+  if (filingType) subParts.push(filingType);
+  if (period) subParts.push(period.replace(/_/g, ' '));
+  if (year) subParts.push(year);
+  if (registrantName) subParts.push('via ' + esc(registrantName));
+  if (amount > 0) {
+    if (amount >= 1000000) subParts.push('$' + (amount / 1e6).toFixed(2) + 'M');
+    else if (amount >= 1000) subParts.push('$' + Math.round(amount / 1e3) + 'K');
+    else subParts.push('$' + amount);
+  }
+  if (lobbyistsCount) subParts.push(lobbyistsCount + ' lobbyist' + (lobbyistsCount === 1 ? '' : 's'));
+  if (revolvingDoor) subParts.push(revolvingDoor + ' revolving door');
+  if (govEntities.length) subParts.push(govEntities.slice(0, 2).map(esc).join(' / '));
+  var subtitleHtml = subParts.join(' · ');
+
+  // Right chip — primary defense issue code, gold when revolving-door present
+  var primaryCode = issueCodes.length ? issueCodes[0] : '';
+  var rightLabel = primaryCode || 'LDA';
+  var rightFg, rightBg;
+  if (revolvingDoor >= 3) {
+    rightFg = '#d4823a';
+    rightBg = 'rgba(212,130,58,.12)';
+    rightLabel = revolvingDoor + ' rev. door';
+  } else if (revolvingDoor >= 1) {
+    rightFg = '#a87c5a';
+    rightBg = 'rgba(168,124,90,.12)';
+  } else {
+    rightFg = '#a87c5a';
+    rightBg = 'rgba(168,124,90,.08)';
+  }
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + rightBg + ';color:' + rightFg + ';border:1px solid ' + rightFg + '40">' + esc(rightLabel) + '</span>';
+
+  var clickUrl = attrs.url || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
@@ -37081,7 +37152,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'dsca_fms',     label: 'DSCA FMS Notifications', cadenceMin: 10080, accent: '#7ab8d8' },
   { key: 'service_news', label: 'Service-branch News', cadenceMin: 1440, accent: '#74a89b' },
   { key: 'gao_reports',  label: 'GAO Reports',         cadenceMin: 1440, accent: '#9a4040' },
-  { key: 'advisory_boards', label: 'Advisory Boards (DSB/DBB/DIB)', cadenceMin: 10080, accent: '#5e7a9c' }
+  { key: 'advisory_boards', label: 'Advisory Boards (DSB/DBB/DIB)', cadenceMin: 10080, accent: '#5e7a9c' },
+  { key: 'senate_lda',      label: 'Senate Lobbying Disclosure', cadenceMin: 10080, accent: '#a87c5a' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -37845,7 +37917,8 @@ window._renderOnboardStep3 = function() {
     { key:'dsca_fms',    label:'DSCA FMS Notifications (Tier 2)', desc:'Foreign Military Sales notifications → fms_notification Signals + foreign_government Orgs · Weekly · Keyless · Opt-in', color:'#7ab8d8' },
     { key:'service_news',label:'Service-branch News (Tier 2)', desc:'Army/Navy/Air Force/Marines/Space Force/Coast Guard RSS → service_news Signals; leadership transitions auto-flagged · Daily · Keyless', color:'#74a89b' },
     { key:'gao_reports', label:'GAO Reports (Tier 2)', desc:'GAO programmatic audit/evaluation reports → oversight_finding Signals; defense-keyword filtered · Daily · Keyless', color:'#9a4040' },
-    { key:'advisory_boards', label:'Advisory Boards — DSB/DBB/DIB (Tier 2)', desc:'Defense Science / Business / Innovation Board reports → advisory_body_report Signals; PDF deep-parse for findings + recommendations + programs + contractors · Weekly · Keyless', color:'#5e7a9c' }
+    { key:'advisory_boards', label:'Advisory Boards — DSB/DBB/DIB (Tier 2)', desc:'Defense Science / Business / Innovation Board reports → advisory_body_report Signals; PDF deep-parse for findings + recommendations + programs + contractors · Weekly · Keyless', color:'#5e7a9c' },
+    { key:'senate_lda', label:'Senate Lobbying Disclosure (Tier 2)', desc:'LD-1/LD-2 filings from lda.senate.gov → lobbying_disclosure Signals; defense issue-code filtered; ties competitor lobbying spend + revolving-door lobbyists to specific issues + agencies · Weekly · Keyless', color:'#a87c5a' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -37863,7 +37936,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });
