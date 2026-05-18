@@ -84,6 +84,8 @@ export interface BriefOutput {
     crossSourceBumps?: number;
     /** v1.12: subset of crossSourceBumps that hit the tight 72-hour cluster tier */
     tightClusterBumps?: number;
+    /** v1.13: count of Signal items bumped because a touched Org had a recent leadership announcement */
+    leadershipFluxBumps?: number;
   };
   /** v1.1: scoring metadata */
   scoringVersion?: string;
@@ -499,6 +501,71 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.6. v1.13 — leadership-flux bump.
+  //
+  // When a Signal touches an Org that has received a service_news Signal
+  // flagged isLeadershipAnnouncement within the lookback window, that Org's
+  // customer landscape is in flux. Any Signal touching it should bump
+  // because BD posture against a command undergoing leadership transition
+  // is materially different from posture against a stable one.
+  //
+  // This bump is additive to v1.12 convergence (different axis: convergence
+  // is "many feeds talking about this entity"; flux is "this entity's
+  // leadership just changed"). Total magnitude stays capped at 1.0.
+  let leadershipFluxBumps = 0;
+  const LEADERSHIP_FLUX_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+  if (sigItems.length > 0) {
+    // Build index: orgId → most recent leadership announcement timestamp
+    const orgToLeadershipAt = new Map<string, number>();
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig) continue;
+      if (sig.type !== "service_news") continue;
+      const isLeadership = !!(sig.attrs && (sig.attrs as Record<string, unknown>).isLeadershipAnnouncement);
+      if (!isLeadership) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      for (const id of allIds) {
+        if (!id) continue;
+        const prev = orgToLeadershipAt.get(id) ?? 0;
+        if (sig.occurredAt > prev) orgToLeadershipAt.set(id, sig.occurredAt);
+      }
+    }
+    if (orgToLeadershipAt.size > 0) {
+      for (const item of sigItems) {
+        const sig = signals[item.id];
+        if (!sig || !item.relevance) continue;
+        // Skip the leadership Signal itself — it doesn't bump itself
+        if (sig.type === "service_news" && sig.attrs && (sig.attrs as Record<string, unknown>).isLeadershipAnnouncement) continue;
+        const itemAt = sig.occurredAt || nowMs;
+        const allIds = [
+          ...(sig.subjectIds || []),
+          ...(sig.relatedIds || []),
+        ];
+        let mostRecentLeadership = 0;
+        for (const id of allIds) {
+          const t = orgToLeadershipAt.get(id);
+          if (t && t > mostRecentLeadership && itemAt - t <= LEADERSHIP_FLUX_WINDOW_MS) {
+            mostRecentLeadership = t;
+          }
+        }
+        if (mostRecentLeadership > 0) {
+          const daysAgo = Math.max(0, Math.floor((itemAt - mostRecentLeadership) / (24 * 60 * 60 * 1000)));
+          // Tighter recency → larger bump
+          const bump = daysAgo <= 7 ? 0.10 : daysAgo <= 14 ? 0.08 : 0.05;
+          item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+          item.relevance.total = Math.min(13, item.relevance.total + bump);
+          item.relevance.whySurfaced.push(
+            `Customer landscape in flux — leadership announcement ${daysAgo === 0 ? "today" : daysAgo + "d ago"} on a touched entity`
+          );
+          leadershipFluxBumps++;
+        }
+      }
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -584,8 +651,9 @@ export async function synthesizeBrief(
       dismissReasonAggregate,
       crossSourceBumps,
       tightClusterBumps,
+      leadershipFluxBumps,
     },
-    scoringVersion: "1.12",
+    scoringVersion: "1.13",
     weightsApplied: SCORING_WEIGHTS,
   };
 
