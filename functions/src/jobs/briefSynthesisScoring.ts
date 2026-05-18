@@ -126,8 +126,38 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       if (items.includes("5.02")) return { score: 0.8, why: "8-K item 5.02 (executive transition)" };
       return { score: 0.5, why: `8-K filing (items: ${items.join(",") || "n/a"})` };
     }
-    case "periodic_report":
-      return { score: 0.6, why: `${(attrs.formType as string) || "10-K/Q"} periodic report` };
+    case "periodic_report": {
+      // v1.5 — leverages SEC EDGAR v1.2.1 deep-parsed 10-K/Q attrs.
+      // Defense-tagged backlog is the strongest BD signal (size of book at
+      // a competing prime), then total backlog, then MD&A presence.
+      const form = (attrs.formType as string) || "10-K/Q";
+      const extracted = (attrs.extractedSections as Record<string, unknown>) || {};
+      const backlogDefense = Number(extracted.backlogDefense ?? 0);
+      const backlogTotal = Number(extracted.backlogTotal ?? 0);
+      const segCount = Array.isArray(attrs.defenseSegmentMentions)
+        ? (attrs.defenseSegmentMentions as unknown[]).length
+        : 0;
+      if (backlogDefense >= 50_000_000_000) {
+        return { score: 1.0, why: `${form} disclosed defense backlog $${(backlogDefense / 1e9).toFixed(0)}B — size-of-book signal` };
+      }
+      if (backlogDefense >= 10_000_000_000) {
+        return { score: 0.85, why: `${form} disclosed defense backlog $${(backlogDefense / 1e9).toFixed(1)}B` };
+      }
+      if (backlogDefense >= 1_000_000_000) {
+        return { score: 0.7, why: `${form} disclosed defense backlog $${(backlogDefense / 1e9).toFixed(2)}B` };
+      }
+      if (backlogTotal >= 50_000_000_000) {
+        return { score: 0.7, why: `${form} disclosed total backlog $${(backlogTotal / 1e9).toFixed(0)}B` };
+      }
+      if (backlogTotal >= 10_000_000_000) {
+        return { score: 0.6, why: `${form} disclosed total backlog $${(backlogTotal / 1e9).toFixed(1)}B` };
+      }
+      if (segCount > 0) {
+        return { score: 0.55, why: `${form} with ${segCount} defense segment(s) named` };
+      }
+      // Falls back when only metadata or parse-failed
+      return { score: 0.6, why: `${form} periodic report` };
+    }
     case "insider_transaction": {
       // v1.4 — leverages SEC EDGAR v1.2 deep-parsed Form 4 attrs.
       // Codes: P (open-market purchase) is the strongest posture signal —
@@ -209,6 +239,38 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
     }
     case "committee_meeting":
       return { score: 0.5, why: "FACA committee meeting" };
+    case "proxy_statement": {
+      // v1.5 — leverages SEC EDGAR v1.2.2 deep-parsed DEF 14A attrs.
+      // Annual proxy statements; the recurring CEO compensation snapshot
+      // is moderate-signal context (sized as posture intensity). Material
+      // shareholder activity (proposals, board declassification, multiple
+      // SH proposals) bumps the signal — those events are operator-
+      // actionable governance shifts.
+      const ceoComp = Number(attrs.ceoTotalComp ?? 0);
+      const top5 = Number(attrs.top5TotalComp ?? 0);
+      const shProps = Number(attrs.shareholderProposalCount ?? 0);
+      const hasDeclass = !!attrs.hasBoardDeclassification;
+
+      if (hasDeclass) {
+        return { score: 0.7, why: `DEF 14A board-declassification proposal — governance shift` };
+      }
+      if (shProps >= 5) {
+        return { score: 0.65, why: `DEF 14A with ${shProps} shareholder proposals — heavy SH activity` };
+      }
+      if (shProps >= 2) {
+        return { score: 0.5, why: `DEF 14A with ${shProps} shareholder proposals` };
+      }
+      if (ceoComp >= 50_000_000) {
+        return { score: 0.55, why: `DEF 14A CEO total comp $${(ceoComp / 1e6).toFixed(0)}M — outlier compensation` };
+      }
+      if (ceoComp >= 20_000_000) {
+        return { score: 0.45, why: `DEF 14A CEO total comp $${(ceoComp / 1e6).toFixed(1)}M` };
+      }
+      if (top5 >= 50_000_000) {
+        return { score: 0.45, why: `DEF 14A top-5 NEO comp $${(top5 / 1e6).toFixed(1)}M aggregate` };
+      }
+      return { score: 0.3, why: `DEF 14A proxy statement` };
+    }
     case "oversight_finding": {
       // v1.4 — leverages GAO Reports v1.1 deep-parsed report attrs.
       // Non-concurrence by the agency is the highest-signal posture event:
