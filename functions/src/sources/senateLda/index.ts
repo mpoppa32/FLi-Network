@@ -42,6 +42,9 @@ export interface SenateLdaSyncResult {
   revolvingDoorPersonsCreatedTotal: number;
   revolvingDoorPersonsMatchedTotal: number;
   revolvingDoorEdgesUpsertedTotal: number;
+  /** v1.2: former-employer Org resolutions + formerly_at Edges. */
+  formerEmployerOrgsResolvedTotal: number;
+  formerlyAtEdgesUpsertedTotal: number;
   perIssueCode: Record<string, number>;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
@@ -85,6 +88,8 @@ export async function syncWorkspace(
     revolvingDoorPersonsCreatedTotal: 0,
     revolvingDoorPersonsMatchedTotal: 0,
     revolvingDoorEdgesUpsertedTotal: 0,
+    formerEmployerOrgsResolvedTotal: 0,
+    formerlyAtEdgesUpsertedTotal: 0,
     perIssueCode: {},
     errors: [],
     apiCallsCount: 0,
@@ -175,6 +180,8 @@ export async function syncWorkspace(
           result.revolvingDoorPersonsCreatedTotal += r.metrics.revolvingDoorPersonsCreated;
           result.revolvingDoorPersonsMatchedTotal += r.metrics.revolvingDoorPersonsMatched;
           result.revolvingDoorEdgesUpsertedTotal += r.metrics.revolvingDoorEdgesUpserted;
+          result.formerEmployerOrgsResolvedTotal += r.metrics.formerEmployerOrgsResolved;
+          result.formerlyAtEdgesUpsertedTotal += r.metrics.formerlyAtEdgesUpserted;
         } catch (err) {
           result.errors.push({
             ref: filing.filing_uuid,

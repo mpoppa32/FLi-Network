@@ -133,6 +133,88 @@ function summarizeActivities(activities: LdaLobbyingActivity[]): {
   };
 }
 
+/** v1.2: covered_position pattern catalog. The LDA `covered_position`
+ *  field is free-text but follows recognizable conventions. We match a
+ *  curated list of defense-relevant federal employer institutions and
+ *  resolve each as a government Org. False negatives fall through
+ *  (no Edge); false positives are rare given the LDA's structured
+ *  format. */
+interface CoveredPositionPattern {
+  /** Substring or regex to match against covered_position. */
+  match: RegExp;
+  /** Canonical Org name to resolve. */
+  canonicalName: string;
+}
+
+const COVERED_POSITION_PATTERNS: CoveredPositionPattern[] = [
+  // Congressional committees — defense
+  { match: /\bSenate Armed Services\b/i, canonicalName: "Senate Armed Services Committee" },
+  { match: /\bHouse Armed Services\b/i, canonicalName: "House Armed Services Committee" },
+  { match: /\bSenate (?:Select Committee on )?Intelligence\b/i, canonicalName: "Senate Select Committee on Intelligence" },
+  { match: /\bHouse (?:Permanent Select Committee on )?Intelligence\b/i, canonicalName: "House Permanent Select Committee on Intelligence" },
+  { match: /\bSenate Foreign Relations\b/i, canonicalName: "Senate Foreign Relations Committee" },
+  { match: /\bHouse Foreign Affairs\b/i, canonicalName: "House Foreign Affairs Committee" },
+  { match: /\bSenate Appropriations\b/i, canonicalName: "Senate Appropriations Committee" },
+  { match: /\bHouse Appropriations\b/i, canonicalName: "House Appropriations Committee" },
+  { match: /\bSenate Homeland Security and Governmental Affairs\b/i, canonicalName: "Senate Homeland Security and Governmental Affairs Committee" },
+  { match: /\bHouse Homeland Security\b/i, canonicalName: "House Homeland Security Committee" },
+  { match: /\bSenate Commerce(?:, Science, and Transportation)?\b/i, canonicalName: "Senate Commerce, Science, and Transportation Committee" },
+  { match: /\bHouse (?:Energy and )?Commerce\b/i, canonicalName: "House Energy and Commerce Committee" },
+  // Department of Defense
+  { match: /\b(?:Office of the )?Secretary of Defense\b/i, canonicalName: "Office of the Secretary of Defense" },
+  { match: /\bUnder Secretary of Defense for Acquisition and Sustainment\b/i, canonicalName: "Under Secretary of Defense for Acquisition and Sustainment" },
+  { match: /\bUnder Secretary of Defense for Research and Engineering\b/i, canonicalName: "Under Secretary of Defense for Research and Engineering" },
+  { match: /\bUnder Secretary of Defense for Policy\b/i, canonicalName: "Under Secretary of Defense for Policy" },
+  { match: /\bUnder Secretary of Defense for Personnel and Readiness\b/i, canonicalName: "Under Secretary of Defense for Personnel and Readiness" },
+  { match: /\bUnder Secretary of Defense for Intelligence(?: and Security)?\b/i, canonicalName: "Under Secretary of Defense for Intelligence and Security" },
+  { match: /\bUnder Secretary of Defense.*Comptroller\b/i, canonicalName: "Under Secretary of Defense (Comptroller)" },
+  { match: /\bJoint Chiefs of Staff\b/i, canonicalName: "Joint Chiefs of Staff" },
+  { match: /\bDepartment of Defense\b/i, canonicalName: "Department of Defense" },
+  // Service branches
+  { match: /\bDepartment of the Army\b/i, canonicalName: "Department of the Army" },
+  { match: /\bDepartment of the Navy\b/i, canonicalName: "Department of the Navy" },
+  { match: /\bDepartment of the Air Force\b/i, canonicalName: "Department of the Air Force" },
+  { match: /\bU(?:nited )?S(?:tates)?\.?\s+Marine Corps\b/i, canonicalName: "United States Marine Corps" },
+  { match: /\bU(?:nited )?S(?:tates)?\.?\s+Space Force\b/i, canonicalName: "United States Space Force" },
+  // Defense agencies
+  { match: /\bDefense Advanced Research Projects Agency|DARPA\b/i, canonicalName: "Defense Advanced Research Projects Agency" },
+  { match: /\bMissile Defense Agency|\bMDA\b/i, canonicalName: "Missile Defense Agency" },
+  { match: /\bDefense Innovation Unit|\bDIU\b/i, canonicalName: "Defense Innovation Unit" },
+  { match: /\bDefense Logistics Agency|\bDLA\b/i, canonicalName: "Defense Logistics Agency" },
+  // Executive branch — adjacent
+  { match: /\bNational Security Council|\bNSC\b/i, canonicalName: "National Security Council" },
+  { match: /\bOffice of Management and Budget|\bOMB\b/i, canonicalName: "Office of Management and Budget" },
+  { match: /\bWhite House\b/i, canonicalName: "Executive Office of the President" },
+  // Other defense-adjacent
+  { match: /\bDepartment of State\b/i, canonicalName: "Department of State" },
+  { match: /\bDepartment of Homeland Security\b/i, canonicalName: "Department of Homeland Security" },
+  { match: /\bDepartment of Energy\b/i, canonicalName: "Department of Energy" },
+  { match: /\bDepartment of Veterans Affairs\b/i, canonicalName: "Department of Veterans Affairs" },
+  { match: /\bCentral Intelligence Agency|\bCIA\b/i, canonicalName: "Central Intelligence Agency" },
+  { match: /\bNational Security Agency|\bNSA\b/i, canonicalName: "National Security Agency" },
+  { match: /\bDefense Intelligence Agency|\bDIA\b/i, canonicalName: "Defense Intelligence Agency" },
+  { match: /\bOffice of the Director of National Intelligence|\bODNI\b/i, canonicalName: "Office of the Director of National Intelligence" },
+];
+
+/** v1.2: parse a covered_position string and return canonical Org names
+ *  for each pattern that matches. Order preserved by first-match. */
+function parseCoveredPosition(coveredPosition: string): string[] {
+  if (!coveredPosition) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of COVERED_POSITION_PATTERNS) {
+    if (p.match.test(coveredPosition) && !seen.has(p.canonicalName)) {
+      seen.add(p.canonicalName);
+      out.push(p.canonicalName);
+    }
+  }
+  return out;
+}
+
+function formerlyAtEdgeId(personId: string, orgId: string): string {
+  return "edge_lda_formerly_" + personId.slice(0, 24) + "__" + orgId.slice(0, 24);
+}
+
 /** v1.1: deterministic Person id for an LDA lobbyist. Prefer LDA id when
  *  present (stable across filings), otherwise fall back to normalized
  *  display name. */
@@ -164,6 +246,11 @@ export interface LdaUpsertMetrics {
   revolvingDoorPersonsMatched: number;
   /** v1.1: number of lobbyist→registrant Edges upserted. */
   revolvingDoorEdgesUpserted: number;
+  /** v1.2: number of lobbyist→former-employer Orgs resolved across all
+   *  parsed covered_positions on this filing. */
+  formerEmployerOrgsResolved: number;
+  /** v1.2: number of formerly_at Edges upserted on this filing. */
+  formerlyAtEdgesUpserted: number;
   durationMs: number;
 }
 
@@ -186,6 +273,8 @@ export async function upsertLdaSignal(
     revolvingDoorPersonsCreated: 0,
     revolvingDoorPersonsMatched: 0,
     revolvingDoorEdgesUpserted: 0,
+    formerEmployerOrgsResolved: 0,
+    formerlyAtEdgesUpserted: 0,
     durationMs: 0,
   };
 
@@ -251,6 +340,8 @@ export async function upsertLdaSignal(
   // staff now lobbying for the same client). Non-revolving-door lobbyists
   // stay in attrs.topLobbyists only; we don't churn Person records for
   // every named lobbyist on every filing.
+  // v1.2: additionally parse covered_position for former-employer
+  // committees/agencies and upsert formerly_at Edges to each.
   if (registrantOrgId) {
     for (const lobbyist of activitiesSummary.topLobbyists) {
       if (!lobbyist.coveredPosition) continue;
@@ -266,6 +357,33 @@ export async function upsertLdaSignal(
         if (r.personAction === "created") metrics.revolvingDoorPersonsCreated++;
         else if (r.personAction === "matched") metrics.revolvingDoorPersonsMatched++;
         if (r.edgeUpserted) metrics.revolvingDoorEdgesUpserted++;
+
+        // v1.2: walk covered_position for known committee/agency markers,
+        // resolve each as a government Org, upsert formerly_at Edge.
+        const formerEmployers = parseCoveredPosition(lobbyist.coveredPosition);
+        for (const employerName of formerEmployers) {
+          try {
+            const employerRes = await resolveRecipientOrg(workspaceId, employerName, null, {
+              autoCreate: true,
+              type: "government",
+            });
+            metrics.formerEmployerOrgsResolved++;
+            const er = await upsertFormerlyAtEdge(
+              workspaceId,
+              r.personId,
+              employerRes.orgId,
+              lobbyist.coveredPosition,
+              filing.filing_uuid,
+              log
+            );
+            if (er.edgeUpserted) metrics.formerlyAtEdgesUpserted++;
+          } catch (e) {
+            log?.debug("senate_lda_former_employer_resolve_failed", {
+              employer: employerName,
+              message: (e as Error).message,
+            });
+          }
+        }
       } catch (e) {
         log?.debug("senate_lda_lobbyist_resolve_failed", {
           name: lobbyist.name,
@@ -512,4 +630,54 @@ async function upsertLdaLobbyistPerson(
   }
 
   return { personId: pId, personAction, edgeUpserted };
+}
+
+/**
+ * v1.2: upsert a formerly_at Edge from a Person to a government Org
+ * (committee or agency parsed from the LDA covered_position string).
+ * Idempotent: re-ingestion bumps lastSeenAt + lastSeenOnFiling without
+ * disturbing existing operator-input edge attrs.
+ *
+ * The Edge captures "this Person was institutionally affiliated with
+ * this body before becoming a registered lobbyist" — the revolving-door
+ * arrow that BD operators care about. Storing this as a first-class Edge
+ * makes "who used to staff HASC" queries instant.
+ */
+async function upsertFormerlyAtEdge(
+  workspaceId: string,
+  personId: string,
+  orgId: string,
+  coveredPositionRaw: string,
+  filingUuid: string,
+  log?: Logger
+): Promise<{ edgeUpserted: boolean }> {
+  const eId = formerlyAtEdgeId(personId, orgId);
+  const edgePath = wsPath(workspaceId, "edges", eId);
+  const now = Date.now();
+  const edgeAttrs: Record<string, unknown> = {
+    coveredPositionRaw: coveredPositionRaw.slice(0, 400),
+    lastSeenOnFiling: filingUuid,
+    lastSeenAt: now,
+  };
+  const edge: LdaEdge = {
+    id: eId,
+    source: personId,
+    target: orgId,
+    label: "formerly_at",
+    dir: "to",
+    attrs: edgeAttrs,
+  };
+  const snap = await db.ref(edgePath).once("value");
+  if (!snap.exists()) {
+    await db.ref(edgePath).set(edge);
+    log?.debug("senate_lda_formerly_at_edge_created", {
+      personId,
+      orgId,
+    });
+    return { edgeUpserted: true };
+  }
+  const existing = snap.val() as LdaEdge;
+  const mergedAttrs = { ...(existing.attrs || {}), ...edgeAttrs };
+  await db.ref(edgePath).set({ ...existing, attrs: mergedAttrs });
+  return { edgeUpserted: true };
 }
