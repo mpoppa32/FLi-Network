@@ -148,6 +148,9 @@ export interface BriefOutput {
      *  current acting_at Edges (workspace Person is designated acting
      *  at that institution) */
     actingAtTouchBumps?: number;
+    /** v1.22: count of Signal items bumped for touching an Org that
+     *  shares trade-association memberships with an active adversary */
+    coMembershipBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -259,10 +262,15 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
   // v1.17: Map<orgId, count of incoming formerly_at Edges>.
   // v1.21: Map<orgId, count of incoming acting_at Edges>.
   // v1.20: per-Person count of DISTINCT outbound Edge labels.
-  // All three built in a single edge-walk pass.
+  // v1.22: Map<companyOrgId, Set<assocOrgId>> — trade_assoc memberships
+  //        from industry_assoc member_of Edges (where source = company,
+  //        target = trade_assoc Org). Used to compute the cross-Org
+  //        association overlap with operator-tagged adversaries.
+  // All built in a single edge-walk pass.
   const formerlyAtIncomingCountByOrg = new Map<string, number>();
   const actingAtIncomingCountByOrg = new Map<string, number>();
   const outboundEdgesByPerson = new Map<string, Set<string>>();
+  const assocMembershipsByOrg = new Map<string, Set<string>>();
   for (const edge of Object.values(edges)) {
     if (!edge) continue;
     if (edge.label === "formerly_at" && edge.target) {
@@ -283,10 +291,41 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
       }
       outboundEdgesByPerson.get(edge.source)!.add(edge.label);
     }
+    // v1.22: member_of Edges from industry_assoc — track the target
+    // (trade_assoc Org id) per source (company Org id). Filter by edge
+    // attrs.sourceSystem === 'industry_assoc' is the cleanest, but
+    // member_of is also used by faca + advisory_boards; we accept all
+    // member_of Edges here and let the adversary-intersection step
+    // filter to relevant associations.
+    if (edge.label === "member_of" && edge.source && edge.target) {
+      if (!assocMembershipsByOrg.has(edge.source)) {
+        assocMembershipsByOrg.set(edge.source, new Set());
+      }
+      assocMembershipsByOrg.get(edge.source)!.add(edge.target);
+    }
   }
   const outboundEdgeLabelCountByPerson = new Map<string, number>();
   for (const [personId, labels] of outboundEdgesByPerson) {
     outboundEdgeLabelCountByPerson.set(personId, labels.size);
+  }
+
+  // v1.22: compute association IDs that any active adversary is a member of
+  const adversaryAssocs = new Set<string>();
+  for (const advId of activeAdversaryOrgIds) {
+    const memberships = assocMembershipsByOrg.get(advId);
+    if (!memberships) continue;
+    for (const assocId of memberships) adversaryAssocs.add(assocId);
+  }
+  const sharedAssocsWithAdversaryByOrg = new Map<string, number>();
+  if (adversaryAssocs.size > 0) {
+    for (const [orgId, memberships] of assocMembershipsByOrg) {
+      if (activeAdversaryOrgIds.has(orgId)) continue; // skip adversaries themselves
+      let shared = 0;
+      for (const assocId of memberships) {
+        if (adversaryAssocs.has(assocId)) shared++;
+      }
+      if (shared > 0) sharedAssocsWithAdversaryByOrg.set(orgId, shared);
+    }
   }
 
   return {
@@ -309,6 +348,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     formerlyAtIncomingCountByOrg,
     outboundEdgeLabelCountByPerson,
     actingAtIncomingCountByOrg,
+    sharedAssocsWithAdversaryByOrg,
   };
 }
 
@@ -961,6 +1001,50 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10d. v1.22 — industry_assoc co-membership with adversary bump.
+  //
+  // When a Signal touches a company Org that shares trade-association
+  // memberships with one or more operator-tagged active adversaries,
+  // bump. Co-membership in industry associations (NDIA / AFA / AUSA)
+  // signals overlapping institutional positioning — the touched Org
+  // competes in the same forum space as a known adversary, which is
+  // operator-actionable BD context.
+  //
+  //   3+ shared associations: +0.10 magnitude (deeply overlapping)
+  //   2 shared associations:  +0.07
+  //   1 shared association:   +0.04
+  //
+  // Additive on top of prior bumps. Doesn't apply to adversaries
+  // themselves (already covered by the existing pursuit/adversary
+  // weight). Capped at magnitude 1.0.
+  let coMembershipBumps = 0;
+  const sharedAssocCounts = ctx.sharedAssocsWithAdversaryByOrg;
+  if (sigItems.length > 0 && sharedAssocCounts && sharedAssocCounts.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxShared = 0;
+      for (const id of allIds) {
+        const c = sharedAssocCounts.get(id) || 0;
+        if (c > maxShared) maxShared = c;
+      }
+      if (maxShared === 0) continue;
+      let bump = 0.04;
+      if (maxShared >= 3) bump = 0.10;
+      else if (maxShared === 2) bump = 0.07;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Industry-assoc co-membership — touched Org shares ${maxShared} association${maxShared === 1 ? "" : "s"} with active adversary`
+      );
+      coMembershipBumps++;
+    }
+  }
+
   // 3.10c. v1.21 — acting_at touch bump.
   //
   // Mirror of the v1.17 revolving-door touch warning, keyed on
@@ -1391,10 +1475,11 @@ export async function synthesizeBrief(
       nexusBumps,
       weightyPersonTouchBumps,
       actingAtTouchBumps,
+      coMembershipBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.21",
+    scoringVersion: "1.22",
     weightsApplied: SCORING_WEIGHTS,
   };
 

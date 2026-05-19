@@ -84,6 +84,13 @@ export interface BriefScoringContext {
    *  that institution — high BD-relevance because the customer-side
    *  leadership is literally in flux. */
   actingAtIncomingCountByOrg?: Map<string, number>;
+  /** v1.22: count of trade_assoc memberships an Org shares with an
+   *  operator-tagged adversary (active set). Built from industry_assoc
+   *  member_of Edges intersected against the adversary association set.
+   *  A non-zero count means the touched Org competes in the same forum
+   *  space as a known adversary — qualitative signal of overlapping
+   *  institutional positioning. */
+  sharedAssocsWithAdversaryByOrg?: Map<string, number>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
