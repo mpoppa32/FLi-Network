@@ -125,13 +125,22 @@ export async function upsertAdvisoryReportSignal(
   const relatedIds: string[] = [];
 
   // ─── Resolve the board itself as a government Org (relatedIds) ─────────
+  // v1.2: pass the board acronym as an alternateName so FACA committee
+  // Orgs for the same body (e.g., FACA's "Defense Science Board"
+  // committee record) collapse to a single node rather than two parallel
+  // Orgs. The orgResolver also matches incoming names against existing
+  // node.alternateNames, so this works in either direction.
   let boardOrgId: string | null = null;
   try {
     const r = await resolveRecipientOrg(
       workspaceId,
       boardSpec.fullName,
       null,
-      { autoCreate: true, type: "government" }
+      {
+        autoCreate: true,
+        type: "government",
+        alternateNames: [boardSpec.label, boardSpec.label.toUpperCase()],
+      }
     );
     boardOrgId = r.orgId;
     if (!relatedIds.includes(boardOrgId)) relatedIds.push(boardOrgId);

@@ -64,7 +64,17 @@ export async function resolveRecipientOrg(
   workspaceId: string,
   recipientName: string,
   uei: string | null,
-  options: { autoCreate?: boolean; type?: OrganizationType } = {}
+  options: {
+    autoCreate?: boolean;
+    type?: OrganizationType;
+    /** v1.2 cross-source dedupe (advisory_boards / faca): try matching
+     *  the supplied alternate names (acronyms etc.) against existing
+     *  cached normalized names + alternateNames. On auto-create, persist
+     *  them on the new node. Improves dedupe between sources that share
+     *  an entity but use different canonical names ("Defense Science
+     *  Board" vs "DSB"). */
+    alternateNames?: string[];
+  } = {}
 ): Promise<{ orgId: string; created: boolean }> {
   const cache = await loadOrgCache(workspaceId);
 
@@ -77,6 +87,17 @@ export async function resolveRecipientOrg(
   const norm = normalizeName(recipientName);
   if (cache.byName.has(norm)) {
     return { orgId: cache.byName.get(norm)!, created: false };
+  }
+
+  // v1.2: try alternateNames against existing normalized name index
+  if (Array.isArray(options.alternateNames) && options.alternateNames.length > 0) {
+    for (const alt of options.alternateNames) {
+      if (!alt) continue;
+      const altNorm = normalizeName(alt);
+      if (altNorm && cache.byName.has(altNorm)) {
+        return { orgId: cache.byName.get(altNorm)!, created: false };
+      }
+    }
   }
 
   if (options.autoCreate === false) {
@@ -96,11 +117,18 @@ export async function resolveRecipientOrg(
     Date.now()
   );
 
+  // v1.2: persist alternateNames on auto-create so future cross-source
+  // lookups via either canonical name OR alternate match cleanly.
+  const altPersist = (options.alternateNames || []).filter(
+    (a): a is string => !!a && a.trim().length > 0 && normalizeName(a) !== norm
+  );
+
   const newOrg: Organization = {
     id: orgId,
     type: options.type ?? "company",
     name: recipientName.trim(),
     uei: uei ?? undefined,
+    alternateNames: altPersist.length > 0 ? altPersist : undefined,
     autoCreated: true,
     created: new Date().toISOString(),
     source: provenance,
@@ -111,6 +139,12 @@ export async function resolveRecipientOrg(
   // Update cache
   cache.byName.set(norm, orgId);
   if (uei) cache.byUei.set(uei, orgId);
+  // v1.2: cache alternates so a subsequent lookup in the same sync run
+  // hits without re-loading
+  for (const alt of altPersist) {
+    const altNorm = normalizeName(alt);
+    if (altNorm) cache.byName.set(altNorm, orgId);
+  }
 
   return { orgId, created: true };
 }
