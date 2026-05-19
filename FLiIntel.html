@@ -35466,6 +35466,103 @@ window._latestBrief = null;
 
 window._renderExternalIntelligence = function(brief) {
   window._latestBrief = brief;
+
+  // Plain-text digest of the Brief for share-with-team workflows.
+  // Operator clicks "copy text" → this serializes the brief output to
+  // a human-readable summary suitable for email / Slack / messaging.
+  // Format: header (date + scoring version), top 5 items by relevance,
+  // adversary rollup top 5, customer rollup top 5, bump count summary.
+  window._buildBriefTextDigest = function(b) {
+    if (!b) return '';
+    var lines = [];
+    var d = new Date(b.generatedAt || Date.now());
+    var iso = d.toISOString().slice(0, 10);
+    var versionTag = b.scoringVersion ? ' (Brief Synthesis v' + b.scoringVersion + ')' : '';
+    lines.push('CORSAIR DAILY BRIEF — ' + iso + versionTag);
+    lines.push('Window: ' + Math.round((b.windowHours || 168) / 24) + 'd · ' + (b.totalItems || 0) + ' items shown');
+    lines.push('');
+    // Top 5 items by relevance
+    var allItems = [];
+    var cats = b.itemsByCategory || {};
+    Object.keys(cats).forEach(function(k){
+      (cats[k] || []).forEach(function(it){ allItems.push(it); });
+    });
+    allItems.sort(function(a, b){
+      var ar = (a.relevance && a.relevance.total) || 0;
+      var br = (b.relevance && b.relevance.total) || 0;
+      return br - ar;
+    });
+    var top5 = allItems.slice(0, 5);
+    if (top5.length > 0) {
+      lines.push('TOP 5 ITEMS');
+      lines.push('-----------');
+      top5.forEach(function(it, i){
+        var score = (it.relevance && typeof it.relevance.total === 'number') ? '[' + it.relevance.total.toFixed(1) + ']' : '';
+        lines.push((i+1) + '. ' + score + ' ' + (it.title || '').slice(0, 140));
+        if (it.subtitle) lines.push('   ' + String(it.subtitle).slice(0, 160));
+        if (it.relevance && Array.isArray(it.relevance.whySurfaced) && it.relevance.whySurfaced.length) {
+          lines.push('   why: ' + String(it.relevance.whySurfaced[it.relevance.whySurfaced.length - 1]).slice(0, 160));
+        }
+      });
+      lines.push('');
+    }
+    // Adversary rollup
+    if (Array.isArray(b.adversaryRollup) && b.adversaryRollup.length > 0) {
+      lines.push('ADVERSARY ACTIVITY (top 5)');
+      lines.push('-------------------------');
+      b.adversaryRollup.slice(0, 5).forEach(function(a){
+        var nm = a.orgName || a.orgId;
+        var w = (typeof a.totalRelevance === 'number') ? a.totalRelevance.toFixed(1) : '0.0';
+        var flag = a.active ? '[ACTIVE]' : '[archived]';
+        lines.push('* ' + flag + ' ' + nm + ' — ' + a.signalCount + ' touch(es) · weight ' + w + ' · ' + (Array.isArray(a.sources) ? a.sources.join(', ') : ''));
+        if (a.topSignalTitle) lines.push('  ↳ ' + String(a.topSignalTitle).slice(0, 160));
+      });
+      lines.push('');
+    }
+    // Customer rollup
+    if (Array.isArray(b.customerRollup) && b.customerRollup.length > 0) {
+      lines.push('CUSTOMER TERRAIN (top 5)');
+      lines.push('------------------------');
+      b.customerRollup.slice(0, 5).forEach(function(c){
+        var nm = c.orgName || c.orgId;
+        var w = (typeof c.totalRelevance === 'number') ? c.totalRelevance.toFixed(1) : '0.0';
+        var flag = c.active ? '[WATCHLIST]' : '[history]';
+        lines.push('* ' + flag + ' ' + nm + ' — ' + c.signalCount + ' touch(es) · weight ' + w + ' · ' + (Array.isArray(c.sources) ? c.sources.join(', ') : ''));
+        if (c.topSignalTitle) lines.push('  ↳ ' + String(c.topSignalTitle).slice(0, 160));
+      });
+      lines.push('');
+    }
+    // Bump counts
+    if (b.counts) {
+      var c = b.counts;
+      var bumpRows = [];
+      var fields = [
+        ['crossSourceBumps', 'CONV'],
+        ['tightClusterBumps', 'TIGHT'],
+        ['leadershipFluxBumps', 'FLUX'],
+        ['protestAmendmentBumps', 'RESET'],
+        ['posturePathBumps', 'ADV/LIB'],
+        ['postureTrajectoryBumps', 'RISE/FALL'],
+        ['peMentionBumps', 'PE'],
+        ['revolvingDoorTouchBumps', 'DOOR'],
+        ['nexusBumps', 'NEXUS'],
+        ['weightyPersonTouchBumps', 'WEIGHT'],
+        ['actingAtTouchBumps', 'ACTING'],
+        ['coMembershipBumps', 'CO-MEM']
+      ];
+      fields.forEach(function(f){
+        var v = Number(c[f[0]] || 0);
+        if (v > 0) bumpRows.push(f[1] + '=' + v);
+      });
+      if (bumpRows.length > 0) {
+        lines.push('BUMP AXES FIRED: ' + bumpRows.join(' · '));
+      }
+    }
+    lines.push('');
+    lines.push('— prepared by Corsair · ' + new Date().toISOString());
+    return lines.join('\n');
+  };
+
   var body = document.getElementById('ext-intel-body');
   var dateEl = document.getElementById('ext-intel-generated');
   if (!body) return;
@@ -35478,6 +35575,47 @@ window._renderExternalIntelligence = function(brief) {
     var ageMin = Math.floor((Date.now() - brief.generatedAt) / 60000);
     var versionTag = brief.scoringVersion ? ' · v' + brief.scoringVersion : '';
     dateEl.textContent = (ageMin < 60 ? ageMin + 'm ago' : Math.floor(ageMin/60) + 'h ago') + versionTag;
+    // Attach a "Copy as text" affordance next to the timestamp so the
+    // operator can share today's digest with team members who don't
+    // have direct app access. Lazy attach — only rebind if not present.
+    if (!document.getElementById('ext-intel-copy-text-btn')) {
+      var copyBtn = document.createElement('button');
+      copyBtn.id = 'ext-intel-copy-text-btn';
+      copyBtn.title = 'Copy a plain-text digest of today\'s Brief to clipboard';
+      copyBtn.textContent = '📋 copy text';
+      copyBtn.style.cssText = 'font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);background:transparent;border:1px solid var(--b2);border-radius:2px;padding:2px 8px;margin-left:10px;cursor:pointer;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle';
+      copyBtn.onclick = function(ev) {
+        ev.preventDefault();
+        var digest = window._buildBriefTextDigest && window._buildBriefTextDigest(window._latestBrief);
+        if (!digest) return;
+        try {
+          navigator.clipboard.writeText(digest).then(function(){
+            copyBtn.textContent = '✓ copied';
+            copyBtn.style.color = 'var(--gold)';
+            copyBtn.style.borderColor = 'var(--gold)';
+            setTimeout(function(){
+              copyBtn.textContent = '📋 copy text';
+              copyBtn.style.color = 'var(--t3)';
+              copyBtn.style.borderColor = 'var(--b2)';
+            }, 1800);
+          }).catch(function(){
+            copyBtn.textContent = '✗ failed';
+            setTimeout(function(){ copyBtn.textContent = '📋 copy text'; }, 1800);
+          });
+        } catch (e) {
+          // Older browser fallback — open a textarea + select
+          var ta = document.createElement('textarea');
+          ta.value = digest;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand('copy'); } catch (e2) {}
+          document.body.removeChild(ta);
+          copyBtn.textContent = '✓ copied';
+          setTimeout(function(){ copyBtn.textContent = '📋 copy text'; }, 1800);
+        }
+      };
+      dateEl.parentNode && dateEl.parentNode.insertBefore(copyBtn, dateEl.nextSibling);
+    }
   }
   var cats = brief.itemsByCategory || {};
   var h = '';
