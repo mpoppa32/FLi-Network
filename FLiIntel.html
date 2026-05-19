@@ -37581,13 +37581,17 @@ window._renderPersonMergeCandidates = function() {
     var nB = (p.e.nameB || '').replace(/</g,'&lt;');
     var idA = p.e.idA || '';
     var idB = p.e.idB || '';
-    h += '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.05);font-size:11px">';
+    // Truncate display names for button labels (keep buttons compact)
+    var nALabel = nA.length > 22 ? nA.slice(0, 20) + '…' : nA;
+    var nBLabel = nB.length > 22 ? nB.slice(0, 20) + '…' : nB;
+    h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.05);font-size:11px">';
     h += '  <div style="flex:1;min-width:0">';
     h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600">' + nA + ' <span style="color:var(--t3);font-weight:400">·</span> ' + nB + '</div>';
-    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.05em">sim ' + sim + ' · canonical=' + idA + ' · fold=' + idB + '</div>';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.05em">sim ' + sim + ' · ' + idA + ' ⇄ ' + idB + '</div>';
     h += '  </div>';
-    h += '  <div style="display:flex;gap:6px">';
-    h += '    <button onclick="window._mergeFuzzyPersonCandidate(\'' + p.pairKey + '\')" style="background:transparent;border:1px solid rgba(58,138,92,.4);color:#3a8a5c;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Merge</button>';
+    h += '  <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:340px">';
+    h += '    <button title="Keep ' + nA.replace(/"/g,'&quot;') + ', fold the other side into it" onclick="window._performMergeFuzzyPersonCandidate(\'' + p.pairKey + '\',\'' + idA + '\')" style="background:transparent;border:1px solid rgba(58,138,92,.4);color:#3a8a5c;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">keep ' + nALabel + '</button>';
+    h += '    <button title="Keep ' + nB.replace(/"/g,'&quot;') + ', fold the other side into it" onclick="window._performMergeFuzzyPersonCandidate(\'' + p.pairKey + '\',\'' + idB + '\')" style="background:transparent;border:1px solid rgba(58,138,92,.4);color:#3a8a5c;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">keep ' + nBLabel + '</button>';
     h += '    <button onclick="window._declineFuzzyPersonCandidate(\'' + p.pairKey + '\')" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Decline</button>';
     h += '  </div>';
     h += '</div>';
@@ -37595,7 +37599,11 @@ window._renderPersonMergeCandidates = function() {
   body.innerHTML = h;
 };
 
-window._mergeFuzzyPersonCandidate = async function(pairKey) {
+// v1.2 (2026-05-19): bidirectional merge. Operator picks which side
+// becomes canonical via keepId; the other side is folded into it. The
+// legacy _mergeFuzzyPersonCandidate(pairKey) wrapper is kept for any
+// existing callers — it preserves v1.1 behavior (keep lower id).
+window._performMergeFuzzyPersonCandidate = async function(pairKey, keepId) {
   if (!currentWsId) { toast('No active workspace'); return; }
   if (window._canWrite && !window._canWrite()) {
     toast('Observers cannot merge Persons');
@@ -37603,31 +37611,34 @@ window._mergeFuzzyPersonCandidate = async function(pairKey) {
   }
   var c = (window._personMergeCandidates || {})[pairKey];
   if (!c || c.resolved) { toast('Candidate no longer pending'); return; }
-  var idA = c.idA;
-  var idB = c.idB;
-  if (!idA || !idB || idA === idB) {
+  if (!keepId || (keepId !== c.idA && keepId !== c.idB)) {
+    toast('Invalid keepId for this pair');
+    return;
+  }
+  var foldId = keepId === c.idA ? c.idB : c.idA;
+  var keepName = keepId === c.idA ? c.nameA : c.nameB;
+  var foldName = keepId === c.idA ? c.nameB : c.nameA;
+  if (!keepId || !foldId || keepId === foldId) {
     toast('Invalid candidate pair');
     return;
   }
-  var ok = confirm('Merge "' + (c.nameB || idB) + '" into "' + (c.nameA || idA) + '"?\n\nThis will rewrite every Edge + Signal reference and delete the folded Person node.');
+  var ok = confirm('Merge "' + (foldName || foldId) + '" into "' + (keepName || keepId) + '"?\n\nThis will rewrite every Edge + Signal reference to ' + foldId + ' and delete that Person node.');
   if (!ok) return;
   try {
-    // 1. Read links + signals + the two Person nodes
     var linksSnap = await get(ref(db, 'workspaces/' + currentWsId + '/links'));
     var sigsSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/signals'));
-    var aSnap     = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + idA));
-    var bSnap     = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + idB));
+    var keepSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + keepId));
+    var foldSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + foldId));
     var linksObj = linksSnap.exists() ? linksSnap.val() : {};
     var sigsObj  = sigsSnap.exists()  ? sigsSnap.val()  : {};
-    var aNode    = aSnap.exists() ? aSnap.val() : null;
-    var bNode    = bSnap.exists() ? bSnap.val() : null;
-    if (!aNode || !bNode) {
+    var keepNode = keepSnap.exists() ? keepSnap.val() : null;
+    var foldNode = foldSnap.exists() ? foldSnap.val() : null;
+    if (!keepNode || !foldNode) {
       toast('One side of the pair no longer exists');
       await fbSet('workspaces/' + currentWsId + '/personMergeCandidates/' + pairKey, Object.assign({}, c, { resolved: 'declined', resolvedAt: Date.now(), resolvedBy: (currentUser && currentUser.email) || 'unknown', resolvedReason: 'one side missing' }));
       return;
     }
-    // 2. Rewrite edges: source/target idB → idA. Drop self-loops if the
-    //    rewrite creates one.
+    // Rewrite edges: source/target foldId → keepId. Drop self-loops.
     var linkUpdates = 0;
     var linkDeletes = 0;
     for (var lk in linksObj) {
@@ -37635,11 +37646,10 @@ window._mergeFuzzyPersonCandidate = async function(pairKey) {
       var lObj = linksObj[lk];
       if (!lObj) continue;
       var changed = false;
-      if (lObj.source === idB) { lObj.source = idA; changed = true; }
-      if (lObj.target === idB) { lObj.target = idA; changed = true; }
+      if (lObj.source === foldId) { lObj.source = keepId; changed = true; }
+      if (lObj.target === foldId) { lObj.target = keepId; changed = true; }
       if (changed) {
         if (lObj.source === lObj.target) {
-          // self-loop after rewrite — drop the edge
           await fbSet('workspaces/' + currentWsId + '/links/' + lk, null);
           linkDeletes++;
         } else {
@@ -37648,22 +37658,21 @@ window._mergeFuzzyPersonCandidate = async function(pairKey) {
         }
       }
     }
-    // 3. Rewrite signals: subjectIds/relatedIds containing idB → idA
+    // Rewrite signals subjectIds/relatedIds: foldId → keepId
     var sigUpdates = 0;
     for (var sk in sigsObj) {
       if (!Object.prototype.hasOwnProperty.call(sigsObj, sk)) continue;
       var sObj = sigsObj[sk];
       if (!sObj) continue;
       var sigChanged = false;
-      if (Array.isArray(sObj.subjectIds) && sObj.subjectIds.indexOf(idB) >= 0) {
-        sObj.subjectIds = sObj.subjectIds.map(function(id){ return id === idB ? idA : id; });
-        // dedupe in case both ids were present
+      if (Array.isArray(sObj.subjectIds) && sObj.subjectIds.indexOf(foldId) >= 0) {
+        sObj.subjectIds = sObj.subjectIds.map(function(id){ return id === foldId ? keepId : id; });
         var seenS = {};
         sObj.subjectIds = sObj.subjectIds.filter(function(id){ if (seenS[id]) return false; seenS[id] = 1; return true; });
         sigChanged = true;
       }
-      if (Array.isArray(sObj.relatedIds) && sObj.relatedIds.indexOf(idB) >= 0) {
-        sObj.relatedIds = sObj.relatedIds.map(function(id){ return id === idB ? idA : id; });
+      if (Array.isArray(sObj.relatedIds) && sObj.relatedIds.indexOf(foldId) >= 0) {
+        sObj.relatedIds = sObj.relatedIds.map(function(id){ return id === foldId ? keepId : id; });
         var seenR = {};
         sObj.relatedIds = sObj.relatedIds.filter(function(id){ if (seenR[id]) return false; seenR[id] = 1; return true; });
         sigChanged = true;
@@ -37673,31 +37682,41 @@ window._mergeFuzzyPersonCandidate = async function(pairKey) {
         sigUpdates++;
       }
     }
-    // 4. Merge alternateNames + role/org if missing on idA
+    // Merge alternateNames + role/org from folded side into kept side
     var altSet = {};
-    (aNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
-    if (bNode.name && bNode.name !== aNode.name) altSet[bNode.name] = 1;
-    (bNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
+    (keepNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
+    if (foldNode.name && foldNode.name !== keepNode.name) altSet[foldNode.name] = 1;
+    (foldNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
     var mergedAlts = Object.keys(altSet);
-    if (mergedAlts.length > 0) aNode.alternateNames = mergedAlts;
-    if (!aNode.role && bNode.role) aNode.role = bNode.role;
-    if (!aNode.org && bNode.org) aNode.org = bNode.org;
-    await fbSet('workspaces/' + currentWsId + '/nodes/' + idA, aNode);
-    // 5. Delete idB
-    await fbSet('workspaces/' + currentWsId + '/nodes/' + idB, null);
-    // 6. Mark candidate resolved
+    if (mergedAlts.length > 0) keepNode.alternateNames = mergedAlts;
+    if (!keepNode.role && foldNode.role) keepNode.role = foldNode.role;
+    if (!keepNode.org && foldNode.org) keepNode.org = foldNode.org;
+    await fbSet('workspaces/' + currentWsId + '/nodes/' + keepId, keepNode);
+    await fbSet('workspaces/' + currentWsId + '/nodes/' + foldId, null);
     await fbSet('workspaces/' + currentWsId + '/personMergeCandidates/' + pairKey, Object.assign({}, c, {
       resolved: 'merged',
       resolvedAt: Date.now(),
       resolvedBy: (currentUser && currentUser.email) || 'unknown',
+      mergedKeepId: keepId,
+      mergedFoldId: foldId,
       linksRewritten: linkUpdates,
       linksDeleted: linkDeletes,
       signalsRewritten: sigUpdates
     }));
-    toast('Merged · ' + linkUpdates + ' edges + ' + sigUpdates + ' signals rewritten' + (linkDeletes ? ' · ' + linkDeletes + ' self-loop edges dropped' : ''));
+    toast('Merged → ' + (keepName || keepId).slice(0, 30) + ' · ' + linkUpdates + ' edges + ' + sigUpdates + ' signals rewritten' + (linkDeletes ? ' · ' + linkDeletes + ' self-loop edges dropped' : ''));
   } catch (e) {
     toast('Merge failed: ' + (e && e.message ? e.message : 'unknown'));
   }
+};
+
+// v1.1 legacy wrapper — keeps single-button callers working by always
+// folding higher-id into lower-id (alphabetical). New v1.2 callers
+// should prefer _performMergeFuzzyPersonCandidate(pairKey, keepId)
+// to choose direction explicitly.
+window._mergeFuzzyPersonCandidate = function(pairKey) {
+  var c = (window._personMergeCandidates || {})[pairKey];
+  if (!c) { toast('Candidate no longer pending'); return; }
+  return window._performMergeFuzzyPersonCandidate(pairKey, c.idA);
 };
 
 window._declineFuzzyPersonCandidate = async function(pairKey) {
