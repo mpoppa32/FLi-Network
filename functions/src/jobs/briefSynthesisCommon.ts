@@ -81,6 +81,9 @@ export interface AdversaryRollupEntry {
   topSignalTitle?: string | null;
   /** v1.22+: highest-relevance Signal id (for click-through). */
   topSignalId?: string | null;
+  /** v1.22+: relevance.total of the top signal (operator-visible
+   *  alongside the title preview). */
+  topSignalRelevance?: number | null;
 }
 
 /** Per-customer entry in the Brief Customer Activity Rollup. Same shape
@@ -100,6 +103,7 @@ export interface CustomerRollupEntry {
   /** v1.22+: highest-relevance touching Signal title for inline preview. */
   topSignalTitle?: string | null;
   topSignalId?: string | null;
+  topSignalRelevance?: number | null;
 }
 
 export interface BriefOutput {
@@ -1234,6 +1238,7 @@ export async function synthesizeBrief(
       active: entry.active,
       topSignalTitle: topTouch.title || null,
       topSignalId: topTouch.sigId,
+      topSignalRelevance: Math.round(topTouch.relevance * 100) / 100,
     });
   }
   // Sort: active first, then totalRelevance desc, then signalCount tiebreak
@@ -1337,6 +1342,7 @@ export async function synthesizeBrief(
       active: entry.active,
       topSignalTitle: topTouch.title || null,
       topSignalId: topTouch.sigId,
+      topSignalRelevance: Math.round(topTouch.relevance * 100) / 100,
     });
   }
   customerRollup.sort((a, b) => {
