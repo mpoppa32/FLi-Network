@@ -170,6 +170,10 @@ export interface BriefOutput {
      *  has >=3 distinct weighty Persons connected via institutional
      *  edges (influence-net density / HUB chip) */
     influenceNetHubBumps?: number;
+    /** v1.25: count of Signal items bumped for touching an Org that
+     *  receives >=4 distinct Signal types in the Brief window
+     *  (cross-Signal-type convergence — DIV chip) */
+    typeDiversityBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1102,6 +1106,70 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10f. v1.25 — Signal-type diversity touch bump.
+  //
+  // When a touched Org receives 4+ DISTINCT Signal types within the
+  // Brief window, bump items touching that Org. Distinct from v1.11
+  // CONV (which counts source SYSTEMS): the same source system can
+  // emit multiple signal types — congress_gov fires hearing +
+  // nomination + committee_meeting; sec_edgar fires material_event +
+  // insider_transaction + periodic_report + proxy_statement. The
+  // diversity axis captures "this Org is showing up across many
+  // different kinds of activity" which is a different operator
+  // signal than "this Org is showing up across many feeds".
+  //
+  //   4 distinct types: +0.06 magnitude
+  //   5 distinct types: +0.10
+  //   6+ distinct types: +0.14
+  //
+  // Capped at magnitude 1.0. Counts only sig items that scored a
+  // relevance > 0 (so noise signals don't pad the diversity count).
+  let typeDiversityBumps = 0;
+  const typesByOrg = new Map<string, Set<string>>();
+  if (sigItems.length > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      if (!sig.type) continue;
+      if ((item.relevance.total || 0) <= 0) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      for (const id of allIds) {
+        if (!id) continue;
+        if (!typesByOrg.has(id)) typesByOrg.set(id, new Set());
+        typesByOrg.get(id)!.add(sig.type);
+      }
+    }
+  }
+  if (sigItems.length > 0 && typesByOrg.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxTypes = 0;
+      for (const id of allIds) {
+        const set = typesByOrg.get(id);
+        const c = set ? set.size : 0;
+        if (c > maxTypes) maxTypes = c;
+      }
+      if (maxTypes < 4) continue;
+      let bump = 0.06;
+      if (maxTypes >= 6) bump = 0.14;
+      else if (maxTypes === 5) bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Signal-type diversity touch — touched Org has ${maxTypes} distinct Signal types in this window`
+      );
+      typeDiversityBumps++;
+    }
+  }
+
   // 3.10e. v1.24 — influence-net density (HUB) bump.
   //
   // When a touched Org has >=3 distinct weighty Persons (each carrying
@@ -1582,6 +1650,7 @@ export async function synthesizeBrief(
       "Industry-assoc co-membership",
       "Temporal momentum",
       "Influence-net hub",
+      "Signal-type diversity touch",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1706,10 +1775,11 @@ export async function synthesizeBrief(
       coMembershipBumps,
       temporalMomentumBumps,
       influenceNetHubBumps,
+      typeDiversityBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.24",
+    scoringVersion: "1.25",
     weightsApplied: SCORING_WEIGHTS,
   };
 
