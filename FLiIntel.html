@@ -35666,10 +35666,21 @@ window._renderExternalIntelligence = function(brief) {
             }
           }
         }
-        for (var mci = 0; mci < matchedChips.length; mci++) {
-          var mc = matchedChips[mci];
+        // Cap inline chips at 4 to keep the title row readable when many
+        // axes fire on a single item (common at v1.22+ with 17 scoring
+        // axes available). Overflow renders as a "+N more" chip whose
+        // hover shows the labels + whySurfaced lines for the hidden ones.
+        var CHIP_VISIBLE_MAX = 4;
+        var visibleChips = matchedChips.slice(0, CHIP_VISIBLE_MAX);
+        var overflowChips = matchedChips.slice(CHIP_VISIBLE_MAX);
+        for (var mci = 0; mci < visibleChips.length; mci++) {
+          var mc = visibleChips[mci];
           var t = String(mc.line).replace(/"/g, '&quot;').slice(0, 200);
           trailChips += '<span title="' + t + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:600;color:' + mc.def.fg + ';background:' + mc.def.bg + ';border:1px solid ' + mc.def.fg + '40;padding:1px 4px;border-radius:2px;margin-left:4px;letter-spacing:.06em">' + mc.def.label + '</span>';
+        }
+        if (overflowChips.length > 0) {
+          var overflowTitle = overflowChips.map(function(o){ return o.def.label + ': ' + String(o.line).slice(0, 120); }).join('\n').replace(/"/g, '&quot;');
+          trailChips += '<span title="' + overflowTitle + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:600;color:var(--gold);background:rgba(212,130,58,.10);border:1px solid rgba(212,130,58,.40);padding:1px 4px;border-radius:2px;margin-left:4px;letter-spacing:.06em;cursor:help">+' + overflowChips.length + '</span>';
         }
       }
       // v1.1: dedup note as small chip
