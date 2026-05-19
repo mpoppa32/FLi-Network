@@ -9,8 +9,9 @@ import { hashFields } from "../../framework/hashing";
 import { externalProvenance } from "../../framework/provenance";
 import { db, wsPath } from "../../framework/rtdb";
 import type { Logger } from "../../framework/logger";
-import type { Organization, Person, Edge } from "../../framework/types/entities";
+import type { Organization, Edge } from "../../framework/types/entities";
 import type { Signal } from "../../framework/types/signals";
+import { resolvePersonByName } from "../../framework/personResolver";
 import type { FacaCommitteeRecord, FacaMemberRecord, FacaMeetingRecord } from "./client";
 
 function parseDateMs(s: string | undefined | null): number {
@@ -125,8 +126,7 @@ export async function upsertMember(
     || [(record.firstName as string) || "", (record.lastName as string) || ""].filter(Boolean).join(" ").trim()
     || "Unnamed Member";
   const facaMemberId = String(record.memberId ?? record.id ?? normalizeName(fullName));
-  const pId = personId(facaMemberId, fullName);
-  const eId = membershipEdgeId(committeeOrgId, pId);
+  const preferredId = personId(facaMemberId, fullName);
 
   const hash = hashFields(
     {
@@ -142,38 +142,23 @@ export async function upsertMember(
   const now = Date.now();
   const provenance = externalProvenance("faca", facaMemberId, null, hash, now);
 
-  // Upsert Person
-  const personPath = wsPath(workspaceId, "nodes", pId);
-  const personSnap = await db.ref(personPath).once("value");
-  let personAction: "created" | "updated" | "unchanged" = "unchanged";
-  if (!personSnap.exists()) {
-    const person: Person = {
-      id: pId,
-      type: "person",
-      name: fullName,
-      role: (record.title as string) || undefined,
-      org: (record.affiliation as string) || undefined,
-      created: new Date().toISOString(),
-      source: provenance,
-    };
-    await db.ref(personPath).set(person);
-    personAction = "created";
-  } else {
-    const existing = personSnap.val() as Person;
-    if (existing.source?.hash !== hash) {
-      const merged: Person = {
-        ...existing,
-        name: existing.name || fullName,
-        role: existing.role || (record.title as string) || undefined,
-        org: existing.org || (record.affiliation as string) || undefined,
-        source: provenance,
-      };
-      await db.ref(personPath).set(merged);
-      personAction = "updated";
-    } else {
-      await db.ref(`${personPath}/source/refreshedAt`).set(now);
-    }
-  }
+  // v1.2: route Person upsert through framework/personResolver for
+  // cross-source dedupe. A FACA member who also appears in senate_lda
+  // (revolving-door lobbyist) / advisory_boards (board member) /
+  // plum_book (acting official) collapses to one Person node carrying
+  // all outbound Edges across sources.
+  const r = await resolvePersonByName(workspaceId, fullName, {
+    autoCreate: true,
+    preferredId,
+    role: (record.title as string) || undefined,
+    org: (record.affiliation as string) || undefined,
+    provenance,
+  });
+  const pId = r.personId;
+  const eId = membershipEdgeId(committeeOrgId, pId);
+  const personAction: "created" | "updated" | "unchanged" = r.created
+    ? "created"
+    : "unchanged";
 
   // Upsert Edge (member_of)
   const edgePath = wsPath(workspaceId, "edges", eId);
