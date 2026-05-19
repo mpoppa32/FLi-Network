@@ -36070,6 +36070,9 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'vacancy_alert') return window._vacancyAlertTouchRow(sig, attrs);
       if (sig.type === 'fms_notification') return window._fmsNotificationTouchRow(sig, attrs);
       if (sig.type === 'material_event') return window._materialEventTouchRow(sig, attrs);
+      if (sig.type === 'congressional_hearing') return window._congressionalHearingTouchRow(sig, attrs);
+      if (sig.type === 'nomination') return window._nominationTouchRow(sig, attrs);
+      if (sig.type === 'committee_meeting') return window._committeeMeetingTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36492,6 +36495,132 @@ window._advisoryBodyReportTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// Congress.gov v1.0: enriched touch-row renderer for congressional_hearing
+// Signals. Title is the hearing title verbatim. Subtitle composes the
+// chamber + committee + date. Right chip is the chamber abbreviation
+// (Sen / House / Joint) color-keyed.
+window._congressionalHearingTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var title = (attrs.title || 'Congressional hearing').toString();
+  var chamber = (attrs.chamber || '').toString().toLowerCase();
+  var committeeName = (attrs.committeeName || attrs.committee || '').toString();
+  var date = (attrs.date || (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '')).toString();
+  var url = (attrs.url || '').toString();
+
+  var titleHtml = esc(title.slice(0, 200));
+
+  var subParts = [];
+  if (committeeName) subParts.push(esc(committeeName));
+  if (date) subParts.push(esc(date));
+  var subtitleHtml = subParts.join(' · ');
+
+  var chipLabel, fg, bg;
+  if (chamber === 'senate') {
+    chipLabel = 'SENATE'; fg = '#a64ca6'; bg = 'rgba(166,76,166,.10)';
+  } else if (chamber === 'house') {
+    chipLabel = 'HOUSE'; fg = '#3a8a5c'; bg = 'rgba(58,138,92,.10)';
+  } else if (chamber === 'joint') {
+    chipLabel = 'JOINT'; fg = '#d4823a'; bg = 'rgba(212,130,58,.10)';
+  } else {
+    chipLabel = 'HEARING'; fg = '#7d8497'; bg = 'rgba(125,132,151,.10)';
+  }
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;color:' + fg + ';background:' + bg + ';border:1px solid ' + fg + '40;padding:2px 7px;border-radius:2px;letter-spacing:.08em;white-space:nowrap">' + esc(chipLabel) + '</span>';
+
+  var clickUrl = url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// Congress.gov v1.0: enriched touch-row renderer for nomination
+// Signals. Title is the nominee + position. Subtitle composes status
+// + last action date. Right chip color-keyed by confirmation status:
+// confirmed = green, returned/withdrawn = muted, else amber pending.
+window._nominationTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var nomineeName = (attrs.nomineeName || attrs.nominee || '').toString();
+  var position = (attrs.positionTitle || attrs.position || '').toString();
+  var status = (attrs.status || '').toString().toLowerCase();
+  var organization = (attrs.organization || '').toString();
+  var lastActionDate = (attrs.lastActionDate || (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '')).toString();
+  var url = (attrs.url || '').toString();
+
+  // Title: "Nominee — Position" or just one if missing
+  var titleText = nomineeName
+    ? (position ? esc(nomineeName) + ' — ' + esc(position) : esc(nomineeName))
+    : (position || 'Nomination');
+  var titleHtml = String(titleText).slice(0, 200);
+
+  var subParts = [];
+  if (organization) subParts.push(esc(organization));
+  if (lastActionDate) subParts.push(esc(lastActionDate));
+  if (status && !subParts.length) subParts.push(esc(status));
+  var subtitleHtml = subParts.join(' · ');
+
+  var chipLabel, fg, bg;
+  if (status === 'confirmed') {
+    chipLabel = 'CONFIRMED'; fg = '#3a8a5c'; bg = 'rgba(58,138,92,.12)';
+  } else if (status === 'returned' || status === 'withdrawn') {
+    chipLabel = status.toUpperCase(); fg = '#a85a5a'; bg = 'rgba(168,90,90,.10)';
+  } else if (status === 'received' || status === 'pending' || !status) {
+    chipLabel = 'PENDING'; fg = '#d4823a'; bg = 'rgba(212,130,58,.10)';
+  } else {
+    chipLabel = status.toUpperCase(); fg = '#7d8497'; bg = 'rgba(125,132,151,.10)';
+  }
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;color:' + fg + ';background:' + bg + ';border:1px solid ' + fg + '40;padding:2px 7px;border-radius:2px;letter-spacing:.08em;white-space:nowrap">' + esc(chipLabel) + '</span>';
+
+  var clickUrl = url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// FACA v1.0: enriched touch-row renderer for committee_meeting Signals.
+// Title is the meeting title or committee name. Subtitle composes
+// committee name + date + location. Right chip is "MEETING" in lavender
+// matching the FACA source cadence accent.
+window._committeeMeetingTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var meetingTitle = (attrs.meetingTitle || attrs.title || '').toString();
+  var committeeName = (attrs.committeeName || attrs.committee || '').toString();
+  var date = (attrs.meetingDate || attrs.date || (sig.occurredAt ? new Date(sig.occurredAt).toLocaleDateString() : '')).toString();
+  var location = (attrs.location || '').toString();
+  var purpose = (attrs.purpose || '').toString();
+  var url = (attrs.url || attrs.detailUrl || '').toString();
+
+  var titleText = meetingTitle || committeeName || 'Committee meeting';
+  var titleHtml = esc(titleText.slice(0, 200));
+
+  var subParts = [];
+  if (meetingTitle && committeeName) subParts.push(esc(committeeName));
+  if (date) subParts.push(esc(date));
+  if (location) subParts.push(esc(location.slice(0, 60)));
+  if (!subParts.length && purpose) subParts.push(esc(purpose.slice(0, 140)));
+  var subtitleHtml = subParts.join(' · ');
+
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;color:#c39bd3;background:rgba(195,155,211,.10);border:1px solid rgba(195,155,211,.40);padding:2px 7px;border-radius:2px;letter-spacing:.08em;white-space:nowrap">MEETING</span>';
+
+  var clickUrl = url || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
