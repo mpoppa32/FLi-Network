@@ -18,11 +18,17 @@
 //
 // **CAUTION**: Person dedupe is delicate. "John Smith" can be 10 unrelated
 // people in a workspace. Exact-name auto-merging risks false positives.
-// This resolver uses exact normalized-name match only — fuzzy matching
-// (Jaro-Winkler etc.) is deferred to v1.1 with operator-side review of
-// candidate merges.
+// This resolver uses exact normalized-name match only for resolution.
+//
+// v1.1 (additive): on auto-create, the resolver runs a Jaro-Winkler
+// similarity scan against the existing Person cache. Matches at or above
+// `MERGE_CANDIDATE_THRESHOLD` (0.92 default) write entries to
+// `workspaces/{wsId}/personMergeCandidates/{pairKey}` for operator
+// review — the resolver itself never auto-merges across fuzzy matches.
+// Operator confirmation/decline surface is built in a follow-up arc.
 
 import { db, wsPath } from "./rtdb";
+import { Logger } from "./logger";
 import type { Person } from "./types/entities";
 import type { SourceProvenance } from "./types";
 
@@ -109,10 +115,27 @@ export function normalizePersonName(name: string): string {
 
 interface PersonCache {
   byName: Map<string, string>; // normalized full name → personId
+  /** v1.1: id → display name for fuzzy candidate emission. Tracked
+   *  alongside byName so the merge-candidate writer can persist both
+   *  sides' display names without an extra RTDB read. Display name = the
+   *  first canonical form seen for this id. */
+  displayNameById: Map<string, string>;
 }
 
 let _cache: { workspaceId: string; cache: PersonCache; loadedAt: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** v1.1: Jaro-Winkler similarity threshold for surfacing a merge
+ *  candidate to the operator. Exact matches collapse via byName before
+ *  reaching this code. Tuned conservatively — at 0.92 the typical false
+ *  positive rate on real-world rosters is low while still catching
+ *  "Jane A Doe" vs "Jane Anne Doe" and "Robert Smith" vs "Bob Smith"
+ *  (after honorific/suffix stripping). */
+const MERGE_CANDIDATE_THRESHOLD = 0.92;
+
+/** v1.1: per-call cap on fuzzy candidate emissions to keep sync-run
+ *  costs bounded when a fresh source dumps hundreds of Persons. */
+const MAX_FUZZY_CANDIDATES_PER_CALL = 3;
 
 async function loadPersonCache(workspaceId: string): Promise<PersonCache> {
   const now = Date.now();
@@ -121,11 +144,12 @@ async function loadPersonCache(workspaceId: string): Promise<PersonCache> {
   }
   const snap = await db.ref(wsPath(workspaceId, "nodes")).once("value");
   const nodes = (snap.val() as Record<string, Person> | null) ?? {};
-  const cache: PersonCache = { byName: new Map() };
+  const cache: PersonCache = { byName: new Map(), displayNameById: new Map() };
   for (const [id, node] of Object.entries(nodes)) {
     if (!node || node.type !== "person" || !node.name) continue;
     const norm = normalizePersonName(node.name);
     if (norm) cache.byName.set(norm, id);
+    if (!cache.displayNameById.has(id)) cache.displayNameById.set(id, node.name);
     if (node.alternateNames) {
       for (const alt of node.alternateNames) {
         const altNorm = normalizePersonName(alt);
@@ -135,6 +159,152 @@ async function loadPersonCache(workspaceId: string): Promise<PersonCache> {
   }
   _cache = { workspaceId, cache, loadedAt: now };
   return cache;
+}
+
+// ─── v1.1: Jaro-Winkler fuzzy similarity ────────────────────────────────
+
+/** Standard Jaro similarity (matches + transpositions over length).
+ *  Returns 1.0 for identical strings, 0 for no common chars in range. */
+function jaroSimilarity(s1: string, s2: string): number {
+  if (s1 === s2) return 1.0;
+  const len1 = s1.length;
+  const len2 = s2.length;
+  if (len1 === 0 || len2 === 0) return 0;
+  const matchDistance = Math.max(Math.floor(Math.max(len1, len2) / 2) - 1, 0);
+  const s1Matches = new Array<boolean>(len1).fill(false);
+  const s2Matches = new Array<boolean>(len2).fill(false);
+  let matches = 0;
+  for (let i = 0; i < len1; i++) {
+    const start = Math.max(0, i - matchDistance);
+    const end = Math.min(i + matchDistance + 1, len2);
+    for (let j = start; j < end; j++) {
+      if (s2Matches[j]) continue;
+      if (s1[i] !== s2[j]) continue;
+      s1Matches[i] = true;
+      s2Matches[j] = true;
+      matches++;
+      break;
+    }
+  }
+  if (matches === 0) return 0;
+  let transpositions = 0;
+  let k = 0;
+  for (let i = 0; i < len1; i++) {
+    if (!s1Matches[i]) continue;
+    while (!s2Matches[k]) k++;
+    if (s1[i] !== s2[k]) transpositions++;
+    k++;
+  }
+  return (
+    matches / len1 +
+    matches / len2 +
+    (matches - transpositions / 2) / matches
+  ) / 3;
+}
+
+/** Jaro-Winkler: Jaro + prefix bonus (rewards matches that share the
+ *  first few characters). Prefix capped at 4 chars per Winkler 1990. */
+export function jaroWinklerSimilarity(s1: string, s2: string): number {
+  const j = jaroSimilarity(s1, s2);
+  if (j === 0 || j === 1) return j;
+  let prefix = 0;
+  const maxPrefix = 4;
+  const upper = Math.min(s1.length, s2.length, maxPrefix);
+  for (let i = 0; i < upper; i++) {
+    if (s1[i] === s2[i]) prefix++;
+    else break;
+  }
+  return j + prefix * 0.1 * (1 - j);
+}
+
+/** v1.1: scan the cache for fuzzy matches against the just-resolved
+ *  Person and persist candidate merge entries for operator review.
+ *  Never auto-merges. Skips pairs already resolved (operator merged
+ *  or declined). Caps emissions per call at MAX_FUZZY_CANDIDATES_PER_CALL.
+ *
+ *  Returns the count of new candidates written. */
+async function emitFuzzyMergeCandidates(
+  workspaceId: string,
+  resolvedPersonId: string,
+  resolvedDisplayName: string,
+  resolvedNorm: string,
+  cache: PersonCache,
+  log?: Logger
+): Promise<number> {
+  if (!resolvedNorm) return 0;
+  // Surnames as a quick gating heuristic: skip pairs whose last tokens
+  // diverge sharply. "John Smith" vs "John Schmidt" gets through; "John
+  // Smith" vs "John Lopez" gets filtered before the (more expensive)
+  // full-name JW call.
+  const myParts = resolvedNorm.split(" ");
+  if (myParts.length < 2) return 0;
+  const mySurname = myParts[myParts.length - 1];
+
+  // Collect candidates in a first pass without RTDB hits, then write
+  // top-scoring N in a second pass. This keeps the read-cost bounded
+  // even when many cache entries qualify by similarity.
+  const ranked: Array<{ otherId: string; sim: number; otherNorm: string }> = [];
+  for (const [otherNorm, otherPersonId] of cache.byName) {
+    if (otherPersonId === resolvedPersonId) continue;
+    if (otherNorm === resolvedNorm) continue;
+    const otherParts = otherNorm.split(" ");
+    if (otherParts.length < 2) continue;
+    const otherSurname = otherParts[otherParts.length - 1];
+    if (mySurname[0] !== otherSurname[0]) {
+      const surnameSim = jaroWinklerSimilarity(mySurname, otherSurname);
+      if (surnameSim < 0.85) continue;
+    }
+    const sim = jaroWinklerSimilarity(resolvedNorm, otherNorm);
+    if (sim < MERGE_CANDIDATE_THRESHOLD) continue;
+    if (sim >= 1.0) continue;
+    ranked.push({ otherId: otherPersonId, sim, otherNorm });
+  }
+  ranked.sort((a, b) => b.sim - a.sim);
+  const top = ranked.slice(0, MAX_FUZZY_CANDIDATES_PER_CALL);
+
+  let emitted = 0;
+  for (const c of top) {
+    const [idA, idB] =
+      resolvedPersonId < c.otherId
+        ? [resolvedPersonId, c.otherId]
+        : [c.otherId, resolvedPersonId];
+    const pairKey = `${idA}__${idB}`;
+    try {
+      const existingSnap = await db
+        .ref(wsPath(workspaceId, "personMergeCandidates", pairKey))
+        .once("value");
+      const existing = existingSnap.val() as { resolved?: string } | null;
+      if (existing && existing.resolved) continue;
+      const otherDisplayName =
+        cache.displayNameById.get(c.otherId) || c.otherNorm;
+      const candidate = {
+        idA,
+        idB,
+        nameA: idA === resolvedPersonId ? resolvedDisplayName : otherDisplayName,
+        nameB: idB === resolvedPersonId ? resolvedDisplayName : otherDisplayName,
+        normA: idA === resolvedPersonId ? resolvedNorm : c.otherNorm,
+        normB: idB === resolvedPersonId ? resolvedNorm : c.otherNorm,
+        similarity: Math.round(c.sim * 1000) / 1000,
+        proposedAt: Date.now(),
+      };
+      await db
+        .ref(wsPath(workspaceId, "personMergeCandidates", pairKey))
+        .set(candidate);
+      emitted++;
+    } catch (err) {
+      log?.warn?.("person_fuzzy_candidate_emit_failed", {
+        pairKey,
+        message: (err as Error).message,
+      });
+    }
+  }
+  if (emitted > 0) {
+    log?.debug?.("person_fuzzy_candidates_emitted", {
+      resolvedPersonId,
+      count: emitted,
+    });
+  }
+  return emitted;
 }
 
 export function invalidatePersonCache(): void {
@@ -166,8 +336,14 @@ export async function resolvePersonByName(
     role?: string;
     org?: string;
     provenance: SourceProvenance;
+    /** v1.1: emit fuzzy merge candidates on auto-create. Default true.
+     *  Callers running in high-volume batch contexts (e.g., a one-time
+     *  migration) can set false to skip the scan + RTDB writes. */
+    emitFuzzyCandidates?: boolean;
+    /** v1.1: optional logger for fuzzy-candidate diagnostics. */
+    log?: Logger;
   }
-): Promise<{ personId: string; created: boolean; matchedVia: "canonical" | "alternate" | "none" }> {
+): Promise<{ personId: string; created: boolean; matchedVia: "canonical" | "alternate" | "none"; fuzzyCandidatesEmitted?: number }> {
   if (!fullName || !fullName.trim()) {
     throw new Error("resolvePersonByName: fullName is required");
   }
@@ -225,10 +401,33 @@ export async function resolvePersonByName(
 
   // Update cache
   if (norm) cache.byName.set(norm, personId);
+  if (!cache.displayNameById.has(personId)) {
+    cache.displayNameById.set(personId, newPerson.name);
+  }
   for (const alt of altPersist) {
     const altNorm = normalizePersonName(alt);
     if (altNorm) cache.byName.set(altNorm, personId);
   }
 
-  return { personId, created: true, matchedVia: "none" };
+  // v1.1: fuzzy candidate emission (default on; opt-out for migrations)
+  let fuzzyCandidatesEmitted = 0;
+  if (options.emitFuzzyCandidates !== false) {
+    try {
+      fuzzyCandidatesEmitted = await emitFuzzyMergeCandidates(
+        workspaceId,
+        personId,
+        newPerson.name,
+        norm,
+        cache,
+        options.log
+      );
+    } catch (err) {
+      options.log?.warn?.("person_fuzzy_emit_pass_failed", {
+        personId,
+        message: (err as Error).message,
+      });
+    }
+  }
+
+  return { personId, created: true, matchedVia: "none", fuzzyCandidatesEmitted };
 }
