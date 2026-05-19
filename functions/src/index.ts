@@ -81,3 +81,8 @@ export { senateLdaWeekly } from "./jobs/senateLdaWeekly";
 // R-2/P-1 PDF walk; PE-level Signals; reuses framework/pdfExtractor)
 export { triggerDodComptrollerSync } from "./http/triggerDodComptrollerSync";
 export { dodComptrollerMonthly } from "./jobs/dodComptrollerMonthly";
+
+// Plum Book / Federal Vacancies (Phase 8.6.10 — GAO FVRA vacancy reports
+// via PDF walk; emits vacancy_alert Signals; reuses framework/pdfExtractor)
+export { triggerPlumBookSync } from "./http/triggerPlumBookSync";
+export { plumBookMonthly } from "./jobs/plumBookMonthly";

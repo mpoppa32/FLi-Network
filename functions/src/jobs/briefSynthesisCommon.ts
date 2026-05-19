@@ -1286,7 +1286,7 @@ export async function synthesizeBrief(
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.18",
+    scoringVersion: "1.19",
     weightsApplied: SCORING_WEIGHTS,
   };
 

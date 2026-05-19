@@ -665,6 +665,52 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       // signal (recommendations vs. meeting minutes). Bumped above the
       // committee_meeting baseline (0.5) without being noise-level.
       return { score: 0.6, why: "FACA committee recommendation issued" };
+    case "vacancy_alert": {
+      // v1.19 — Plum Book / FVRA v1.0. Senate-confirmable position
+      // vacancies have escalating BD relevance based on time-vacant
+      // and statutory-limit posture. Acting officials past the 210-day
+      // statutory limit are operator-actionable in the next-call sense:
+      // the position is overdue for resolution, the operator's
+      // counterpart may be in flux.
+      const position = (attrs.position as string | undefined) || "Vacancy";
+      const agency = (attrs.agency as string | undefined) || "";
+      const daysVacant = Number(attrs.daysVacant ?? 0);
+      const pastLimit = !!attrs.pastStatutoryLimit;
+      const hasActing = !!attrs.actingOfficial;
+      const agencyLabel = agency ? agency : "an agency";
+
+      if (pastLimit) {
+        return {
+          score: 0.85,
+          why: `${agencyLabel} — ${position} past statutory limit${daysVacant > 0 ? " (" + daysVacant + "d)" : ""}`,
+        };
+      }
+      if (daysVacant >= 300) {
+        return {
+          score: 0.75,
+          why: `${agencyLabel} — ${position} ${daysVacant}d vacant`,
+        };
+      }
+      if (daysVacant >= 200) {
+        return {
+          score: 0.65,
+          why: `${agencyLabel} — ${position} ${daysVacant}d vacant (approaching 210d limit)`,
+        };
+      }
+      if (daysVacant >= 100) {
+        return {
+          score: 0.5,
+          why: `${agencyLabel} — ${position} ${daysVacant}d vacant`,
+        };
+      }
+      if (hasActing) {
+        return {
+          score: 0.45,
+          why: `${agencyLabel} — ${position} (acting designated)`,
+        };
+      }
+      return { score: 0.35, why: `${agencyLabel} vacancy alert: ${position}` };
+    }
     default:
       return { score: 0.3, why: `${signal.type.replace(/_/g, " ")} signal` };
   }

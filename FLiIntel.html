@@ -36067,6 +36067,7 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'budget_change') return window._budgetChangeTouchRow(sig, attrs);
       if (sig.type === 'analysis_publication') return window._analysisPublicationTouchRow(sig, attrs);
       if (sig.type === 'service_news') return window._serviceNewsTouchRow(sig, attrs);
+      if (sig.type === 'vacancy_alert') return window._vacancyAlertTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36489,6 +36490,53 @@ window._advisoryBodyReportTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// Plum Book / FVRA v1.0: enriched touch-row renderer for vacancy_alert
+// Signals. Title = position (e.g., "Under Secretary of Defense for
+// Acquisition and Sustainment"). Subtitle composes agency + days
+// vacant + acting official when known. Right chip is "PAST LIMIT" in
+// deep red when pastStatutoryLimit, otherwise the days_vacant count
+// or "VACANCY" in mauve. Click opens the FVRA report PDF.
+window._vacancyAlertTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var position = (attrs.position || 'Vacant position').toString();
+  var agency = (attrs.agency || '').toString();
+  var actingOfficial = (attrs.actingOfficial || '').toString();
+  var daysVacant = Number(attrs.daysVacant || 0);
+  var pastLimit = !!attrs.pastStatutoryLimit;
+  var vacantSince = Number(attrs.vacantSince || 0);
+  var reportUrl = (attrs.reportUrl || '').toString();
+
+  var titleHtml = esc(position.slice(0, 180));
+
+  var subParts = [];
+  if (agency) subParts.push(esc(agency));
+  if (vacantSince > 0) {
+    subParts.push('vacant since ' + new Date(vacantSince).toLocaleDateString());
+  }
+  if (daysVacant > 0) subParts.push(daysVacant + 'd vacant');
+  if (actingOfficial) subParts.push('acting: ' + esc(actingOfficial));
+  var subtitleHtml = subParts.join(' · ');
+
+  var rightHtml;
+  if (pastLimit) {
+    rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;color:#9a4040;background:rgba(154,64,64,.12);border:1px solid #9a4040;padding:2px 7px;border-radius:2px;letter-spacing:.08em;white-space:nowrap;text-transform:uppercase">Past limit</span>';
+  } else if (daysVacant >= 200) {
+    rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#d4823a;background:rgba(212,130,58,.10);border:1px solid rgba(212,130,58,.40);padding:2px 7px;border-radius:2px;letter-spacing:.08em;white-space:nowrap;text-transform:uppercase">' + daysVacant + 'd</span>';
+  } else {
+    rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#b56ba3;background:rgba(181,107,163,.10);border:1px solid rgba(181,107,163,.35);padding:2px 7px;border-radius:2px;letter-spacing:.08em;white-space:nowrap;text-transform:uppercase">Vacancy</span>';
+  }
+
+  var clickUrl = reportUrl || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
@@ -37406,7 +37454,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'gao_reports',  label: 'GAO Reports',         cadenceMin: 1440, accent: '#9a4040' },
   { key: 'advisory_boards', label: 'Advisory Boards (DSB/DBB/DIB)', cadenceMin: 10080, accent: '#5e7a9c' },
   { key: 'senate_lda',      label: 'Senate Lobbying Disclosure', cadenceMin: 10080, accent: '#a87c5a' },
-  { key: 'dod_comptroller', label: 'DoD Comptroller Budget',     cadenceMin: 43200, accent: '#9c8a5e' }
+  { key: 'dod_comptroller', label: 'DoD Comptroller Budget',     cadenceMin: 43200, accent: '#9c8a5e' },
+  { key: 'plum_book',       label: 'Plum Book / Federal Vacancies', cadenceMin: 43200, accent: '#b56ba3' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -38172,7 +38221,8 @@ window._renderOnboardStep3 = function() {
     { key:'gao_reports', label:'GAO Reports (Tier 2)', desc:'GAO programmatic audit/evaluation reports → oversight_finding Signals; defense-keyword filtered · Daily · Keyless', color:'#9a4040' },
     { key:'advisory_boards', label:'Advisory Boards — DSB/DBB/DIB (Tier 2)', desc:'Defense Science / Business / Innovation Board reports → advisory_body_report Signals; PDF deep-parse for findings + recommendations + programs + contractors · Weekly · Keyless', color:'#5e7a9c' },
     { key:'senate_lda', label:'Senate Lobbying Disclosure (Tier 2)', desc:'LD-1/LD-2 filings from lda.senate.gov → lobbying_disclosure Signals; defense issue-code filtered; ties competitor lobbying spend + revolving-door lobbyists to specific issues + agencies · Weekly · Keyless', color:'#a87c5a' },
-    { key:'dod_comptroller', label:'DoD Comptroller Budget (Tier 2)', desc:'Annual R-2 / P-1 budget justification books from comptroller.defense.gov → budget_change Signals; PE-level catalog with title + narrative; v1.0 baseline pass, v1.1 will add FY funding tables + YoY deltas · Monthly · Keyless', color:'#9c8a5e' }
+    { key:'dod_comptroller', label:'DoD Comptroller Budget (Tier 2)', desc:'Annual R-2 / P-1 budget justification books from comptroller.defense.gov → budget_change Signals; PE-level catalog with title + narrative; v1.0 baseline pass, v1.1 will add FY funding tables + YoY deltas · Monthly · Keyless', color:'#9c8a5e' },
+    { key:'plum_book', label:'Plum Book / Federal Vacancies (Tier 2)', desc:'GAO Federal Vacancies Reform Act reports → vacancy_alert Signals per Senate-confirmable position; flags acting officials past the 210-day statutory limit · Monthly · Keyless', color:'#b56ba3' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -38190,7 +38240,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda','dod_comptroller'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda','dod_comptroller','plum_book'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });
