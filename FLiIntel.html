@@ -36068,6 +36068,7 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'analysis_publication') return window._analysisPublicationTouchRow(sig, attrs);
       if (sig.type === 'service_news') return window._serviceNewsTouchRow(sig, attrs);
       if (sig.type === 'vacancy_alert') return window._vacancyAlertTouchRow(sig, attrs);
+      if (sig.type === 'fms_notification') return window._fmsNotificationTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36490,6 +36491,68 @@ window._advisoryBodyReportTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// DSCA FMS v1.0: enriched touch-row renderer for fms_notification
+// Signals. Title is platform + sale value. Subtitle composes buyer
+// country + prime contractor + transmittal number. Right chip is the
+// dollar magnitude in B/M format, color-keyed by tier (red for $5B+,
+// amber for $1B+, light blue otherwise). MDE (Major Defense
+// Equipment) classification gets an additional small badge.
+window._fmsNotificationTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var country = (attrs.country || 'foreign government').toString();
+  var platform = (attrs.platform || 'platform').toString();
+  var prime = (attrs.primeContractor || '').toString();
+  var transmittal = (attrs.transmittalNumber || '').toString();
+  var dv = Number(attrs.dollarValue || 0);
+  var isMde = !!attrs.isMde;
+  var url = (attrs.url || '').toString();
+
+  // Title: country + platform
+  var titleHtml = esc(country + ': ' + platform).slice(0, 200);
+
+  // Subtitle: prime + transmittal + MDE
+  var subParts = [];
+  if (prime) subParts.push(esc(prime));
+  if (transmittal) subParts.push(esc(transmittal));
+  if (isMde) subParts.push('<span style="font-family:\'IBM Plex Mono\',monospace;font-size:8px;font-weight:700;color:#d4823a;border:1px solid #d4823a;padding:0 4px;border-radius:2px;letter-spacing:.06em">MDE</span>');
+  var subtitleHtml = subParts.join(' · ');
+
+  // Right chip: dollar value, color-keyed by tier
+  var $label, fg, bg;
+  if (dv >= 5_000_000_000) {
+    $label = '$' + (dv / 1e9).toFixed(1) + 'B';
+    fg = '#9a4040';
+    bg = 'rgba(154,64,64,.12)';
+  } else if (dv >= 1_000_000_000) {
+    $label = '$' + (dv / 1e9).toFixed(2) + 'B';
+    fg = '#d4823a';
+    bg = 'rgba(212,130,58,.12)';
+  } else if (dv >= 100_000_000) {
+    $label = '$' + Math.round(dv / 1e6) + 'M';
+    fg = '#7ab8d8';
+    bg = 'rgba(122,184,216,.10)';
+  } else if (dv > 0) {
+    $label = '$' + (dv / 1e6).toFixed(1) + 'M';
+    fg = '#7ab8d8';
+    bg = 'rgba(122,184,216,.08)';
+  } else {
+    $label = 'FMS';
+    fg = '#7ab8d8';
+    bg = 'rgba(122,184,216,.08)';
+  }
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;color:' + fg + ';background:' + bg + ';border:1px solid ' + fg + '40;padding:2px 7px;border-radius:2px;letter-spacing:.06em;white-space:nowrap">' + esc($label) + '</span>';
+
+  var clickUrl = url || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
