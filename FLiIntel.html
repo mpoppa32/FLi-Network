@@ -36069,6 +36069,7 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'service_news') return window._serviceNewsTouchRow(sig, attrs);
       if (sig.type === 'vacancy_alert') return window._vacancyAlertTouchRow(sig, attrs);
       if (sig.type === 'fms_notification') return window._fmsNotificationTouchRow(sig, attrs);
+      if (sig.type === 'material_event') return window._materialEventTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -36491,6 +36492,75 @@ window._advisoryBodyReportTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + boardPalette.bg + ';color:' + boardPalette.fg + ';border:1px solid ' + boardPalette.fg + '40">' + esc(boardLabel) + '</span>';
 
   var clickUrl = attrs.reportPdfUrl || attrs.url || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// SEC EDGAR 8-K v1.0: enriched touch-row renderer for material_event
+// Signals. Surfaces the filer (defense prime), item codes with their
+// descriptions, and a color-keyed right chip for the dominant item
+// (1.01 = material contract = green; 5.02 = exec transition = amber;
+// 4.01/4.02 = accounting issue = deep red; 8.01 = other material).
+// Click opens the SEC EDGAR document URL.
+window._materialEventTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var filer = (attrs.filerName || 'SEC filer').toString();
+  var ticker = (attrs.ticker || '').toString();
+  var items = Array.isArray(attrs.items) ? attrs.items : [];
+  var itemDescriptions = Array.isArray(attrs.itemDescriptions) ? attrs.itemDescriptions : [];
+  var summary = (attrs.summary || '').toString();
+  var formType = (attrs.formType || '8-K').toString();
+  var filingDate = (attrs.filingDate || '').toString();
+  var documentUrl = (attrs.documentUrl || '').toString();
+
+  // Title: filer (with ticker)
+  var titleText = filer + (ticker ? ' (' + ticker + ')' : '');
+  var titleHtml = esc(titleText.slice(0, 180));
+
+  // Subtitle: form type + filing date + first item description
+  var subParts = [];
+  subParts.push(formType);
+  if (filingDate) subParts.push(filingDate);
+  if (items.length > 0) {
+    var itemSummary = items.slice(0, 3).map(function(c, i){
+      var d = itemDescriptions[i] || '';
+      return esc(c) + (d ? ' ' + esc(d.slice(0, 60)) : '');
+    }).join(', ');
+    if (items.length > 3) itemSummary += ', +' + (items.length - 3) + ' more';
+    subParts.push(itemSummary);
+  } else if (summary) {
+    subParts.push(esc(summary.slice(0, 120)));
+  }
+  var subtitleHtml = subParts.join(' · ');
+
+  // Right chip: dominant item code with palette
+  var chipLabel, fg, bg;
+  if (items.indexOf('1.01') >= 0) {
+    chipLabel = 'MATL CONTRACT'; fg = '#3a8a5c'; bg = 'rgba(58,138,92,.12)';
+  } else if (items.indexOf('5.02') >= 0) {
+    chipLabel = 'EXEC CHG'; fg = '#d4823a'; bg = 'rgba(212,130,58,.12)';
+  } else if (items.indexOf('4.01') >= 0 || items.indexOf('4.02') >= 0) {
+    chipLabel = 'ACCT ISSUE'; fg = '#9a4040'; bg = 'rgba(154,64,64,.12)';
+  } else if (items.indexOf('2.01') >= 0 || items.indexOf('2.02') >= 0) {
+    chipLabel = 'ASSET / EARN'; fg = '#5fb3b8'; bg = 'rgba(95,179,184,.10)';
+  } else if (items.indexOf('3.02') >= 0 || items.indexOf('3.03') >= 0) {
+    chipLabel = 'EQUITY'; fg = '#8b5cf6'; bg = 'rgba(139,92,246,.10)';
+  } else if (items.indexOf('7.01') >= 0 || items.indexOf('8.01') >= 0) {
+    chipLabel = items.indexOf('7.01') >= 0 ? 'REG FD' : 'OTHER MATL';
+    fg = '#7d8497'; bg = 'rgba(125,132,151,.10)';
+  } else {
+    chipLabel = formType.toUpperCase();
+    fg = '#8b5cf6'; bg = 'rgba(139,92,246,.08)';
+  }
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:700;color:' + fg + ';background:' + bg + ';border:1px solid ' + fg + '40;padding:2px 7px;border-radius:2px;letter-spacing:.06em;white-space:nowrap">' + esc(chipLabel) + '</span>';
+
+  var clickUrl = documentUrl || (sig.source && sig.source.url) || '';
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
