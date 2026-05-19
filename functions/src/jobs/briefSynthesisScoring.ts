@@ -78,6 +78,12 @@ export interface BriefScoringContext {
    *  across sources, which is operator-actionable when their name shows
    *  up in any Signal. */
   outboundEdgeLabelCountByPerson?: Map<string, number>;
+  /** v1.21: count of incoming acting_at Edges per Org id (from
+   *  plumBook v1.1 acting-official Person resolution). A non-zero count
+   *  means the workspace has a designated-acting Person currently at
+   *  that institution — high BD-relevance because the customer-side
+   *  leadership is literally in flux. */
+  actingAtIncomingCountByOrg?: Map<string, number>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

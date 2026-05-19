@@ -144,6 +144,10 @@ export interface BriefOutput {
     /** v1.20: count of Signal items bumped for touching a Person with
      *  3+ distinct outbound institutional-role Edges */
     weightyPersonTouchBumps?: number;
+    /** v1.21: count of Signal items bumped for touching an Org with
+     *  current acting_at Edges (workspace Person is designated acting
+     *  at that institution) */
+    actingAtTouchBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -252,26 +256,27 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     else if (trajLc === "falling") postureFallingIds.add(nodeId);
   }
 
-  // v1.17: build Map<orgId, count of incoming formerly_at Edges>. Used
-  // by the revolving-door touch warning to bump Signals touching Orgs
-  // that have lobbyist Persons in the workspace pointing back at them.
+  // v1.17: Map<orgId, count of incoming formerly_at Edges>.
+  // v1.21: Map<orgId, count of incoming acting_at Edges>.
+  // v1.20: per-Person count of DISTINCT outbound Edge labels.
+  // All three built in a single edge-walk pass.
   const formerlyAtIncomingCountByOrg = new Map<string, number>();
-  // v1.20: per-Person count of DISTINCT outbound Edge labels. Persons
-  // with multiple institutional roles (lobbyist_at, formerly_at,
-  // member_of, acting_at) carry cross-source institutional weight.
+  const actingAtIncomingCountByOrg = new Map<string, number>();
   const outboundEdgesByPerson = new Map<string, Set<string>>();
   for (const edge of Object.values(edges)) {
     if (!edge) continue;
-    if (edge.label === "formerly_at") {
-      const target = edge.target;
-      if (target) {
-        formerlyAtIncomingCountByOrg.set(
-          target,
-          (formerlyAtIncomingCountByOrg.get(target) || 0) + 1
-        );
-      }
+    if (edge.label === "formerly_at" && edge.target) {
+      formerlyAtIncomingCountByOrg.set(
+        edge.target,
+        (formerlyAtIncomingCountByOrg.get(edge.target) || 0) + 1
+      );
     }
-    // v1.20: track person-side Edge labels
+    if (edge.label === "acting_at" && edge.target) {
+      actingAtIncomingCountByOrg.set(
+        edge.target,
+        (actingAtIncomingCountByOrg.get(edge.target) || 0) + 1
+      );
+    }
     if (edge.source && edge.label && edge.dir !== "from") {
       if (!outboundEdgesByPerson.has(edge.source)) {
         outboundEdgesByPerson.set(edge.source, new Set());
@@ -303,6 +308,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     postureFallingIds,
     formerlyAtIncomingCountByOrg,
     outboundEdgeLabelCountByPerson,
+    actingAtIncomingCountByOrg,
   };
 }
 
@@ -955,6 +961,42 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10c. v1.21 — acting_at touch bump.
+  //
+  // Mirror of the v1.17 revolving-door touch warning, keyed on
+  // `acting_at` Edges from plumBook v1.1. When a Signal touches an Org
+  // that has a designated-acting Person currently at it, bump because
+  // the customer-side leadership is literally in flux right now.
+  //
+  // 1 incoming acting_at edge:   +0.08 magnitude (single acting role)
+  // 2+ incoming acting_at edges: +0.12 (multiple acting officials =
+  //                                     deep leadership turnover)
+  let actingAtTouchBumps = 0;
+  const actingIncoming = ctx.actingAtIncomingCountByOrg;
+  if (sigItems.length > 0 && actingIncoming && actingIncoming.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxIncoming = 0;
+      for (const id of allIds) {
+        const c = actingIncoming.get(id) || 0;
+        if (c > maxIncoming) maxIncoming = c;
+      }
+      if (maxIncoming === 0) continue;
+      const bump = maxIncoming >= 2 ? 0.12 : 0.08;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Acting-leadership touch — ${maxIncoming} acting official(s) currently designated at a touched institution`
+      );
+      actingAtTouchBumps++;
+    }
+  }
+
   // 3.10b. v1.20 — high-institutional-weight Person touch bump.
   //
   // When a Signal touches a Person carrying 3+ distinct outbound Edge
@@ -1348,10 +1390,11 @@ export async function synthesizeBrief(
       revolvingDoorTouchBumps,
       nexusBumps,
       weightyPersonTouchBumps,
+      actingAtTouchBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.20",
+    scoringVersion: "1.21",
     weightsApplied: SCORING_WEIGHTS,
   };
 
