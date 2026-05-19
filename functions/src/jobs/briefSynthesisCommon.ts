@@ -77,6 +77,10 @@ export interface AdversaryRollupEntry {
   /** Active flag — true when the adversary is on a non-terminal pursuit
    *  (matches ctx.activeAdversaryOrgIds), false when only on archived. */
   active: boolean;
+  /** v1.22+: highest-relevance touching Signal title for inline preview. */
+  topSignalTitle?: string | null;
+  /** v1.22+: highest-relevance Signal id (for click-through). */
+  topSignalId?: string | null;
 }
 
 /** Per-customer entry in the Brief Customer Activity Rollup. Same shape
@@ -93,6 +97,9 @@ export interface CustomerRollupEntry {
   /** True when in ctx.customerOrgIds (active watchlist); false when only
    *  in ctx.customerHistoryOrgIds (historical pursuits). */
   active: boolean;
+  /** v1.22+: highest-relevance touching Signal title for inline preview. */
+  topSignalTitle?: string | null;
+  topSignalId?: string | null;
 }
 
 export interface BriefOutput {
@@ -1146,7 +1153,7 @@ export async function synthesizeBrief(
     {
       orgId: string;
       orgName: string | null;
-      touches: Array<{ sigId: string; at: number; relevance: number; system: string }>;
+      touches: Array<{ sigId: string; at: number; relevance: number; system: string; title: string }>;
       sources: Set<string>;
       active: boolean;
     }
@@ -1200,6 +1207,7 @@ export async function synthesizeBrief(
           at: sig.occurredAt || 0,
           relevance: item.relevance.total,
           system,
+          title: (item.title || "").slice(0, 160),
         });
         entry.sources.add(system);
       }
@@ -1211,6 +1219,10 @@ export async function synthesizeBrief(
     if (entry.touches.length === 0) continue;
     entry.touches.sort((a, b) => b.at - a.at);
     const totalRelevance = entry.touches.reduce((s, t) => s + t.relevance, 0);
+    // Top signal = highest relevance.total across this Org's touches
+    const topTouch = entry.touches.reduce((best, t) =>
+      t.relevance > best.relevance ? t : best
+    );
     adversaryRollup.push({
       orgId: entry.orgId,
       orgName: entry.orgName,
@@ -1220,6 +1232,8 @@ export async function synthesizeBrief(
       sources: Array.from(entry.sources).sort(),
       totalRelevance: Math.round(totalRelevance * 100) / 100,
       active: entry.active,
+      topSignalTitle: topTouch.title || null,
+      topSignalId: topTouch.sigId,
     });
   }
   // Sort: active first, then totalRelevance desc, then signalCount tiebreak
@@ -1265,7 +1279,7 @@ export async function synthesizeBrief(
     {
       orgId: string;
       orgName: string | null;
-      touches: Array<{ sigId: string; at: number; relevance: number; system: string }>;
+      touches: Array<{ sigId: string; at: number; relevance: number; system: string; title: string }>;
       sources: Set<string>;
       active: boolean;
     }
@@ -1297,6 +1311,7 @@ export async function synthesizeBrief(
           at: sig.occurredAt || 0,
           relevance: item.relevance.total,
           system,
+          title: (item.title || "").slice(0, 160),
         });
         entry.sources.add(system);
       }
@@ -1308,6 +1323,9 @@ export async function synthesizeBrief(
     if (entry.touches.length === 0) continue;
     entry.touches.sort((a, b) => b.at - a.at);
     const totalRelevance = entry.touches.reduce((s, t) => s + t.relevance, 0);
+    const topTouch = entry.touches.reduce((best, t) =>
+      t.relevance > best.relevance ? t : best
+    );
     customerRollup.push({
       orgId: entry.orgId,
       orgName: entry.orgName,
@@ -1317,6 +1335,8 @@ export async function synthesizeBrief(
       sources: Array.from(entry.sources).sort(),
       totalRelevance: Math.round(totalRelevance * 100) / 100,
       active: entry.active,
+      topSignalTitle: topTouch.title || null,
+      topSignalId: topTouch.sigId,
     });
   }
   customerRollup.sort((a, b) => {
