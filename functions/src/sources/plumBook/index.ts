@@ -40,6 +40,9 @@ export interface PlumBookSyncResult {
   signalsUnchanged: number;
   agencyOrgsResolvedTotal: number;
   pastLimitVacanciesTotal: number;
+  /** v1.1: acting-official Person resolution totals. */
+  actingOfficialPersonsResolvedTotal: number;
+  actingAtEdgesUpsertedTotal: number;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
   sourceVersion: string;
@@ -71,6 +74,8 @@ export async function syncWorkspace(
     signalsUnchanged: 0,
     agencyOrgsResolvedTotal: 0,
     pastLimitVacanciesTotal: 0,
+    actingOfficialPersonsResolvedTotal: 0,
+    actingAtEdgesUpsertedTotal: 0,
     errors: [],
     apiCallsCount: 0,
     sourceVersion: SOURCE_VERSION,
@@ -150,6 +155,8 @@ export async function syncWorkspace(
               else if (r.action === "updated") result.signalsUpdated++;
               else result.signalsUnchanged++;
               if (r.agencyOrgResolved) result.agencyOrgsResolvedTotal++;
+              if (r.actingOfficialPersonResolved) result.actingOfficialPersonsResolvedTotal++;
+              if (r.actingAtEdgeUpserted) result.actingAtEdgesUpsertedTotal++;
             } catch (err) {
               result.errors.push({
                 ref: `vacancy:${candidate.guid}:${vacancy.position}`,
