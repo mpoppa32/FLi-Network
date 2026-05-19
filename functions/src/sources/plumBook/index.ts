@@ -9,12 +9,18 @@ import {
 import { categorizeError } from "../../framework/errors";
 import { loadConfig, validateConfig, type PlumBookConfig } from "./config";
 import { fetchIndex, type VacancyReportCandidate } from "./client";
-import { fetchAndExtractPdf } from "../../framework/pdfExtractor";
-import { parseVacancyReportText } from "./vacancyParser";
+import {
+  fetchAndExtractPdf,
+  fetchAndExtractPdfWithPositional,
+} from "../../framework/pdfExtractor";
+import {
+  parseVacancyReportText,
+  parseVacancyReportPositional,
+} from "./vacancyParser";
 import { upsertVacancySignal } from "./mapper";
 
 export const SOURCE_NAME = "plum_book";
-export const SOURCE_VERSION = "1.0.0";
+export const SOURCE_VERSION = "1.2.0";
 
 export interface PlumBookSyncOptions {
   dryRun?: boolean;
@@ -43,6 +49,11 @@ export interface PlumBookSyncResult {
   /** v1.1: acting-official Person resolution totals. */
   actingOfficialPersonsResolvedTotal: number;
   actingAtEdgesUpsertedTotal: number;
+  /** v1.2: count of PDFs where the positional parser returned vacancies
+   *  (vs. text-anchor fallback). Only populated when
+   *  config.usePositionalExtraction is true. */
+  positionalPdfsHit?: number;
+  positionalFallbacksToText?: number;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
   sourceVersion: string;
@@ -111,26 +122,74 @@ export async function syncWorkspace(
       options.minDaysVacantOverride ?? config.minDaysVacantToEmit ?? 0;
 
     if (!options.dryRun) {
+      const usePositional = !!config.usePositionalExtraction;
+      if (usePositional) {
+        result.positionalPdfsHit = 0;
+        result.positionalFallbacksToText = 0;
+      }
       for (const candidate of toFetch) {
         try {
-          const extraction = await fetchAndExtractPdf(
-            candidate.url,
-            {
-              source: "plum_book",
-              maxBytes: config.maxPdfBytes,
-              timeoutMs: config.pdfExtractionTimeoutMs,
-              maxTextChars: 1_000_000,
-            },
-            log
-          );
+          let extractionText: string;
+          let extractionBytes: number;
+          let extractionPages: number;
+          let positionalItems:
+            | import("../../framework/pdfExtractor").PositionalPdfItem[]
+            | undefined;
+          if (usePositional) {
+            const extraction = await fetchAndExtractPdfWithPositional(
+              candidate.url,
+              {
+                source: "plum_book",
+                maxBytes: config.maxPdfBytes,
+                timeoutMs: config.pdfExtractionTimeoutMs,
+                maxTextChars: 1_000_000,
+              },
+              log
+            );
+            extractionText = extraction.text;
+            extractionBytes = extraction.bytes;
+            extractionPages = extraction.pages;
+            positionalItems = extraction.positionalItems;
+          } else {
+            const extraction = await fetchAndExtractPdf(
+              candidate.url,
+              {
+                source: "plum_book",
+                maxBytes: config.maxPdfBytes,
+                timeoutMs: config.pdfExtractionTimeoutMs,
+                maxTextChars: 1_000_000,
+              },
+              log
+            );
+            extractionText = extraction.text;
+            extractionBytes = extraction.bytes;
+            extractionPages = extraction.pages;
+          }
           result.apiCallsCount++;
           result.pdfsDownloaded++;
-          result.pdfBytesDownloaded += extraction.bytes;
-          result.pdfPagesProcessed += extraction.pages;
+          result.pdfBytesDownloaded += extractionBytes;
+          result.pdfPagesProcessed += extractionPages;
 
-          const parsed = parseVacancyReportText(extraction.text, {
+          // Positional first when enabled, fallback to text-anchor regex.
+          let parsed = parseVacancyReportText(extractionText, {
             maxVacanciesPerBook: config.maxVacanciesPerPdf,
           });
+          if (usePositional && positionalItems && positionalItems.length > 0) {
+            const positionalParsed = parseVacancyReportPositional(
+              positionalItems,
+              {
+                maxVacanciesPerBook: config.maxVacanciesPerPdf,
+                reportDate: parsed.reportDate ?? candidate.reportDateMs ?? null,
+              }
+            );
+            if (positionalParsed.vacancies.length > 0) {
+              parsed = positionalParsed;
+              result.positionalPdfsHit = (result.positionalPdfsHit ?? 0) + 1;
+            } else {
+              result.positionalFallbacksToText =
+                (result.positionalFallbacksToText ?? 0) + 1;
+            }
+          }
           result.vacanciesParsed += parsed.vacancies.length;
 
           for (const vacancy of parsed.vacancies) {
@@ -198,6 +257,8 @@ export async function syncWorkspace(
       vacanciesEmitted: result.vacanciesEmitted,
       pastLimitVacanciesTotal: result.pastLimitVacanciesTotal,
       signalsCreated: result.signalsCreated,
+      positionalPdfsHit: result.positionalPdfsHit,
+      positionalFallbacksToText: result.positionalFallbacksToText,
       errors: result.errors.length,
     });
   } catch (err) {

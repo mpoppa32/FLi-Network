@@ -36,6 +36,14 @@ export interface PlumBookConfig {
    *  (0 = emit all). The FVRA statutory limit is 210 days; higher values
    *  filter to genuinely-past-deadline vacancies. */
   minDaysVacantToEmit?: number;
+  /** v1.2 (opt-in): use positional PDF extraction (pdfjs-via-pdf-parse
+   *  with the per-page render hook) to reconstruct tabular FVRA layouts.
+   *  Mirrors the dod_comptroller v1.2 pattern. When true the parser runs
+   *  the positional table-row reconstruction FIRST and only falls back to
+   *  the text-anchor regex path when the positional pass returns zero
+   *  vacancies. Default false — operator opt-in after validating against
+   *  the current GAO publication format. */
+  usePositionalExtraction?: boolean;
   disabled?: boolean;
   initializedAt?: number;
 }
@@ -49,6 +57,7 @@ export const DEFAULT_PLUM_BOOK_CONFIG: PlumBookConfig = {
   pdfExtractionTimeoutMs: 45_000,
   maxVacanciesPerPdf: 200,
   minDaysVacantToEmit: 0,
+  usePositionalExtraction: false,
 };
 
 export async function loadConfig(

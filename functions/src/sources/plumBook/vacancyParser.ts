@@ -1,4 +1,4 @@
-// Plum Book / FVRA — vacancy report PDF parser (v1.0)
+// Plum Book / FVRA — vacancy report PDF parser (v1.0 text path + v1.2 positional)
 //
 // GAO Federal Vacancies Reform Act reports list Senate-confirmable
 // positions with their vacancy state. Typical row layout (after PDF text
@@ -22,6 +22,16 @@
 //
 // Best-effort by design. Operator validation will tune the parser when
 // run against actual GAO PDFs.
+//
+// v1.2 (opt-in via config.usePositionalExtraction) adds a positional
+// table-row reconstruction path. The GAO occasionally publishes the
+// FVRA tracker as a tabular layout where text-reflow shuffles row data
+// into a single linear string and the regex-anchor approach breaks. The
+// positional parser uses pdfjs item x/y coordinates (captured by
+// framework/pdfExtractor.fetchAndExtractPdfWithPositional) to group
+// items into Y-banded rows then slot into column buckets by X.
+
+import type { PositionalPdfItem } from "../../framework/pdfExtractor";
 
 const POSITION_TITLE_PATTERNS = [
   /(?:Under|Assistant|Deputy)\s+Secretary\s+of\s+[A-Z][a-zA-Z]+/g,
@@ -214,4 +224,240 @@ export function parseVacancyReportText(
   }
 
   return { reportDate, vacancies, flags };
+}
+
+// ─── v1.2: positional table-row reconstruction ──────────────────────────
+
+/**
+ * v1.2: parse FVRA vacancies from positional pdfjs items by reconstructing
+ * table rows. Works when GAO publishes the tracker as a real table where
+ * text-reflow loses row boundaries. Returns [] when no header row can be
+ * located on any page — caller should then fall back to the text-anchor
+ * regex path.
+ */
+export function parseVacancyReportPositional(
+  positionalItems: PositionalPdfItem[],
+  options: { maxVacanciesPerBook?: number; reportDate?: number | null } = {}
+): ParsedVacancyReport {
+  const flags: string[] = [];
+  const vacancies: ParsedVacancy[] = [];
+  const maxV = options.maxVacanciesPerBook ?? 200;
+  if (!positionalItems || positionalItems.length === 0) {
+    flags.push("no_positional_items");
+    return { reportDate: options.reportDate ?? null, vacancies, flags };
+  }
+
+  const byPage = new Map<number, PositionalPdfItem[]>();
+  for (const it of positionalItems) {
+    if (!it || typeof it.str !== "string") continue;
+    const arr = byPage.get(it.pageNum) || [];
+    arr.push(it);
+    byPage.set(it.pageNum, arr);
+  }
+
+  let currentAgency: string | null = null;
+  let headerColsCarry: ColumnBounds | null = null;
+
+  for (const [pageNum, items] of byPage) {
+    if (vacancies.length >= maxV) break;
+    const rows = clusterPositionalRows(items);
+    if (rows.length === 0) continue;
+
+    let cols: ColumnBounds | null = headerColsCarry;
+    for (let ri = 0; ri < rows.length; ri++) {
+      if (vacancies.length >= maxV) break;
+      const row = rows[ri];
+      const rowText = row.map((it) => it.str).join(" ").trim();
+      if (!rowText) continue;
+
+      // Detect agency section header (single-cell, agency-pattern match)
+      const agencyMatch = matchAgencyText(rowText);
+      if (agencyMatch && row.length <= 3) {
+        currentAgency = agencyMatch;
+        continue;
+      }
+
+      // Detect column header row
+      const detected = detectColumnHeader(row);
+      if (detected) {
+        cols = detected;
+        headerColsCarry = detected;
+        continue;
+      }
+      if (!cols) continue;
+
+      // Data row — slot items into columns
+      const cells = sliceRowIntoCells(row, cols);
+      if (cells.length < cols.bounds.length) continue;
+      const positionText = collapseWhitespace(cells[cols.positionIdx] || "");
+      if (!positionText || positionText.length < 6) continue;
+      if (!looksLikePositionTitle(positionText)) continue;
+
+      const vacancyDateText = cols.vacancyDateIdx >= 0
+        ? collapseWhitespace(cells[cols.vacancyDateIdx] || "")
+        : "";
+      const actingText = cols.actingIdx >= 0
+        ? collapseWhitespace(cells[cols.actingIdx] || "")
+        : "";
+      const daysText = cols.daysIdx >= 0
+        ? collapseWhitespace(cells[cols.daysIdx] || "")
+        : "";
+      const pastText = cols.pastLimitIdx >= 0
+        ? collapseWhitespace(cells[cols.pastLimitIdx] || "")
+        : "";
+
+      const daysVacantNum = Number(daysText.match(/\d{1,4}/)?.[0]);
+      const daysVacant = Number.isFinite(daysVacantNum) && daysVacantNum >= 0 && daysVacantNum < 10000
+        ? daysVacantNum
+        : null;
+
+      // Dedupe identical (agency, position) entries that can repeat
+      // across pages when the table continues
+      vacancies.push({
+        position: positionText,
+        agency: currentAgency,
+        vacantSinceMs: vacancyDateText ? parseDateFromText(vacancyDateText) : null,
+        actingOfficial: actingText && !/^(none|vacant|—|-)$/i.test(actingText)
+          ? actingText
+          : null,
+        daysVacant,
+        pastStatutoryLimit: /\byes\b/i.test(pastText) || /exceeded/i.test(pastText),
+        offset: -1,
+      });
+    }
+    void pageNum; // kept for potential debug
+  }
+
+  // Dedupe on (agency, position) — same as text-path dedupe
+  const seen = new Set<string>();
+  const deduped: ParsedVacancy[] = [];
+  for (const v of vacancies) {
+    const key = ((v.agency || "_unknown_") + ":" + v.position).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(v);
+  }
+
+  if (deduped.length === 0) flags.push("positional_no_data_rows");
+  return { reportDate: options.reportDate ?? null, vacancies: deduped, flags };
+}
+
+interface ColumnBounds {
+  bounds: number[]; // x-min of each column (n+1 entries; last = +Inf)
+  positionIdx: number;
+  vacancyDateIdx: number;
+  actingIdx: number;
+  daysIdx: number;
+  pastLimitIdx: number;
+}
+
+const Y_BAND = 4; // pdfjs y unit tolerance for same-row grouping
+
+function clusterPositionalRows(items: PositionalPdfItem[]): PositionalPdfItem[][] {
+  if (items.length === 0) return [];
+  const sorted = items.slice().sort((a, b) => b.y - a.y || a.x - b.x);
+  const rows: PositionalPdfItem[][] = [];
+  let curr: PositionalPdfItem[] = [sorted[0]];
+  let bandY = sorted[0].y;
+  for (let i = 1; i < sorted.length; i++) {
+    const it = sorted[i];
+    if (Math.abs(it.y - bandY) <= Y_BAND) {
+      curr.push(it);
+    } else {
+      curr.sort((a, b) => a.x - b.x);
+      rows.push(curr);
+      curr = [it];
+      bandY = it.y;
+    }
+  }
+  if (curr.length > 0) {
+    curr.sort((a, b) => a.x - b.x);
+    rows.push(curr);
+  }
+  return rows;
+}
+
+function detectColumnHeader(row: PositionalPdfItem[]): ColumnBounds | null {
+  // Compose the row joined string lowercased and require it to contain
+  // header anchor tokens
+  const joined = row.map((it) => it.str).join(" ").toLowerCase();
+  const hasPos = /\bposition\b/.test(joined) || /\boffice\b/.test(joined) || /\btitle\b/.test(joined);
+  const hasVac = /\bvacancy\b/.test(joined) || /\bvacant\b/.test(joined) || /\bdate\b/.test(joined);
+  const hasActing = /\bacting\b/.test(joined) || /\bofficial\b/.test(joined);
+  const hasDays = /\bdays\b/.test(joined);
+  if (!(hasPos && hasVac && hasActing)) return null;
+
+  // Each contiguous run of items belongs to one column header. Build the
+  // X-boundary list from item X positions, collapsing adjacent items into
+  // single column anchors.
+  const xs: Array<{ x: number; label: string }> = [];
+  let bufLabel = "";
+  let bufX = -Infinity;
+  for (const it of row) {
+    if (xs.length === 0 || it.x - bufX > 25) {
+      if (bufLabel) xs.push({ x: bufX, label: bufLabel.trim().toLowerCase() });
+      bufLabel = it.str;
+      bufX = it.x;
+    } else {
+      bufLabel += " " + it.str;
+    }
+  }
+  if (bufLabel) xs.push({ x: bufX, label: bufLabel.trim().toLowerCase() });
+  if (xs.length < 4) return null;
+
+  const bounds = xs.map((x) => x.x);
+  bounds.push(Number.POSITIVE_INFINITY);
+
+  const findIdx = (preds: RegExp[]): number => {
+    for (let i = 0; i < xs.length; i++) {
+      for (const p of preds) {
+        if (p.test(xs[i].label)) return i;
+      }
+    }
+    return -1;
+  };
+
+  return {
+    bounds,
+    positionIdx: findIdx([/position/, /office/, /title/]),
+    vacancyDateIdx: findIdx([/vacancy\s*date/, /vacant\s*since/, /date/]),
+    actingIdx: findIdx([/acting/, /official/, /designee/]),
+    daysIdx: findIdx([/days/]),
+    pastLimitIdx: findIdx([/past/, /limit/, /exceeded/, /status/]),
+  };
+}
+
+function sliceRowIntoCells(row: PositionalPdfItem[], cols: ColumnBounds): string[] {
+  const cells: string[] = new Array(cols.bounds.length - 1).fill("");
+  for (const it of row) {
+    // Find which column this item's x falls into
+    for (let ci = 0; ci < cols.bounds.length - 1; ci++) {
+      const lo = cols.bounds[ci] - 10; // slack for x-position jitter
+      const hi = cols.bounds[ci + 1] - 10;
+      if (it.x >= lo && it.x < hi) {
+        cells[ci] = cells[ci] ? cells[ci] + " " + it.str : it.str;
+        break;
+      }
+    }
+  }
+  return cells;
+}
+
+function matchAgencyText(text: string): string | null {
+  for (const pat of AGENCY_HEADER_PATTERNS) {
+    pat.lastIndex = 0;
+    const m = pat.exec(text);
+    if (m && m[1]) return m[1].trim();
+  }
+  return null;
+}
+
+function looksLikePositionTitle(text: string): boolean {
+  for (const pat of POSITION_TITLE_PATTERNS) {
+    pat.lastIndex = 0;
+    if (pat.test(text)) return true;
+  }
+  // Permissive secondary check — many position titles start with common
+  // Senate-confirmable prefixes that the regex set doesn't enumerate.
+  return /^(?:Secretary|Under Secretary|Deputy Secretary|Assistant Secretary|Administrator|Director|Commissioner|Chairman|Chair|Member|Ambassador|Inspector General|Chief|General Counsel|Solicitor|Surgeon General|Comptroller)\b/i.test(text);
 }
