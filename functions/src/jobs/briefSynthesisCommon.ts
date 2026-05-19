@@ -162,6 +162,10 @@ export interface BriefOutput {
     /** v1.22: count of Signal items bumped for touching an Org that
      *  shares trade-association memberships with an active adversary */
     coMembershipBumps?: number;
+    /** v1.23: count of Signal items bumped for touching an Org whose
+     *  this-week touch count is significantly above its trailing
+     *  4-week average (temporal momentum — "just got busy") */
+    temporalMomentumBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1352,6 +1356,112 @@ export async function synthesizeBrief(
     return b.signalCount - a.signalCount;
   });
 
+  // 3.12b. v1.23 — temporal momentum bump.
+  //
+  // When a touched Org's "this week" touch count (current Brief + 6
+  // prior daily Briefs) is significantly above its trailing 4-week
+  // average (3 prior weekly windows), bump items touching that Org.
+  // Surfaces "this Org just got busy" without operator-side trend
+  // analysis. Reads the persisted dailyBrief/{dateKey} rollups, so
+  // it costs ~28 RTDB reads (small Brief JSON, parallel).
+  //
+  //   2.0–3.9x baseline + thisWeek>=3: +0.06 magnitude
+  //   4.0–6.9x baseline:               +0.10
+  //   7.0x+ baseline (or fresh emerge): +0.14
+  //
+  // Floor on denominator (0.5) lets fresh-emergence Orgs (no prior
+  // history) trigger when this-week touch count is genuinely high
+  // (>=3). Capped at magnitude 1.0. Scoped to adversary+customer
+  // Orgs only — those are the rollup-tracked Org classes with
+  // persisted historical signal-count data.
+  let temporalMomentumBumps = 0;
+  const momentumRatioByOrg = new Map<string, number>();
+  try {
+    const today = new Date(nowMs);
+    const baseDateMs = today.getTime();
+    const priorDateKeys: string[] = [];
+    for (let i = 1; i <= 27; i++) {
+      const d = new Date(baseDateMs - i * 86400000);
+      priorDateKeys.push(d.toISOString().slice(0, 10));
+    }
+    const priorSnaps = await Promise.all(
+      priorDateKeys.map((k) =>
+        db.ref(wsPath(workspaceId, "derivedViews", "dailyBrief", k)).once("value")
+      )
+    );
+    const thisWeekByOrg = new Map<string, number>();
+    const trailingByOrg = new Map<string, number>(); // sum of days 7-27 ago (3 weeks)
+    let trailingDayCount = 0;
+    // Seed thisWeek with today's contribution from both rollups.
+    for (const r of adversaryRollup) {
+      thisWeekByOrg.set(r.orgId, (thisWeekByOrg.get(r.orgId) || 0) + r.signalCount);
+    }
+    for (const r of customerRollup) {
+      thisWeekByOrg.set(r.orgId, (thisWeekByOrg.get(r.orgId) || 0) + r.signalCount);
+    }
+    for (let pi = 0; pi < priorSnaps.length; pi++) {
+      const v = priorSnaps[pi].val() as BriefOutput | null;
+      if (!v) continue;
+      const daysAgo = pi + 1; // priorDateKeys[0] = 1 day ago
+      const inThisWeek = daysAgo <= 6;
+      if (!inThisWeek) trailingDayCount++;
+      const rollups = [
+        ...((v.adversaryRollup as AdversaryRollupEntry[] | undefined) || []),
+        ...((v.customerRollup as CustomerRollupEntry[] | undefined) || []),
+      ];
+      for (const r of rollups) {
+        const c = Number(r.signalCount || 0);
+        if (c <= 0 || !r.orgId) continue;
+        if (inThisWeek) {
+          thisWeekByOrg.set(r.orgId, (thisWeekByOrg.get(r.orgId) || 0) + c);
+        } else {
+          trailingByOrg.set(r.orgId, (trailingByOrg.get(r.orgId) || 0) + c);
+        }
+      }
+    }
+    // Weekly average of trailing window. trailingDayCount counts
+    // days where we found a Brief snapshot; if none found, baseline
+    // stays at 0 → denom floor handles cold start.
+    const trailingWeeks = Math.max(trailingDayCount / 7, 0.1);
+    for (const [orgId, thisWk] of thisWeekByOrg) {
+      if (thisWk < 3) continue;
+      const trailingSum = trailingByOrg.get(orgId) || 0;
+      const weeklyAvg = trailingSum / Math.max(trailingWeeks, 1);
+      const denom = Math.max(weeklyAvg, 0.5);
+      const ratio = thisWk / denom;
+      if (ratio >= 2.0) momentumRatioByOrg.set(orgId, ratio);
+    }
+  } catch (err) {
+    log?.warn?.("temporal_momentum_baseline_read_failed", {
+      message: (err as Error).message,
+    });
+  }
+  if (sigItems.length > 0 && momentumRatioByOrg.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxRatio = 0;
+      for (const id of allIds) {
+        const r = momentumRatioByOrg.get(id) || 0;
+        if (r > maxRatio) maxRatio = r;
+      }
+      if (maxRatio < 2.0) continue;
+      let bump = 0.06;
+      if (maxRatio >= 7.0) bump = 0.14;
+      else if (maxRatio >= 4.0) bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Temporal momentum — touched Org's this-week touches ${maxRatio.toFixed(1)}x trailing 4-week average`
+      );
+      temporalMomentumBumps++;
+    }
+  }
+
   // 3.13. v1.18 — confluence-of-confluences nexus bump.
   //
   // After all prior bump passes (v1.11-v1.17), count how many distinct
@@ -1380,6 +1490,10 @@ export async function synthesizeBrief(
       "Posture trajectory:",
       "Mentions budget PE",
       "Revolving-door touch",
+      "Institutional-weight Person touched",
+      "Acting-leadership touch",
+      "Industry-assoc co-membership",
+      "Temporal momentum",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1502,10 +1616,11 @@ export async function synthesizeBrief(
       weightyPersonTouchBumps,
       actingAtTouchBumps,
       coMembershipBumps,
+      temporalMomentumBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.22",
+    scoringVersion: "1.23",
     weightsApplied: SCORING_WEIGHTS,
   };
 
