@@ -18,8 +18,8 @@ import { externalProvenance } from "../../framework/provenance";
 import { db, wsPath } from "../../framework/rtdb";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
-import type { Person } from "../../framework/types/entities";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
+import { resolvePersonByName } from "../../framework/personResolver";
 import { fetchAndExtractPdf } from "../../framework/pdfExtractor";
 import { findPdfUrlOnReportPage } from "./client";
 import {
@@ -418,68 +418,52 @@ async function upsertAdvisoryBoardMember(
   personAction: "created" | "matched" | "updated";
   edgeUpserted: boolean;
 }> {
-  const pId = advisoryMemberPersonId(boardKey, member.name);
-  const personPath = wsPath(workspaceId, "nodes", pId);
+  // v1.3: Person upsert via framework/personResolver for cross-source
+  // dedupe. A board member who also appears in faca / senate_lda
+  // collapses to one Person node carrying member_of, lobbyist_at, and
+  // formerly_at Edges across sources.
   const now = Date.now();
-
-  const personHash = hashFields(
-    {
-      name: member.name,
-      honorific: member.honorific || "",
-      affiliation: member.affiliation || "",
-      boardKey,
-    } as Record<string, unknown>,
-    ["name", "honorific", "affiliation", "boardKey"]
-  );
-
   const provenance = externalProvenance(
     "advisory_boards",
     `${boardKey}:member:${member.name}`,
     null,
-    personHash,
+    null,
     now
   );
-
-  const personSnap = await db.ref(personPath).once("value");
-  let personAction: "created" | "matched" | "updated";
-  if (!personSnap.exists()) {
-    const role = member.honorific
-      ? `${member.honorific} — ${boardFullName} member`
-      : `${boardFullName} member`;
-    const person: Person = {
-      id: pId,
-      type: "person",
-      name: member.name,
-      role,
-      org: member.affiliation || undefined,
-      created: new Date().toISOString(),
-      source: provenance,
-    };
-    await db.ref(personPath).set(person);
-    personAction = "created";
+  const role = member.honorific
+    ? `${member.honorific} — ${boardFullName} member`
+    : `${boardFullName} member`;
+  // Pass honorific-prefixed variant as an alternateName for stronger
+  // cross-source dedupe (faca members are typically stored without
+  // honorifics; senate_lda lobbyists likewise).
+  const alternateNames = member.honorific
+    ? [`${member.honorific} ${member.name}`]
+    : undefined;
+  const r = await resolvePersonByName(workspaceId, member.name, {
+    autoCreate: true,
+    preferredId: advisoryMemberPersonId(boardKey, member.name),
+    alternateNames,
+    role,
+    org: member.affiliation || undefined,
+    provenance,
+  });
+  const pId = r.personId;
+  const personAction: "created" | "matched" | "updated" = r.created
+    ? "created"
+    : "matched";
+  if (r.created) {
     log?.debug("advisory_boards_member_person_created", {
       personId: pId,
       name: member.name,
       board: boardKey,
     });
   } else {
-    const existing = personSnap.val() as Person;
-    if (existing.source?.system === "operator_manual") {
-      personAction = "matched";
-    } else if (existing.source?.hash === personHash) {
-      await db.ref(`${personPath}/source/refreshedAt`).set(now);
-      personAction = "matched";
-    } else {
-      const merged: Person = {
-        ...existing,
-        name: existing.name || member.name,
-        role: existing.role || (member.honorific ? `${member.honorific} — ${boardFullName} member` : `${boardFullName} member`),
-        org: existing.org || member.affiliation || undefined,
-        source: provenance,
-      };
-      await db.ref(personPath).set(merged);
-      personAction = "updated";
-    }
+    log?.debug("advisory_boards_member_person_matched", {
+      personId: pId,
+      name: member.name,
+      board: boardKey,
+      matchedVia: r.matchedVia,
+    });
   }
 
   // Upsert member_of Edge

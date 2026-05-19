@@ -11,8 +11,8 @@ import { externalProvenance } from "../../framework/provenance";
 import { db, wsPath } from "../../framework/rtdb";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
-import type { Person } from "../../framework/types/entities";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
+import { resolvePersonByName } from "../../framework/personResolver";
 import type { LdaFiling, LdaLobbyingActivity, LdaLobbyistEntry } from "./client";
 import { ldaFilingPublicUrl } from "./client";
 
@@ -539,64 +539,41 @@ async function upsertLdaLobbyistPerson(
   personAction: "created" | "matched" | "updated";
   edgeUpserted: boolean;
 }> {
-  const pId = ldaLobbyistPersonId(lobbyist);
-  const personPath = wsPath(workspaceId, "nodes", pId);
+  // v1.3: Person upsert via framework/personResolver for cross-source
+  // dedupe. The resolver matches existing Persons (from advisory_boards
+  // members, faca members, etc.) before auto-creating. Operator_manual
+  // Persons are auto-respected — resolver returns existing id and the
+  // node is untouched.
   const now = Date.now();
-
-  const personHash = hashFields(
-    {
-      name: lobbyist.name,
-      coveredPosition: lobbyist.coveredPosition,
-      registrantOrgId,
-    } as Record<string, unknown>,
-    ["name", "coveredPosition", "registrantOrgId"]
-  );
-
   const provenance = externalProvenance(
     "senate_lda",
     lobbyist.lobbyistId != null ? String(lobbyist.lobbyistId) : `name:${lobbyist.name}`,
     null,
-    personHash,
+    null,
     now
   );
-
-  const personSnap = await db.ref(personPath).once("value");
-  let personAction: "created" | "matched" | "updated";
-  if (!personSnap.exists()) {
-    const person: Person = {
-      id: pId,
-      type: "person",
-      name: lobbyist.name,
-      role: "Registered lobbyist",
-      org: registrantName,
-      created: new Date().toISOString(),
-      source: provenance,
-    };
-    await db.ref(personPath).set(person);
-    personAction = "created";
+  const r = await resolvePersonByName(workspaceId, lobbyist.name, {
+    autoCreate: true,
+    preferredId: ldaLobbyistPersonId(lobbyist),
+    role: "Registered lobbyist",
+    org: registrantName,
+    provenance,
+  });
+  const pId = r.personId;
+  const personAction: "created" | "matched" | "updated" = r.created
+    ? "created"
+    : "matched";
+  if (r.created) {
     log?.debug("senate_lda_lobbyist_person_created", {
       personId: pId,
       name: lobbyist.name,
     });
   } else {
-    const existing = personSnap.val() as Person;
-    // Don't overwrite operator_manual records or operator-named fields
-    if (existing.source?.system === "operator_manual") {
-      personAction = "matched";
-    } else if (existing.source?.hash === personHash) {
-      await db.ref(`${personPath}/source/refreshedAt`).set(now);
-      personAction = "matched";
-    } else {
-      const merged: Person = {
-        ...existing,
-        name: existing.name || lobbyist.name,
-        role: existing.role || "Registered lobbyist",
-        org: existing.org || registrantName,
-        source: provenance,
-      };
-      await db.ref(personPath).set(merged);
-      personAction = "updated";
-    }
+    log?.debug("senate_lda_lobbyist_person_matched", {
+      personId: pId,
+      name: lobbyist.name,
+      matchedVia: r.matchedVia,
+    });
   }
 
   // Upsert the lobbyist_at Edge

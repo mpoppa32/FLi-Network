@@ -103,6 +103,9 @@ export interface Person {
   name: string;
   role?: string;
   org?: string;
+  /** Alternate names for cross-source dedupe (formal vs informal,
+   *  honorific-prefixed vs bare, etc.). Indexed by personResolver. */
+  alternateNames?: string[];
   notes?: string;
   meetings?: string[];
   priority?: number;
