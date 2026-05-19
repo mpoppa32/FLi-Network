@@ -91,6 +91,13 @@ export interface BriefScoringContext {
    *  space as a known adversary — qualitative signal of overlapping
    *  institutional positioning. */
   sharedAssocsWithAdversaryByOrg?: Map<string, number>;
+  /** v1.24: per-Org count of distinct weighty Persons (3+ outbound
+   *  institutional-role edge labels) connected to that Org via
+   *  member_of / acting_at / formerly_at / lobbyist_at edges.
+   *  Captures "this Org is the center of an influence cluster" —
+   *  cross-edge-type aggregation distinct from single-axis
+   *  v1.17 DOOR / v1.21 ACTING. */
+  weightyPersonCountByOrg?: Map<string, number>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

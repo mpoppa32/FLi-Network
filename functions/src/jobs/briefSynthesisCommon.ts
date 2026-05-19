@@ -166,6 +166,10 @@ export interface BriefOutput {
      *  this-week touch count is significantly above its trailing
      *  4-week average (temporal momentum — "just got busy") */
     temporalMomentumBumps?: number;
+    /** v1.24: count of Signal items bumped for touching an Org that
+     *  has >=3 distinct weighty Persons connected via institutional
+     *  edges (influence-net density / HUB chip) */
+    influenceNetHubBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -324,6 +328,43 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     outboundEdgeLabelCountByPerson.set(personId, labels.size);
   }
 
+  // v1.24: per-Org count of distinct weighty Persons (3+ outbound
+  // institutional-role edge labels) connected to that Org via any
+  // inbound edge. Captures "this Org is the center of an influence
+  // cluster" — a different signal from individual-edge axes (v1.17
+  // DOOR / v1.21 ACTING) because it counts distinct INFLUENCE-CARRYING
+  // entities, not just incoming edges of one type.
+  const weightyPersonIds = new Set<string>();
+  for (const [pid, c] of outboundEdgeLabelCountByPerson) {
+    if (c >= 3) weightyPersonIds.add(pid);
+  }
+  const weightyPersonsByOrg = new Map<string, Set<string>>();
+  if (weightyPersonIds.size > 0) {
+    for (const edge of Object.values(edges)) {
+      if (!edge || !edge.source || !edge.target) continue;
+      if (!weightyPersonIds.has(edge.source)) continue;
+      // Only count "institutional" edge labels that imply real
+      // organizational connection. Skip generic relations.
+      const lbl = edge.label || "";
+      if (
+        lbl !== "member_of" &&
+        lbl !== "acting_at" &&
+        lbl !== "formerly_at" &&
+        lbl !== "lobbyist_at"
+      ) {
+        continue;
+      }
+      if (!weightyPersonsByOrg.has(edge.target)) {
+        weightyPersonsByOrg.set(edge.target, new Set());
+      }
+      weightyPersonsByOrg.get(edge.target)!.add(edge.source);
+    }
+  }
+  const weightyPersonCountByOrg = new Map<string, number>();
+  for (const [orgId, set] of weightyPersonsByOrg) {
+    weightyPersonCountByOrg.set(orgId, set.size);
+  }
+
   // v1.22: compute association IDs that any active adversary is a member of
   const adversaryAssocs = new Set<string>();
   for (const advId of activeAdversaryOrgIds) {
@@ -364,6 +405,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     outboundEdgeLabelCountByPerson,
     actingAtIncomingCountByOrg,
     sharedAssocsWithAdversaryByOrg,
+    weightyPersonCountByOrg,
   };
 }
 
@@ -1060,6 +1102,51 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10e. v1.24 — influence-net density (HUB) bump.
+  //
+  // When a touched Org has >=3 distinct weighty Persons (each carrying
+  // 3+ outbound institutional-role edge labels) connected via inbound
+  // member_of / acting_at / formerly_at / lobbyist_at edges, bump.
+  // Captures "this Org is the center of an institutional influence
+  // cluster" — strict superset of single-axis DOOR/ACTING/WEIGHT cases
+  // that compounds on top of them when the same Org has multiple
+  // institutional anchors converging.
+  //
+  //   3 weighty Persons: +0.08 magnitude
+  //   4 weighty Persons: +0.12
+  //   5+ weighty Persons: +0.15
+  //
+  // Capped at magnitude 1.0. Doesn't apply to Persons (the v1.20 WEIGHT
+  // chip already covers Person-side institutional weight) — this is
+  // explicitly the Org-side cluster signal.
+  let influenceNetHubBumps = 0;
+  const hubCounts = ctx.weightyPersonCountByOrg;
+  if (sigItems.length > 0 && hubCounts && hubCounts.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxCount = 0;
+      for (const id of allIds) {
+        const c = hubCounts.get(id) || 0;
+        if (c > maxCount) maxCount = c;
+      }
+      if (maxCount < 3) continue;
+      let bump = 0.08;
+      if (maxCount >= 5) bump = 0.15;
+      else if (maxCount === 4) bump = 0.12;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Influence-net hub — touched Org has ${maxCount} weighty Persons converging via institutional edges`
+      );
+      influenceNetHubBumps++;
+    }
+  }
+
   // 3.10c. v1.21 — acting_at touch bump.
   //
   // Mirror of the v1.17 revolving-door touch warning, keyed on
@@ -1494,6 +1581,7 @@ export async function synthesizeBrief(
       "Acting-leadership touch",
       "Industry-assoc co-membership",
       "Temporal momentum",
+      "Influence-net hub",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1617,10 +1705,11 @@ export async function synthesizeBrief(
       actingAtTouchBumps,
       coMembershipBumps,
       temporalMomentumBumps,
+      influenceNetHubBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.23",
+    scoringVersion: "1.24",
     weightsApplied: SCORING_WEIGHTS,
   };
 
