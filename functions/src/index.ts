@@ -86,3 +86,9 @@ export { dodComptrollerMonthly } from "./jobs/dodComptrollerMonthly";
 // via PDF walk; emits vacancy_alert Signals; reuses framework/pdfExtractor)
 export { triggerPlumBookSync } from "./http/triggerPlumBookSync";
 export { plumBookMonthly } from "./jobs/plumBookMonthly";
+
+// Industry Association rosters (Phase 8.6.11 — NDIA / AFA / AUSA corporate
+// members via HTML scrape; Edge-only source, no Signals; populates the
+// entity graph with cross-association membership data)
+export { triggerIndustryAssocSync } from "./http/triggerIndustryAssocSync";
+export { industryAssocQuarterly } from "./jobs/industryAssocQuarterly";
