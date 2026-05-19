@@ -35733,7 +35733,23 @@ window._renderExternalIntelligence = function(brief) {
           keyFact = '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-style:italic;color:' + keyFactColor + ';font-weight:' + keyFactWeight + ';margin-top:1px;letter-spacing:.02em">' + String(why).replace(/</g,'&lt;') + '</div>';
         }
       }
-      h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4">';
+      // Detect nexus convergence (NEXUS chip fired) for subtle gold
+      // left-border treatment so multi-axis confluence items are
+      // scannable at a glance in a long category list.
+      var hasNexus = false;
+      if (it.relevance && Array.isArray(it.relevance.whySurfaced)) {
+        for (var nci = 0; nci < it.relevance.whySurfaced.length; nci++) {
+          if (typeof it.relevance.whySurfaced[nci] === 'string' &&
+              it.relevance.whySurfaced[nci].indexOf('Nexus convergence') === 0) {
+            hasNexus = true;
+            break;
+          }
+        }
+      }
+      var rowBorder = hasNexus
+        ? 'border-left:2px solid var(--gold);padding-left:6px;'
+        : '';
+      h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4;' + rowBorder + '">';
       h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
       h += '  <div style="flex:1;min-width:0">';
       h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + trailChips + dedupChip + pinChip + '</div>';
