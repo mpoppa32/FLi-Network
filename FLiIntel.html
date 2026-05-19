@@ -8565,6 +8565,22 @@ input[type="url"], textarea, select {
           </div>
         </div>
 
+        <!-- ── Phase 8.6 Person merge review surface (personResolver v1.1) ── -->
+        <!-- Reads workspaces/{wsId}/personMergeCandidates and surfaces unresolved
+             Jaro-Winkler candidate pairs (sim >= 0.92) for operator confirmation.
+             Card is hidden when no pending candidates exist. -->
+        <div id="person-merge-card" class="daily-brief-card" data-surface="light" style="margin-top:14px;display:none">
+          <div class="brief-card-header">
+            <span>◆ PERSON DEDUPE · REVIEW QUEUE</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span class="brief-date" id="person-merge-count">—</span>
+            </span>
+          </div>
+          <div id="person-merge-body" style="padding:12px 14px">
+            <div style="color:var(--t3);font-size:11px;font-style:italic">No pending merge candidates.</div>
+          </div>
+        </div>
+
         <!-- ── Phase 8.5.4 v1: Recompete Watch — expiring Awards as Proposed Pursuits ── -->
         <div id="recompete-watch-card" class="daily-brief-card" data-surface="light" style="margin-top:14px">
           <div class="brief-card-header">
@@ -37486,6 +37502,220 @@ window._refreshExternalIntelligence = async function() {
 // Auto-load when workspace context changes; also retry on interval
 setTimeout(function(){ window._loadExternalIntelligence && window._loadExternalIntelligence(); }, 4000);
 setInterval(function(){ window._loadExternalIntelligence && window._loadExternalIntelligence(); }, 120000);
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.6 — PERSON DEDUPE REVIEW SURFACE (personResolver v1.1)
+//
+// Reads workspaces/{wsId}/personMergeCandidates and renders unresolved
+// Jaro-Winkler candidate pairs. Operator clicks "merge" to fold idB into
+// idA (idA is canonical = lower id alphabetically), rewriting every
+// in-workspace reference, or "decline" to dismiss without changes.
+//
+// Merge rewrites: edges (link.source/target), signals (subjectIds /
+// relatedIds), then deletes idB's node and marks the candidate
+// resolved. Decline just marks resolved.
+// ══════════════════════════════════════════════════════════════════════════
+
+window._personMergeCandidates = {};
+window._personMergeUnsub = null;
+
+window._subscribePersonMergeCandidates = function() {
+  if (!currentWsId) return;
+  if (window._personMergeUnsub) {
+    try { window._personMergeUnsub(); } catch (e) {}
+    window._personMergeUnsub = null;
+  }
+  var path = 'workspaces/' + currentWsId + '/personMergeCandidates';
+  try {
+    window._personMergeUnsub = onValue(ref(db, path), function(snap) {
+      window._personMergeCandidates = snap.val() || {};
+      window._renderPersonMergeCandidates();
+    });
+  } catch (e) {
+    // best-effort
+  }
+};
+
+window._renderPersonMergeCandidates = function() {
+  var card = document.getElementById('person-merge-card');
+  var body = document.getElementById('person-merge-body');
+  var countEl = document.getElementById('person-merge-count');
+  if (!card || !body) return;
+  var entries = window._personMergeCandidates || {};
+  var pending = [];
+  for (var k in entries) {
+    if (!Object.prototype.hasOwnProperty.call(entries, k)) continue;
+    var e = entries[k];
+    if (!e || e.resolved) continue;
+    pending.push({ pairKey: k, e: e });
+  }
+  if (pending.length === 0) {
+    card.style.display = 'none';
+    body.innerHTML = '<div style="color:var(--t3);font-size:11px;font-style:italic">No pending merge candidates.</div>';
+    if (countEl) countEl.textContent = '—';
+    return;
+  }
+  card.style.display = '';
+  // Sort: highest similarity first, then most recent
+  pending.sort(function(a, b) {
+    var dr = (b.e.similarity || 0) - (a.e.similarity || 0);
+    if (Math.abs(dr) > 0.001) return dr;
+    return (b.e.proposedAt || 0) - (a.e.proposedAt || 0);
+  });
+  if (countEl) countEl.textContent = pending.length + ' pending';
+  var h = '';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-bottom:8px;letter-spacing:.04em">';
+  h += 'Jaro-Winkler ≥ 0.92 across normalized names. Merge folds the second Person into the first (canonical = lower id). Decline marks the pair resolved without changes.';
+  h += '</div>';
+  for (var i = 0; i < pending.length; i++) {
+    var p = pending[i];
+    var sim = (p.e.similarity || 0).toFixed(3);
+    var nA = (p.e.nameA || '').replace(/</g,'&lt;');
+    var nB = (p.e.nameB || '').replace(/</g,'&lt;');
+    var idA = p.e.idA || '';
+    var idB = p.e.idB || '';
+    h += '<div style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.05);font-size:11px">';
+    h += '  <div style="flex:1;min-width:0">';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600">' + nA + ' <span style="color:var(--t3);font-weight:400">·</span> ' + nB + '</div>';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.05em">sim ' + sim + ' · canonical=' + idA + ' · fold=' + idB + '</div>';
+    h += '  </div>';
+    h += '  <div style="display:flex;gap:6px">';
+    h += '    <button onclick="window._mergeFuzzyPersonCandidate(\'' + p.pairKey + '\')" style="background:transparent;border:1px solid rgba(58,138,92,.4);color:#3a8a5c;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Merge</button>';
+    h += '    <button onclick="window._declineFuzzyPersonCandidate(\'' + p.pairKey + '\')" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Decline</button>';
+    h += '  </div>';
+    h += '</div>';
+  }
+  body.innerHTML = h;
+};
+
+window._mergeFuzzyPersonCandidate = async function(pairKey) {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (window._canWrite && !window._canWrite()) {
+    toast('Observers cannot merge Persons');
+    return;
+  }
+  var c = (window._personMergeCandidates || {})[pairKey];
+  if (!c || c.resolved) { toast('Candidate no longer pending'); return; }
+  var idA = c.idA;
+  var idB = c.idB;
+  if (!idA || !idB || idA === idB) {
+    toast('Invalid candidate pair');
+    return;
+  }
+  var ok = confirm('Merge "' + (c.nameB || idB) + '" into "' + (c.nameA || idA) + '"?\n\nThis will rewrite every Edge + Signal reference and delete the folded Person node.');
+  if (!ok) return;
+  try {
+    // 1. Read links + signals + the two Person nodes
+    var linksSnap = await get(ref(db, 'workspaces/' + currentWsId + '/links'));
+    var sigsSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/signals'));
+    var aSnap     = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + idA));
+    var bSnap     = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + idB));
+    var linksObj = linksSnap.exists() ? linksSnap.val() : {};
+    var sigsObj  = sigsSnap.exists()  ? sigsSnap.val()  : {};
+    var aNode    = aSnap.exists() ? aSnap.val() : null;
+    var bNode    = bSnap.exists() ? bSnap.val() : null;
+    if (!aNode || !bNode) {
+      toast('One side of the pair no longer exists');
+      await fbSet('workspaces/' + currentWsId + '/personMergeCandidates/' + pairKey, Object.assign({}, c, { resolved: 'declined', resolvedAt: Date.now(), resolvedBy: (currentUser && currentUser.email) || 'unknown', resolvedReason: 'one side missing' }));
+      return;
+    }
+    // 2. Rewrite edges: source/target idB → idA. Drop self-loops if the
+    //    rewrite creates one.
+    var linkUpdates = 0;
+    var linkDeletes = 0;
+    for (var lk in linksObj) {
+      if (!Object.prototype.hasOwnProperty.call(linksObj, lk)) continue;
+      var lObj = linksObj[lk];
+      if (!lObj) continue;
+      var changed = false;
+      if (lObj.source === idB) { lObj.source = idA; changed = true; }
+      if (lObj.target === idB) { lObj.target = idA; changed = true; }
+      if (changed) {
+        if (lObj.source === lObj.target) {
+          // self-loop after rewrite — drop the edge
+          await fbSet('workspaces/' + currentWsId + '/links/' + lk, null);
+          linkDeletes++;
+        } else {
+          await fbSet('workspaces/' + currentWsId + '/links/' + lk, lObj);
+          linkUpdates++;
+        }
+      }
+    }
+    // 3. Rewrite signals: subjectIds/relatedIds containing idB → idA
+    var sigUpdates = 0;
+    for (var sk in sigsObj) {
+      if (!Object.prototype.hasOwnProperty.call(sigsObj, sk)) continue;
+      var sObj = sigsObj[sk];
+      if (!sObj) continue;
+      var sigChanged = false;
+      if (Array.isArray(sObj.subjectIds) && sObj.subjectIds.indexOf(idB) >= 0) {
+        sObj.subjectIds = sObj.subjectIds.map(function(id){ return id === idB ? idA : id; });
+        // dedupe in case both ids were present
+        var seenS = {};
+        sObj.subjectIds = sObj.subjectIds.filter(function(id){ if (seenS[id]) return false; seenS[id] = 1; return true; });
+        sigChanged = true;
+      }
+      if (Array.isArray(sObj.relatedIds) && sObj.relatedIds.indexOf(idB) >= 0) {
+        sObj.relatedIds = sObj.relatedIds.map(function(id){ return id === idB ? idA : id; });
+        var seenR = {};
+        sObj.relatedIds = sObj.relatedIds.filter(function(id){ if (seenR[id]) return false; seenR[id] = 1; return true; });
+        sigChanged = true;
+      }
+      if (sigChanged) {
+        await fbSet('workspaces/' + currentWsId + '/signals/' + sk, sObj);
+        sigUpdates++;
+      }
+    }
+    // 4. Merge alternateNames + role/org if missing on idA
+    var altSet = {};
+    (aNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
+    if (bNode.name && bNode.name !== aNode.name) altSet[bNode.name] = 1;
+    (bNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
+    var mergedAlts = Object.keys(altSet);
+    if (mergedAlts.length > 0) aNode.alternateNames = mergedAlts;
+    if (!aNode.role && bNode.role) aNode.role = bNode.role;
+    if (!aNode.org && bNode.org) aNode.org = bNode.org;
+    await fbSet('workspaces/' + currentWsId + '/nodes/' + idA, aNode);
+    // 5. Delete idB
+    await fbSet('workspaces/' + currentWsId + '/nodes/' + idB, null);
+    // 6. Mark candidate resolved
+    await fbSet('workspaces/' + currentWsId + '/personMergeCandidates/' + pairKey, Object.assign({}, c, {
+      resolved: 'merged',
+      resolvedAt: Date.now(),
+      resolvedBy: (currentUser && currentUser.email) || 'unknown',
+      linksRewritten: linkUpdates,
+      linksDeleted: linkDeletes,
+      signalsRewritten: sigUpdates
+    }));
+    toast('Merged · ' + linkUpdates + ' edges + ' + sigUpdates + ' signals rewritten' + (linkDeletes ? ' · ' + linkDeletes + ' self-loop edges dropped' : ''));
+  } catch (e) {
+    toast('Merge failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._declineFuzzyPersonCandidate = async function(pairKey) {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (window._canWrite && !window._canWrite()) {
+    toast('Observers cannot manage merge candidates');
+    return;
+  }
+  var c = (window._personMergeCandidates || {})[pairKey];
+  if (!c || c.resolved) return;
+  try {
+    await fbSet('workspaces/' + currentWsId + '/personMergeCandidates/' + pairKey, Object.assign({}, c, {
+      resolved: 'declined',
+      resolvedAt: Date.now(),
+      resolvedBy: (currentUser && currentUser.email) || 'unknown'
+    }));
+    toast('Candidate declined');
+  } catch (e) {
+    toast('Decline failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+// Subscribe shortly after workspace context becomes available
+setTimeout(function(){ window._subscribePersonMergeCandidates && window._subscribePersonMergeCandidates(); }, 4500);
 
 
 // ══════════════════════════════════════════════════════════════════════════
