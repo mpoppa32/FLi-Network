@@ -35755,6 +35755,48 @@ window._renderExternalIntelligence = function(brief) {
       h += '<span style="color:var(--gold);text-transform:uppercase;letter-spacing:.1em">Dismissal patterns:</span> ' + parts.join(' · ') + ' — consider tightening your watchlist for these.';
       h += '</div>';
     }
+    // v1.21+: Brief health strip — every v1.11-v1.21 bump count surfaced
+    // inline so operator validation against live data is a glance away.
+    // Default collapsed; toggle expands to show all axis counts with
+    // their respective chip labels for visual cross-reference against
+    // the inline scoring-trail chips on Brief items.
+    var c = brief.counts;
+    var bumpAxes = [
+      { key: 'crossSourceBumps',      label: 'CONV',   color: '#3a6fb5', title: 'Cross-source convergence (any time in week) — v1.11' },
+      { key: 'tightClusterBumps',     label: 'TIGHT',  color: '#3a6fb5', title: 'Tight 72h cluster (subset of CONV) — v1.12' },
+      { key: 'leadershipFluxBumps',   label: 'FLUX',   color: '#d4823a', title: 'Customer leadership transition in flux window — v1.13' },
+      { key: 'protestAmendmentBumps', label: 'RESET',  color: '#9a4040', title: 'Protest + opportunity_amendment confluence — v1.14' },
+      { key: 'posturePathBumps',      label: 'ADV/LIB', color: '#9a4040', title: 'Operator-authored Posture path (Adversary / Liberator) — v1.15' },
+      { key: 'postureTrajectoryBumps', label: 'RISE/FALL', color: '#3a8a5c', title: 'Operator-authored Posture trajectory (Rising / Falling) — v1.15' },
+      { key: 'peMentionBumps',        label: 'PE',     color: '#9c8a5e', title: 'Mentions an indexed budget PE — v1.16' },
+      { key: 'revolvingDoorTouchBumps', label: 'DOOR', color: '#a87c5a', title: 'Org with incoming formerly_at Edges (revolving-door touch) — v1.17' },
+      { key: 'nexusBumps',            label: 'NEXUS',  color: '#d4823a', title: 'Confluence-of-confluences (3+ distinct axes on one item) — v1.18' },
+      { key: 'weightyPersonTouchBumps', label: 'WEIGHT', color: '#5e9c8b', title: 'Person with 3+ cross-source institutional roles — v1.20' },
+      { key: 'actingAtTouchBumps',    label: 'ACTING', color: '#b56ba3', title: 'Org with incoming acting_at Edges (acting leadership touch) — v1.21' }
+    ];
+    var anyBump = false;
+    var bumpHtml = '';
+    for (var bi = 0; bi < bumpAxes.length; bi++) {
+      var bx = bumpAxes[bi];
+      var v = Number(c[bx.key] || 0);
+      var dim = v === 0;
+      if (!dim) anyBump = true;
+      bumpHtml += '<span title="' + bx.title + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:600;color:' + (dim ? 'var(--t3)' : bx.color) + ';background:' + (dim ? 'transparent' : bx.color + '14') + ';border:1px solid ' + (dim ? 'var(--b2)' : bx.color + '40') + ';padding:2px 7px;border-radius:2px;letter-spacing:.06em;margin-right:5px;opacity:' + (dim ? '0.45' : '1') + '">' + bx.label + ' ' + v + '</span>';
+    }
+    var advCount = Array.isArray(brief.adversaryRollup) ? brief.adversaryRollup.length : 0;
+    var custCount = Array.isArray(brief.customerRollup) ? brief.customerRollup.length : 0;
+    var rollupLine = '';
+    if (advCount || custCount) {
+      rollupLine = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-left:8px">' + advCount + ' adversaries · ' + custCount + ' customers active</span>';
+    }
+    h += '<div style="padding:8px 14px;border-top:1px dashed rgba(0,0,0,.04);font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.04em;display:flex;flex-wrap:wrap;align-items:center;gap:2px">';
+    h += '<span style="color:var(--gold);text-transform:uppercase;letter-spacing:.1em;margin-right:8px">Bump axes ' + (brief.scoringVersion ? '(v' + brief.scoringVersion + ')' : '') + ':</span>';
+    h += bumpHtml;
+    h += rollupLine;
+    if (!anyBump) {
+      h += '<span style="margin-left:8px;font-style:italic">no axis fired this window — source syncs may be inactive or no cross-source convergence yet</span>';
+    }
+    h += '</div>';
   }
   body.innerHTML = h;
 };
