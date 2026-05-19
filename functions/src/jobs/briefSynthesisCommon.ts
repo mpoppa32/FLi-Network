@@ -141,6 +141,9 @@ export interface BriefOutput {
     /** v1.18: count of Signal items bumped for accumulating ≥3 distinct
      *  bump axes from v1.11-v1.17 (nexus convergence) */
     nexusBumps?: number;
+    /** v1.20: count of Signal items bumped for touching a Person with
+     *  3+ distinct outbound institutional-role Edges */
+    weightyPersonTouchBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -186,7 +189,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
   const usaCfg = (usaCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
   const samCfg = (samCfgSnap.val() as { naics?: string[]; agencies?: string[] } | null) ?? {};
   const nodes = (nodesSnap.val() as Record<string, { id?: string; posture?: { path?: string; trajectory?: string } }> | null) ?? {};
-  const edges = (edgesSnap.val() as Record<string, { source?: string; target?: string; label?: string }> | null) ?? {};
+  const edges = (edgesSnap.val() as Record<string, { source?: string; target?: string; label?: string; dir?: string }> | null) ?? {};
 
   const activeAdversaryOrgIds = new Set<string>();
   const archivedAdversaryOrgIds = new Set<string>();
@@ -253,14 +256,32 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
   // by the revolving-door touch warning to bump Signals touching Orgs
   // that have lobbyist Persons in the workspace pointing back at them.
   const formerlyAtIncomingCountByOrg = new Map<string, number>();
+  // v1.20: per-Person count of DISTINCT outbound Edge labels. Persons
+  // with multiple institutional roles (lobbyist_at, formerly_at,
+  // member_of, acting_at) carry cross-source institutional weight.
+  const outboundEdgesByPerson = new Map<string, Set<string>>();
   for (const edge of Object.values(edges)) {
-    if (!edge || edge.label !== "formerly_at") continue;
-    const target = edge.target;
-    if (!target) continue;
-    formerlyAtIncomingCountByOrg.set(
-      target,
-      (formerlyAtIncomingCountByOrg.get(target) || 0) + 1
-    );
+    if (!edge) continue;
+    if (edge.label === "formerly_at") {
+      const target = edge.target;
+      if (target) {
+        formerlyAtIncomingCountByOrg.set(
+          target,
+          (formerlyAtIncomingCountByOrg.get(target) || 0) + 1
+        );
+      }
+    }
+    // v1.20: track person-side Edge labels
+    if (edge.source && edge.label && edge.dir !== "from") {
+      if (!outboundEdgesByPerson.has(edge.source)) {
+        outboundEdgesByPerson.set(edge.source, new Set());
+      }
+      outboundEdgesByPerson.get(edge.source)!.add(edge.label);
+    }
+  }
+  const outboundEdgeLabelCountByPerson = new Map<string, number>();
+  for (const [personId, labels] of outboundEdgesByPerson) {
+    outboundEdgeLabelCountByPerson.set(personId, labels.size);
   }
 
   return {
@@ -281,6 +302,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     postureRisingIds,
     postureFallingIds,
     formerlyAtIncomingCountByOrg,
+    outboundEdgeLabelCountByPerson,
   };
 }
 
@@ -933,6 +955,48 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10b. v1.20 — high-institutional-weight Person touch bump.
+  //
+  // When a Signal touches a Person carrying 3+ distinct outbound Edge
+  // labels (across lobbyist_at / formerly_at / member_of / acting_at),
+  // that Person has institutional weight across multiple BD axes. Bump
+  // the Signal so they don't get lost in the long tail.
+  //
+  // 4+ labels: +0.10 magnitude (rare; very high cross-source presence)
+  // 3 labels:  +0.07
+  //
+  // Doesn't apply to Orgs — the v1.17 revolving-door touch bump already
+  // covers Org-side institutional weight. This rule is Person-specific.
+  let weightyPersonTouchBumps = 0;
+  const weightCounts = ctx.outboundEdgeLabelCountByPerson;
+  if (
+    sigItems.length > 0 &&
+    weightCounts &&
+    weightCounts.size > 0
+  ) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxLabels = 0;
+      for (const id of allIds) {
+        const c = weightCounts.get(id) || 0;
+        if (c > maxLabels) maxLabels = c;
+      }
+      if (maxLabels < 3) continue;
+      const bump = maxLabels >= 4 ? 0.10 : 0.07;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Institutional-weight Person touched — entity has ${maxLabels} distinct cross-source roles`
+      );
+      weightyPersonTouchBumps++;
+    }
+  }
+
   // 3.11. v1.18 — Adversary Activity Rollup.
   //
   // For each adversary Org (active or archived per the operator's pursuit
@@ -1283,10 +1347,11 @@ export async function synthesizeBrief(
       peMentionBumps,
       revolvingDoorTouchBumps,
       nexusBumps,
+      weightyPersonTouchBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.19",
+    scoringVersion: "1.20",
     weightsApplied: SCORING_WEIGHTS,
   };
 

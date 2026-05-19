@@ -72,6 +72,12 @@ export interface BriefScoringContext {
    *  means the workspace has registered-lobbyist Persons who formerly
    *  worked at that institution. */
   formerlyAtIncomingCountByOrg?: Map<string, number>;
+  /** v1.20: count of distinct outbound Edge labels per Person id —
+   *  proxies "institutional weight." A Person with lobbyist_at +
+   *  formerly_at + member_of + acting_at carries 4 institutional roles
+   *  across sources, which is operator-actionable when their name shows
+   *  up in any Signal. */
+  outboundEdgeLabelCountByPerson?: Map<string, number>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
