@@ -181,6 +181,11 @@ export interface BriefOutput {
      *  trailing-12mo obligated dollars >= 1.5x prior-12mo (and >= $1M
      *  trailing) — funding-momentum / FUND chip */
     fundingMomentumBumps?: number;
+    /** v1.28: count of Signal items bumped for touching a customer Org
+     *  whose trailing-12mo INBOUND obligated dollars (awards where
+     *  customerOrgId === org) >= 1.5x prior-12mo (and >= $1M trailing)
+     *  — customer-funding flow / CUSTFUND chip */
+    customerFundingFlowBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1113,6 +1118,81 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10h. v1.28 — customer-funding flow bump.
+  //
+  // Mirror of v1.27 keyed on customerOrgId. When a touched customer Org
+  // has trailing-12mo INBOUND obligated dollars (sum of awards where
+  // customerOrgId === org) >= 1.5x prior-12mo AND trailing > $1M, bump
+  // items touching that Org. Captures "this customer just started
+  // spending" — the BD-side complement to v1.27 ("this contractor just
+  // started winning"). Distinct from v1.27 because the same dollar
+  // figure ramps both customer-side outflow AND contractor-side inflow,
+  // but they show up on opposite ends of the BD ecosystem.
+  //
+  // Tiers (multiplier = trailing / max(prior, 1)):
+  //   1.5–2.4x + trailing >= $1M:  +0.06 magnitude
+  //   2.5–4.9x + trailing >= $1M:  +0.10
+  //   5.0x+ + trailing >= $1M:     +0.14
+  //
+  // Capped at magnitude 1.0. Uses ctx.awards walk identical to v1.27.
+  let customerFundingFlowBumps = 0;
+  const customerFundingByOrg = new Map<string, number>();
+  if (ctx.awards.size > 0 && sigItems.length > 0) {
+    const trailingByCustomer = new Map<string, number>();
+    const priorByCustomer = new Map<string, number>();
+    const cutoffTrailingMs = nowMs - 365 * 86400000;
+    const cutoffPriorMs = nowMs - 730 * 86400000;
+    for (const award of ctx.awards.values()) {
+      if (!award || !award.customerOrgId) continue;
+      const at = award.awardedAt || 0;
+      const obl = Number(award.obligated || 0);
+      if (!Number.isFinite(obl) || obl <= 0) continue;
+      if (at >= cutoffTrailingMs) {
+        trailingByCustomer.set(
+          award.customerOrgId,
+          (trailingByCustomer.get(award.customerOrgId) || 0) + obl
+        );
+      } else if (at >= cutoffPriorMs) {
+        priorByCustomer.set(
+          award.customerOrgId,
+          (priorByCustomer.get(award.customerOrgId) || 0) + obl
+        );
+      }
+    }
+    for (const [orgId, trailing] of trailingByCustomer) {
+      if (trailing < 1_000_000) continue;
+      const prior = priorByCustomer.get(orgId) || 0;
+      const denom = Math.max(prior, 1);
+      const ratio = trailing / denom;
+      if (ratio >= 1.5) customerFundingByOrg.set(orgId, ratio);
+    }
+  }
+  if (sigItems.length > 0 && customerFundingByOrg.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxRatio = 0;
+      for (const id of allIds) {
+        const r = customerFundingByOrg.get(id) || 0;
+        if (r > maxRatio) maxRatio = r;
+      }
+      if (maxRatio < 1.5) continue;
+      let bump = 0.06;
+      if (maxRatio >= 5.0) bump = 0.14;
+      else if (maxRatio >= 2.5) bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Customer-funding flow — touched customer Org's trailing 12mo inbound obligated $ ${maxRatio.toFixed(1)}x prior 12mo (>= $1M trailing)`
+      );
+      customerFundingFlowBumps++;
+    }
+  }
+
   // 3.10g. v1.27 — funding-momentum bump.
   //
   // For each touched Org, compute trailing-12-month obligated dollars
@@ -1732,6 +1812,7 @@ export async function synthesizeBrief(
       "Influence-net hub",
       "Signal-type diversity touch",
       "Funding-momentum touch",
+      "Customer-funding flow",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1899,10 +1980,11 @@ export async function synthesizeBrief(
       typeDiversityBumps,
       nexus2Bumps,
       fundingMomentumBumps,
+      customerFundingFlowBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.27",
+    scoringVersion: "1.28",
     weightsApplied: SCORING_WEIGHTS,
   };
 
