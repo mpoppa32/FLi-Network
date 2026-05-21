@@ -186,6 +186,9 @@ export interface BriefOutput {
      *  customerOrgId === org) >= 1.5x prior-12mo (and >= $1M trailing)
      *  — customer-funding flow / CUSTFUND chip */
     customerFundingFlowBumps?: number;
+    /** v1.29: count of Signal items bumped for hitting FUND + CUSTFUND
+     *  on the same item (bidirectional dollar-flow co-fire / FLOW chip) */
+    fundingFlowBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1813,6 +1816,7 @@ export async function synthesizeBrief(
       "Signal-type diversity touch",
       "Funding-momentum touch",
       "Customer-funding flow",
+      "Funding-flow co-fire",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1837,6 +1841,43 @@ export async function synthesizeBrief(
         `Nexus convergence — ${seenAxes.size} scoring axes fired on this item`
       );
       nexusBumps++;
+    }
+  }
+
+  // 3.13b. v1.29 — funding-flow co-fire bonus (FLOW chip).
+  //
+  // When FUND (v1.27, contractor-side trailing-12mo obligated $ ramp)
+  // AND CUSTFUND (v1.28, customer-side trailing-12mo INBOUND $ ramp)
+  // both fire on the same item, the touched Org pair is at the center
+  // of a fresh bidirectional dollar flow. That's the rare signal that
+  // a customer is ramping spending on contractors who are themselves
+  // ramping wins — usually a fresh major program launch or surge.
+  //
+  // Bump: +0.10 magnitude on top of the individual FUND + CUSTFUND
+  // bumps. Capped at magnitude 1.0. Stacks with NEXUS / NEXUS-2 if
+  // those also fire — funding-flow events tend to trigger multiple
+  // confluence axes.
+  let fundingFlowBumps = 0;
+  if (sigItems.length > 0) {
+    for (const item of sigItems) {
+      if (!item.relevance) continue;
+      const lines = item.relevance.whySurfaced || [];
+      let hasFund = false;
+      let hasCustFund = false;
+      for (const line of lines) {
+        if (typeof line !== "string") continue;
+        if (line.startsWith("Funding-momentum touch")) hasFund = true;
+        else if (line.startsWith("Customer-funding flow")) hasCustFund = true;
+        if (hasFund && hasCustFund) break;
+      }
+      if (!(hasFund && hasCustFund)) continue;
+      const bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Funding-flow co-fire — both contractor-side AND customer-side trailing-12mo ramps fire on this item`
+      );
+      fundingFlowBumps++;
     }
   }
 
@@ -1981,10 +2022,11 @@ export async function synthesizeBrief(
       nexus2Bumps,
       fundingMomentumBumps,
       customerFundingFlowBumps,
+      fundingFlowBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.28",
+    scoringVersion: "1.29",
     weightsApplied: SCORING_WEIGHTS,
   };
 
