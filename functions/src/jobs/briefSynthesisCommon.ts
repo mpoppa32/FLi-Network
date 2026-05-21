@@ -174,6 +174,9 @@ export interface BriefOutput {
      *  receives >=4 distinct Signal types in the Brief window
      *  (cross-Signal-type convergence — DIV chip) */
     typeDiversityBumps?: number;
+    /** v1.26: count of Signal items bumped for hitting CONV + DIV +
+     *  TIGHT all on the same item (NEXUS-2 second-tier capstone) */
+    nexus2Bumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1678,6 +1681,46 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.14. v1.26 — NEXUS-2 second-tier capstone.
+  //
+  // The v1.18 NEXUS fires when any 3+ axes converge. NEXUS-2 is stricter:
+  // fires only when CONV + DIV + TIGHT specifically all hit on the same
+  // item. The 3-way "cross-source AND cross-type AND tight-window"
+  // confluence is the single highest-confidence quality signal the matrix
+  // can produce — multiple feeds AND multiple kinds of activity AND all
+  // clustered in time. Stacks on top of the regular NEXUS bump.
+  //
+  //   CONV + DIV + TIGHT all fire: +0.10 magnitude (in addition to NEXUS)
+  //
+  // Caps at magnitude 1.0. Doesn't double-count items that didn't already
+  // hit NEXUS — but in practice any item with these three will also hit
+  // NEXUS, so the two bumps stack to a meaningful total lift.
+  let nexus2Bumps = 0;
+  if (sigItems.length > 0) {
+    for (const item of sigItems) {
+      if (!item.relevance) continue;
+      const lines = item.relevance.whySurfaced || [];
+      let hasConv = false;
+      let hasDiv = false;
+      let hasTight = false;
+      for (const line of lines) {
+        if (typeof line !== "string") continue;
+        if (line.startsWith("Cross-source convergence")) hasConv = true;
+        else if (line.startsWith("Tight cross-source")) hasTight = true;
+        else if (line.startsWith("Signal-type diversity touch")) hasDiv = true;
+        if (hasConv && hasDiv && hasTight) break;
+      }
+      if (!(hasConv && hasDiv && hasTight)) continue;
+      const bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Nexus-2 — cross-source + cross-type + tight-window confluence on a single item`
+      );
+      nexus2Bumps++;
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -1776,10 +1819,11 @@ export async function synthesizeBrief(
       temporalMomentumBumps,
       influenceNetHubBumps,
       typeDiversityBumps,
+      nexus2Bumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.25",
+    scoringVersion: "1.26",
     weightsApplied: SCORING_WEIGHTS,
   };
 
