@@ -37625,8 +37625,10 @@ window._performMergeFuzzyPersonCandidate = async function(pairKey, keepId) {
     toast('Invalid candidate pair');
     return;
   }
-  var ok = confirm('Merge "' + (foldName || foldId) + '" into "' + (keepName || keepId) + '"?\n\nThis will rewrite every Edge + Signal reference to ' + foldId + ' and delete that Person node.');
-  if (!ok) return;
+  // v1.2.1 (2026-05-19): read scope FIRST so the confirm dialog can
+  // tell the operator how many edges + signals will be rewritten. Cost
+  // is two RTDB reads before the irreversible action; worth it for
+  // operator confidence on a destructive op.
   try {
     var linksSnap = await get(ref(db, 'workspaces/' + currentWsId + '/links'));
     var sigsSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/signals'));
@@ -37641,6 +37643,33 @@ window._performMergeFuzzyPersonCandidate = async function(pairKey, keepId) {
       await fbSet('workspaces/' + currentWsId + '/personMergeCandidates/' + pairKey, Object.assign({}, c, { resolved: 'declined', resolvedAt: Date.now(), resolvedBy: (currentUser && currentUser.email) || 'unknown', resolvedReason: 'one side missing' }));
       return;
     }
+    // Count scope before the destructive ops
+    var edgeScope = 0;
+    var edgeSelfLoops = 0;
+    for (var _lk in linksObj) {
+      if (!Object.prototype.hasOwnProperty.call(linksObj, _lk)) continue;
+      var _l = linksObj[_lk];
+      if (!_l) continue;
+      if (_l.source === foldId || _l.target === foldId) {
+        edgeScope++;
+        var srcAfter = _l.source === foldId ? keepId : _l.source;
+        var tgtAfter = _l.target === foldId ? keepId : _l.target;
+        if (srcAfter === tgtAfter) edgeSelfLoops++;
+      }
+    }
+    var sigScope = 0;
+    for (var _sk in sigsObj) {
+      if (!Object.prototype.hasOwnProperty.call(sigsObj, _sk)) continue;
+      var _s = sigsObj[_sk];
+      if (!_s) continue;
+      if ((Array.isArray(_s.subjectIds) && _s.subjectIds.indexOf(foldId) >= 0) ||
+          (Array.isArray(_s.relatedIds) && _s.relatedIds.indexOf(foldId) >= 0)) {
+        sigScope++;
+      }
+    }
+    var scopeLine = '\n\nScope: ' + edgeScope + ' edge(s)' + (edgeSelfLoops ? ' (' + edgeSelfLoops + ' will become self-loops + be dropped)' : '') + ' + ' + sigScope + ' signal(s) will be rewritten.';
+    var ok = confirm('Merge "' + (foldName || foldId) + '" into "' + (keepName || keepId) + '"?' + scopeLine + '\n\nThen the ' + foldId + ' Person node will be deleted.');
+    if (!ok) return;
     // Rewrite edges: source/target foldId → keepId. Drop self-loops.
     var linkUpdates = 0;
     var linkDeletes = 0;
