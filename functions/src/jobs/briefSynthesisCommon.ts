@@ -177,6 +177,10 @@ export interface BriefOutput {
     /** v1.26: count of Signal items bumped for hitting CONV + DIV +
      *  TIGHT all on the same item (NEXUS-2 second-tier capstone) */
     nexus2Bumps?: number;
+    /** v1.27: count of Signal items bumped for touching an Org whose
+     *  trailing-12mo obligated dollars >= 1.5x prior-12mo (and >= $1M
+     *  trailing) — funding-momentum / FUND chip */
+    fundingMomentumBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1109,6 +1113,79 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.10g. v1.27 — funding-momentum bump.
+  //
+  // For each touched Org, compute trailing-12-month obligated dollars
+  // (sum of award.obligated where awardedAt within last 365d AND
+  // primeOrgId === orgId) vs. prior-12-month (days 365-730 ago). When
+  // trailing >= 1.5x prior AND trailing > $1M, the Org's dollar volume
+  // is meaningfully ramping. Bump items touching that Org.
+  //
+  // Tiers (multiplier = trailingDollars / max(priorDollars, 1)):
+  //   1.5–2.4x + trailing >= $1M:  +0.06 magnitude
+  //   2.5–4.9x + trailing >= $1M:  +0.10
+  //   5.0x+ + trailing >= $5M:     +0.14
+  //
+  // Capped at magnitude 1.0. Uses ctx.awards (already loaded). The
+  // cost is one Map walk per sync — negligible.
+  let fundingMomentumBumps = 0;
+  const fundingMomentumByOrg = new Map<string, number>(); // orgId → ratio
+  if (ctx.awards.size > 0 && sigItems.length > 0) {
+    const trailingByOrg = new Map<string, number>();
+    const priorByOrg = new Map<string, number>();
+    const cutoffTrailingMs = nowMs - 365 * 86400000;
+    const cutoffPriorMs = nowMs - 730 * 86400000;
+    for (const award of ctx.awards.values()) {
+      if (!award || !award.primeOrgId) continue;
+      const at = award.awardedAt || 0;
+      const obl = Number(award.obligated || 0);
+      if (!Number.isFinite(obl) || obl <= 0) continue;
+      if (at >= cutoffTrailingMs) {
+        trailingByOrg.set(
+          award.primeOrgId,
+          (trailingByOrg.get(award.primeOrgId) || 0) + obl
+        );
+      } else if (at >= cutoffPriorMs) {
+        priorByOrg.set(
+          award.primeOrgId,
+          (priorByOrg.get(award.primeOrgId) || 0) + obl
+        );
+      }
+    }
+    for (const [orgId, trailing] of trailingByOrg) {
+      if (trailing < 1_000_000) continue;
+      const prior = priorByOrg.get(orgId) || 0;
+      const denom = Math.max(prior, 1);
+      const ratio = trailing / denom;
+      if (ratio >= 1.5) fundingMomentumByOrg.set(orgId, ratio);
+    }
+  }
+  if (sigItems.length > 0 && fundingMomentumByOrg.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxRatio = 0;
+      for (const id of allIds) {
+        const r = fundingMomentumByOrg.get(id) || 0;
+        if (r > maxRatio) maxRatio = r;
+      }
+      if (maxRatio < 1.5) continue;
+      let bump = 0.06;
+      if (maxRatio >= 5.0) bump = 0.14;
+      else if (maxRatio >= 2.5) bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Funding-momentum touch — touched Org's trailing 12mo obligated $ ${maxRatio.toFixed(1)}x prior 12mo (>= $1M trailing)`
+      );
+      fundingMomentumBumps++;
+    }
+  }
+
   // 3.10f. v1.25 — Signal-type diversity touch bump.
   //
   // When a touched Org receives 4+ DISTINCT Signal types within the
@@ -1654,6 +1731,7 @@ export async function synthesizeBrief(
       "Temporal momentum",
       "Influence-net hub",
       "Signal-type diversity touch",
+      "Funding-momentum touch",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1820,10 +1898,11 @@ export async function synthesizeBrief(
       influenceNetHubBumps,
       typeDiversityBumps,
       nexus2Bumps,
+      fundingMomentumBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.26",
+    scoringVersion: "1.27",
     weightsApplied: SCORING_WEIGHTS,
   };
 
