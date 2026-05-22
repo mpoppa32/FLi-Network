@@ -72,6 +72,9 @@ export async function upsertStatePublicationSignal(
   agencyOrgResolved: boolean;
   bodyOrgsResolved: number;
   bodyPersonsResolved: number;
+  /** v1.4: count of Persons resolved specifically from diplomatic-
+   *  meeting pattern matches (subset of bodyPersonsResolved). */
+  diplomaticMatchesResolved: number;
 }> {
   const id = signalId(feed.key, item.guid);
   const occurredAt = item.pubDateMs || Date.now();
@@ -196,6 +199,65 @@ export async function upsertStatePublicationSignal(
     }
   }
 
+  // v1.4 (2026-05-22): diplomatic-meeting pattern extraction.
+  // State Dept press releases follow predictable language patterns
+  // describing official meetings. v1.3 static keyOfficialPatterns
+  // catch ROLES; v1.4 catches the dynamic NAMES paired with those
+  // roles via a regex over "(Title) (Name) (verb) (Title) (Name)".
+  //
+  // Captures U.S.-side + foreign-side officials by name, not just
+  // by title — so an operator with named individuals in their
+  // pursuit context picks up the actual mentions even when those
+  // individuals aren't in keyOfficialPatterns.
+  //
+  // Conservative: matches only on strong title prefixes + diplomatic
+  // verbs to avoid resolving random capitalized phrases as Persons.
+  // De-dupes within seenRelated.
+  const DIPLO_TITLE_GROUP =
+    "Secretary|Deputy Secretary|Under Secretary|Assistant Secretary|Special Envoy|Ambassador|Foreign Minister|Defense Minister|Prime Minister|President|Foreign Secretary|National Security Advisor|Chief of Staff";
+  const DIPLO_VERB_GROUP =
+    "met with|welcomed|convened with|spoke with|called on|received|hosted|joined|consulted with|conferred with|traveled to meet";
+  // Two-to-four capitalized words for names. Allows apostrophes, hyphens, periods.
+  const NAME_RE = "[A-Z][a-zA-Z'.\\-]+(?:\\s+[A-Z][a-zA-Z'.\\-]+){1,3}";
+  const DIPLO_PATTERN = new RegExp(
+    "(" + DIPLO_TITLE_GROUP + ")\\s+(" + NAME_RE + ")\\s+(?:" + DIPLO_VERB_GROUP + ")\\s+(" + DIPLO_TITLE_GROUP + ")\\s+(" + NAME_RE + ")",
+    "g"
+  );
+  // Scan ORIGINAL title + summary (not the lowercased haystack) so the
+  // capitalized name detection works.
+  const fullText = (title || "") + ". " + (summary || "");
+  let diploMatch: RegExpExecArray | null;
+  let diplomaticMatchesResolved = 0;
+  // Reset regex lastIndex before exec loop
+  DIPLO_PATTERN.lastIndex = 0;
+  while ((diploMatch = DIPLO_PATTERN.exec(fullText)) !== null) {
+    if (relatedIds.length >= maxRelated) break;
+    // diploMatch[2] = U.S.-side name; diploMatch[4] = foreign-side name
+    const usSideName = diploMatch[2];
+    const foreignSideName = diploMatch[4];
+    for (const candidateName of [usSideName, foreignSideName]) {
+      if (relatedIds.length >= maxRelated) break;
+      if (!candidateName) continue;
+      // Skip if the name is just a single word (probably caught a noun)
+      if (!candidateName.includes(" ")) continue;
+      try {
+        const r = await resolvePersonByName(workspaceId, candidateName, {
+          autoCreate: true,
+          provenance: provenance,
+          emitFuzzyCandidates: false,
+        });
+        if (r.personId && !seenRelated.has(r.personId)) {
+          seenRelated.add(r.personId);
+          relatedIds.push(r.personId);
+          bodyPersonsResolved++;
+          diplomaticMatchesResolved++;
+        }
+      } catch (err) {
+        // best-effort; skip
+      }
+    }
+  }
+
   const signal: Signal = {
     id,
     type: "analysis_publication",
@@ -226,6 +288,7 @@ export async function upsertStatePublicationSignal(
       title: title.slice(0, 80),
       bodyOrgsResolved,
       bodyPersonsResolved,
+      diplomaticMatchesResolved,
     });
     return {
       signalId: id,
@@ -233,6 +296,7 @@ export async function upsertStatePublicationSignal(
       agencyOrgResolved,
       bodyOrgsResolved,
       bodyPersonsResolved,
+      diplomaticMatchesResolved,
     };
   }
   const existing = snap.val() as Signal;
@@ -244,6 +308,7 @@ export async function upsertStatePublicationSignal(
       agencyOrgResolved,
       bodyOrgsResolved,
       bodyPersonsResolved,
+      diplomaticMatchesResolved,
     };
   }
   await db.ref(path).set(signal);
@@ -252,7 +317,8 @@ export async function upsertStatePublicationSignal(
     action: "updated",
     agencyOrgResolved,
     bodyOrgsResolved,
-      bodyPersonsResolved,
+    bodyPersonsResolved,
+    diplomaticMatchesResolved,
   };
 }
 

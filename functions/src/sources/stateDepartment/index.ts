@@ -32,7 +32,7 @@ import {
 } from "./mapper";
 
 export const SOURCE_NAME = "state_department";
-export const SOURCE_VERSION = "1.3.0";
+export const SOURCE_VERSION = "1.4.0";
 
 export interface StateDepartmentSyncOptions {
   dryRun?: boolean;
@@ -59,6 +59,11 @@ export interface StateDepartmentSyncResult {
   /** v1.3: total body-mention Persons resolved across all signals.
    *  Indicates how often key-official patterns matched. */
   bodyPersonsResolvedTotal: number;
+  /** v1.4: total Persons resolved specifically via diplomatic-meeting
+   *  pattern matching (subset of bodyPersonsResolvedTotal). Indicates
+   *  how often "[Title] [Name] met with [Title] [Name]" language
+   *  appeared and resolved both sides. */
+  diplomaticMatchesResolvedTotal: number;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
   sourceVersion: string;
@@ -87,6 +92,7 @@ export async function syncWorkspace(
     agencyOrgResolvedTotal: 0,
     bodyOrgsResolvedTotal: 0,
     bodyPersonsResolvedTotal: 0,
+    diplomaticMatchesResolvedTotal: 0,
     errors: [],
     apiCallsCount: 0,
     sourceVersion: SOURCE_VERSION,
@@ -174,6 +180,7 @@ export async function syncWorkspace(
               if (r.agencyOrgResolved) result.agencyOrgResolvedTotal++;
               result.bodyOrgsResolvedTotal += r.bodyOrgsResolved;
               result.bodyPersonsResolvedTotal += r.bodyPersonsResolved;
+              result.diplomaticMatchesResolvedTotal += r.diplomaticMatchesResolved;
             } catch (err) {
               result.errors.push({
                 ref: `item:${feed.key}:${item.guid || item.link}`,
@@ -217,6 +224,7 @@ export async function syncWorkspace(
       signalsCreated: result.signalsCreated,
       bodyOrgsResolvedTotal: result.bodyOrgsResolvedTotal,
       bodyPersonsResolvedTotal: result.bodyPersonsResolvedTotal,
+      diplomaticMatchesResolvedTotal: result.diplomaticMatchesResolvedTotal,
       errors: result.errors.length,
     });
   } catch (err) {
