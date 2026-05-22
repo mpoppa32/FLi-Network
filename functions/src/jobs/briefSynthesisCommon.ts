@@ -192,6 +192,10 @@ export interface BriefOutput {
     /** v1.30: count of Signal items bumped for touching an entity
      *  that's currently in an UNRESOLVED merge candidate (DEDUP chip) */
     mergePendingTouchBumps?: number;
+    /** v1.31: count of Signal items bumped for touching an Org with
+     *  at least one workspace award.lastModifiedAt within last 30
+     *  days (recent-award activity — WIN chip) */
+    recentAwardTouchBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1843,6 +1847,7 @@ export async function synthesizeBrief(
       "Customer-funding flow",
       "Funding-flow co-fire",
       "Merge-pending touch",
+      "Recent-award touch",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1867,6 +1872,75 @@ export async function synthesizeBrief(
         `Nexus convergence — ${seenAxes.size} scoring axes fired on this item`
       );
       nexusBumps++;
+    }
+  }
+
+  // 3.13d. v1.31 — recent-award touch (WIN chip).
+  //
+  // When a touched Org has any workspace award with lastModifiedAt
+  // within the past 30 days, bump items touching that Org. Captures
+  // SHORT-WINDOW event-driven award activity (new modifications,
+  // fresh wins, contract option exercises) distinct from v1.27 FUND
+  // (12-month obligated-$ rollup) and v1.28 CUSTFUND (customer-side
+  // 12mo rollup). Where FUND/CUSTFUND ask 'is this Org's dollar
+  // volume trending up?', WIN asks 'is something happening THIS
+  // MONTH on this Org's awards?'.
+  //
+  // Tiers (count = distinct awards in 30d window):
+  //   1 recent award:  +0.06 magnitude
+  //   2-3 recent:      +0.10
+  //   4+ recent:       +0.14
+  //
+  // Capped at magnitude 1.0. Walks ctx.awards.values() once to
+  // bucket per primeOrgId / customerOrgId then bumps via touched
+  // entity intersection — same pattern as v1.27/v1.28.
+  let recentAwardTouchBumps = 0;
+  const recentAwardCountByOrg = new Map<string, number>();
+  if (ctx.awards.size > 0 && sigItems.length > 0) {
+    const cutoff30dMs = nowMs - 30 * 86400000;
+    for (const award of ctx.awards.values()) {
+      if (!award) continue;
+      const lm = Number(award.lastModifiedAt || award.awardedAt || 0);
+      if (!Number.isFinite(lm) || lm < cutoff30dMs) continue;
+      // Count on both the prime side AND the customer side — a fresh
+      // award is operator-relevant from either direction.
+      if (award.primeOrgId) {
+        recentAwardCountByOrg.set(
+          award.primeOrgId,
+          (recentAwardCountByOrg.get(award.primeOrgId) || 0) + 1
+        );
+      }
+      if (award.customerOrgId) {
+        recentAwardCountByOrg.set(
+          award.customerOrgId,
+          (recentAwardCountByOrg.get(award.customerOrgId) || 0) + 1
+        );
+      }
+    }
+  }
+  if (sigItems.length > 0 && recentAwardCountByOrg.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxCount = 0;
+      for (const id of allIds) {
+        const c = recentAwardCountByOrg.get(id) || 0;
+        if (c > maxCount) maxCount = c;
+      }
+      if (maxCount === 0) continue;
+      let bump = 0.06;
+      if (maxCount >= 4) bump = 0.14;
+      else if (maxCount >= 2) bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Recent-award touch — touched Org has ${maxCount} workspace award${maxCount === 1 ? "" : "s"} with activity in the last 30 days`
+      );
+      recentAwardTouchBumps++;
     }
   }
 
@@ -2088,10 +2162,11 @@ export async function synthesizeBrief(
       customerFundingFlowBumps,
       fundingFlowBumps,
       mergePendingTouchBumps,
+      recentAwardTouchBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.30",
+    scoringVersion: "1.31",
     weightsApplied: SCORING_WEIGHTS,
   };
 
