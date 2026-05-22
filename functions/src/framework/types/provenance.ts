@@ -26,7 +26,8 @@ export type SourceSystem =
   | "conference"
   | "forum"
   | "gao_reports"
-  | "dpc_oversight";
+  | "dpc_oversight"
+  | "state_department"; // Phase 8.6.4 — State Dept RSS aggregator
 
 export interface SourceProvenance {
   system: SourceSystem;

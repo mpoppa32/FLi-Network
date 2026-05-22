@@ -55,6 +55,10 @@ export { dodNewsDaily } from "./jobs/dodNewsDaily";
 export { triggerThinkTanksSync } from "./http/triggerThinkTanksSync";
 export { thinkTanksDaily } from "./jobs/thinkTanksDaily";
 
+// State Department (Phase 8.6.4 — Tier 2 multi-feed RSS aggregator)
+export { triggerStateDepartmentSync } from "./http/triggerStateDepartmentSync";
+export { stateDepartmentDaily } from "./jobs/stateDepartmentDaily";
+
 // DSCA FMS Notifications (Phase 8.6.2 — Tier 2 web scrape)
 export { triggerDscaFmsSync } from "./http/triggerDscaFmsSync";
 export { dscaFmsWeekly } from "./jobs/dscaFmsWeekly";
