@@ -189,6 +189,9 @@ export interface BriefOutput {
     /** v1.29: count of Signal items bumped for hitting FUND + CUSTFUND
      *  on the same item (bidirectional dollar-flow co-fire / FLOW chip) */
     fundingFlowBumps?: number;
+    /** v1.30: count of Signal items bumped for touching an entity
+     *  that's currently in an UNRESOLVED merge candidate (DEDUP chip) */
+    mergePendingTouchBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -221,13 +224,15 @@ const HARD_CAPS = {
 const ARCHIVED_STAGES = new Set(["won", "lost"]);
 
 async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringContext> {
-  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap, nodesSnap, edgesSnap] = await Promise.all([
+  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap, nodesSnap, edgesSnap, personMergeSnap, orgMergeSnap] = await Promise.all([
     db.ref(wsPath(workspaceId, "opportunities")).once("value"),
     db.ref(wsPath(workspaceId, "awards")).once("value"),
     db.ref(wsPath(workspaceId, "sources", "usaspending", "config")).once("value"),
     db.ref(wsPath(workspaceId, "sources", "sam_gov", "config")).once("value"),
     db.ref(wsPath(workspaceId, "nodes")).once("value"),
     db.ref(wsPath(workspaceId, "edges")).once("value"),
+    db.ref(wsPath(workspaceId, "personMergeCandidates")).once("value"),
+    db.ref(wsPath(workspaceId, "orgMergeCandidates")).once("value"),
   ]);
   const opps = (oppSnap.val() as Record<string, Opportunity> | null) ?? {};
   const awards = (awardSnap.val() as Record<string, Award> | null) ?? {};
@@ -403,6 +408,25 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     }
   }
 
+  // v1.30: Set<entityId> for both ids in every UNRESOLVED merge
+  // candidate (Person + Org). Used by the merge-pending touch axis
+  // (DEDUP chip) to flag items whose touched entity identity is
+  // currently ambiguous so the operator clears the dedupe queue
+  // before trusting the score.
+  const pendingMergeIds = new Set<string>();
+  const personMergeRaw = (personMergeSnap.val() as Record<string, { idA?: string; idB?: string; resolved?: string }> | null) ?? {};
+  const orgMergeRaw = (orgMergeSnap.val() as Record<string, { idA?: string; idB?: string; resolved?: string }> | null) ?? {};
+  for (const candidate of Object.values(personMergeRaw)) {
+    if (!candidate || candidate.resolved) continue;
+    if (candidate.idA) pendingMergeIds.add(candidate.idA);
+    if (candidate.idB) pendingMergeIds.add(candidate.idB);
+  }
+  for (const candidate of Object.values(orgMergeRaw)) {
+    if (!candidate || candidate.resolved) continue;
+    if (candidate.idA) pendingMergeIds.add(candidate.idA);
+    if (candidate.idB) pendingMergeIds.add(candidate.idB);
+  }
+
   return {
     trackedOppIds: new Set(Object.keys(opps)),
     trackedAwardIds: new Set(Object.keys(awards)),
@@ -425,6 +449,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     actingAtIncomingCountByOrg,
     sharedAssocsWithAdversaryByOrg,
     weightyPersonCountByOrg,
+    pendingMergeIds,
   };
 }
 
@@ -1817,6 +1842,7 @@ export async function synthesizeBrief(
       "Funding-momentum touch",
       "Customer-funding flow",
       "Funding-flow co-fire",
+      "Merge-pending touch",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1841,6 +1867,44 @@ export async function synthesizeBrief(
         `Nexus convergence — ${seenAxes.size} scoring axes fired on this item`
       );
       nexusBumps++;
+    }
+  }
+
+  // 3.13c. v1.30 — merge-pending touch (DEDUP chip).
+  //
+  // When a Signal touches an entity (Org or Person) that's currently
+  // in an UNRESOLVED merge candidate, bump +0.05 magnitude and emit
+  // a DEDUP chip. This is a workflow signal more than a relevance
+  // signal — it tells the operator "this item's touched entity has
+  // an ambiguous identity; clear the dedupe queue before trusting
+  // the rest of the score." Conservative bump because it's the
+  // weakest of the magnitude axes; the chip is the main payload.
+  //
+  // Reads ctx.pendingMergeIds (Set<entityId> built from both
+  // personMergeCandidates + orgMergeCandidates at workspace load
+  // time, filtered to unresolved entries only).
+  let mergePendingTouchBumps = 0;
+  const pending = ctx.pendingMergeIds;
+  if (sigItems.length > 0 && pending && pending.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let hitCount = 0;
+      for (const id of allIds) {
+        if (pending.has(id)) hitCount++;
+      }
+      if (hitCount === 0) continue;
+      const bump = 0.05;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Merge-pending touch — ${hitCount} touched entity${hitCount === 1 ? " is" : "ies are"} in unresolved merge candidate(s); clear dedupe queue to firm up identity`
+      );
+      mergePendingTouchBumps++;
     }
   }
 
@@ -2023,10 +2087,11 @@ export async function synthesizeBrief(
       fundingMomentumBumps,
       customerFundingFlowBumps,
       fundingFlowBumps,
+      mergePendingTouchBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.29",
+    scoringVersion: "1.30",
     weightsApplied: SCORING_WEIGHTS,
   };
 

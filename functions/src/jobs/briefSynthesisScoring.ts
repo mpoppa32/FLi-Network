@@ -98,6 +98,12 @@ export interface BriefScoringContext {
    *  cross-edge-type aggregation distinct from single-axis
    *  v1.17 DOOR / v1.21 ACTING. */
   weightyPersonCountByOrg?: Map<string, number>;
+  /** v1.30: every entity id (Person OR Org) that appears in an
+   *  UNRESOLVED merge candidate. Used by the merge-pending touch
+   *  axis (DEDUP chip) to flag items whose touched entity identity
+   *  is currently ambiguous so the operator clears the dedupe queue
+   *  before trusting the score. */
+  pendingMergeIds?: Set<string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
