@@ -18,9 +18,14 @@ import {
   parseVacancyReportPositional,
 } from "./vacancyParser";
 import { upsertVacancySignal } from "./mapper";
+import { parsePlumBookPositional } from "./quadrennialParser";
+import { resolveRecipientOrg } from "../usaSpending/orgResolver";
+import { resolvePersonByName } from "../../framework/personResolver";
+import { externalProvenance } from "../../framework/provenance";
+import { db, wsPath } from "../../framework/rtdb";
 
 export const SOURCE_NAME = "plum_book";
-export const SOURCE_VERSION = "1.2.0";
+export const SOURCE_VERSION = "1.3.0";
 
 export interface PlumBookSyncOptions {
   dryRun?: boolean;
@@ -54,6 +59,13 @@ export interface PlumBookSyncResult {
    *  config.usePositionalExtraction is true. */
   positionalPdfsHit?: number;
   positionalFallbacksToText?: number;
+  /** v1.3: quadrennial Plum Book ingestion totals. Only populated when
+   *  config.enableQuadrennialPlumBook is true. */
+  quadrennialEntriesParsed?: number;
+  quadrennialPersonsResolved?: number;
+  quadrennialEdgesUpserted?: number;
+  quadrennialAgencyOrgsResolved?: number;
+  quadrennialFlags?: string[];
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
   sourceVersion: string;
@@ -230,6 +242,140 @@ export async function syncWorkspace(
             message: (err as Error).message,
           });
         }
+      }
+    }
+
+    // v1.3: quadrennial Plum Book ingestion (opt-in).
+    // Distinct from the FVRA tracker loop above — runs only when the
+    // operator has enableQuadrennialPlumBook: true. Pulls the
+    // quadrennial PDF, runs positional extraction, parses each
+    // detected position entry, and writes Person + formerly_at Edge
+    // to the agency Org. No Signals emitted — Plum Book entries are
+    // BASELINE graph data, not events.
+    if (
+      !options.dryRun &&
+      config.enableQuadrennialPlumBook === true &&
+      config.quadrennialPdfUrl
+    ) {
+      result.quadrennialEntriesParsed = 0;
+      result.quadrennialPersonsResolved = 0;
+      result.quadrennialEdgesUpserted = 0;
+      result.quadrennialAgencyOrgsResolved = 0;
+      result.quadrennialFlags = [];
+      try {
+        log?.info("plum_book_quadrennial_sync_started", {
+          url: config.quadrennialPdfUrl,
+        });
+        const extraction = await fetchAndExtractPdfWithPositional(
+          config.quadrennialPdfUrl,
+          {
+            source: "plum_book",
+            maxBytes: 100 * 1024 * 1024, // Plum Book is large — up to ~80MB
+            timeoutMs: 180_000,
+            maxTextChars: 50_000_000,
+          },
+          log
+        );
+        result.apiCallsCount++;
+        result.pdfsDownloaded++;
+        result.pdfBytesDownloaded += extraction.bytes;
+        result.pdfPagesProcessed += extraction.pages;
+
+        const parsed = parsePlumBookPositional(extraction.positionalItems, {
+          maxEntries: config.maxPositionsPerPlumBookSync ?? 9000,
+        });
+        result.quadrennialEntriesParsed = parsed.entries.length;
+        result.quadrennialFlags = parsed.flags;
+
+        // Resolve agency Orgs lazily — same agency hit many times
+        // per Plum Book; cache resolved IDs.
+        const agencyOrgIdByName = new Map<string, string>();
+        const personProvenance = externalProvenance(
+          "plum_book",
+          "quadrennial-" + (parsed.publicationYear ?? "unknown"),
+          config.quadrennialPdfUrl,
+          null,
+          Date.now()
+        );
+
+        for (const entry of parsed.entries) {
+          if (!entry.incumbent || !entry.agency) continue;
+          try {
+            // Resolve agency Org
+            let agencyOrgId = agencyOrgIdByName.get(entry.agency);
+            if (!agencyOrgId) {
+              const r = await resolveRecipientOrg(
+                workspaceId,
+                entry.agency,
+                null,
+                {
+                  autoCreate: true,
+                  type: "government",
+                  emitFuzzyCandidates: false,
+                }
+              );
+              agencyOrgId = r.orgId;
+              if (r.created) result.quadrennialAgencyOrgsResolved!++;
+              if (agencyOrgId) agencyOrgIdByName.set(entry.agency, agencyOrgId);
+            }
+            if (!agencyOrgId) continue;
+            // Resolve Person
+            const pr = await resolvePersonByName(workspaceId, entry.incumbent, {
+              autoCreate: true,
+              role: entry.position,
+              org: entry.agency,
+              provenance: personProvenance,
+              emitFuzzyCandidates: false,
+            });
+            if (pr.created) result.quadrennialPersonsResolved!++;
+            // Upsert formerly_at Edge (Person → Agency).
+            const edgeId =
+              "edge_pb_fa_" + pr.personId + "_" + agencyOrgId;
+            const edgeSnap = await db
+              .ref(wsPath(workspaceId, "edges", edgeId))
+              .once("value");
+            if (!edgeSnap.exists()) {
+              await db.ref(wsPath(workspaceId, "edges", edgeId)).set({
+                id: edgeId,
+                source: pr.personId,
+                target: agencyOrgId,
+                label: "formerly_at",
+                dir: "to",
+                attrs: {
+                  position: entry.position,
+                  appointmentType: entry.appointmentType,
+                  plumBookYear: parsed.publicationYear,
+                  sourceSystem: "plum_book",
+                  pageNum: entry.pageNum,
+                },
+                createdAt: Date.now(),
+              });
+              result.quadrennialEdgesUpserted!++;
+            }
+          } catch (err) {
+            // best-effort; continue past individual failures
+            result.errors.push({
+              ref: `plumbook:${entry.agency}:${entry.incumbent}`,
+              message: (err as Error).message,
+            });
+          }
+        }
+
+        log?.info("plum_book_quadrennial_sync_completed", {
+          entries: parsed.entries.length,
+          persons: result.quadrennialPersonsResolved,
+          edges: result.quadrennialEdgesUpserted,
+          agencies: agencyOrgIdByName.size,
+          flags: parsed.flags,
+        });
+      } catch (err) {
+        result.errors.push({
+          ref: "_quadrennial_plum_book_sync",
+          message: (err as Error).message,
+        });
+        log?.warn?.("plum_book_quadrennial_sync_failed", {
+          message: (err as Error).message,
+        });
       }
     }
 

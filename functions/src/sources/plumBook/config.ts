@@ -44,6 +44,20 @@ export interface PlumBookConfig {
    *  vacancies. Default false — operator opt-in after validating against
    *  the current GAO publication format. */
   usePositionalExtraction?: boolean;
+  /** v1.3 (opt-in): ALSO sync the actual Plum Book from plumbook.gpo.gov
+   *  (published every 4 years post-Presidential election). Distinct
+   *  from the FVRA tracker — Plum Book lists every PAS-confirmable
+   *  political appointee historically, providing baseline data for the
+   *  revolving-door (v1.17 DOOR) and acting-leadership (v1.21 ACTING)
+   *  axes. Default off; opt-in because it's high-volume (one Plum Book
+   *  has ~9000 positions) and only refreshes every 4 years. */
+  enableQuadrennialPlumBook?: boolean;
+  /** v1.3: URL for the current Plum Book PDF. Operator override for
+   *  when GPO publishes the next quadrennial edition with a new URL. */
+  quadrennialPdfUrl?: string;
+  /** v1.3: cap on positions ingested per Plum Book sync. Default 9000
+   *  (full publication). Operator can lower for targeted ingestion. */
+  maxPositionsPerPlumBookSync?: number;
   disabled?: boolean;
   initializedAt?: number;
 }
@@ -58,6 +72,9 @@ export const DEFAULT_PLUM_BOOK_CONFIG: PlumBookConfig = {
   maxVacanciesPerPdf: 200,
   minDaysVacantToEmit: 0,
   usePositionalExtraction: false,
+  enableQuadrennialPlumBook: false,
+  quadrennialPdfUrl: "https://www.govinfo.gov/content/pkg/GPO-PLUMBOOK-2024/pdf/GPO-PLUMBOOK-2024.pdf",
+  maxPositionsPerPlumBookSync: 9000,
 };
 
 export async function loadConfig(
@@ -83,6 +100,20 @@ export function validateConfig(
   if (!config.indexUrl) errors.push("indexUrl must be set");
   if (typeof config.lookbackDays !== "number" || config.lookbackDays < 1) {
     errors.push("lookbackDays must be a positive number");
+  }
+  if (
+    config.enableQuadrennialPlumBook === true &&
+    (!config.quadrennialPdfUrl || !config.quadrennialPdfUrl.startsWith("http"))
+  ) {
+    errors.push("quadrennialPdfUrl must be a valid URL when enableQuadrennialPlumBook is true");
+  }
+  if (
+    config.maxPositionsPerPlumBookSync !== undefined &&
+    (typeof config.maxPositionsPerPlumBookSync !== "number" ||
+      config.maxPositionsPerPlumBookSync < 1 ||
+      config.maxPositionsPerPlumBookSync > 20000)
+  ) {
+    errors.push("maxPositionsPerPlumBookSync must be 1-20000 if set");
   }
   return { valid: errors.length === 0, errors };
 }
