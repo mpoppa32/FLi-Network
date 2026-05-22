@@ -16,6 +16,7 @@ import {
   validateConfig,
   DEFAULT_DEFENSE_CONTRACTOR_PATTERNS,
   DEFAULT_FOREIGN_GOVERNMENT_PATTERNS,
+  DEFAULT_KEY_OFFICIAL_PATTERNS,
   type StateDepartmentConfig,
 } from "./config";
 import {
@@ -31,7 +32,7 @@ import {
 } from "./mapper";
 
 export const SOURCE_NAME = "state_department";
-export const SOURCE_VERSION = "1.2.0";
+export const SOURCE_VERSION = "1.3.0";
 
 export interface StateDepartmentSyncOptions {
   dryRun?: boolean;
@@ -51,10 +52,13 @@ export interface StateDepartmentSyncResult {
   signalsUpdated: number;
   signalsUnchanged: number;
   agencyOrgResolvedTotal: number;
-  /** v1.1: total body-mention Orgs resolved across all signals (sum of
-   *  per-signal relatedIds.length). Indicates how often defense
-   *  contractor / foreign-government patterns matched item bodies. */
+  /** v1.1: total body-mention Orgs resolved across all signals.
+   *  Indicates how often defense contractor / foreign-government
+   *  patterns matched item bodies. */
   bodyOrgsResolvedTotal: number;
+  /** v1.3: total body-mention Persons resolved across all signals.
+   *  Indicates how often key-official patterns matched. */
+  bodyPersonsResolvedTotal: number;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
   sourceVersion: string;
@@ -82,6 +86,7 @@ export async function syncWorkspace(
     signalsUnchanged: 0,
     agencyOrgResolvedTotal: 0,
     bodyOrgsResolvedTotal: 0,
+    bodyPersonsResolvedTotal: 0,
     errors: [],
     apiCallsCount: 0,
     sourceVersion: SOURCE_VERSION,
@@ -130,6 +135,11 @@ export async function syncWorkspace(
         config.foreignGovernmentPatterns.length > 0
           ? config.foreignGovernmentPatterns
           : DEFAULT_FOREIGN_GOVERNMENT_PATTERNS,
+      keyOfficials:
+        config.keyOfficialPatterns &&
+        config.keyOfficialPatterns.length > 0
+          ? config.keyOfficialPatterns
+          : DEFAULT_KEY_OFFICIAL_PATTERNS,
       maxRelatedPerSignal: config.maxRelatedPerSignal ?? 8,
     };
 
@@ -163,6 +173,7 @@ export async function syncWorkspace(
               else result.signalsUnchanged++;
               if (r.agencyOrgResolved) result.agencyOrgResolvedTotal++;
               result.bodyOrgsResolvedTotal += r.bodyOrgsResolved;
+              result.bodyPersonsResolvedTotal += r.bodyPersonsResolved;
             } catch (err) {
               result.errors.push({
                 ref: `item:${feed.key}:${item.guid || item.link}`,
@@ -205,6 +216,7 @@ export async function syncWorkspace(
       itemsMatched: result.itemsMatched,
       signalsCreated: result.signalsCreated,
       bodyOrgsResolvedTotal: result.bodyOrgsResolvedTotal,
+      bodyPersonsResolvedTotal: result.bodyPersonsResolvedTotal,
       errors: result.errors.length,
     });
   } catch (err) {

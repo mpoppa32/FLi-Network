@@ -22,6 +22,7 @@ import {
   resolveAgencyOrg,
   resolveRecipientOrg,
 } from "../usaSpending/orgResolver";
+import { resolvePersonByName } from "../../framework/personResolver";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
 import type { StateRssItem } from "./client";
@@ -53,6 +54,9 @@ function signalId(feedKey: string, guid: string): string {
 export interface UpsertSignalPatterns {
   defenseContractors: string[];
   foreignGovernments: string[];
+  /** v1.3: key-official name / title patterns. Each match resolves to
+   *  a Person node via framework/personResolver. */
+  keyOfficials: string[];
   maxRelatedPerSignal: number;
 }
 
@@ -67,6 +71,7 @@ export async function upsertStatePublicationSignal(
   action: "created" | "updated" | "unchanged";
   agencyOrgResolved: boolean;
   bodyOrgsResolved: number;
+  bodyPersonsResolved: number;
 }> {
   const id = signalId(feed.key, item.guid);
   const occurredAt = item.pubDateMs || Date.now();
@@ -99,10 +104,33 @@ export async function upsertStatePublicationSignal(
   // dedupe candidates on each weak mention would flood the queue.
   // Operator gets fuzzy candidates only when an Org is first created
   // by another (higher-confidence) source.
+  // Hash + provenance computed up front so body-resolution loops
+  // (Persons in particular — personResolver requires provenance for
+  // auto-create) can reference them. Hash is deterministic over the
+  // signal's stable fields.
+  const hash = hashFields(
+    {
+      title,
+      occurredAt,
+      author: author || "",
+      link: item.link || "",
+      feedKey: feed.key,
+    } as Record<string, unknown>,
+    ["title", "occurredAt", "author", "link", "feedKey"]
+  );
+  const provenance = externalProvenance(
+    "state_department",
+    item.guid || item.link,
+    item.link || feed.rssUrl,
+    hash,
+    Date.now()
+  );
+
   const relatedIds: string[] = [];
   const seenRelated = new Set<string>();
   const haystack = (title + " " + summary).toLowerCase();
   const maxRelated = Math.max(1, patterns.maxRelatedPerSignal || 8);
+  let bodyOrgsResolved = 0;
   for (const name of patterns.defenseContractors) {
     if (relatedIds.length >= maxRelated) break;
     if (!name || haystack.indexOf(name.toLowerCase()) < 0) continue;
@@ -115,6 +143,7 @@ export async function upsertStatePublicationSignal(
       if (r.orgId && !seenRelated.has(r.orgId)) {
         seenRelated.add(r.orgId);
         relatedIds.push(r.orgId);
+        bodyOrgsResolved++;
       }
     } catch (err) {
       // best-effort; skip
@@ -133,30 +162,39 @@ export async function upsertStatePublicationSignal(
       if (r.orgId && !seenRelated.has(r.orgId)) {
         seenRelated.add(r.orgId);
         relatedIds.push(r.orgId);
+        bodyOrgsResolved++;
       }
     } catch (err) {
       // best-effort; skip
     }
   }
 
-  const hash = hashFields(
-    {
-      title,
-      occurredAt,
-      author: author || "",
-      link: item.link || "",
-      feedKey: feed.key,
-    } as Record<string, unknown>,
-    ["title", "occurredAt", "author", "link", "feedKey"]
-  );
-
-  const provenance = externalProvenance(
-    "state_department",
-    item.guid || item.link,
-    item.link || feed.rssUrl,
-    hash,
-    Date.now()
-  );
+  // v1.3: key-official name patterns → Person resolution. Same shape
+  // as the Org loops above. Persons land in relatedIds alongside Orgs;
+  // Brief Synthesis touched-entity intersection treats both
+  // identically. Provenance carries state_department as the system so
+  // newly-created Persons trace back to the State item that surfaced
+  // them. emitFuzzyCandidates: false to suppress dedupe noise from
+  // weak body mentions — same rationale as the Org side.
+  let bodyPersonsResolved = 0;
+  for (const personName of patterns.keyOfficials) {
+    if (relatedIds.length >= maxRelated) break;
+    if (!personName || haystack.indexOf(personName.toLowerCase()) < 0) continue;
+    try {
+      const r = await resolvePersonByName(workspaceId, personName, {
+        autoCreate: true,
+        provenance: provenance,
+        emitFuzzyCandidates: false,
+      });
+      if (r.personId && !seenRelated.has(r.personId)) {
+        seenRelated.add(r.personId);
+        relatedIds.push(r.personId);
+        bodyPersonsResolved++;
+      }
+    } catch (err) {
+      // best-effort; skip
+    }
+  }
 
   const signal: Signal = {
     id,
@@ -186,13 +224,15 @@ export async function upsertStatePublicationSignal(
       id,
       feed: feed.key,
       title: title.slice(0, 80),
-      bodyOrgsResolved: relatedIds.length,
+      bodyOrgsResolved,
+      bodyPersonsResolved,
     });
     return {
       signalId: id,
       action: "created",
       agencyOrgResolved,
-      bodyOrgsResolved: relatedIds.length,
+      bodyOrgsResolved,
+      bodyPersonsResolved,
     };
   }
   const existing = snap.val() as Signal;
@@ -202,7 +242,8 @@ export async function upsertStatePublicationSignal(
       signalId: id,
       action: "unchanged",
       agencyOrgResolved,
-      bodyOrgsResolved: relatedIds.length,
+      bodyOrgsResolved,
+      bodyPersonsResolved,
     };
   }
   await db.ref(path).set(signal);
@@ -210,7 +251,8 @@ export async function upsertStatePublicationSignal(
     signalId: id,
     action: "updated",
     agencyOrgResolved,
-    bodyOrgsResolved: relatedIds.length,
+    bodyOrgsResolved,
+      bodyPersonsResolved,
   };
 }
 

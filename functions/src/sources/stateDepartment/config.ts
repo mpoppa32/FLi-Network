@@ -28,6 +28,13 @@ export interface StateDepartmentConfig {
    *  relatedIds. Default 8. Higher means more touched-entity surface
    *  for that Signal; lower keeps noise bounded. */
   maxRelatedPerSignal?: number;
+  /** v1.3: key-official name patterns. Each match resolves to a
+   *  Person node via framework/personResolver. Empty/unset = use the
+   *  baked-in default list (current cabinet officials + key envoys).
+   *  Operator can extend with their pursuit-relevant officials —
+   *  e.g., "Bonnie Jenkins" (Arms Control) or "Mira Resnick" (PM)
+   *  for FMS-heavy workspaces. */
+  keyOfficialPatterns?: string[];
   /** Operator-set disable. */
   disabled?: boolean;
   initializedAt?: number;
@@ -59,6 +66,27 @@ export const DEFAULT_DEFENSE_CONTRACTOR_PATTERNS: string[] = [
   "Palantir",
   "Anduril",
   "Shield AI",
+];
+
+/** v1.3 default key-official patterns. Title-based patterns get
+ *  resolved as Person nodes anchored by the formal role; specific
+ *  named individuals can be added by the operator for their pursuit
+ *  context. Title patterns survive cabinet turnover; named patterns
+ *  shift with administration changes. */
+export const DEFAULT_KEY_OFFICIAL_PATTERNS: string[] = [
+  "Secretary of State",
+  "Deputy Secretary of State",
+  "Under Secretary for Arms Control",
+  "Under Secretary for Political Affairs",
+  "Under Secretary for Economic Growth",
+  "Assistant Secretary for Political-Military Affairs",
+  "Assistant Secretary for European and Eurasian Affairs",
+  "Assistant Secretary for East Asian and Pacific Affairs",
+  "Assistant Secretary for Near Eastern Affairs",
+  "Assistant Secretary for African Affairs",
+  "Director of Policy Planning",
+  "Special Envoy",
+  "U.S. Ambassador",
 ];
 
 /** Default foreign-government patterns. Same provenance. */
@@ -93,6 +121,7 @@ export const DEFAULT_STATE_DEPARTMENT_CONFIG: StateDepartmentConfig = {
   maxItemsPerFeed: 60,
   defenseContractorPatterns: DEFAULT_DEFENSE_CONTRACTOR_PATTERNS,
   foreignGovernmentPatterns: DEFAULT_FOREIGN_GOVERNMENT_PATTERNS,
+  keyOfficialPatterns: DEFAULT_KEY_OFFICIAL_PATTERNS,
   maxRelatedPerSignal: 8,
 };
 
@@ -142,6 +171,12 @@ export function validateConfig(
     !Array.isArray(config.foreignGovernmentPatterns)
   ) {
     errors.push("foreignGovernmentPatterns must be an array if set");
+  }
+  if (
+    config.keyOfficialPatterns !== undefined &&
+    !Array.isArray(config.keyOfficialPatterns)
+  ) {
+    errors.push("keyOfficialPatterns must be an array if set");
   }
   if (
     config.maxRelatedPerSignal !== undefined &&
