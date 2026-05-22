@@ -17679,6 +17679,23 @@ window._computeAccountCoverage = function(org, dataArg){
 // (dead-block stripped P10.6: _deadRenderDailyBrief_P10_4)
 function updateCount(){var el=document.getElementById('arch-empty');if(meetings.length&&el)el.style.display='none';}
 
+// Notes textarea char-counter. Both names (updateCC / onNotesInput) are
+// referenced from existing call sites — voice recognition `recog.onresult`
+// (line 17685), post-process cleanup in processNotes (line 17980), paste
+// handler (~line 14964), transcript drop (~17906), transcript file load
+// (~23680), and the textarea's inline oninput on the element itself.
+// The missing definitions threw ReferenceError mid-meeting-process and
+// aborted form cleanup after a successful Claude extraction. Single
+// definition + alias avoids drift.
+function onNotesInput(){
+  var ta=document.getElementById('m-notes');
+  var el=document.getElementById('char-count');
+  if(!ta||!el)return;
+  var n=(ta.value||'').length;
+  el.textContent=n?(n.toLocaleString()+' chars'):'';
+}
+var updateCC=onNotesInput;
+
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition,recog=null,voiceOn=false,voiceBase='',vrTimer=null;
 function toggleVoice(){if(!SR){toast('Voice requires Chrome');return;}voiceOn?stopVoice():startVoice();}
 function startVoice(){voiceOn=true;voiceBase=document.getElementById('m-notes').value;launchRec();updateVUI(true);}
