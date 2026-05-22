@@ -27,64 +27,13 @@ import type { Signal } from "../../framework/types/signals";
 import type { StateRssItem } from "./client";
 import type { StateDepartmentFeed } from "./registry";
 
-// v1.1: defense contractor name → resolver match. Modest static list
-// covering majors most likely to surface in State Dept context (FMS,
-// export controls, sanctions reviews). Operator can extend via config
-// in v1.2. Case-insensitive substring match.
-const DEFENSE_CONTRACTOR_PATTERNS: string[] = [
-  "Lockheed Martin",
-  "Boeing",
-  "Raytheon",
-  "RTX",
-  "Northrop Grumman",
-  "General Dynamics",
-  "L3Harris",
-  "BAE Systems",
-  "Leidos",
-  "Booz Allen",
-  "SAIC",
-  "CACI",
-  "ManTech",
-  "KBR",
-  "Parsons",
-  "Peraton",
-  "Palantir",
-  "Anduril",
-  "Shield AI",
-];
-
-// v1.1: foreign-government / country-as-Org match. Same shape — case-
-// insensitive substring. When matched, resolved as type:'government'
-// via resolveAgencyOrg so they integrate with the existing customer-
-// terrain plumbing if the operator decides to watch foreign mil-sales.
-const FOREIGN_GOVERNMENT_PATTERNS: string[] = [
-  "Ukraine",
-  "Israel",
-  "Saudi Arabia",
-  "United Arab Emirates",
-  "Taiwan",
-  "South Korea",
-  "Japan",
-  "Australia",
-  "United Kingdom",
-  "Germany",
-  "France",
-  "Poland",
-  "Philippines",
-  "India",
-  "Egypt",
-  "Jordan",
-  "Iraq",
-  "Kuwait",
-  "Qatar",
-  "Bahrain",
-  "Oman",
-];
-
-// Cap on total resolved entities per Signal to keep noise bounded.
-// At 8, a mention-heavy press release tops out without clobbering the
-// touched-entity space with weakly-linked Orgs.
-const MAX_RELATED_PER_SIGNAL = 8;
+// v1.2: pattern lists + per-signal cap moved into per-workspace
+// config (StateDepartmentConfig.defenseContractorPatterns +
+// .foreignGovernmentPatterns + .maxRelatedPerSignal). Defaults live
+// in config.ts as DEFAULT_DEFENSE_CONTRACTOR_PATTERNS +
+// DEFAULT_FOREIGN_GOVERNMENT_PATTERNS so cold-start operators get
+// sensible coverage without configuration. The mapper receives the
+// resolved lists via the patterns argument below.
 
 function signalId(feedKey: string, guid: string): string {
   const safe =
@@ -97,10 +46,21 @@ function signalId(feedKey: string, guid: string): string {
  * Map one RSS item to a Signal. Idempotent — same item produces same
  * hash; subsequent runs bump refreshedAt but don't rewrite.
  */
+/** v1.2: mapper accepts the resolved pattern lists + cap from the
+ *  caller (index.ts pulls them from config). Keeping the static
+ *  defaults in config.ts means a mapper unit-test or one-off caller
+ *  who skips this argument still gets a sane default behavior. */
+export interface UpsertSignalPatterns {
+  defenseContractors: string[];
+  foreignGovernments: string[];
+  maxRelatedPerSignal: number;
+}
+
 export async function upsertStatePublicationSignal(
   workspaceId: string,
   feed: StateDepartmentFeed,
   item: StateRssItem,
+  patterns: UpsertSignalPatterns,
   log?: Logger
 ): Promise<{
   signalId: string;
@@ -142,9 +102,10 @@ export async function upsertStatePublicationSignal(
   const relatedIds: string[] = [];
   const seenRelated = new Set<string>();
   const haystack = (title + " " + summary).toLowerCase();
-  for (const name of DEFENSE_CONTRACTOR_PATTERNS) {
-    if (relatedIds.length >= MAX_RELATED_PER_SIGNAL) break;
-    if (haystack.indexOf(name.toLowerCase()) < 0) continue;
+  const maxRelated = Math.max(1, patterns.maxRelatedPerSignal || 8);
+  for (const name of patterns.defenseContractors) {
+    if (relatedIds.length >= maxRelated) break;
+    if (!name || haystack.indexOf(name.toLowerCase()) < 0) continue;
     try {
       const r = await resolveRecipientOrg(workspaceId, name, null, {
         autoCreate: true,
@@ -159,9 +120,9 @@ export async function upsertStatePublicationSignal(
       // best-effort; skip
     }
   }
-  for (const country of FOREIGN_GOVERNMENT_PATTERNS) {
-    if (relatedIds.length >= MAX_RELATED_PER_SIGNAL) break;
-    if (haystack.indexOf(country.toLowerCase()) < 0) continue;
+  for (const country of patterns.foreignGovernments) {
+    if (relatedIds.length >= maxRelated) break;
+    if (!country || haystack.indexOf(country.toLowerCase()) < 0) continue;
     try {
       const r = await resolveRecipientOrg(workspaceId, country, null, {
         autoCreate: true,

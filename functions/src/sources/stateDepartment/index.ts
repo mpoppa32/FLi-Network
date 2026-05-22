@@ -14,6 +14,8 @@ import { categorizeError } from "../../framework/errors";
 import {
   loadConfig,
   validateConfig,
+  DEFAULT_DEFENSE_CONTRACTOR_PATTERNS,
+  DEFAULT_FOREIGN_GOVERNMENT_PATTERNS,
   type StateDepartmentConfig,
 } from "./config";
 import {
@@ -29,7 +31,7 @@ import {
 } from "./mapper";
 
 export const SOURCE_NAME = "state_department";
-export const SOURCE_VERSION = "1.1.0";
+export const SOURCE_VERSION = "1.2.0";
 
 export interface StateDepartmentSyncOptions {
   dryRun?: boolean;
@@ -115,6 +117,22 @@ export async function syncWorkspace(
     const cutoff = Date.now() - config.lookbackDays * 24 * 60 * 60 * 1000;
     const maxItems = Math.max(1, config.maxItemsPerFeed ?? 60);
 
+    // v1.2: resolve pattern lists from config, falling back to the
+    // baked-in defaults when the operator hasn't customized.
+    const patterns = {
+      defenseContractors:
+        config.defenseContractorPatterns &&
+        config.defenseContractorPatterns.length > 0
+          ? config.defenseContractorPatterns
+          : DEFAULT_DEFENSE_CONTRACTOR_PATTERNS,
+      foreignGovernments:
+        config.foreignGovernmentPatterns &&
+        config.foreignGovernmentPatterns.length > 0
+          ? config.foreignGovernmentPatterns
+          : DEFAULT_FOREIGN_GOVERNMENT_PATTERNS,
+      maxRelatedPerSignal: config.maxRelatedPerSignal ?? 8,
+    };
+
     if (!options.dryRun) {
       for (const feed of feeds) {
         try {
@@ -137,6 +155,7 @@ export async function syncWorkspace(
                 workspaceId,
                 feed,
                 item,
+                patterns,
                 log
               );
               if (r.action === "created") result.signalsCreated++;
