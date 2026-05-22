@@ -200,6 +200,10 @@ export interface BriefOutput {
      *  received 3+ Signals within a single 24h slice (Org-centric
      *  same-day spike — SPIKE chip) */
     sameDayOrgSpikeBumps?: number;
+    /** v1.35: count of Signal items bumped for touching an entity
+     *  mentioned in an operator-logged meeting within the past 14
+     *  days (meeting-touch — MEET chip) */
+    meetingTouchBumps?: number;
     /** v1.33: count of Signal items hit by all three of SPIKE +
      *  NEXUS-2 + FLOW on the same item (APEX triple-capstone chip).
      *  Strongest single-item BD convergence signal. */
@@ -241,7 +245,7 @@ const HARD_CAPS = {
 const ARCHIVED_STAGES = new Set(["won", "lost"]);
 
 async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringContext> {
-  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap, nodesSnap, edgesSnap, personMergeSnap, orgMergeSnap] = await Promise.all([
+  const [oppSnap, awardSnap, usaCfgSnap, samCfgSnap, nodesSnap, edgesSnap, personMergeSnap, orgMergeSnap, meetingsSnap] = await Promise.all([
     db.ref(wsPath(workspaceId, "opportunities")).once("value"),
     db.ref(wsPath(workspaceId, "awards")).once("value"),
     db.ref(wsPath(workspaceId, "sources", "usaspending", "config")).once("value"),
@@ -250,6 +254,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     db.ref(wsPath(workspaceId, "edges")).once("value"),
     db.ref(wsPath(workspaceId, "personMergeCandidates")).once("value"),
     db.ref(wsPath(workspaceId, "orgMergeCandidates")).once("value"),
+    db.ref(wsPath(workspaceId, "meetings")).once("value"),
   ]);
   const opps = (oppSnap.val() as Record<string, Opportunity> | null) ?? {};
   const awards = (awardSnap.val() as Record<string, Award> | null) ?? {};
@@ -425,6 +430,74 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     }
   }
 
+  // v1.35: build Set<nodeId> of entities mentioned in operator-logged
+  // meetings within the past 14 days. Tying operator workflow to Brief
+  // scoring — meetings you log get reflected within hours.
+  //
+  // Data path: workspaces/{wsId}/meetings is keyed by meeting id.
+  // Each meeting has meta.date (string like '2026-05-20') and
+  // intel.{keyPeople[],companies[]} with .name fields. We resolve
+  // those names against the workspace nodes Map via a lowercase-name
+  // index, build the touched-entity Set.
+  const meetingTouchedNodeIds = new Set<string>();
+  const meetingsRaw = (meetingsSnap.val() as Record<string, {
+    meta?: { date?: string };
+    intel?: {
+      keyPeople?: Array<{ name?: string }>;
+      companies?: Array<{ name?: string }>;
+    };
+  }> | null) ?? {};
+  const meetingCutoffMs = Date.now() - 14 * 86400000;
+  // Build name → nodeId lookup (case-insensitive). Same shape as the
+  // FLiIntel.html autoSyncEnts uses, kept server-side to avoid
+  // depending on client-side state.
+  const nodeIdByLowerName = new Map<string, string>();
+  for (const [nid, node] of Object.entries(nodes)) {
+    if (!node) continue;
+    const nm = (node as { name?: string }).name;
+    if (typeof nm === "string" && nm.trim()) {
+      const k = nm.trim().toLowerCase();
+      if (!nodeIdByLowerName.has(k)) nodeIdByLowerName.set(k, nid);
+    }
+    const alts = (node as { alternateNames?: string[] }).alternateNames;
+    if (Array.isArray(alts)) {
+      for (const alt of alts) {
+        if (typeof alt === "string" && alt.trim()) {
+          const ak = alt.trim().toLowerCase();
+          if (!nodeIdByLowerName.has(ak)) nodeIdByLowerName.set(ak, nid);
+        }
+      }
+    }
+  }
+  for (const meeting of Object.values(meetingsRaw)) {
+    if (!meeting) continue;
+    const dateStr = meeting.meta?.date;
+    if (!dateStr) continue;
+    // Parse YYYY-MM-DD as UTC midnight to be timezone-stable
+    const parsed = Date.parse(dateStr + "T00:00:00Z");
+    if (!Number.isFinite(parsed) || parsed < meetingCutoffMs) continue;
+    const intel = meeting.intel || {};
+    const names: string[] = [];
+    if (Array.isArray(intel.keyPeople)) {
+      for (const p of intel.keyPeople) {
+        if (p && typeof p.name === "string" && p.name.trim()) {
+          names.push(p.name.trim().toLowerCase());
+        }
+      }
+    }
+    if (Array.isArray(intel.companies)) {
+      for (const c of intel.companies) {
+        if (c && typeof c.name === "string" && c.name.trim()) {
+          names.push(c.name.trim().toLowerCase());
+        }
+      }
+    }
+    for (const nm of names) {
+      const resolvedId = nodeIdByLowerName.get(nm);
+      if (resolvedId) meetingTouchedNodeIds.add(resolvedId);
+    }
+  }
+
   // v1.30: Set<entityId> for both ids in every UNRESOLVED merge
   // candidate (Person + Org). Used by the merge-pending touch axis
   // (DEDUP chip) to flag items whose touched entity identity is
@@ -467,6 +540,7 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
     sharedAssocsWithAdversaryByOrg,
     weightyPersonCountByOrg,
     pendingMergeIds,
+    meetingTouchedNodeIds,
   };
 }
 
@@ -1864,6 +1938,7 @@ export async function synthesizeBrief(
       "Same-day Org spike",
       "Apex triple-capstone",
       "Pipeline-stage transition touch",
+      "Meeting-touch",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -2108,6 +2183,49 @@ export async function synthesizeBrief(
         `Recent-award touch — touched Org has ${maxCount} workspace award${maxCount === 1 ? "" : "s"} with activity in the last 30 days`
       );
       recentAwardTouchBumps++;
+    }
+  }
+
+  // 3.13g. v1.35 — meeting-touch (MEET chip).
+  //
+  // When a Signal touches an entity (Org OR Person) that the operator
+  // mentioned in a logged meeting within the past 14 days, bump items
+  // touching that entity. Ties operator workflow directly into Brief
+  // scoring — the meetings you log get reflected within hours, not
+  // weeks. The platform learns from operator behavior.
+  //
+  // Bump policy (count = distinct meeting-touched ids per item):
+  //   1 meeting-touched id:  +0.08 magnitude
+  //   2-3 meeting-touched:   +0.12
+  //   4+ meeting-touched:    +0.16
+  //
+  // Capped at magnitude 1.0. The +0.08 floor is intentionally higher
+  // than DEDUP (+0.05) because meeting-mention is a strong operator
+  // signal of attention, not a workflow flag.
+  let meetingTouchBumps = 0;
+  const meetingTouched = ctx.meetingTouchedNodeIds;
+  if (sigItems.length > 0 && meetingTouched && meetingTouched.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let hitCount = 0;
+      for (const id of allIds) {
+        if (meetingTouched.has(id)) hitCount++;
+      }
+      if (hitCount === 0) continue;
+      let bump = 0.08;
+      if (hitCount >= 4) bump = 0.16;
+      else if (hitCount >= 2) bump = 0.12;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Meeting-touch — touched entity${hitCount === 1 ? " was" : "ies were"} mentioned in operator meeting${hitCount === 1 ? "" : "s"} within last 14 days (${hitCount} touched id${hitCount === 1 ? "" : "s"})`
+      );
+      meetingTouchBumps++;
     }
   }
 
@@ -2376,10 +2494,11 @@ export async function synthesizeBrief(
       sameDayOrgSpikeBumps,
       apexBumps,
       pipelineStageTransitionBumps,
+      meetingTouchBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.34",
+    scoringVersion: "1.35",
     weightsApplied: SCORING_WEIGHTS,
   };
 

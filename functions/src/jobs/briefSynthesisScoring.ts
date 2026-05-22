@@ -104,6 +104,11 @@ export interface BriefScoringContext {
    *  is currently ambiguous so the operator clears the dedupe queue
    *  before trusting the score. */
   pendingMergeIds?: Set<string>;
+  /** v1.35: every node id mentioned in an operator-logged meeting
+   *  within the past 14 days. Used by the meeting-touch axis (MEET
+   *  chip) to tie operator workflow directly to Brief scoring —
+   *  meetings you log lift intel on the same entities. */
+  meetingTouchedNodeIds?: Set<string>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
