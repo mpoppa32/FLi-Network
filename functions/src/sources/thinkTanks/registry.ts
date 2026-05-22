@@ -101,6 +101,37 @@ export const THINK_TANK_REGISTRY: ThinkTankSource[] = [
     category: "policy",
     defaultOn: false,
   },
+  // 2026-05-22: defense-analysis publication additions. Reuse the
+  // think_tank infrastructure rather than splitting into a new
+  // source plugin — these are think-tank-adjacent (analysis/opinion
+  // rather than wire news, which defense_scoop covers).
+  {
+    key: "defense_one",
+    name: "Defense One",
+    rssUrl: "https://www.defenseone.com/rss/all/",
+    websiteUrl: "https://www.defenseone.com",
+    topicTags: ["defense", "policy", "technology"],
+    category: "defense",
+    defaultOn: true,
+  },
+  {
+    key: "war_on_the_rocks",
+    name: "War on the Rocks",
+    rssUrl: "https://warontherocks.com/feed/",
+    websiteUrl: "https://warontherocks.com",
+    topicTags: ["defense", "strategy", "national_security"],
+    category: "strategy",
+    defaultOn: true,
+  },
+  {
+    key: "aviation_week",
+    name: "Aviation Week (Defense)",
+    rssUrl: "https://aviationweek.com/rss/defense",
+    websiteUrl: "https://aviationweek.com/defense",
+    topicTags: ["defense", "aviation", "aerospace"],
+    category: "defense",
+    defaultOn: false,
+  },
 ];
 
 export function getRegistry(): ThinkTankSource[] {
