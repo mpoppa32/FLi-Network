@@ -36217,27 +36217,33 @@ window._renderExternalIntelligence = function(brief) {
     // their respective chip labels for visual cross-reference against
     // the inline scoring-trail chips on Brief items.
     var c = brief.counts;
+    // v1.4 (2026-05-19): each axis def carries a `prefix` field — the
+    // anchor token in whySurfaced[] that identifies items hitting this
+    // axis. Used by the v1.4 chip click handler to drill down into the
+    // exact firing items.
     var bumpAxes = [
-      { key: 'crossSourceBumps',      label: 'CONV',   color: '#3a6fb5', title: 'Cross-source convergence (any time in week) — v1.11' },
-      { key: 'tightClusterBumps',     label: 'TIGHT',  color: '#3a6fb5', title: 'Tight 72h cluster (subset of CONV) — v1.12' },
-      { key: 'leadershipFluxBumps',   label: 'FLUX',   color: '#d4823a', title: 'Customer leadership transition in flux window — v1.13' },
-      { key: 'protestAmendmentBumps', label: 'RESET',  color: '#9a4040', title: 'Protest + opportunity_amendment confluence — v1.14' },
-      { key: 'posturePathBumps',      label: 'ADV/LIB', color: '#9a4040', title: 'Operator-authored Posture path (Adversary / Liberator) — v1.15' },
-      { key: 'postureTrajectoryBumps', label: 'RISE/FALL', color: '#3a8a5c', title: 'Operator-authored Posture trajectory (Rising / Falling) — v1.15' },
-      { key: 'peMentionBumps',        label: 'PE',     color: '#9c8a5e', title: 'Mentions an indexed budget PE — v1.16' },
-      { key: 'revolvingDoorTouchBumps', label: 'DOOR', color: '#a87c5a', title: 'Org with incoming formerly_at Edges (revolving-door touch) — v1.17' },
-      { key: 'nexusBumps',            label: 'NEXUS',  color: '#d4823a', title: 'Confluence-of-confluences (3+ distinct axes on one item) — v1.18' },
-      { key: 'weightyPersonTouchBumps', label: 'WEIGHT', color: '#5e9c8b', title: 'Person with 3+ cross-source institutional roles — v1.20' },
-      { key: 'actingAtTouchBumps',    label: 'ACTING', color: '#b56ba3', title: 'Org with incoming acting_at Edges (acting leadership touch) — v1.21' },
-      { key: 'coMembershipBumps',     label: 'CO-MEM', color: '#6a8a3a', title: 'Industry-assoc co-membership with active adversary — v1.22' },
-      { key: 'temporalMomentumBumps', label: 'MOM',    color: '#c97a4a', title: 'Touched Org’s this-week touch count >= 2x its trailing 4-week average (temporal momentum) — v1.23' },
-      { key: 'influenceNetHubBumps',  label: 'HUB',    color: '#7a5ec9', title: 'Touched Org has 3+ weighty Persons connected via institutional edges (influence-net hub) — v1.24' },
-      { key: 'typeDiversityBumps',    label: 'DIV',    color: '#4a8ab0', title: 'Touched Org receives 4+ distinct Signal types this window (cross-Signal-type convergence) — v1.25' },
-      { key: 'nexus2Bumps',           label: 'NEXUS-2', color: '#d4823a', title: 'CONV + DIV + TIGHT all fired on the same item (second-tier capstone) — v1.26' },
-      { key: 'fundingMomentumBumps',  label: 'FUND',   color: '#5a8a3a', title: 'Touched Org trailing 12mo obligated $ >= 1.5x prior 12mo (>= $1M trailing) — v1.27' },
-      { key: 'customerFundingFlowBumps', label: 'CUSTFUND', color: '#3a8a8a', title: 'Touched customer Org trailing 12mo INBOUND obligated $ >= 1.5x prior 12mo (>= $1M trailing) — v1.28' },
-      { key: 'fundingFlowBumps',      label: 'FLOW',   color: '#d4823a', title: 'FUND + CUSTFUND both fired on the same item (bidirectional funding-flow co-fire capstone) — v1.29' }
+      { key: 'crossSourceBumps',      label: 'CONV',   color: '#3a6fb5', prefix: 'Cross-source convergence',   title: 'Cross-source convergence (any time in week) — v1.11' },
+      { key: 'tightClusterBumps',     label: 'TIGHT',  color: '#3a6fb5', prefix: 'Tight cross-source',         title: 'Tight 72h cluster (subset of CONV) — v1.12' },
+      { key: 'leadershipFluxBumps',   label: 'FLUX',   color: '#d4823a', prefix: 'Customer landscape in flux', title: 'Customer leadership transition in flux window — v1.13' },
+      { key: 'protestAmendmentBumps', label: 'RESET',  color: '#9a4040', prefix: 'Procurement-reset confluence', title: 'Protest + opportunity_amendment confluence — v1.14' },
+      { key: 'posturePathBumps',      label: 'ADV/LIB', color: '#9a4040', prefix: 'Posture path:',             title: 'Operator-authored Posture path (Adversary / Liberator) — v1.15' },
+      { key: 'postureTrajectoryBumps', label: 'RISE/FALL', color: '#3a8a5c', prefix: 'Posture trajectory:',     title: 'Operator-authored Posture trajectory (Rising / Falling) — v1.15' },
+      { key: 'peMentionBumps',        label: 'PE',     color: '#9c8a5e', prefix: 'Mentions budget PE',         title: 'Mentions an indexed budget PE — v1.16' },
+      { key: 'revolvingDoorTouchBumps', label: 'DOOR', color: '#a87c5a', prefix: 'Revolving-door touch',       title: 'Org with incoming formerly_at Edges (revolving-door touch) — v1.17' },
+      { key: 'nexusBumps',            label: 'NEXUS',  color: '#d4823a', prefix: 'Nexus convergence',          title: 'Confluence-of-confluences (3+ distinct axes on one item) — v1.18' },
+      { key: 'weightyPersonTouchBumps', label: 'WEIGHT', color: '#5e9c8b', prefix: 'Institutional-weight Person touched', title: 'Person with 3+ cross-source institutional roles — v1.20' },
+      { key: 'actingAtTouchBumps',    label: 'ACTING', color: '#b56ba3', prefix: 'Acting-leadership touch',    title: 'Org with incoming acting_at Edges (acting leadership touch) — v1.21' },
+      { key: 'coMembershipBumps',     label: 'CO-MEM', color: '#6a8a3a', prefix: 'Industry-assoc co-membership', title: 'Industry-assoc co-membership with active adversary — v1.22' },
+      { key: 'temporalMomentumBumps', label: 'MOM',    color: '#c97a4a', prefix: 'Temporal momentum',          title: 'Touched Org’s this-week touch count >= 2x its trailing 4-week average (temporal momentum) — v1.23' },
+      { key: 'influenceNetHubBumps',  label: 'HUB',    color: '#7a5ec9', prefix: 'Influence-net hub',          title: 'Touched Org has 3+ weighty Persons connected via institutional edges (influence-net hub) — v1.24' },
+      { key: 'typeDiversityBumps',    label: 'DIV',    color: '#4a8ab0', prefix: 'Signal-type diversity touch', title: 'Touched Org receives 4+ distinct Signal types this window (cross-Signal-type convergence) — v1.25' },
+      { key: 'nexus2Bumps',           label: 'NEXUS-2', color: '#d4823a', prefix: 'Nexus-2',                   title: 'CONV + DIV + TIGHT all fired on the same item (second-tier capstone) — v1.26' },
+      { key: 'fundingMomentumBumps',  label: 'FUND',   color: '#5a8a3a', prefix: 'Funding-momentum touch',     title: 'Touched Org trailing 12mo obligated $ >= 1.5x prior 12mo (>= $1M trailing) — v1.27' },
+      { key: 'customerFundingFlowBumps', label: 'CUSTFUND', color: '#3a8a8a', prefix: 'Customer-funding flow', title: 'Touched customer Org trailing 12mo INBOUND obligated $ >= 1.5x prior 12mo (>= $1M trailing) — v1.28' },
+      { key: 'fundingFlowBumps',      label: 'FLOW',   color: '#d4823a', prefix: 'Funding-flow co-fire',       title: 'FUND + CUSTFUND both fired on the same item (bidirectional funding-flow co-fire capstone) — v1.29' }
     ];
+    // Stash on window for the drill-down handler to access
+    window._briefBumpAxesDef = bumpAxes;
     var anyBump = false;
     var bumpHtml = '';
     for (var bi = 0; bi < bumpAxes.length; bi++) {
@@ -36245,7 +36251,11 @@ window._renderExternalIntelligence = function(brief) {
       var v = Number(c[bx.key] || 0);
       var dim = v === 0;
       if (!dim) anyBump = true;
-      bumpHtml += '<span title="' + bx.title + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:600;color:' + (dim ? 'var(--t3)' : bx.color) + ';background:' + (dim ? 'transparent' : bx.color + '14') + ';border:1px solid ' + (dim ? 'var(--b2)' : bx.color + '40') + ';padding:2px 7px;border-radius:2px;letter-spacing:.06em;margin-right:5px;opacity:' + (dim ? '0.45' : '1') + '">' + bx.label + ' ' + v + '</span>';
+      var clickAttr = dim
+        ? ''
+        : ' onclick="window._briefShowAxisItems&&window._briefShowAxisItems(\'' + bx.label + '\')"';
+      var cursorAttr = dim ? '' : 'cursor:pointer;';
+      bumpHtml += '<span' + clickAttr + ' title="' + bx.title + (dim ? '' : ' · click to see firing items') + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-weight:600;color:' + (dim ? 'var(--t3)' : bx.color) + ';background:' + (dim ? 'transparent' : bx.color + '14') + ';border:1px solid ' + (dim ? 'var(--b2)' : bx.color + '40') + ';padding:2px 7px;border-radius:2px;letter-spacing:.06em;margin-right:5px;opacity:' + (dim ? '0.45' : '1') + ';' + cursorAttr + '">' + bx.label + ' ' + v + '</span>';
     }
     var advCount = Array.isArray(brief.adversaryRollup) ? brief.adversaryRollup.length : 0;
     var custCount = Array.isArray(brief.customerRollup) ? brief.customerRollup.length : 0;
@@ -36334,6 +36344,90 @@ window._briefDismiss = async function(entityId) {
   h += '</div>';
   modal.innerHTML = h;
   modal.style.display = 'flex';
+};
+
+// v1.4 (2026-05-19): drill-down modal for the Brief health strip
+// chips. Operator clicks a non-dimmed axis chip → modal lists every
+// Brief item that fired that axis with its title, total score, and
+// the matching whySurfaced line. No backend reads required — all
+// data comes from window._latestBrief which is already rendered.
+window._briefShowAxisItems = function(label) {
+  var brief = window._latestBrief;
+  var defs = window._briefBumpAxesDef || [];
+  if (!brief || !defs.length) return;
+  var def = null;
+  for (var di = 0; di < defs.length; di++) {
+    if (defs[di].label === label) { def = defs[di]; break; }
+  }
+  if (!def || !def.prefix) return;
+  // Gather every item across categories whose whySurfaced has a line
+  // starting with the axis prefix.
+  var cats = brief.itemsByCategory || {};
+  var matches = [];
+  ['pursuit','adversary','customer','capability','context'].forEach(function(k){
+    var items = cats[k] || [];
+    items.forEach(function(it){
+      if (!it.relevance || !Array.isArray(it.relevance.whySurfaced)) return;
+      for (var wi = 0; wi < it.relevance.whySurfaced.length; wi++) {
+        var ln = it.relevance.whySurfaced[wi];
+        if (typeof ln === 'string' && ln.indexOf(def.prefix) === 0) {
+          matches.push({ item: it, category: k, line: ln });
+          break;
+        }
+      }
+    });
+  });
+  matches.sort(function(a, b){
+    var ar = (a.item.relevance && a.item.relevance.total) || 0;
+    var br = (b.item.relevance && b.item.relevance.total) || 0;
+    return br - ar;
+  });
+  // Build modal
+  var modalId = 'brief-axis-drill-modal';
+  var modal = document.getElementById(modalId);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = modalId;
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(7,13,24,.55);display:flex;align-items:center;justify-content:center;z-index:9000';
+    document.body.appendChild(modal);
+  }
+  var h = '';
+  h += '<div style="background:#f4ede0;color:#070d18;border-radius:3px;border:1px solid #25304a;padding:18px 20px;max-width:780px;width:90%;max-height:78vh;overflow:auto;font-family:\'IBM Plex Sans\',sans-serif">';
+  h += '  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;border-bottom:1px solid rgba(0,0,0,.08);padding-bottom:10px">';
+  h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:600;color:' + def.color + ';background:' + def.color + '14;border:1px solid ' + def.color + '40;padding:3px 9px;border-radius:2px;letter-spacing:.08em">' + def.label + ' ' + matches.length + '</span>';
+  h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#7d7669;letter-spacing:.06em;flex:1">' + (def.title || '') + '</span>';
+  h += '    <button onclick="document.getElementById(\'' + modalId + '\').style.display=\'none\'" style="background:transparent;border:1px solid #25304a;color:#070d18;font-family:\'IBM Plex Mono\',monospace;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;letter-spacing:.06em;text-transform:uppercase">close</button>';
+  h += '  </div>';
+  if (matches.length === 0) {
+    h += '<div style="color:#7d7669;font-size:11px;font-style:italic">No items fired this axis in the current Brief window.</div>';
+  } else {
+    for (var mi = 0; mi < matches.length; mi++) {
+      var mm = matches[mi];
+      var score = (mm.item.relevance && typeof mm.item.relevance.total === 'number')
+        ? mm.item.relevance.total.toFixed(1)
+        : '?';
+      var ttl = String(mm.item.title || '').replace(/</g,'&lt;');
+      var sub = String(mm.item.subtitle || '').replace(/</g,'&lt;');
+      var ln = String(mm.line || '').replace(/</g,'&lt;');
+      var catBadge = mm.category.toUpperCase();
+      h += '<div style="padding:10px 0;border-bottom:1px dashed rgba(0,0,0,.06);font-size:11px;line-height:1.5">';
+      h += '  <div style="display:flex;align-items:flex-start;gap:8px">';
+      h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#7d7669;letter-spacing:.06em;min-width:62px">' + catBadge + '</span>';
+      h += '    <div style="flex:1;min-width:0">';
+      h += '      <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#070d18">' + ttl + ' <span style="color:' + def.color + '">[' + score + ']</span></div>';
+      if (sub) h += '      <div style="color:#7d7669;font-size:11px;margin-top:1px">' + sub + '</div>';
+      h += '      <div style="color:' + def.color + ';font-size:10px;font-style:italic;margin-top:3px">' + ln + '</div>';
+      h += '    </div>';
+      h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#7d7669;letter-spacing:.04em;white-space:nowrap">' + (mm.item.source || '') + '</span>';
+      h += '  </div>';
+      h += '</div>';
+    }
+  }
+  h += '</div>';
+  modal.innerHTML = h;
+  modal.style.display = 'flex';
+  // Close on backdrop click
+  modal.onclick = function(ev){ if (ev.target === modal) modal.style.display = 'none'; };
 };
 
 window._briefDismissWithReason = async function(entityId, reason) {
