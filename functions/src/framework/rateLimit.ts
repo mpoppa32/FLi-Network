@@ -32,6 +32,7 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   dsca_fms: { capacity: 1, refillPerSecond: 0.5 }, // polite scrape, weekly cadence
   service_news: { capacity: 3, refillPerSecond: 0.5 }, // polite per-service RSS
   gao_reports: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence
+  dod_oig: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence (sibling to gao_reports)
 };
 
 interface BucketState {

@@ -75,6 +75,13 @@ export { serviceNewsDaily } from "./jobs/serviceNewsDaily";
 export { triggerGaoReportsSync } from "./http/triggerGaoReportsSync";
 export { gaoReportsDaily } from "./jobs/gaoReportsDaily";
 
+// DoD OIG (Phase 8.6.16 — Tier 2 internal-audit oversight findings via RSS;
+// sibling to gao_reports — same oversight_finding signal type with
+// attrs.publisher="dod_oig" distinguishing internal DoD audits from
+// external GAO audits)
+export { triggerDodOigSync } from "./http/triggerDodOigSync";
+export { dodOigDaily } from "./jobs/dodOigDaily";
+
 // Advisory Boards — DSB / DBB / DIB (Phase 8.6.8 — Tier 2 advisory body
 // reports via HTML index walk + PDF deep parse; reuses framework/pdfExtractor)
 export { triggerAdvisoryBoardsSync } from "./http/triggerAdvisoryBoardsSync";
