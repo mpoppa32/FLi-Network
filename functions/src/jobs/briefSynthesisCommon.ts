@@ -204,6 +204,11 @@ export interface BriefOutput {
      *  NEXUS-2 + FLOW on the same item (APEX triple-capstone chip).
      *  Strongest single-item BD convergence signal. */
     apexBumps?: number;
+    /** v1.34: count of Signal items bumped for touching an Org that
+     *  sits on a pursuit whose stageEnteredAt is within last 14 days
+     *  (pipeline-stage transition — STAGE chip). Degrades gracefully
+     *  if stageEnteredAt is empty across the workspace. */
+    pipelineStageTransitionBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1858,6 +1863,7 @@ export async function synthesizeBrief(
       "Recent-award touch",
       "Same-day Org spike",
       "Apex triple-capstone",
+      "Pipeline-stage transition touch",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1882,6 +1888,76 @@ export async function synthesizeBrief(
         `Nexus convergence — ${seenAxes.size} scoring axes fired on this item`
       );
       nexusBumps++;
+    }
+  }
+
+  // 3.13f. v1.34 — pipeline-stage transition touch (STAGE chip).
+  //
+  // When a touched Org is on an opportunity that has recently changed
+  // stage (opp.stageEnteredAt within last 14 days), bump items touching
+  // that Org. Captures operator pipeline-velocity signal directly into
+  // Brief scoring — your moving deals lift their intel.
+  //
+  // Org membership defined as any of: opp.customerOrgId, opp.primeOrgId,
+  // opp.posture.adversaries[]. A single Org can sit across multiple
+  // recently-transitioned opps; we count distinct opps to scale the bump.
+  //
+  // Tiers (max distinct recent-transition opps per Org):
+  //   1 recent transition:   +0.06 magnitude
+  //   2-3 transitions:       +0.10
+  //   4+ transitions:        +0.14
+  //
+  // Capped at magnitude 1.0. If stageEnteredAt is missing across the
+  // workspace (Phase 6 write-side incomplete, per build-tracker note),
+  // the rule degrades gracefully — fires zero times. When Phase 6 lands,
+  // the rule activates without further code changes.
+  let pipelineStageTransitionBumps = 0;
+  const stageTransitionCountByOrg = new Map<string, number>();
+  if (ctx.opportunities.size > 0 && sigItems.length > 0) {
+    const transitionCutoffMs = nowMs - 14 * 86400000;
+    for (const opp of ctx.opportunities.values()) {
+      if (!opp) continue;
+      const sea = typeof opp.stageEnteredAt === "number" ? opp.stageEnteredAt : 0;
+      if (!sea || sea < transitionCutoffMs) continue;
+      const orgs: string[] = [];
+      if (opp.customerOrgId) orgs.push(opp.customerOrgId);
+      if (opp.posture && Array.isArray(opp.posture.adversaries)) {
+        for (const a of opp.posture.adversaries) {
+          if (typeof a === "string" && a) orgs.push(a);
+        }
+      }
+      // Dedupe within this opp so a single opp counts once per Org
+      const seenForThisOpp = new Set<string>();
+      for (const o of orgs) {
+        if (seenForThisOpp.has(o)) continue;
+        seenForThisOpp.add(o);
+        stageTransitionCountByOrg.set(o, (stageTransitionCountByOrg.get(o) || 0) + 1);
+      }
+    }
+  }
+  if (sigItems.length > 0 && stageTransitionCountByOrg.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxCount = 0;
+      for (const id of allIds) {
+        const c = stageTransitionCountByOrg.get(id) || 0;
+        if (c > maxCount) maxCount = c;
+      }
+      if (maxCount === 0) continue;
+      let bump = 0.06;
+      if (maxCount >= 4) bump = 0.14;
+      else if (maxCount >= 2) bump = 0.10;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Pipeline-stage transition touch — touched Org sits on ${maxCount} pursuit${maxCount === 1 ? "" : "s"} that changed stage in the last 14 days`
+      );
+      pipelineStageTransitionBumps++;
     }
   }
 
@@ -2299,10 +2375,11 @@ export async function synthesizeBrief(
       recentAwardTouchBumps,
       sameDayOrgSpikeBumps,
       apexBumps,
+      pipelineStageTransitionBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.33",
+    scoringVersion: "1.34",
     weightsApplied: SCORING_WEIGHTS,
   };
 
