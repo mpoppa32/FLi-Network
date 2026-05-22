@@ -37948,7 +37948,16 @@ window._renderPersonMergeCandidates = function() {
   if (countEl) countEl.textContent = pending.length + ' pending';
   var h = '';
   h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-bottom:8px;letter-spacing:.04em">';
-  h += 'Jaro-Winkler ≥ 0.92 across normalized names. Merge folds the second Person into the first (canonical = lower id). Decline marks the pair resolved without changes.';
+  h += 'Jaro-Winkler ≥ 0.92 across normalized names. Pick which side becomes canonical via the "keep <name>" buttons; the other side is folded. Decline marks a pair resolved without changes.';
+  h += '</div>';
+  // v1.3 (2026-05-22): bulk-action toolbar — operators with high candidate
+  // volume can clear noise in one click. All actions still operate on
+  // the same resolved={declined} mark; nothing destructive.
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed rgba(0,0,0,.06)">';
+  h += '  <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;align-self:center;margin-right:4px">bulk:</span>';
+  h += '  <button onclick="window._bulkDeclinePersonCandidatesBelow(0.95)" title="Decline every pending candidate with similarity < 0.95" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 9px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">decline < 0.95</button>';
+  h += '  <button onclick="window._bulkDeclinePersonCandidatesBelow(0.93)" title="Decline every pending candidate with similarity < 0.93" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 9px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">decline < 0.93</button>';
+  h += '  <button onclick="window._bulkDeclinePersonCandidatesStale(30)" title="Decline every pending candidate proposed more than 30 days ago" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 9px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">decline stale 30d+</button>';
   h += '</div>';
   for (var i = 0; i < pending.length; i++) {
     var p = pending[i];
@@ -38207,6 +38216,13 @@ window._renderOrgMergeCandidates = function() {
   h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-bottom:8px;letter-spacing:.04em">';
   h += 'Jaro-Winkler ≥ 0.92 across normalized Org names. Merge folds one side into the other (you pick which) and rewrites every edge, signal, opportunity, and award reference. Decline marks the pair resolved.';
   h += '</div>';
+  // v1.3 (2026-05-22): bulk-action toolbar (mirror of Person dedupe)
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed rgba(0,0,0,.06)">';
+  h += '  <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;align-self:center;margin-right:4px">bulk:</span>';
+  h += '  <button onclick="window._bulkDeclineOrgCandidatesBelow(0.95)" title="Decline every pending Org candidate with similarity < 0.95" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 9px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">decline < 0.95</button>';
+  h += '  <button onclick="window._bulkDeclineOrgCandidatesBelow(0.93)" title="Decline every pending Org candidate with similarity < 0.93" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 9px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">decline < 0.93</button>';
+  h += '  <button onclick="window._bulkDeclineOrgCandidatesStale(30)" title="Decline every pending Org candidate proposed more than 30 days ago" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 9px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">decline stale 30d+</button>';
+  h += '</div>';
   for (var i = 0; i < pending.length; i++) {
     var p = pending[i];
     var sim = (p.e.similarity || 0).toFixed(3);
@@ -38438,6 +38454,94 @@ window._declineFuzzyOrgCandidate = async function(pairKey) {
 };
 
 setTimeout(function(){ window._subscribeOrgMergeCandidates && window._subscribeOrgMergeCandidates(); }, 4800);
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.6 — DEDUPE BULK ACTIONS (Person + Org)
+//
+// Operator with high candidate volume can decline noise in one click via
+// "decline < 0.95" / "decline < 0.93" / "decline stale 30d+" buttons.
+// Each pair gets the same resolved={declined} mark as a single-row
+// decline, so the resolver's already-resolved guard skips them on
+// subsequent emissions.
+// ══════════════════════════════════════════════════════════════════════════
+
+async function _bulkDeclineCandidatesOnPath(pathKey, candidatesObj, predicate, label) {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (window._canWrite && !window._canWrite()) {
+    toast('Observers cannot manage merge candidates');
+    return;
+  }
+  var targets = [];
+  for (var k in candidatesObj) {
+    if (!Object.prototype.hasOwnProperty.call(candidatesObj, k)) continue;
+    var c = candidatesObj[k];
+    if (!c || c.resolved) continue;
+    if (predicate(c)) targets.push({ pairKey: k, c: c });
+  }
+  if (targets.length === 0) {
+    toast('No candidates match ' + label);
+    return;
+  }
+  var ok = confirm('Bulk decline ' + targets.length + ' ' + (pathKey === 'personMergeCandidates' ? 'Person' : 'Org') + ' candidate' + (targets.length === 1 ? '' : 's') + ' matching ' + label + '?\n\nEach pair gets marked resolved=declined. Non-destructive — no entity data is changed.');
+  if (!ok) return;
+  var written = 0;
+  var nowMs = Date.now();
+  var resolvedBy = (currentUser && currentUser.email) || 'unknown';
+  for (var ti = 0; ti < targets.length; ti++) {
+    try {
+      var t = targets[ti];
+      await fbSet(
+        'workspaces/' + currentWsId + '/' + pathKey + '/' + t.pairKey,
+        Object.assign({}, t.c, {
+          resolved: 'declined',
+          resolvedAt: nowMs,
+          resolvedBy: resolvedBy,
+          resolvedReason: 'bulk: ' + label
+        })
+      );
+      written++;
+    } catch (e) {
+      // continue past individual write failures
+    }
+  }
+  toast('Declined ' + written + ' candidate(s) — ' + label);
+}
+
+window._bulkDeclinePersonCandidatesBelow = function(simThreshold) {
+  return _bulkDeclineCandidatesOnPath(
+    'personMergeCandidates',
+    window._personMergeCandidates || {},
+    function(c){ return (c.similarity || 0) < simThreshold; },
+    'similarity < ' + simThreshold
+  );
+};
+window._bulkDeclinePersonCandidatesStale = function(daysThreshold) {
+  var ageCutoffMs = Date.now() - daysThreshold * 86400000;
+  return _bulkDeclineCandidatesOnPath(
+    'personMergeCandidates',
+    window._personMergeCandidates || {},
+    function(c){ return (c.proposedAt || Date.now()) < ageCutoffMs; },
+    'proposed > ' + daysThreshold + 'd ago'
+  );
+};
+window._bulkDeclineOrgCandidatesBelow = function(simThreshold) {
+  return _bulkDeclineCandidatesOnPath(
+    'orgMergeCandidates',
+    window._orgMergeCandidates || {},
+    function(c){ return (c.similarity || 0) < simThreshold; },
+    'similarity < ' + simThreshold
+  );
+};
+window._bulkDeclineOrgCandidatesStale = function(daysThreshold) {
+  var ageCutoffMs = Date.now() - daysThreshold * 86400000;
+  return _bulkDeclineCandidatesOnPath(
+    'orgMergeCandidates',
+    window._orgMergeCandidates || {},
+    function(c){ return (c.proposedAt || Date.now()) < ageCutoffMs; },
+    'proposed > ' + daysThreshold + 'd ago'
+  );
+};
 
 
 // ══════════════════════════════════════════════════════════════════════════
