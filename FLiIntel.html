@@ -35399,6 +35399,28 @@ window._phase85Sources = {
       { key: 'meetingsLookbackDays', label: 'Meetings lookback (days)', placeholder: '90', kind: 'number', default: 90 }
     ],
     entityCounter: { path: 'nodes', filterType: 'committee', label: 'FACA committee Organizations' }
+  },
+  // Phase 8.6.4 — State Department RSS aggregator
+  state_department: {
+    displayName: 'State Department',
+    subtitle: 'Phase 8.6.4 v1.0 · Press Releases + Briefings + Fact Sheets + Sanctions',
+    color: '#c8a060',
+    callable: 'triggerStateDepartmentSync',
+    entityType: 'analysis_publication Signal (DoS-anchored)',
+    requiresKey: null,
+    cadence: 'Daily · 04:30 UTC',
+    cadenceCron: '30 4 * * *',
+    description: 'Multi-feed RSS aggregator for Department of State. Press releases, on-the-record press briefings, and bilateral/multilateral fact sheets default on; sanctions/designations feed is opt-in (shares the press_releases RSS but gates on sanctions language). Each item becomes an analysis_publication Signal anchored to the Department of State Org via resolveAgencyOrg — surfaces in the Customer rollup when State is on the watchlist. v1.0 keeps mapper conservative; v1.1 will add richer Org/Person resolution from item bodies.',
+    badgeId: 'state-department-source-status',
+    configPath: 'sources/state_department/config',
+    healthPath: 'sources/state_department',
+    fields: [
+      { key: 'enabledFeeds', label: 'Enabled feeds (keys: press_releases, press_briefings, sanctions, fact_sheets)', placeholder: 'press_releases, press_briefings, fact_sheets', kind: 'csv', default: ['press_releases','press_briefings','fact_sheets'] },
+      { key: 'lookbackDays', label: 'Lookback (days)', placeholder: '30', kind: 'number', default: 30 },
+      { key: 'keywords', label: 'Keyword filter (case-insensitive, empty = all)', placeholder: 'sanctions, arms, defense', kind: 'csv', default: [] },
+      { key: 'maxItemsPerFeed', label: 'Max items per feed', placeholder: '60', kind: 'number', default: 60 }
+    ],
+    entityCounter: { path: 'signals', filterType: 'analysis_publication', label: 'State Dept analysis publication Signals' }
   }
 };
 
@@ -39017,7 +39039,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'senate_lda',      label: 'Senate Lobbying Disclosure', cadenceMin: 10080, accent: '#a87c5a' },
   { key: 'dod_comptroller', label: 'DoD Comptroller Budget',     cadenceMin: 43200, accent: '#9c8a5e' },
   { key: 'plum_book',       label: 'Plum Book / Federal Vacancies', cadenceMin: 43200, accent: '#b56ba3' },
-  { key: 'industry_assoc',  label: 'Industry Assoc Rosters (NDIA/AFA/AUSA)', cadenceMin: 129600, accent: '#6a8a3a' }
+  { key: 'industry_assoc',  label: 'Industry Assoc Rosters (NDIA/AFA/AUSA)', cadenceMin: 129600, accent: '#6a8a3a' },
+  { key: 'state_department', label: 'State Department',                      cadenceMin: 1440,  accent: '#c8a060' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -39785,7 +39808,8 @@ window._renderOnboardStep3 = function() {
     { key:'senate_lda', label:'Senate Lobbying Disclosure (Tier 2)', desc:'LD-1/LD-2 filings from lda.senate.gov → lobbying_disclosure Signals; defense issue-code filtered; ties competitor lobbying spend + revolving-door lobbyists to specific issues + agencies · Weekly · Keyless', color:'#a87c5a' },
     { key:'dod_comptroller', label:'DoD Comptroller Budget (Tier 2)', desc:'Annual R-2 / P-1 budget justification books from comptroller.defense.gov → budget_change Signals; PE-level catalog with title + narrative; v1.0 baseline pass, v1.1 will add FY funding tables + YoY deltas · Monthly · Keyless', color:'#9c8a5e' },
     { key:'plum_book', label:'Plum Book / Federal Vacancies (Tier 2)', desc:'GAO Federal Vacancies Reform Act reports → vacancy_alert Signals per Senate-confirmable position; flags acting officials past the 210-day statutory limit · Monthly · Keyless', color:'#b56ba3' },
-    { key:'industry_assoc', label:'Industry Assoc Rosters — NDIA/AFA/AUSA (Tier 2)', desc:'Corporate-member rosters from defense industry associations → member_of Edges to trade_assoc Orgs; Edge-only (no Signals); populates the entity graph with cross-association membership · Quarterly · Keyless', color:'#6a8a3a' }
+    { key:'industry_assoc', label:'Industry Assoc Rosters — NDIA/AFA/AUSA (Tier 2)', desc:'Corporate-member rosters from defense industry associations → member_of Edges to trade_assoc Orgs; Edge-only (no Signals); populates the entity graph with cross-association membership · Quarterly · Keyless', color:'#6a8a3a' },
+    { key:'state_department', label:'State Department (Tier 2)', desc:'Press releases + briefings + fact sheets + (opt-in) sanctions designations from state.gov RSS → analysis_publication Signals anchored to Department of State Org; surfaces policy moves + bilateral context relevant to BD pursuits touching foreign customers or sanctions exposure · Daily · Keyless', color:'#c8a060' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
