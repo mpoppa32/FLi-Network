@@ -200,6 +200,10 @@ export interface BriefOutput {
      *  received 3+ Signals within a single 24h slice (Org-centric
      *  same-day spike — SPIKE chip) */
     sameDayOrgSpikeBumps?: number;
+    /** v1.33: count of Signal items hit by all three of SPIKE +
+     *  NEXUS-2 + FLOW on the same item (APEX triple-capstone chip).
+     *  Strongest single-item BD convergence signal. */
+    apexBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1853,6 +1857,7 @@ export async function synthesizeBrief(
       "Merge-pending touch",
       "Recent-award touch",
       "Same-day Org spike",
+      "Apex triple-capstone",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -2145,6 +2150,49 @@ export async function synthesizeBrief(
     }
   }
 
+  // 3.15. v1.33 — APEX triple-capstone.
+  //
+  // Fires only when SPIKE + NEXUS-2 + FLOW all hit on the same item.
+  // SPIKE = Org-level 24h burst (3+ Signals on same Org within any
+  // 24h slice). NEXUS-2 = cross-source AND cross-type AND tight-
+  // window. FLOW = bidirectional funding ramp (FUND + CUSTFUND).
+  // The intersection of all three is the rarest possible
+  // convergence the matrix produces — and accordingly the
+  // strongest single-item BD signal we can emit.
+  //
+  // Bump: +0.12 magnitude. Stacks on top of the individual SPIKE +
+  // NEXUS-2 + FLOW bumps (plus whatever NEXUS already added). Items
+  // that hit APEX will typically land near the capped magnitude
+  // ceiling of 1.0.
+  //
+  // Implementation: pure post-process check over the existing
+  // whySurfaced records. No additional state.
+  let apexBumps = 0;
+  if (sigItems.length > 0) {
+    for (const item of sigItems) {
+      if (!item.relevance) continue;
+      const lines = item.relevance.whySurfaced || [];
+      let hasSpike = false;
+      let hasNexus2 = false;
+      let hasFlow = false;
+      for (const line of lines) {
+        if (typeof line !== "string") continue;
+        if (line.startsWith("Same-day Org spike")) hasSpike = true;
+        else if (line.startsWith("Nexus-2")) hasNexus2 = true;
+        else if (line.startsWith("Funding-flow co-fire")) hasFlow = true;
+        if (hasSpike && hasNexus2 && hasFlow) break;
+      }
+      if (!(hasSpike && hasNexus2 && hasFlow)) continue;
+      const bump = 0.12;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Apex triple-capstone — SPIKE + NEXUS-2 + FLOW all fired on this item; rarest convergence in the matrix`
+      );
+      apexBumps++;
+    }
+  }
+
   const allItems = [...sigItems, ...awardItems, ...oppItems];
 
   // 4. Dedupe
@@ -2250,10 +2298,11 @@ export async function synthesizeBrief(
       mergePendingTouchBumps,
       recentAwardTouchBumps,
       sameDayOrgSpikeBumps,
+      apexBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.32",
+    scoringVersion: "1.33",
     weightsApplied: SCORING_WEIGHTS,
   };
 
