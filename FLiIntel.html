@@ -8581,6 +8581,22 @@ input[type="url"], textarea, select {
           </div>
         </div>
 
+        <!-- ── Phase 8.6 Org merge review surface (orgResolver v1.1) ── -->
+        <!-- Reads workspaces/{wsId}/orgMergeCandidates and surfaces unresolved
+             Jaro-Winkler candidate pairs (sim >= 0.92) for operator confirmation.
+             Card is hidden when no pending candidates exist. -->
+        <div id="org-merge-card" class="daily-brief-card" data-surface="light" style="margin-top:14px;display:none">
+          <div class="brief-card-header">
+            <span>◆ ORG DEDUPE · REVIEW QUEUE</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span class="brief-date" id="org-merge-count">—</span>
+            </span>
+          </div>
+          <div id="org-merge-body" style="padding:12px 14px">
+            <div style="color:var(--t3);font-size:11px;font-style:italic">No pending Org merge candidates.</div>
+          </div>
+        </div>
+
         <!-- ── Phase 8.5.4 v1: Recompete Watch — expiring Awards as Proposed Pursuits ── -->
         <div id="recompete-watch-card" class="daily-brief-card" data-surface="light" style="margin-top:14px">
           <div class="brief-card-header">
@@ -38116,6 +38132,298 @@ window._declineFuzzyPersonCandidate = async function(pairKey) {
 
 // Subscribe shortly after workspace context becomes available
 setTimeout(function(){ window._subscribePersonMergeCandidates && window._subscribePersonMergeCandidates(); }, 4500);
+
+
+// ══════════════════════════════════════════════════════════════════════════
+// PHASE 8.6 — ORG DEDUPE REVIEW SURFACE (orgResolver v1.1)
+//
+// Reads workspaces/{wsId}/orgMergeCandidates and renders unresolved
+// Jaro-Winkler candidate pairs. On merge: rewrites edges + signals +
+// opportunities (customerOrgId, posture.adversaries[], primeOrgId) +
+// awards (customerOrgId, customerToptierOrgId, primeOrgId) + Org node,
+// deletes folded side, marks resolved. Bidirectional from day 1
+// (operator picks which side becomes canonical via "keep X" buttons).
+// ══════════════════════════════════════════════════════════════════════════
+
+window._orgMergeCandidates = {};
+window._orgMergeUnsub = null;
+
+window._subscribeOrgMergeCandidates = function() {
+  if (!currentWsId) return;
+  if (window._orgMergeUnsub) {
+    try { window._orgMergeUnsub(); } catch (e) {}
+    window._orgMergeUnsub = null;
+  }
+  var path = 'workspaces/' + currentWsId + '/orgMergeCandidates';
+  try {
+    window._orgMergeUnsub = onValue(ref(db, path), function(snap) {
+      window._orgMergeCandidates = snap.val() || {};
+      window._renderOrgMergeCandidates();
+    });
+  } catch (e) {}
+};
+
+window._renderOrgMergeCandidates = function() {
+  var card = document.getElementById('org-merge-card');
+  var body = document.getElementById('org-merge-body');
+  var countEl = document.getElementById('org-merge-count');
+  if (!card || !body) return;
+  var entries = window._orgMergeCandidates || {};
+  var pending = [];
+  for (var k in entries) {
+    if (!Object.prototype.hasOwnProperty.call(entries, k)) continue;
+    var e = entries[k];
+    if (!e || e.resolved) continue;
+    pending.push({ pairKey: k, e: e });
+  }
+  if (pending.length === 0) {
+    card.style.display = 'none';
+    body.innerHTML = '<div style="color:var(--t3);font-size:11px;font-style:italic">No pending Org merge candidates.</div>';
+    if (countEl) countEl.textContent = '—';
+    return;
+  }
+  card.style.display = '';
+  pending.sort(function(a, b) {
+    var dr = (b.e.similarity || 0) - (a.e.similarity || 0);
+    if (Math.abs(dr) > 0.001) return dr;
+    return (b.e.proposedAt || 0) - (a.e.proposedAt || 0);
+  });
+  if (countEl) countEl.textContent = pending.length + ' pending';
+  var h = '';
+  h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);margin-bottom:8px;letter-spacing:.04em">';
+  h += 'Jaro-Winkler ≥ 0.92 across normalized Org names. Merge folds one side into the other (you pick which) and rewrites every edge, signal, opportunity, and award reference. Decline marks the pair resolved.';
+  h += '</div>';
+  for (var i = 0; i < pending.length; i++) {
+    var p = pending[i];
+    var sim = (p.e.similarity || 0).toFixed(3);
+    var nA = (p.e.nameA || '').replace(/</g,'&lt;');
+    var nB = (p.e.nameB || '').replace(/</g,'&lt;');
+    var idA = p.e.idA || '';
+    var idB = p.e.idB || '';
+    var nALabel = nA.length > 22 ? nA.slice(0, 20) + '…' : nA;
+    var nBLabel = nB.length > 22 ? nB.slice(0, 20) + '…' : nB;
+    h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.05);font-size:11px">';
+    h += '  <div style="flex:1;min-width:0">';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--text);font-weight:600">' + nA + ' <span style="color:var(--t3);font-weight:400">·</span> ' + nB + '</div>';
+    h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:var(--t3);letter-spacing:.05em">sim ' + sim + ' · ' + idA + ' ⇄ ' + idB + '</div>';
+    h += '  </div>';
+    h += '  <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:340px">';
+    h += '    <button title="Keep ' + nA.replace(/"/g,'&quot;') + ', fold the other side into it" onclick="window._performMergeFuzzyOrgCandidate(\'' + p.pairKey + '\',\'' + idA + '\')" style="background:transparent;border:1px solid rgba(58,138,92,.4);color:#3a8a5c;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">keep ' + nALabel + '</button>';
+    h += '    <button title="Keep ' + nB.replace(/"/g,'&quot;') + ', fold the other side into it" onclick="window._performMergeFuzzyOrgCandidate(\'' + p.pairKey + '\',\'' + idB + '\')" style="background:transparent;border:1px solid rgba(58,138,92,.4);color:#3a8a5c;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">keep ' + nBLabel + '</button>';
+    h += '    <button onclick="window._declineFuzzyOrgCandidate(\'' + p.pairKey + '\')" style="background:transparent;border:1px solid var(--b2);color:var(--t2);font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:.06em;text-transform:uppercase">Decline</button>';
+    h += '  </div>';
+    h += '</div>';
+  }
+  body.innerHTML = h;
+};
+
+window._performMergeFuzzyOrgCandidate = async function(pairKey, keepId) {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (window._canWrite && !window._canWrite()) {
+    toast('Observers cannot merge Orgs');
+    return;
+  }
+  var c = (window._orgMergeCandidates || {})[pairKey];
+  if (!c || c.resolved) { toast('Candidate no longer pending'); return; }
+  if (!keepId || (keepId !== c.idA && keepId !== c.idB)) {
+    toast('Invalid keepId for this pair');
+    return;
+  }
+  var foldId = keepId === c.idA ? c.idB : c.idA;
+  var keepName = keepId === c.idA ? c.nameA : c.nameB;
+  var foldName = keepId === c.idA ? c.nameB : c.nameA;
+  // Scope preview before destructive ops
+  try {
+    var linksSnap = await get(ref(db, 'workspaces/' + currentWsId + '/links'));
+    var sigsSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/signals'));
+    var oppsSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/opportunities'));
+    var awardsSnap = await get(ref(db, 'workspaces/' + currentWsId + '/awards'));
+    var keepSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + keepId));
+    var foldSnap  = await get(ref(db, 'workspaces/' + currentWsId + '/nodes/' + foldId));
+    var linksObj  = linksSnap.exists() ? linksSnap.val() : {};
+    var sigsObj   = sigsSnap.exists()  ? sigsSnap.val()  : {};
+    var oppsObj   = oppsSnap.exists()  ? oppsSnap.val()  : {};
+    var awardsObj = awardsSnap.exists()? awardsSnap.val(): {};
+    var keepNode  = keepSnap.exists() ? keepSnap.val() : null;
+    var foldNode  = foldSnap.exists() ? foldSnap.val() : null;
+    if (!keepNode || !foldNode) {
+      toast('One side of the pair no longer exists');
+      await fbSet('workspaces/' + currentWsId + '/orgMergeCandidates/' + pairKey, Object.assign({}, c, { resolved: 'declined', resolvedAt: Date.now(), resolvedBy: (currentUser && currentUser.email) || 'unknown', resolvedReason: 'one side missing' }));
+      return;
+    }
+    // Count scope
+    var edgeScope = 0, edgeSelfLoops = 0;
+    for (var _lk in linksObj) {
+      if (!Object.prototype.hasOwnProperty.call(linksObj, _lk)) continue;
+      var _l = linksObj[_lk];
+      if (!_l) continue;
+      if (_l.source === foldId || _l.target === foldId) {
+        edgeScope++;
+        var srcAfter = _l.source === foldId ? keepId : _l.source;
+        var tgtAfter = _l.target === foldId ? keepId : _l.target;
+        if (srcAfter === tgtAfter) edgeSelfLoops++;
+      }
+    }
+    var sigScope = 0;
+    for (var _sk in sigsObj) {
+      if (!Object.prototype.hasOwnProperty.call(sigsObj, _sk)) continue;
+      var _s = sigsObj[_sk];
+      if (!_s) continue;
+      if ((Array.isArray(_s.subjectIds) && _s.subjectIds.indexOf(foldId) >= 0) ||
+          (Array.isArray(_s.relatedIds) && _s.relatedIds.indexOf(foldId) >= 0)) {
+        sigScope++;
+      }
+    }
+    var oppScope = 0;
+    for (var _ok in oppsObj) {
+      if (!Object.prototype.hasOwnProperty.call(oppsObj, _ok)) continue;
+      var _o = oppsObj[_ok];
+      if (!_o) continue;
+      var hits = (_o.customerOrgId === foldId) ||
+                 (_o.primeOrgId === foldId) ||
+                 (_o.posture && Array.isArray(_o.posture.adversaries) && _o.posture.adversaries.indexOf(foldId) >= 0);
+      if (hits) oppScope++;
+    }
+    var awardScope = 0;
+    for (var _ak in awardsObj) {
+      if (!Object.prototype.hasOwnProperty.call(awardsObj, _ak)) continue;
+      var _a = awardsObj[_ak];
+      if (!_a) continue;
+      if (_a.customerOrgId === foldId || _a.customerToptierOrgId === foldId || _a.primeOrgId === foldId) {
+        awardScope++;
+      }
+    }
+    var scopeLine = '\n\nScope: ' + edgeScope + ' edge(s)' + (edgeSelfLoops ? ' (' + edgeSelfLoops + ' will become self-loops + be dropped)' : '') + ' + ' + sigScope + ' signal(s) + ' + oppScope + ' opportunity(s) + ' + awardScope + ' award(s) will be rewritten.';
+    var ok = confirm('Merge Org "' + (foldName || foldId) + '" into "' + (keepName || keepId) + '"?' + scopeLine + '\n\nThen the ' + foldId + ' Org node will be deleted.');
+    if (!ok) return;
+    // Rewrite edges
+    var linkUpdates = 0, linkDeletes = 0;
+    for (var lk in linksObj) {
+      if (!Object.prototype.hasOwnProperty.call(linksObj, lk)) continue;
+      var lObj = linksObj[lk];
+      if (!lObj) continue;
+      var changed = false;
+      if (lObj.source === foldId) { lObj.source = keepId; changed = true; }
+      if (lObj.target === foldId) { lObj.target = keepId; changed = true; }
+      if (changed) {
+        if (lObj.source === lObj.target) {
+          await fbSet('workspaces/' + currentWsId + '/links/' + lk, null);
+          linkDeletes++;
+        } else {
+          await fbSet('workspaces/' + currentWsId + '/links/' + lk, lObj);
+          linkUpdates++;
+        }
+      }
+    }
+    // Rewrite signals
+    var sigUpdates = 0;
+    for (var sk in sigsObj) {
+      if (!Object.prototype.hasOwnProperty.call(sigsObj, sk)) continue;
+      var sObj = sigsObj[sk];
+      if (!sObj) continue;
+      var sigChanged = false;
+      if (Array.isArray(sObj.subjectIds) && sObj.subjectIds.indexOf(foldId) >= 0) {
+        sObj.subjectIds = sObj.subjectIds.map(function(id){ return id === foldId ? keepId : id; });
+        var seenS = {};
+        sObj.subjectIds = sObj.subjectIds.filter(function(id){ if (seenS[id]) return false; seenS[id] = 1; return true; });
+        sigChanged = true;
+      }
+      if (Array.isArray(sObj.relatedIds) && sObj.relatedIds.indexOf(foldId) >= 0) {
+        sObj.relatedIds = sObj.relatedIds.map(function(id){ return id === foldId ? keepId : id; });
+        var seenR = {};
+        sObj.relatedIds = sObj.relatedIds.filter(function(id){ if (seenR[id]) return false; seenR[id] = 1; return true; });
+        sigChanged = true;
+      }
+      if (sigChanged) {
+        await fbSet('workspaces/' + currentWsId + '/signals/' + sk, sObj);
+        sigUpdates++;
+      }
+    }
+    // Rewrite opportunities
+    var oppUpdates = 0;
+    for (var ok2 in oppsObj) {
+      if (!Object.prototype.hasOwnProperty.call(oppsObj, ok2)) continue;
+      var oObj = oppsObj[ok2];
+      if (!oObj) continue;
+      var oppChanged = false;
+      if (oObj.customerOrgId === foldId) { oObj.customerOrgId = keepId; oppChanged = true; }
+      if (oObj.primeOrgId === foldId) { oObj.primeOrgId = keepId; oppChanged = true; }
+      if (oObj.posture && Array.isArray(oObj.posture.adversaries) && oObj.posture.adversaries.indexOf(foldId) >= 0) {
+        oObj.posture.adversaries = oObj.posture.adversaries.map(function(id){ return id === foldId ? keepId : id; });
+        var seenA = {};
+        oObj.posture.adversaries = oObj.posture.adversaries.filter(function(id){ if (seenA[id]) return false; seenA[id] = 1; return true; });
+        oppChanged = true;
+      }
+      if (oppChanged) {
+        await fbSet('workspaces/' + currentWsId + '/opportunities/' + ok2, oObj);
+        oppUpdates++;
+      }
+    }
+    // Rewrite awards
+    var awardUpdates = 0;
+    for (var ak in awardsObj) {
+      if (!Object.prototype.hasOwnProperty.call(awardsObj, ak)) continue;
+      var aObj = awardsObj[ak];
+      if (!aObj) continue;
+      var awChanged = false;
+      if (aObj.customerOrgId === foldId) { aObj.customerOrgId = keepId; awChanged = true; }
+      if (aObj.customerToptierOrgId === foldId) { aObj.customerToptierOrgId = keepId; awChanged = true; }
+      if (aObj.primeOrgId === foldId) { aObj.primeOrgId = keepId; awChanged = true; }
+      if (awChanged) {
+        await fbSet('workspaces/' + currentWsId + '/awards/' + ak, aObj);
+        awardUpdates++;
+      }
+    }
+    // Merge alternateNames + UEI + type from fold into keep where missing
+    var altSet = {};
+    (keepNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
+    if (foldNode.name && foldNode.name !== keepNode.name) altSet[foldNode.name] = 1;
+    (foldNode.alternateNames || []).forEach(function(n){ if (n) altSet[n] = 1; });
+    var mergedAlts = Object.keys(altSet);
+    if (mergedAlts.length > 0) keepNode.alternateNames = mergedAlts;
+    if (!keepNode.uei && foldNode.uei) keepNode.uei = foldNode.uei;
+    if (!keepNode.type && foldNode.type) keepNode.type = foldNode.type;
+    await fbSet('workspaces/' + currentWsId + '/nodes/' + keepId, keepNode);
+    await fbSet('workspaces/' + currentWsId + '/nodes/' + foldId, null);
+    await fbSet('workspaces/' + currentWsId + '/orgMergeCandidates/' + pairKey, Object.assign({}, c, {
+      resolved: 'merged',
+      resolvedAt: Date.now(),
+      resolvedBy: (currentUser && currentUser.email) || 'unknown',
+      mergedKeepId: keepId,
+      mergedFoldId: foldId,
+      linksRewritten: linkUpdates,
+      linksDeleted: linkDeletes,
+      signalsRewritten: sigUpdates,
+      opportunitiesRewritten: oppUpdates,
+      awardsRewritten: awardUpdates
+    }));
+    toast('Merged → ' + (keepName || keepId).slice(0, 30) + ' · ' + linkUpdates + ' edges + ' + sigUpdates + ' signals + ' + oppUpdates + ' opps + ' + awardUpdates + ' awards rewritten' + (linkDeletes ? ' · ' + linkDeletes + ' self-loop edges dropped' : ''));
+  } catch (e) {
+    toast('Org merge failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+window._declineFuzzyOrgCandidate = async function(pairKey) {
+  if (!currentWsId) { toast('No active workspace'); return; }
+  if (window._canWrite && !window._canWrite()) {
+    toast('Observers cannot manage merge candidates');
+    return;
+  }
+  var c = (window._orgMergeCandidates || {})[pairKey];
+  if (!c || c.resolved) return;
+  try {
+    await fbSet('workspaces/' + currentWsId + '/orgMergeCandidates/' + pairKey, Object.assign({}, c, {
+      resolved: 'declined',
+      resolvedAt: Date.now(),
+      resolvedBy: (currentUser && currentUser.email) || 'unknown'
+    }));
+    toast('Org candidate declined');
+  } catch (e) {
+    toast('Decline failed: ' + (e && e.message ? e.message : 'unknown'));
+  }
+};
+
+setTimeout(function(){ window._subscribeOrgMergeCandidates && window._subscribeOrgMergeCandidates(); }, 4800);
 
 
 // ══════════════════════════════════════════════════════════════════════════
