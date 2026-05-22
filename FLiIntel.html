@@ -36199,22 +36199,31 @@ window._renderExternalIntelligence = function(brief) {
           keyFact = '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;font-style:italic;color:' + keyFactColor + ';font-weight:' + keyFactWeight + ';margin-top:1px;letter-spacing:.02em">' + String(why).replace(/</g,'&lt;') + '</div>';
         }
       }
-      // Detect nexus convergence (NEXUS chip fired) for subtle gold
-      // left-border treatment so multi-axis confluence items are
-      // scannable at a glance in a long category list.
-      var hasNexus = false;
+      // Detect capstone-tier convergence for left-border treatment so
+      // multi-axis items are scannable at a glance in a long category list.
+      // v1.4 (2026-05-22): tiered border width based on highest capstone
+      // fired on this item — APEX (rarest) gets the thickest border + gold,
+      // NEXUS-2 / FLOW get medium gold, plain NEXUS keeps the original
+      // 2px gold. Operator can spot the rarest items at a glance.
+      var hasNexus = false, hasNexus2 = false, hasFlow = false, hasApex = false;
       if (it.relevance && Array.isArray(it.relevance.whySurfaced)) {
         for (var nci = 0; nci < it.relevance.whySurfaced.length; nci++) {
-          if (typeof it.relevance.whySurfaced[nci] === 'string' &&
-              it.relevance.whySurfaced[nci].indexOf('Nexus convergence') === 0) {
-            hasNexus = true;
-            break;
-          }
+          var wsLn = it.relevance.whySurfaced[nci];
+          if (typeof wsLn !== 'string') continue;
+          if (wsLn.indexOf('Apex triple-capstone') === 0) hasApex = true;
+          else if (wsLn.indexOf('Nexus-2') === 0) hasNexus2 = true;
+          else if (wsLn.indexOf('Funding-flow co-fire') === 0) hasFlow = true;
+          else if (wsLn.indexOf('Nexus convergence') === 0) hasNexus = true;
         }
       }
-      var rowBorder = hasNexus
-        ? 'border-left:2px solid var(--gold);padding-left:6px;'
-        : '';
+      var rowBorder = '';
+      if (hasApex) {
+        rowBorder = 'border-left:4px solid var(--gold);padding-left:8px;box-shadow:inset 0 0 0 1px rgba(212,130,58,.08);';
+      } else if (hasNexus2 || hasFlow) {
+        rowBorder = 'border-left:3px solid var(--gold);padding-left:7px;';
+      } else if (hasNexus) {
+        rowBorder = 'border-left:2px solid var(--gold);padding-left:6px;';
+      }
       h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:11px;line-height:1.4;' + rowBorder + '">';
       h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
       h += '  <div style="flex:1;min-width:0">';
