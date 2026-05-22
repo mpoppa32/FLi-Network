@@ -19053,7 +19053,7 @@ function renderIntel(m){var intel=m.intel,meta=m.meta;var tc=TC[meta.type]||TC['
   // Version history pill
   var histCount=(m.intelHistory||[]).length;
   var histPill=histCount?'<button class="history-pill" onclick="toggleIntelHistory(\''+m.id+'\')" title="'+histCount+' previous version'+(histCount>1?'s':'')+'">&#128336; v'+(histCount+1)+'</button>':'';
-  var h='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:7px"><div><div style="font-size:16px;font-weight:700;margin-bottom:2px">'+meta.title+'</div><div style="font-size:12px;color:var(--t2);display:flex;align-items:center;gap:5px">'+meta.date+(meta.att?' -- '+meta.att:'')+(meta.dur?' -- '+meta.dur:'')+(m.loggedBy?' ':''+(m.loggedBy?who(m.loggedBy,mc):''))+'</div></div><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'+histPill+bdg(meta.type,tc)+bdg(intel.companyPulse||'?',pc)+'<button onclick="showSyncModal()" style="padding:3px 8px;border:1px solid var(--gold);border-radius:4px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer" title="Review or manually edit Network Map entities">Edit Sync</button><button onclick="editMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--blue);border-radius:4px;background:transparent;color:var(--blue);font-size:11px;cursor:pointer">Edit</button>'+_tagOppBtnHtml(m)+'<button onclick="delMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--b1);border-radius:4px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer">Remove</button></div></div>';
+  var h='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:7px"><div><div style="font-size:16px;font-weight:700;margin-bottom:2px">'+meta.title+'</div><div style="font-size:12px;color:var(--t2);display:flex;align-items:center;gap:5px">'+meta.date+(meta.att?' -- '+meta.att:'')+(meta.dur?' -- '+meta.dur:'')+(m.loggedBy?' ':''+(m.loggedBy?who(m.loggedBy,mc):''))+'</div></div><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">'+histPill+bdg(meta.type,tc)+bdg(intel.companyPulse||'?',pc)+'<button onclick="showSyncModal()" style="padding:3px 8px;border:1px solid var(--gold);border-radius:4px;background:transparent;color:var(--t2);font-size:11px;cursor:pointer" title="Review or manually edit Network Map entities">Edit Sync</button><button onclick="window.exportMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--gold);border-radius:4px;background:transparent;color:var(--gold);font-size:11px;cursor:pointer" title="Open print-ready window — use browser Save as PDF">↗ PDF</button><button onclick="window.exportMeetingJson('+m.id+')" style="padding:3px 8px;border:1px solid rgba(95,179,184,0.5);border-radius:4px;background:transparent;color:#5fb3b8;font-size:11px;cursor:pointer" title="Download meeting + intel as .json">↗ JSON</button><button onclick="editMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--blue);border-radius:4px;background:transparent;color:var(--blue);font-size:11px;cursor:pointer">Edit</button>'+_tagOppBtnHtml(m)+'<button onclick="delMeeting('+m.id+')" style="padding:3px 8px;border:1px solid var(--b1);border-radius:4px;background:transparent;color:var(--t3);font-size:11px;cursor:pointer">Remove</button></div></div>';
   // History panel (hidden by default)
   if(histCount){
     h+='<div id="intel-history-panel" style="display:none;margin-bottom:12px;border:1px solid rgba(139,92,246,.3);border-radius:var(--r);overflow:hidden">';
@@ -20404,6 +20404,215 @@ function _workspaceReportHTML(){
 
   return body;
 }
+
+// ══════════════════════════════════════════════════════════════
+// EXPORT 4: MEETING RECORD (PDF via print + JSON download)
+//
+// window.exportMeeting(id)  → opens print-ready PDF window
+// window.exportMeetingJson(id) → downloads .json file
+//
+// Both wired from the Intel header in renderIntel().
+// ══════════════════════════════════════════════════════════════
+function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function _meetingExportHTML(m){
+  var intel=m.intel||{},meta=m.meta||{};
+  var b='';
+
+  // Header card with meta
+  b+='<div class="section"><div class="section-title">Meeting Record</div>';
+  b+='<div class="card">';
+  b+='<div style="font-size:15px;font-weight:700;color:#0f172a">'+_esc(meta.title||'(untitled meeting)')+'</div>';
+  var metaParts=[];
+  if(meta.date)metaParts.push(meta.date);
+  if(meta.type)metaParts.push(meta.type);
+  if(meta.dur)metaParts.push(meta.dur);
+  if(meta.att)metaParts.push(_esc(meta.att));
+  if(metaParts.length)b+='<div style="font-size:11px;color:#64748b;margin-top:4px">'+metaParts.join(' &middot; ')+'</div>';
+  if(intel.companyPulse)b+='<div style="font-size:11px;color:#64748b;margin-top:4px">Pulse: <strong>'+_esc(intel.companyPulse)+'</strong></div>';
+  if(m.oppId){
+    var opp=opportunities.find(function(o){return o.id===m.oppId;});
+    if(opp)b+='<div style="font-size:11px;color:#64748b;margin-top:4px">Linked pursuit: <strong>'+_esc(opp.name)+'</strong> ('+_esc(opp.stage||'')+')</div>';
+  }
+  b+='</div></div>';
+
+  // Summary
+  if(intel.summary){
+    b+='<div class="section"><div class="section-title">Summary</div>';
+    b+='<div class="card"><div style="font-size:12px;line-height:1.7">'+_esc(intel.summary)+'</div>';
+    if(intel.energyRead)b+='<div style="font-size:11px;color:#64748b;font-style:italic;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0">'+_esc(intel.energyRead)+'</div>';
+    b+='</div></div>';
+  }
+
+  // Key Decisions
+  if((intel.keyDecisions||[]).length){
+    b+='<div class="section"><div class="section-title">Key Decisions</div>';
+    intel.keyDecisions.forEach(function(d){
+      b+='<div class="risk-row"><div class="dot" style="background:#3b82f6"></div>';
+      b+='<div><div style="font-size:12px">'+_esc(d.decision||'')+'</div>';
+      if(d.owner)b+='<div style="font-size:10px;color:#94a3b8">Owner: '+_esc(d.owner)+'</div>';
+      b+='</div></div>';
+    });
+    b+='</div>';
+  }
+
+  // Action Items
+  if((intel.actionItems||[]).length){
+    b+='<div class="section"><div class="section-title">Action Items</div>';
+    intel.actionItems.forEach(function(a){
+      var pc=a.priority==='high'?'#dc2626':a.priority==='low'?'#16a34a':'#d97706';
+      b+='<div class="risk-row"><div class="dot" style="background:'+pc+'"></div>';
+      b+='<div style="flex:1"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><span style="font-size:12px;font-weight:500">'+_esc(a.task||'')+'</span>';
+      if(a.priority)b+='<span class="tag tag-'+(a.priority==='high'?'red':a.priority==='low'?'green':'amber')+'">'+_esc(a.priority)+'</span>';
+      b+='</div>';
+      var subParts=[];
+      if(a.owner)subParts.push('Owner: '+_esc(a.owner));
+      if(a.deadline)subParts.push('Due: '+_esc(a.deadline));
+      if(subParts.length)b+='<div style="font-size:10px;color:#64748b;margin-top:2px">'+subParts.join(' &middot; ')+'</div>';
+      if(a.context)b+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">'+_esc(a.context)+'</div>';
+      b+='</div></div>';
+    });
+    b+='</div>';
+  }
+
+  // Risks + Red Flags
+  var allR=(intel.risks||[]).map(function(r){return Object.assign({},r,{_t:'risk'});}).concat((intel.redFlags||[]).map(function(f){return{_t:'flag',text:f};}));
+  if(allR.length){
+    b+='<div class="section"><div class="section-title">Risks &amp; Red Flags</div>';
+    allR.forEach(function(item){
+      var sc=item.severity==='high'?'#dc2626':item.severity==='low'?'#16a34a':'#d97706';
+      b+='<div class="risk-row"><div class="dot" style="background:'+sc+'"></div>';
+      if(item._t==='flag')b+='<div style="font-size:12px;font-style:italic">'+_esc(item.text)+'</div>';
+      else{
+        b+='<div><div style="font-size:12px">'+_esc(item.risk||'')+'</div>';
+        if(item.raisedBy)b+='<div style="font-size:10px;color:#94a3b8">Raised by: '+_esc(item.raisedBy)+'</div>';
+        b+='</div>';
+      }
+      b+='</div>';
+    });
+    b+='</div>';
+  }
+
+  // Open Questions
+  if((intel.openQuestions||[]).length){
+    b+='<div class="section"><div class="section-title">Open Questions</div>';
+    intel.openQuestions.forEach(function(q){
+      var x=typeof q==='string'?{question:q}:q;
+      b+='<div class="risk-row"><div class="dot" style="background:#f59e0b"></div>';
+      b+='<div><div style="font-size:12px">'+_esc(x.question||'')+'</div>';
+      if(x.askedBy)b+='<div style="font-size:10px;color:#94a3b8">Asked by: '+_esc(x.askedBy)+'</div>';
+      b+='</div></div>';
+    });
+    b+='</div>';
+  }
+
+  // Milestones
+  if((intel.milestones||[]).length){
+    b+='<div class="section"><div class="section-title">Milestones</div>';
+    intel.milestones.forEach(function(mi){
+      b+='<div class="risk-row"><div class="dot" style="background:#8b5cf6"></div>';
+      b+='<div><div style="font-size:12px">'+_esc(mi.milestone||'')+'</div>';
+      var sub=[];
+      if(mi.date)sub.push(_esc(mi.date));
+      if(mi.status)sub.push(_esc(mi.status));
+      if(sub.length)b+='<div style="font-size:10px;color:#94a3b8">'+sub.join(' &middot; ')+'</div>';
+      b+='</div></div>';
+    });
+    b+='</div>';
+  }
+
+  // Key People
+  if((intel.keyPeople||[]).length){
+    b+='<div class="section"><div class="section-title">Key People</div>';
+    intel.keyPeople.forEach(function(p){
+      var ini=(p.name||'?').split(' ').map(function(x){return x[0]||'';}).join('').slice(0,2).toUpperCase();
+      b+='<div class="person-row"><div class="avatar">'+_esc(ini)+'</div>';
+      b+='<div style="flex:1"><div style="font-size:12px;font-weight:600">'+_esc(p.name||'')+(p.role?' <span style="font-weight:400;color:#64748b">— '+_esc(p.role)+'</span>':'')+(p.org?' <span style="color:#94a3b8;font-size:11px">@ '+_esc(p.org)+'</span>':'')+'</div>';
+      if(p.stance)b+='<div style="font-size:11px;color:#1a1a2e;margin-top:2px;font-style:italic">'+_esc(p.stance)+'</div>';
+      if(p.watchFor)b+='<div style="font-size:10px;color:#c2410c;margin-top:2px">Watch: '+_esc(p.watchFor)+'</div>';
+      b+='</div></div>';
+    });
+    b+='</div>';
+  }
+
+  // Companies mentioned
+  if((intel.companies||[]).length){
+    b+='<div class="section"><div class="section-title">Companies Mentioned</div>';
+    intel.companies.forEach(function(c){
+      b+='<div class="risk-row"><div class="dot" style="background:#3b82f6"></div>';
+      b+='<div><div style="font-size:12px;font-weight:600">'+_esc(c.name||'')+(c.role?' <span style="font-weight:400;color:#64748b">— '+_esc(c.role)+'</span>':'')+'</div>';
+      if(c.notes)b+='<div style="font-size:10px;color:#94a3b8;margin-top:1px">'+_esc(c.notes)+'</div>';
+      b+='</div></div>';
+    });
+    b+='</div>';
+  }
+
+  // Learning Insights
+  if((intel.learningInsights||[]).length){
+    b+='<div class="section"><div class="section-title">Learning Insights</div>';
+    intel.learningInsights.forEach(function(ins,i){
+      b+='<div class="risk-row"><span style="font-size:9px;font-family:\'IBM Plex Mono\',monospace;color:#94a3b8;width:18px;flex-shrink:0;margin-top:2px">'+String(i+1).padStart(2,'0')+'</span>';
+      b+='<div style="font-size:12px;line-height:1.6">'+_esc(ins)+'</div></div>';
+    });
+    b+='</div>';
+  }
+
+  // Watch Next Meeting
+  if((intel.followUpTopics||[]).length){
+    b+='<div class="section"><div class="section-title">Watch Next Meeting</div>';
+    b+='<div style="display:flex;flex-wrap:wrap;gap:5px">';
+    intel.followUpTopics.forEach(function(f){
+      b+='<span class="tag tag-amber">'+_esc(f)+'</span>';
+    });
+    b+='</div></div>';
+  }
+
+  // Original notes / transcript (appendix)
+  if(meta.notes){
+    b+='<div class="section" style="page-break-before:always"><div class="section-title">Notes / Transcript</div>';
+    b+='<div class="card" style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;line-height:1.55;white-space:pre-wrap;color:#1a1a2e">'+_esc(meta.notes)+'</div></div>';
+  }
+
+  return b;
+}
+
+window.exportMeeting=function(idOrMtg){
+  var m=typeof idOrMtg==='object'?idOrMtg:(meetings.find(function(x){return String(x.id)===String(idOrMtg);})||currentMeeting);
+  if(!m){toast('Open a meeting first');return;}
+  var subtitle=(m.meta&&m.meta.date?m.meta.date:'')+(m.meta&&m.meta.type?' &middot; '+m.meta.type:'');
+  var body=_meetingExportHTML(m);
+  var doc=_buildExportDoc((m.meta&&m.meta.title?m.meta.title:'Meeting')+' — Meeting Record',subtitle,body,'#d4823a');
+  _openExportWindow(doc);
+};
+
+window.exportMeetingJson=function(idOrMtg){
+  var m=typeof idOrMtg==='object'?idOrMtg:(meetings.find(function(x){return String(x.id)===String(idOrMtg);})||currentMeeting);
+  if(!m){toast('Open a meeting first');return;}
+  try{
+    var data={
+      id:m.id,
+      meta:m.meta||{},
+      intel:m.intel||{},
+      oppId:m.oppId||null,
+      loggedBy:m.loggedBy||null,
+      exportedAt:new Date().toISOString(),
+      workspace:currentWs?currentWs.name:null
+    };
+    var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    var safeName=((m.meta&&m.meta.title)?m.meta.title:'meeting').replace(/[^a-z0-9]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60)||'meeting';
+    var datePart=(m.meta&&m.meta.date)?m.meta.date:new Date().toISOString().slice(0,10);
+    a.href=url;
+    a.download=datePart+'_'+safeName+'.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+    toast('Meeting JSON downloaded');
+  }catch(e){
+    toast('Export failed: '+(e&&e.message?e.message:'unknown'));
+  }
+};
 
 // ── Brief export (uses already-rendered HTML from Brief modal) ──
 window.exportBrief=function(){
