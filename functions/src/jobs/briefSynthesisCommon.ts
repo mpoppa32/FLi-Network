@@ -196,6 +196,10 @@ export interface BriefOutput {
      *  at least one workspace award.lastModifiedAt within last 30
      *  days (recent-award activity — WIN chip) */
     recentAwardTouchBumps?: number;
+    /** v1.32: count of Signal items bumped for touching an Org that
+     *  received 3+ Signals within a single 24h slice (Org-centric
+     *  same-day spike — SPIKE chip) */
+    sameDayOrgSpikeBumps?: number;
   };
   /** v1.18 (Adversary Activity Rollup): per-adversary Org summary of
    *  recent touching Signals. The Brief surface can render this as a
@@ -1848,6 +1852,7 @@ export async function synthesizeBrief(
       "Funding-flow co-fire",
       "Merge-pending touch",
       "Recent-award touch",
+      "Same-day Org spike",
     ];
     for (const item of sigItems) {
       if (!item.relevance) continue;
@@ -1872,6 +1877,87 @@ export async function synthesizeBrief(
         `Nexus convergence — ${seenAxes.size} scoring axes fired on this item`
       );
       nexusBumps++;
+    }
+  }
+
+  // 3.13e. v1.32 — same-day Org spike (SPIKE chip).
+  //
+  // When 3+ Signals on the same touched Org cluster within a 24h
+  // window (any 24h slice containing 3+ touches for that Org), bump
+  // items touching that Org. Sharper signal than v1.12 TIGHT — TIGHT
+  // is item-centric and uses ±72h around each Signal; SPIKE is
+  // Org-centric and uses a 24h slice across the whole Brief window.
+  //
+  // A protest, an 8-K, and a hearing all landing on Lockheed on the
+  // same Tuesday is a different (sharper) signal than the same three
+  // events spread across a week.
+  //
+  // Tiers (max same-day touch count per Org):
+  //   3 touches in 24h:  +0.08 magnitude
+  //   4-5 touches:       +0.12
+  //   6+ touches:        +0.16
+  //
+  // Capped at magnitude 1.0. Operates only on sigItems where
+  // item.relevance.total > 0 to avoid noise Signals padding the count.
+  let sameDayOrgSpikeBumps = 0;
+  const spikeCountByOrg = new Map<string, number>();
+  if (sigItems.length > 0) {
+    // Per-Org sorted list of occurredAt timestamps
+    const occurredByOrg = new Map<string, number[]>();
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      if ((item.relevance.total || 0) <= 0) continue;
+      const at = sig.occurredAt || 0;
+      if (!at) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      for (const id of allIds) {
+        if (!id) continue;
+        if (!occurredByOrg.has(id)) occurredByOrg.set(id, []);
+        occurredByOrg.get(id)!.push(at);
+      }
+    }
+    // Sliding 24h window per Org — find max touch count in any 24h slice
+    const WINDOW_MS = 24 * 60 * 60 * 1000;
+    for (const [orgId, times] of occurredByOrg) {
+      if (times.length < 3) continue;
+      times.sort((a, b) => a - b);
+      let left = 0;
+      let maxInWindow = 1;
+      for (let right = 1; right < times.length; right++) {
+        while (left < right && times[right] - times[left] > WINDOW_MS) left++;
+        const inWindow = right - left + 1;
+        if (inWindow > maxInWindow) maxInWindow = inWindow;
+      }
+      if (maxInWindow >= 3) spikeCountByOrg.set(orgId, maxInWindow);
+    }
+  }
+  if (sigItems.length > 0 && spikeCountByOrg.size > 0) {
+    for (const item of sigItems) {
+      const sig = signals[item.id];
+      if (!sig || !item.relevance) continue;
+      const allIds = [
+        ...(sig.subjectIds || []),
+        ...(sig.relatedIds || []),
+      ];
+      let maxCount = 0;
+      for (const id of allIds) {
+        const c = spikeCountByOrg.get(id) || 0;
+        if (c > maxCount) maxCount = c;
+      }
+      if (maxCount < 3) continue;
+      let bump = 0.08;
+      if (maxCount >= 6) bump = 0.16;
+      else if (maxCount >= 4) bump = 0.12;
+      item.relevance.magnitude = Math.min(1.0, item.relevance.magnitude + bump);
+      item.relevance.total = Math.min(13, item.relevance.total + bump);
+      item.relevance.whySurfaced.push(
+        `Same-day Org spike — ${maxCount} Signals touched this Org within a single 24h window`
+      );
+      sameDayOrgSpikeBumps++;
     }
   }
 
@@ -2163,10 +2249,11 @@ export async function synthesizeBrief(
       fundingFlowBumps,
       mergePendingTouchBumps,
       recentAwardTouchBumps,
+      sameDayOrgSpikeBumps,
     },
     adversaryRollup,
     customerRollup,
-    scoringVersion: "1.31",
+    scoringVersion: "1.32",
     weightsApplied: SCORING_WEIGHTS,
   };
 
