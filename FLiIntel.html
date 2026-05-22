@@ -37961,13 +37961,35 @@ window._renderPersonMergeCandidates = function() {
   if (!card || !body) return;
   var entries = window._personMergeCandidates || {};
   var pending = [];
+  var resolvedCount = 0;
   for (var k in entries) {
     if (!Object.prototype.hasOwnProperty.call(entries, k)) continue;
     var e = entries[k];
-    if (!e || e.resolved) continue;
+    if (!e) continue;
+    if (e.resolved) { resolvedCount++; continue; }
     pending.push({ pairKey: k, e: e });
   }
   if (pending.length === 0) {
+    // v1.3 (2026-05-22): cold-start discoverability hint. When zero
+    // pending AND zero ever-resolved, the workspace hasn't had a
+    // Person-emitting source plugin run yet — keep the card visible
+    // with an explainer so operators see the feature exists. Once
+    // anything appears (pending OR resolved), the regular logic
+    // takes over.
+    var dismissedAt = (window._personDedupeHintDismissedAt) || 0;
+    var dismissedRecently = dismissedAt && (Date.now() - dismissedAt < 7 * 86400000);
+    if (resolvedCount === 0 && !dismissedRecently) {
+      card.style.display = '';
+      if (countEl) countEl.textContent = 'cold start';
+      body.innerHTML =
+        '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t2);line-height:1.6">' +
+        '  When source plugins (faca / senate_lda / advisory_boards / plum_book) resolve incoming Person names against your existing nodes via Jaro-Winkler, near-duplicates surface here for one-click bidirectional merge.' +
+        '  <br><br>' +
+        '  <span style="color:var(--t3)">Empty until the first Person-emitting sync runs.</span>' +
+        '  <button onclick="window._personDedupeHintDismissedAt=Date.now();window._renderPersonMergeCandidates&&window._renderPersonMergeCandidates();" style="background:transparent;border:1px solid var(--b2);color:var(--t3);font-size:9px;cursor:pointer;padding:2px 8px;border-radius:2px;font-family:inherit;letter-spacing:.06em;text-transform:uppercase;margin-left:10px">dismiss for 7d</button>' +
+        '</div>';
+      return;
+    }
     card.style.display = 'none';
     body.innerHTML = '<div style="color:var(--t3);font-size:11px;font-style:italic">No pending merge candidates.</div>';
     if (countEl) countEl.textContent = '—';
@@ -38228,13 +38250,30 @@ window._renderOrgMergeCandidates = function() {
   if (!card || !body) return;
   var entries = window._orgMergeCandidates || {};
   var pending = [];
+  var resolvedCount = 0;
   for (var k in entries) {
     if (!Object.prototype.hasOwnProperty.call(entries, k)) continue;
     var e = entries[k];
-    if (!e || e.resolved) continue;
+    if (!e) continue;
+    if (e.resolved) { resolvedCount++; continue; }
     pending.push({ pairKey: k, e: e });
   }
   if (pending.length === 0) {
+    // v1.3 (2026-05-22): cold-start hint (mirror of Person dedupe).
+    var dismissedAt = (window._orgDedupeHintDismissedAt) || 0;
+    var dismissedRecently = dismissedAt && (Date.now() - dismissedAt < 7 * 86400000);
+    if (resolvedCount === 0 && !dismissedRecently) {
+      card.style.display = '';
+      if (countEl) countEl.textContent = 'cold start';
+      body.innerHTML =
+        '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--t2);line-height:1.6">' +
+        '  When 12+ source plugins (usaSpending / samGov / secEdgar / gaoProtest / dodNews / etc.) resolve incoming Org names against your existing nodes via Jaro-Winkler, near-duplicates surface here for bidirectional merge (rewrites edges + signals + opportunities + awards).' +
+        '  <br><br>' +
+        '  <span style="color:var(--t3)">Empty until the first Org-emitting sync runs.</span>' +
+        '  <button onclick="window._orgDedupeHintDismissedAt=Date.now();window._renderOrgMergeCandidates&&window._renderOrgMergeCandidates();" style="background:transparent;border:1px solid var(--b2);color:var(--t3);font-size:9px;cursor:pointer;padding:2px 8px;border-radius:2px;font-family:inherit;letter-spacing:.06em;text-transform:uppercase;margin-left:10px">dismiss for 7d</button>' +
+        '</div>';
+      return;
+    }
     card.style.display = 'none';
     body.innerHTML = '<div style="color:var(--t3);font-size:11px;font-style:italic">No pending Org merge candidates.</div>';
     if (countEl) countEl.textContent = '—';
