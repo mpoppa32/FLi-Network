@@ -36429,7 +36429,15 @@ window._briefShowAxisItems = function(label) {
       var sub = String(mm.item.subtitle || '').replace(/</g,'&lt;');
       var ln = String(mm.line || '').replace(/</g,'&lt;');
       var catBadge = mm.category.toUpperCase();
-      h += '<div style="padding:10px 0;border-bottom:1px dashed rgba(0,0,0,.06);font-size:11px;line-height:1.5">';
+      // v1.4.1 (2026-05-22): each row is clickable → opens the
+      // touches popover for that item via the existing
+      // _briefItemTouches handler, then closes the drill-down modal.
+      var clickKind = (mm.item.kind || 'signal').replace(/'/g, '');
+      var clickEntityId = String(mm.item.entityId || mm.item.id || '').replace(/'/g, '');
+      var rowClick = clickEntityId
+        ? 'onclick="document.getElementById(\'' + modalId + '\').style.display=\'none\';window._briefItemTouches&&window._briefItemTouches(\'' + clickEntityId + '\',\'' + clickKind + '\')" '
+        : '';
+      h += '<div ' + rowClick + 'style="padding:10px 0;border-bottom:1px dashed rgba(0,0,0,.06);font-size:11px;line-height:1.5;' + (clickEntityId ? 'cursor:pointer;transition:background .1s' : '') + '" ' + (clickEntityId ? 'onmouseover="this.style.background=\'rgba(212,130,58,.04)\'" onmouseout="this.style.background=\'transparent\'"' : '') + '>';
       h += '  <div style="display:flex;align-items:flex-start;gap:8px">';
       h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#7d7669;letter-spacing:.06em;min-width:62px">' + catBadge + '</span>';
       h += '    <div style="flex:1;min-width:0">';
@@ -36437,7 +36445,7 @@ window._briefShowAxisItems = function(label) {
       if (sub) h += '      <div style="color:#7d7669;font-size:11px;margin-top:1px">' + sub + '</div>';
       h += '      <div style="color:' + def.color + ';font-size:10px;font-style:italic;margin-top:3px">' + ln + '</div>';
       h += '    </div>';
-      h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#7d7669;letter-spacing:.04em;white-space:nowrap">' + (mm.item.source || '') + '</span>';
+      h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#7d7669;letter-spacing:.04em;white-space:nowrap">' + (mm.item.source || '') + (clickEntityId ? ' · click to inspect' : '') + '</span>';
       h += '  </div>';
       h += '</div>';
     }
