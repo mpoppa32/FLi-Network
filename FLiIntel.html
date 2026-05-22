@@ -35425,6 +35425,31 @@ window._phase85Sources = {
       { key: 'maxRelatedPerSignal', label: 'Max body-mention entities per Signal (Orgs + Persons combined)', placeholder: '8', kind: 'number', default: 8 }
     ],
     entityCounter: { path: 'signals', filterType: 'analysis_publication', label: 'State Dept analysis publication Signals' }
+  },
+  // Phase 8.6.15 — Defense BD news aggregator
+  defense_scoop: {
+    displayName: 'Defense BD News',
+    subtitle: 'Phase 8.6.15 v1.0 · Breaking Defense / DefenseScoop / Defense News / FedScoop / NextGov',
+    color: '#a04060',
+    callable: 'triggerDefenseScoopSync',
+    entityType: 'analysis_publication Signal (contractor + program tagged)',
+    requiresKey: null,
+    cadence: 'Daily · 05:30 UTC',
+    cadenceCron: '30 5 * * *',
+    description: 'Multi-publication RSS aggregator covering the defense BD news ecosystem. Breaking Defense + DefenseScoop + Defense News default on (core defense coverage); FedScoop + NextGov opt-in (broader federal IT). Each item → analysis_publication Signal with body-text contractor + program resolution. Defaults: 28 named contractors (majors + new defense) + 20 program patterns (F-35, NGAD, CCA, JADC2, Replicator, etc.); both lists operator-extensible via config.',
+    badgeId: 'defense-scoop-source-status',
+    configPath: 'sources/defense_scoop/config',
+    healthPath: 'sources/defense_scoop',
+    fields: [
+      { key: 'enabledPublications', label: 'Enabled publications (keys: breaking_defense, defense_scoop, defense_news, fedscoop, nextgov)', placeholder: 'breaking_defense, defense_scoop, defense_news', kind: 'csv', default: ['breaking_defense','defense_scoop','defense_news'] },
+      { key: 'lookbackDays', label: 'Lookback (days)', placeholder: '21', kind: 'number', default: 21 },
+      { key: 'keywords', label: 'Keyword filter (case-insensitive, empty = all)', placeholder: 'cca, jadc2, replicator', kind: 'csv', default: [] },
+      { key: 'maxItemsPerPublication', label: 'Max items per publication', placeholder: '80', kind: 'number', default: 80 },
+      { key: 'defenseContractorPatterns', label: 'Contractor patterns (empty = built-in 28-name default)', placeholder: 'Lockheed, Anduril, Saildrone', kind: 'csv', default: [] },
+      { key: 'programPatterns', label: 'Program patterns (empty = built-in 20-program default)', placeholder: 'F-35, CCA, JADC2', kind: 'csv', default: [] },
+      { key: 'maxRelatedPerSignal', label: 'Max body-mention Orgs per Signal', placeholder: '6', kind: 'number', default: 6 }
+    ],
+    entityCounter: { path: 'signals', filterType: 'analysis_publication', label: 'Defense News analysis publication Signals' }
   }
 };
 
@@ -39172,7 +39197,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'dod_comptroller', label: 'DoD Comptroller Budget',     cadenceMin: 43200, accent: '#9c8a5e' },
   { key: 'plum_book',       label: 'Plum Book / Federal Vacancies', cadenceMin: 43200, accent: '#b56ba3' },
   { key: 'industry_assoc',  label: 'Industry Assoc Rosters (NDIA/AFA/AUSA)', cadenceMin: 129600, accent: '#6a8a3a' },
-  { key: 'state_department', label: 'State Department',                      cadenceMin: 1440,  accent: '#c8a060' }
+  { key: 'state_department', label: 'State Department',                      cadenceMin: 1440,  accent: '#c8a060' },
+  { key: 'defense_scoop',    label: 'Defense BD News',                        cadenceMin: 1440,  accent: '#a04060' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -39941,7 +39967,8 @@ window._renderOnboardStep3 = function() {
     { key:'dod_comptroller', label:'DoD Comptroller Budget (Tier 2)', desc:'Annual R-2 / P-1 budget justification books from comptroller.defense.gov → budget_change Signals; PE-level catalog with title + narrative; v1.0 baseline pass, v1.1 will add FY funding tables + YoY deltas · Monthly · Keyless', color:'#9c8a5e' },
     { key:'plum_book', label:'Plum Book / Federal Vacancies (Tier 2)', desc:'GAO Federal Vacancies Reform Act reports → vacancy_alert Signals per Senate-confirmable position; flags acting officials past the 210-day statutory limit · Monthly · Keyless', color:'#b56ba3' },
     { key:'industry_assoc', label:'Industry Assoc Rosters — NDIA/AFA/AUSA (Tier 2)', desc:'Corporate-member rosters from defense industry associations → member_of Edges to trade_assoc Orgs; Edge-only (no Signals); populates the entity graph with cross-association membership · Quarterly · Keyless', color:'#6a8a3a' },
-    { key:'state_department', label:'State Department (Tier 2)', desc:'Press releases + briefings + fact sheets + (opt-in) sanctions designations from state.gov RSS → analysis_publication Signals anchored to Department of State Org; surfaces policy moves + bilateral context relevant to BD pursuits touching foreign customers or sanctions exposure · Daily · Keyless', color:'#c8a060' }
+    { key:'state_department', label:'State Department (Tier 2)', desc:'Press releases + briefings + fact sheets + (opt-in) sanctions designations from state.gov RSS → analysis_publication Signals anchored to Department of State Org; surfaces policy moves + bilateral context relevant to BD pursuits touching foreign customers or sanctions exposure · Daily · Keyless', color:'#c8a060' },
+    { key:'defense_scoop', label:'Defense BD News (Tier 2)', desc:'Breaking Defense + DefenseScoop + Defense News (default on) + FedScoop + NextGov (opt-in) RSS aggregator. Each item → analysis_publication Signal with body-text contractor + program resolution (config-driven patterns; defaults cover 28 contractors + 20 programs). Highest-frequency defense BD coverage available · Daily · Keyless', color:'#a04060' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];

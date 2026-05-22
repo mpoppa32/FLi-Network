@@ -59,6 +59,10 @@ export { thinkTanksDaily } from "./jobs/thinkTanksDaily";
 export { triggerStateDepartmentSync } from "./http/triggerStateDepartmentSync";
 export { stateDepartmentDaily } from "./jobs/stateDepartmentDaily";
 
+// Defense BD news (Phase 8.6.15 — Breaking Defense / DefenseScoop / Defense News / FedScoop / NextGov)
+export { triggerDefenseScoopSync } from "./http/triggerDefenseScoopSync";
+export { defenseScoopDaily } from "./jobs/defenseScoopDaily";
+
 // DSCA FMS Notifications (Phase 8.6.2 — Tier 2 web scrape)
 export { triggerDscaFmsSync } from "./http/triggerDscaFmsSync";
 export { dscaFmsWeekly } from "./jobs/dscaFmsWeekly";
