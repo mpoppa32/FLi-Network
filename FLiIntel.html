@@ -36464,6 +36464,12 @@ window._briefShowAxisItems = function(label) {
   h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#7d7669;letter-spacing:.06em;flex:1">' + (def.title || '') + '</span>';
   h += '    <button onclick="document.getElementById(\'' + modalId + '\').style.display=\'none\'" style="background:transparent;border:1px solid #25304a;color:#070d18;font-family:\'IBM Plex Mono\',monospace;font-size:9px;cursor:pointer;padding:3px 10px;border-radius:2px;letter-spacing:.06em;text-transform:uppercase">close</button>';
   h += '  </div>';
+  // v1.5 (2026-05-22): trailing-28-day sparkline placeholder — populated
+  // asynchronously after the modal renders. Lets the operator see if
+  // this axis is ramping or flat over the past four weeks without
+  // leaving the drill-down. Container id pattern lets the async fetch
+  // target it after the modal mounts.
+  h += '<div id="' + modalId + '-sparkline" style="margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid rgba(0,0,0,.04);font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#7d7669"><span style="opacity:.6">28d trend loading…</span></div>';
   if (matches.length === 0) {
     h += '<div style="color:#7d7669;font-size:11px;font-style:italic">No items fired this axis in the current Brief window.</div>';
   } else {
@@ -36502,6 +36508,77 @@ window._briefShowAxisItems = function(label) {
   modal.style.display = 'flex';
   // Close on backdrop click
   modal.onclick = function(ev){ if (ev.target === modal) modal.style.display = 'none'; };
+
+  // v1.5: async 28-day trend sparkline. Reads up to 28 prior
+  // dailyBrief snapshots, extracts counts[def.key] from each, renders
+  // an SVG sparkline + min/max/avg numbers. Pure read-only; no
+  // RTDB writes. Fails silently if the path doesn't exist (cold
+  // workspace).
+  (async function _briefAxisSparkline() {
+    var sparkEl = document.getElementById(modalId + '-sparkline');
+    if (!sparkEl || !currentWsId || !def.key) return;
+    try {
+      var today = new Date();
+      var dateKeys = [];
+      for (var i = 0; i < 28; i++) {
+        var d = new Date(today.getTime() - i * 86400000);
+        dateKeys.push(d.toISOString().slice(0, 10));
+      }
+      var path = 'workspaces/' + currentWsId + '/derivedViews/dailyBrief';
+      var snaps = await Promise.all(dateKeys.map(function(k){
+        return get(ref(db, path + '/' + k));
+      }));
+      // counts[i] = count for that date; oldest first (index 27) to newest (0)
+      // We want oldest → newest in the chart, so reverse before plotting
+      var series = snaps.map(function(s){
+        if (!s.exists()) return null;
+        var v = s.val();
+        if (!v || !v.counts) return null;
+        var n = Number(v.counts[def.key] || 0);
+        return Number.isFinite(n) ? n : 0;
+      }).reverse(); // oldest first
+      // Strip leading nulls (days before this workspace had Briefs)
+      var firstReal = 0;
+      while (firstReal < series.length && series[firstReal] === null) firstReal++;
+      var trimmed = series.slice(firstReal);
+      if (trimmed.length === 0) {
+        sparkEl.innerHTML = '<span style="opacity:.6">28d trend: no prior Brief history yet — sparkline activates after first nightly run</span>';
+        return;
+      }
+      // Fill nulls (missing days) with 0 for plotting
+      var values = trimmed.map(function(v){ return v === null ? 0 : v; });
+      var max = Math.max.apply(null, values);
+      var min = Math.min.apply(null, values);
+      var sum = values.reduce(function(a, b){ return a + b; }, 0);
+      var avg = values.length ? (sum / values.length) : 0;
+      var todayVal = values[values.length - 1];
+      // SVG sparkline
+      var W = 200, H = 28, pad = 2;
+      var step = values.length > 1 ? (W - 2 * pad) / (values.length - 1) : 0;
+      var range = Math.max(max - min, 1);
+      var pts = values.map(function(v, i){
+        var x = pad + i * step;
+        var y = pad + (H - 2 * pad) * (1 - (v - min) / range);
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+      var svg = '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="vertical-align:middle">';
+      svg += '<polyline fill="none" stroke="' + def.color + '" stroke-width="1.5" stroke-linejoin="round" points="' + pts + '"/>';
+      // Today dot
+      var lastIdx = values.length - 1;
+      var lastX = pad + lastIdx * step;
+      var lastY = pad + (H - 2 * pad) * (1 - (todayVal - min) / range);
+      svg += '<circle cx="' + lastX.toFixed(1) + '" cy="' + lastY.toFixed(1) + '" r="2.5" fill="' + def.color + '"/>';
+      svg += '</svg>';
+      var trend = todayVal > avg * 1.5 ? ' ↑ ramping' : (todayVal < avg * 0.5 ? ' ↓ slowing' : '');
+      sparkEl.innerHTML =
+        '<span style="margin-right:10px;font-weight:600;color:' + def.color + '">28d:</span>' +
+        svg +
+        '<span style="margin-left:12px">today: <strong style="color:' + def.color + '">' + todayVal + '</strong>' + trend + '</span>' +
+        '<span style="margin-left:14px;opacity:.7">avg: ' + avg.toFixed(1) + ' · max: ' + max + ' · days: ' + values.length + '</span>';
+    } catch (e) {
+      sparkEl.innerHTML = '<span style="opacity:.5">28d trend unavailable</span>';
+    }
+  })();
 };
 
 window._briefDismissWithReason = async function(entityId, reason) {
