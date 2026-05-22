@@ -29,7 +29,7 @@ import {
 } from "./mapper";
 
 export const SOURCE_NAME = "state_department";
-export const SOURCE_VERSION = "1.0.0";
+export const SOURCE_VERSION = "1.1.0";
 
 export interface StateDepartmentSyncOptions {
   dryRun?: boolean;
@@ -49,6 +49,10 @@ export interface StateDepartmentSyncResult {
   signalsUpdated: number;
   signalsUnchanged: number;
   agencyOrgResolvedTotal: number;
+  /** v1.1: total body-mention Orgs resolved across all signals (sum of
+   *  per-signal relatedIds.length). Indicates how often defense
+   *  contractor / foreign-government patterns matched item bodies. */
+  bodyOrgsResolvedTotal: number;
   errors: Array<{ ref: string; message: string }>;
   apiCallsCount: number;
   sourceVersion: string;
@@ -75,6 +79,7 @@ export async function syncWorkspace(
     signalsUpdated: 0,
     signalsUnchanged: 0,
     agencyOrgResolvedTotal: 0,
+    bodyOrgsResolvedTotal: 0,
     errors: [],
     apiCallsCount: 0,
     sourceVersion: SOURCE_VERSION,
@@ -138,6 +143,7 @@ export async function syncWorkspace(
               else if (r.action === "updated") result.signalsUpdated++;
               else result.signalsUnchanged++;
               if (r.agencyOrgResolved) result.agencyOrgResolvedTotal++;
+              result.bodyOrgsResolvedTotal += r.bodyOrgsResolved;
             } catch (err) {
               result.errors.push({
                 ref: `item:${feed.key}:${item.guid || item.link}`,
@@ -179,6 +185,7 @@ export async function syncWorkspace(
       itemsFetched: result.itemsFetched,
       itemsMatched: result.itemsMatched,
       signalsCreated: result.signalsCreated,
+      bodyOrgsResolvedTotal: result.bodyOrgsResolvedTotal,
       errors: result.errors.length,
     });
   } catch (err) {

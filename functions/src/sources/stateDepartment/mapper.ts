@@ -7,18 +7,84 @@
 //
 // Subject: every Signal is anchored to the Department of State Org via
 // resolveAgencyOrg so the Brief Synthesis Customer side picks it up
-// when State is on the operator's watchlist. Additional Org / Person
-// resolution from the title + description is intentionally deferred to
-// v1.1 — v1.0 keeps the mapper conservative.
+// when State is on the operator's watchlist.
+//
+// v1.1 (2026-05-22): body-text Org resolution. Scans title +
+// description for known defense-contractor names + foreign government
+// mentions and adds resolved IDs to relatedIds (secondary signal,
+// weaker than the DoS anchor in subjectIds). Static pattern lists
+// kept modest; v1.2 will move them to per-workspace config.
 
 import { hashFields } from "../../framework/hashing";
 import { externalProvenance } from "../../framework/provenance";
 import { db, wsPath } from "../../framework/rtdb";
-import { resolveAgencyOrg } from "../usaSpending/orgResolver";
+import {
+  resolveAgencyOrg,
+  resolveRecipientOrg,
+} from "../usaSpending/orgResolver";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
 import type { StateRssItem } from "./client";
 import type { StateDepartmentFeed } from "./registry";
+
+// v1.1: defense contractor name → resolver match. Modest static list
+// covering majors most likely to surface in State Dept context (FMS,
+// export controls, sanctions reviews). Operator can extend via config
+// in v1.2. Case-insensitive substring match.
+const DEFENSE_CONTRACTOR_PATTERNS: string[] = [
+  "Lockheed Martin",
+  "Boeing",
+  "Raytheon",
+  "RTX",
+  "Northrop Grumman",
+  "General Dynamics",
+  "L3Harris",
+  "BAE Systems",
+  "Leidos",
+  "Booz Allen",
+  "SAIC",
+  "CACI",
+  "ManTech",
+  "KBR",
+  "Parsons",
+  "Peraton",
+  "Palantir",
+  "Anduril",
+  "Shield AI",
+];
+
+// v1.1: foreign-government / country-as-Org match. Same shape — case-
+// insensitive substring. When matched, resolved as type:'government'
+// via resolveAgencyOrg so they integrate with the existing customer-
+// terrain plumbing if the operator decides to watch foreign mil-sales.
+const FOREIGN_GOVERNMENT_PATTERNS: string[] = [
+  "Ukraine",
+  "Israel",
+  "Saudi Arabia",
+  "United Arab Emirates",
+  "Taiwan",
+  "South Korea",
+  "Japan",
+  "Australia",
+  "United Kingdom",
+  "Germany",
+  "France",
+  "Poland",
+  "Philippines",
+  "India",
+  "Egypt",
+  "Jordan",
+  "Iraq",
+  "Kuwait",
+  "Qatar",
+  "Bahrain",
+  "Oman",
+];
+
+// Cap on total resolved entities per Signal to keep noise bounded.
+// At 8, a mention-heavy press release tops out without clobbering the
+// touched-entity space with weakly-linked Orgs.
+const MAX_RELATED_PER_SIGNAL = 8;
 
 function signalId(feedKey: string, guid: string): string {
   const safe =
@@ -40,6 +106,7 @@ export async function upsertStatePublicationSignal(
   signalId: string;
   action: "created" | "updated" | "unchanged";
   agencyOrgResolved: boolean;
+  bodyOrgsResolved: number;
 }> {
   const id = signalId(feed.key, item.guid);
   const occurredAt = item.pubDateMs || Date.now();
@@ -60,6 +127,55 @@ export async function upsertStatePublicationSignal(
     log?.warn?.("state_department_agency_resolve_failed", {
       message: (err as Error).message,
     });
+  }
+
+  // v1.1: scan title + description for known defense-contractor and
+  // foreign-government mentions. Resolve to Org IDs via the standard
+  // resolvers and accumulate in relatedIds (secondary signal — body
+  // mentions are weaker than the DoS anchor in subjectIds).
+  //
+  // Suppress fuzzy candidate emission on these auto-resolves because
+  // every State Dept item mentions multiple Orgs in passing; emitting
+  // dedupe candidates on each weak mention would flood the queue.
+  // Operator gets fuzzy candidates only when an Org is first created
+  // by another (higher-confidence) source.
+  const relatedIds: string[] = [];
+  const seenRelated = new Set<string>();
+  const haystack = (title + " " + summary).toLowerCase();
+  for (const name of DEFENSE_CONTRACTOR_PATTERNS) {
+    if (relatedIds.length >= MAX_RELATED_PER_SIGNAL) break;
+    if (haystack.indexOf(name.toLowerCase()) < 0) continue;
+    try {
+      const r = await resolveRecipientOrg(workspaceId, name, null, {
+        autoCreate: true,
+        type: "company",
+        emitFuzzyCandidates: false,
+      });
+      if (r.orgId && !seenRelated.has(r.orgId)) {
+        seenRelated.add(r.orgId);
+        relatedIds.push(r.orgId);
+      }
+    } catch (err) {
+      // best-effort; skip
+    }
+  }
+  for (const country of FOREIGN_GOVERNMENT_PATTERNS) {
+    if (relatedIds.length >= MAX_RELATED_PER_SIGNAL) break;
+    if (haystack.indexOf(country.toLowerCase()) < 0) continue;
+    try {
+      const r = await resolveRecipientOrg(workspaceId, country, null, {
+        autoCreate: true,
+        type: "government",
+        alternateNames: ["Government of " + country],
+        emitFuzzyCandidates: false,
+      });
+      if (r.orgId && !seenRelated.has(r.orgId)) {
+        seenRelated.add(r.orgId);
+        relatedIds.push(r.orgId);
+      }
+    } catch (err) {
+      // best-effort; skip
+    }
   }
 
   const hash = hashFields(
@@ -85,6 +201,7 @@ export async function upsertStatePublicationSignal(
     id,
     type: "analysis_publication",
     subjectIds: stateOrgId ? [stateOrgId] : [],
+    relatedIds: relatedIds.length > 0 ? relatedIds : undefined,
     occurredAt,
     attrs: {
       feedKey: feed.key,
@@ -108,16 +225,32 @@ export async function upsertStatePublicationSignal(
       id,
       feed: feed.key,
       title: title.slice(0, 80),
+      bodyOrgsResolved: relatedIds.length,
     });
-    return { signalId: id, action: "created", agencyOrgResolved };
+    return {
+      signalId: id,
+      action: "created",
+      agencyOrgResolved,
+      bodyOrgsResolved: relatedIds.length,
+    };
   }
   const existing = snap.val() as Signal;
   if (existing.source?.hash === hash) {
     await db.ref(`${path}/source/refreshedAt`).set(Date.now());
-    return { signalId: id, action: "unchanged", agencyOrgResolved };
+    return {
+      signalId: id,
+      action: "unchanged",
+      agencyOrgResolved,
+      bodyOrgsResolved: relatedIds.length,
+    };
   }
   await db.ref(path).set(signal);
-  return { signalId: id, action: "updated", agencyOrgResolved };
+  return {
+    signalId: id,
+    action: "updated",
+    agencyOrgResolved,
+    bodyOrgsResolved: relatedIds.length,
+  };
 }
 
 /** Case-insensitive substring match against title + description. Empty
