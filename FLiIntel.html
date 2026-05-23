@@ -42151,7 +42151,7 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
 // Subscribes to all workspace presence and renders a co-viewer chip when
 // a teammate is on the same node.
 (function _corsairPresence(){
-  var STATE = { sub: null, wsId: null, viewerIdsByNode: {}, viewerNamesByNode: {} };
+  var STATE = { sub: null, connSub: null, wsId: null, viewerIdsByNode: {}, viewerNamesByNode: {} };
   function _writePresence(viewing){
     if (typeof currentWsId === 'undefined' || !currentWsId) return;
     if (!currentUser || !currentUser.uid) return;
@@ -42175,12 +42175,14 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
     }
     if (STATE.wsId === currentWsId && STATE.sub) return;
     if (STATE.sub) { try{STATE.sub();}catch(e){} STATE.sub = null; }
+    if (STATE.connSub) { try{STATE.connSub();}catch(e){} STATE.connSub = null; }
     STATE.wsId = currentWsId;
+    STATE.viewerIdsByNode = {}; STATE.viewerNamesByNode = {};
     // Initial write
     _writePresence(window._currentViewing||null);
     // Subscribe to .info/connected to re-establish presence after reconnects
     try {
-      onValue(ref(db, '.info/connected'), function(snap){
+      STATE.connSub = onValue(ref(db, '.info/connected'), function(snap){
         if (snap.val() === true) _writePresence(window._currentViewing||null);
       });
     } catch(e){}
@@ -42408,7 +42410,7 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
       return;
     }
     STATE.wsId = currentWsId;
-    try { STATE.lastSeenAt = parseInt(localStorage.getItem('corsair-activity-lastseen')||'0', 10) || 0; } catch(e){}
+    try { STATE.lastSeenAt = parseInt(localStorage.getItem(('corsair-activity-lastseen-'+currentWsId))||'0', 10) || 0; } catch(e){}
     try {
       var _isFirstFire = true;
       STATE.unsubscribe = onValue(ref(db, wsPath('audit_log')), function(snap){
@@ -42468,7 +42470,7 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
     dd.style.display = 'block';
     _render();
     STATE.lastSeenAt = Date.now();
-    try { localStorage.setItem('corsair-activity-lastseen', String(STATE.lastSeenAt)); } catch(e){}
+    try { localStorage.setItem(('corsair-activity-lastseen-'+currentWsId), String(STATE.lastSeenAt)); } catch(e){}
     STATE.unseen = 0;
     _refreshDot();
   };
