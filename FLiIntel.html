@@ -11478,6 +11478,24 @@ window.updateCommitmentStatus=async function(id,status,note){
   toast('Commitment marked '+status);
 };
 
+// CRM P1.9 — snooze a commitment by N days (bumps deadline, status stays open)
+window._snoozeCommitment=async function(id,days){
+  var c=commitments.find(function(x){return x.id===id;});
+  if(!c)return;
+  var base=new Date();base.setHours(0,0,0,0);
+  if(c.deadline){
+    var d=new Date(c.deadline+'T00:00:00');
+    if(!isNaN(d)&&d.getTime()>base.getTime())base=d;
+  }
+  base.setDate(base.getDate()+days);
+  var iso=base.getFullYear()+'-'+String(base.getMonth()+1).padStart(2,'0')+'-'+String(base.getDate()).padStart(2,'0');
+  c.deadline=iso;
+  c.status='open';
+  c.snoozedAt=new Date().toISOString();
+  await saveCommitment(c);
+  toast('Snoozed '+days+'d → '+iso);
+};
+
 // ── GRANULAR WRITES (per-item, no full collection overwrite) ──
 async function saveNode(n){_invalidateAdjCache();var c=Object.assign({},n);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;await fbSet(wsPath('nodes/'+n.id),c);}
 async function deleteNodeFromDB(id){setSS('saving');await remove(ref(db,wsPath('nodes/'+id)));setSS('live');}
@@ -19279,6 +19297,11 @@ function renderCommitmentsSection(){
     h+='<span style="font-size:10px;color:'+dueColor+';font-family:\'IBM Plex Mono\',monospace">'+dueLabel+'</span>';
     h+='<button onclick="updateCommitmentStatus(\''+c.id+'\',\'fulfilled\')" style="font-size:9px;padding:1px 6px;border:1px solid var(--green);border-radius:3px;background:transparent;color:var(--green);cursor:pointer">✓ Fulfilled</button>';
     h+='<button onclick="updateCommitmentStatus(\''+c.id+'\',\'broken\')" style="font-size:9px;padding:1px 6px;border:1px solid var(--red);border-radius:3px;background:transparent;color:var(--red);cursor:pointer">✗ Broken</button>';
+    h+='<span style="display:inline-flex;border:1px solid var(--b2);border-radius:3px;overflow:hidden;margin-left:2px" title="Snooze deadline">';
+    h+='<button onclick="window._snoozeCommitment(\''+c.id+'\',1)" style="font-size:9px;padding:1px 5px;border:none;border-right:1px solid var(--b2);background:transparent;color:var(--t2);cursor:pointer">+1d</button>';
+    h+='<button onclick="window._snoozeCommitment(\''+c.id+'\',3)" style="font-size:9px;padding:1px 5px;border:none;border-right:1px solid var(--b2);background:transparent;color:var(--t2);cursor:pointer">+3d</button>';
+    h+='<button onclick="window._snoozeCommitment(\''+c.id+'\',7)" style="font-size:9px;padding:1px 5px;border:none;background:transparent;color:var(--t2);cursor:pointer">+7d</button>';
+    h+='</span>';
     h+='</div></div></div>';
   }
   if(overdue.length){h+='<div style="font-size:9px;color:var(--red);font-family:\'IBM Plex Mono\',monospace;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px">Overdue ('+overdue.length+')</div>';overdue.forEach(function(c){renderCommit(c,'var(--red)');});}
