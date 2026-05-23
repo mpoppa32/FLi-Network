@@ -33,6 +33,7 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   service_news: { capacity: 3, refillPerSecond: 0.5 }, // polite per-service RSS
   gao_reports: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence
   dod_oig: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence (sibling to gao_reports)
+  darpa_news: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence (DARPA news feed)
 };
 
 interface BucketState {

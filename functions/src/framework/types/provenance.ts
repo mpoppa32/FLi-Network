@@ -29,7 +29,8 @@ export type SourceSystem =
   | "dpc_oversight"
   | "state_department" // Phase 8.6.4 — State Dept RSS aggregator
   | "defense_scoop" // Phase 8.6.15 — Defense BD news aggregator
-  | "dod_oig"; // Phase 8.6.16 — DoD Office of Inspector General audit/eval/investigation reports
+  | "dod_oig" // Phase 8.6.16 — DoD Office of Inspector General audit/eval/investigation reports
+  | "darpa_news"; // Phase 8.6.17 — DARPA news + program announcements (R&D pipeline leading-edge)
 
 export interface SourceProvenance {
   system: SourceSystem;

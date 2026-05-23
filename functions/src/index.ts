@@ -82,6 +82,14 @@ export { gaoReportsDaily } from "./jobs/gaoReportsDaily";
 export { triggerDodOigSync } from "./http/triggerDodOigSync";
 export { dodOigDaily } from "./jobs/dodOigDaily";
 
+// DARPA News (Phase 8.6.17 — Tier 2 R&D pipeline leading-edge; news +
+// program announcements + awards + demonstrations from darpa.mil RSS;
+// itemKind classification + body-text contractor + program resolution
+// against 35-contractor + 35-program defaults; first plugin in the
+// defense R&D coverage)
+export { triggerDarpaNewsSync } from "./http/triggerDarpaNewsSync";
+export { darpaNewsDaily } from "./jobs/darpaNewsDaily";
+
 // Advisory Boards — DSB / DBB / DIB (Phase 8.6.8 — Tier 2 advisory body
 // reports via HTML index walk + PDF deep parse; reuses framework/pdfExtractor)
 export { triggerAdvisoryBoardsSync } from "./http/triggerAdvisoryBoardsSync";

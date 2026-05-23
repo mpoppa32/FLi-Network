@@ -35476,6 +35476,31 @@ window._phase85Sources = {
       { key: 'maxRelatedPerSignal', label: 'Max body-mention Orgs per Signal', placeholder: '6', kind: 'number', default: 6 }
     ],
     entityCounter: { path: 'signals', filterType: 'oversight_finding', label: 'DoD IG oversight finding Signals' }
+  },
+  // Phase 8.6.17 — DARPA news + program announcements (R&D pipeline leading-edge)
+  darpa_news: {
+    displayName: 'DARPA News',
+    subtitle: 'Phase 8.6.17 v1.0 · DARPA news + program announcements + awards + demonstrations',
+    color: '#5a8ab5',
+    callable: 'triggerDarpaNewsSync',
+    entityType: 'analysis_publication Signal (R&D, contractor + program tagged)',
+    requiresKey: null,
+    cadence: 'Daily · 17:45 UTC',
+    cadenceCron: '45 17 * * *',
+    description: 'Defense Advanced Research Projects Agency news + events RSS. DARPA programs are leading 5-10 year indicators of future procurement — performers selected today become acquisition primes years later. Each item → analysis_publication Signal with attrs.publisher="darpa_news" + itemKind classification (program_announcement / award / demonstration / event / leadership / other). Body-text contractor + program resolution against config-driven defaults (35 contractors + 35 active DARPA programs — ACE, RACER, Manta Ray, OpFires, X-65, etc.; lists operator-extensible). First plugin in defense R&D pipeline coverage; future plugins (DIU, AFRL, ARL, ONR, AFWERX) will follow the same shape.',
+    badgeId: 'darpa-news-source-status',
+    configPath: 'sources/darpa_news/config',
+    healthPath: 'sources/darpa_news',
+    fields: [
+      { key: 'rssUrl', label: 'RSS endpoint (DARPA News & Events default)', placeholder: 'https://www.darpa.mil/rss/news_events.rss', kind: 'text', default: 'https://www.darpa.mil/rss/news_events.rss' },
+      { key: 'lookbackDays', label: 'Lookback (days)', placeholder: '60', kind: 'number', default: 60 },
+      { key: 'keywords', label: 'Keyword filter (case-insensitive, empty = all)', placeholder: 'ACE, hypersonic, autonomy', kind: 'csv', default: [] },
+      { key: 'resolveBodyOrgs', label: 'Resolve body-text contractor mentions to Org nodes', placeholder: 'true', kind: 'boolean', default: true },
+      { key: 'contractorPatterns', label: 'Contractor patterns (empty = built-in 35-name default)', placeholder: 'Anduril, Shield AI, Helsing', kind: 'csv', default: [] },
+      { key: 'programPatterns', label: 'Program patterns (empty = built-in 35-program default)', placeholder: 'ACE, RACER, NOMARS', kind: 'csv', default: [] },
+      { key: 'maxRelatedPerSignal', label: 'Max body-mention Orgs per Signal', placeholder: '6', kind: 'number', default: 6 }
+    ],
+    entityCounter: { path: 'signals', filterType: 'analysis_publication', label: 'DARPA analysis publication Signals' }
   }
 };
 
@@ -39225,7 +39250,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'industry_assoc',  label: 'Industry Assoc Rosters (NDIA/AFA/AUSA)', cadenceMin: 129600, accent: '#6a8a3a' },
   { key: 'state_department', label: 'State Department',                      cadenceMin: 1440,  accent: '#c8a060' },
   { key: 'defense_scoop',    label: 'Defense BD News',                        cadenceMin: 1440,  accent: '#a04060' },
-  { key: 'dod_oig',          label: 'DoD OIG',                                cadenceMin: 1440,  accent: '#7060a0' }
+  { key: 'dod_oig',          label: 'DoD OIG',                                cadenceMin: 1440,  accent: '#7060a0' },
+  { key: 'darpa_news',       label: 'DARPA News',                             cadenceMin: 1440,  accent: '#5a8ab5' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -39996,7 +40022,8 @@ window._renderOnboardStep3 = function() {
     { key:'industry_assoc', label:'Industry Assoc Rosters — NDIA/AFA/AUSA (Tier 2)', desc:'Corporate-member rosters from defense industry associations → member_of Edges to trade_assoc Orgs; Edge-only (no Signals); populates the entity graph with cross-association membership · Quarterly · Keyless', color:'#6a8a3a' },
     { key:'state_department', label:'State Department (Tier 2)', desc:'Press releases + briefings + fact sheets + (opt-in) sanctions designations from state.gov RSS → analysis_publication Signals anchored to Department of State Org; surfaces policy moves + bilateral context relevant to BD pursuits touching foreign customers or sanctions exposure · Daily · Keyless', color:'#c8a060' },
     { key:'defense_scoop', label:'Defense BD News (Tier 2)', desc:'Breaking Defense + DefenseScoop + Defense News (default on) + FedScoop + NextGov (opt-in) RSS aggregator. Each item → analysis_publication Signal with body-text contractor + program resolution (config-driven patterns; defaults cover 28 contractors + 20 programs). Highest-frequency defense BD coverage available · Daily · Keyless', color:'#a04060' },
-    { key:'dod_oig', label:'DoD OIG (Tier 2)', desc:'Department of Defense Office of Inspector General audit + evaluation + investigation reports → oversight_finding Signals tagged with reportKind (audit/evaluation/investigation/inspection) and attrs.publisher="dod_oig". Sibling to gao_reports: internal-DoD audit findings flow into the same scoring matrix as external GAO findings, but call out internal IG perspective. Body-text contractor + program resolution against config-driven 29 contractor + 26 program defaults · Daily · Keyless', color:'#7060a0' }
+    { key:'dod_oig', label:'DoD OIG (Tier 2)', desc:'Department of Defense Office of Inspector General audit + evaluation + investigation reports → oversight_finding Signals tagged with reportKind (audit/evaluation/investigation/inspection) and attrs.publisher="dod_oig". Sibling to gao_reports: internal-DoD audit findings flow into the same scoring matrix as external GAO findings, but call out internal IG perspective. Body-text contractor + program resolution against config-driven 29 contractor + 26 program defaults · Daily · Keyless', color:'#7060a0' },
+    { key:'darpa_news', label:'DARPA News (Tier 2)', desc:'Defense Advanced Research Projects Agency news + program announcements + awards + demonstrations RSS → analysis_publication Signals tagged with itemKind classification (program_announcement / award / demonstration / event / leadership / other) and attrs.publisher="darpa_news". DARPA programs lead 5-10 years ahead of acquisition — surfaces emerging contractors + capability areas before they appear downstream in USAspending or SAM.gov. Body-text contractor + program resolution against 35 contractor + 35 active DARPA program defaults (ACE, RACER, Manta Ray, OpFires, X-65, etc.) · Daily · Keyless', color:'#5a8ab5' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -40014,7 +40041,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda','dod_comptroller','plum_book','industry_assoc','state_department','defense_scoop','dod_oig'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda','dod_comptroller','plum_book','industry_assoc','state_department','defense_scoop','dod_oig','darpa_news'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });
