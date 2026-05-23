@@ -42410,6 +42410,7 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
     STATE.wsId = currentWsId;
     try { STATE.lastSeenAt = parseInt(localStorage.getItem('corsair-activity-lastseen')||'0', 10) || 0; } catch(e){}
     try {
+      var _isFirstFire = true;
       STATE.unsubscribe = onValue(ref(db, wsPath('audit_log')), function(snap){
         var raw = snap.val() ? Object.values(snap.val()) : [];
         raw.sort(function(a, b){ return (b.at||'').localeCompare(a.at||''); });
@@ -42424,8 +42425,10 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
         var dd = document.getElementById('nav-activity-dropdown');
         if (dd && dd.style.display !== 'none') _render();
         _refreshDot();
+        // First snap per subscription is the seed — never fires notifications
+        // (prevents workspace-switch spam from priors' max timestamps).
+        if (_isFirstFire) { _isFirstFire = false; return; }
         // CRM P2.18: fire browser notification on new non-self audit events
-        // (skip initial seed = priorMostRecentAt was 0/lastSeenAt; only fire on real-time additions)
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           var notifyEnabled = false;
           try { notifyEnabled = localStorage.getItem('corsair-notify-enabled') === '1'; } catch(e){}
