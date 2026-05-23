@@ -100,14 +100,27 @@ window.renderDailyBrief = function() {
       var health = (typeof window._computePursuitHealth === 'function')
                   ? window._computePursuitHealth(o, mtgs_)
                   : { score: 0, status: 'unknown' };
+      // CRM P0.4: manual operator-set nextAction + target date
+      var naTs = null;
+      if (o.nextActionDate) {
+        var _t = Date.parse(String(o.nextActionDate) + 'T00:00:00');
+        if (!isNaN(_t)) naTs = _t;
+      }
       stale.push({
         id: o.id, name: o.name || 'Pursuit', stage: stg.toUpperCase(),
         days: days2 === 9999 ? null : days2,
-        health: health
+        health: health,
+        nextAction: o.nextAction || '',
+        nextActionDate: o.nextActionDate || '',
+        nextActionTs: naTs
       });
     }
   }
+  // CRM P0.4: sort by nextActionDate ascending (nulls last), then health ascending
   stale.sort(function(a, b) {
+    var ta = a.nextActionTs == null ? Number.MAX_SAFE_INTEGER : a.nextActionTs;
+    var tb = b.nextActionTs == null ? Number.MAX_SAFE_INTEGER : b.nextActionTs;
+    if (ta !== tb) return ta - tb;
     var sa = (a.health && a.health.score) || 0;
     var sb = (b.health && b.health.score) || 0;
     if (sa !== sb) return sa - sb;
@@ -178,28 +191,6 @@ window.renderDailyBrief = function() {
     coverage.sort(function(a, b) { return a.score - b.score; });
   }
 
-  // ─── 6. Aged in stage: active pursuits past pipeline.ageLimit (Phase 6.7) ───
-  // Reads pipeline helpers from window.Corsair.pipeline. Falls through silently
-  // if the module hasn't loaded yet (during init order edge cases).
-  var aged = [];
-  var pipelineMod = (window.Corsair && window.Corsair.pipeline) || null;
-  if (pipelineMod && typeof pipelineMod.isStageStuck === 'function') {
-    for (var ai = 0; ai < opps_.length; ai++) {
-      var op = opps_[ai];
-      if (!op || !op.stage || op.stage === 'won' || op.stage === 'lost') continue;
-      if (!pipelineMod.isStageStuck(op)) continue;
-      var d = (typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(op) : 0;
-      var cfg = (typeof pipelineMod.config === 'function') ? pipelineMod.config(op.stage) : null;
-      aged.push({
-        id:    op.id,
-        name:  op.name || 'Pursuit',
-        stage: (cfg && cfg.label) || op.stage,
-        days:  d
-      });
-    }
-    aged.sort(function(a, b) { return b.days - a.days; });
-  }
-
   // Render helpers
   function _renderCol(listId, countId, items, formatter) {
     var listEl  = document.getElementById(listId);
@@ -222,9 +213,29 @@ window.renderDailyBrief = function() {
     var h = s.health || { score: 0, status: 'unknown' };
     var pillTxt = h.status === 'unknown' ? '—' : String(h.score);
     var pill = '<span class="health-pill health-' + h.status + '" title="Health ' + h.score + ' · ' + (h.factors ? (h.factors.attendees + ' attendees · ' + h.factors.meetings + ' meetings') : '') + '">' + pillTxt + '</span>';
-    return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' +
-           '<span class="brief-item-title">' + pill + s.name + '</span>' +
-           '<span class="brief-item-meta">' + (s.days == null ? 'never' : s.days + 'd · ' + s.stage) + '</span></div>';
+    // CRM P0.4: operator-set nextAction + target date inline
+    var naLine = '';
+    if (s.nextAction || s.nextActionTs) {
+      var naText = (s.nextAction || '').slice(0, 60);
+      var naDelta = '';
+      if (s.nextActionTs != null) {
+        var dd = Math.ceil((s.nextActionTs - nowMs) / DAY);
+        naDelta = dd < 0 ? Math.abs(dd) + 'd overdue' : dd === 0 ? 'today' : dd === 1 ? 'tomorrow' : 'in ' + dd + 'd';
+      }
+      naLine = '<div class="brief-item-na" style="font-size:10px;color:var(--gold);font-family:IBM Plex Mono,monospace;margin-top:2px;display:flex;gap:6px;align-items:center">' +
+               (naText ? '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">→ ' + naText + '</span>' : '<span style="flex:1"></span>') +
+               (naDelta ? '<span style="flex-shrink:0;color:' + (s.nextActionTs != null && s.nextActionTs < nowMs ? '#ff6464' : 'var(--gold)') + '">' + naDelta + '</span>' : '') +
+               '</div>';
+    }
+    var headRow = '<span class="brief-item-title">' + pill + s.name + '</span>' +
+                  '<span class="brief-item-meta">' + (s.days == null ? 'never' : s.days + 'd · ' + s.stage) + '</span>';
+    if (naLine) {
+      return '<div class="brief-item" style="flex-direction:column;align-items:stretch;gap:0" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' +
+             '<div style="display:flex;justify-content:space-between;gap:8px;width:100%">' + headRow + '</div>' +
+             naLine +
+             '</div>';
+    }
+    return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' + headRow + '</div>';
   });
   _renderCol('brief-upcoming-list', 'brief-upcoming-count', upcoming, function(u) {
     var when = u.when === 0 ? 'today' : u.when === 1 ? 'tomorrow' : '+' + u.when + 'd';
@@ -247,13 +258,7 @@ window.renderDailyBrief = function() {
            '<span class="brief-item-title">' + pill + c.name + '</span>' +
            '<span class="brief-item-meta">' + c.factors.oppCount + ' opp' + (c.factors.oppCount === 1 ? '' : 's') + '</span></div>';
   });
-  _renderCol('brief-aged-list', 'brief-aged-count', aged, function(a) {
-    var safeId = String(a.id).replace(/'/g, '');
-    return '<div class="brief-item" onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + safeId + '\')">' +
-           '<span class="brief-item-title">' + a.name + '</span>' +
-           '<span class="brief-item-meta">' + a.days + 'd · ' + a.stage + '</span></div>';
-  });
-  console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length + ' aged=' + aged.length);
+  console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length);
 };
 
 window.Corsair = window.Corsair || {};

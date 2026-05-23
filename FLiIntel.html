@@ -15618,6 +15618,19 @@ function _renderOppList(q){
         + '</div>'
         + lifecycleBar(o.stage)
         + (function(){
+            // CRM P0.4: manual operator-set nextAction takes precedence over rhythm-inferred
+            if (o.nextAction) {
+              var mDate = o.nextActionDate || '';
+              var mCol = 'var(--gold)';
+              var mDeltaTxt = '';
+              if (mDate) {
+                var mD = new Date(mDate + 'T00:00:00').getTime();
+                var mDelta = Math.round((mD - now.getTime()) / DAY);
+                mCol = mDelta < 0 ? '#ef4444' : mDelta <= 1 ? 'var(--amber)' : mDelta <= 7 ? 'var(--gold)' : 'var(--green)';
+                mDeltaTxt = mDelta < 0 ? Math.abs(mDelta) + 'D OVERDUE' : mDelta === 0 ? 'TODAY' : mDelta === 1 ? 'TOMORROW' : 'IN ' + mDelta + 'D';
+              }
+              return '<div class="cop-card-nextaction" style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:7px 10px;background:rgba(7,13,24,.55);border:1px solid var(--b1);border-left:3px solid ' + mCol + ';border-radius:2px"><span style="font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:700;letter-spacing:.14em;color:' + mCol + ';text-transform:uppercase;flex-shrink:0">NEXT</span><span style="font-family:IBM Plex Sans,sans-serif;font-size:11px;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escH(o.nextAction) + '</span>' + (mDeltaTxt ? '<span style="font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:700;letter-spacing:.1em;color:' + mCol + ';flex-shrink:0">' + mDeltaTxt + '</span>' : '') + '</div>';
+            }
             var na = nextActionByOpp[o.id];
             if (!na) return '';
             var col = na.sev === 'critical' ? '#ef4444' : na.sev === 'warn' ? 'var(--amber)' : 'var(--t2)';
@@ -16358,6 +16371,25 @@ function renderOppDetail(opp){
     h+='</div>';
   }
   h+='</div>';
+  // Next Action — operator-set manual next step + target date (CRM P0.4)
+  var _naTxtAttr=(opp.nextAction||'').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});
+  var _naDateAttr=opp.nextActionDate||'';
+  var _naDaysLbl='';
+  if(opp.nextActionDate){
+    var _naD=new Date(opp.nextActionDate+'T00:00:00');
+    var _naNow=new Date();_naNow.setHours(0,0,0,0);
+    var _naDelta=Math.round((_naD-_naNow)/86400000);
+    var _naCol=_naDelta<0?'#ff6464':_naDelta===0?'var(--amber)':_naDelta<=7?'var(--gold)':'var(--green)';
+    var _naDeltaTxt=_naDelta<0?Math.abs(_naDelta)+'d overdue':_naDelta===0?'today':_naDelta===1?'tomorrow':'in '+_naDelta+'d';
+    _naDaysLbl='<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.1em;color:'+_naCol+';text-transform:uppercase;align-self:center;flex-shrink:0">'+_naDeltaTxt+'</span>';
+  }
+  h+='<div class="card" style="margin-bottom:14px;padding:12px 14px">'
+    +'<div class="opp-detail-hdr" style="margin-bottom:8px;display:flex;align-items:center;gap:10px"><span>Next Action</span>'+_naDaysLbl+'</div>'
+    +'<div style="display:flex;gap:8px;align-items:stretch">'
+      +'<input type="text" id="opp-na-task" value="'+_naTxtAttr+'" placeholder="What\'s the next move? (draft teaming letter, confirm PM site visit...)" onchange="window._saveOppNextAction(\''+opp.id+'\')" style="flex:1;padding:8px 10px;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif;outline:none">'
+      +'<input type="date" id="opp-na-date" value="'+_naDateAttr+'" onchange="window._saveOppNextAction(\''+opp.id+'\')" style="padding:8px 10px;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-size:12px;font-family:IBM Plex Mono,monospace;outline:none">'
+    +'</div>'
+  +'</div>';
   if(opp.rfpDate||opp.awardDate){
     var now=new Date();now.setHours(0,0,0,0);
     // ── Timing cards — RFP and Award dates with delta + FY indicators ──
@@ -16666,6 +16698,23 @@ window.updateOppStage=async function(id){
   }
   renderOppSidebar();
   toast('Stage updated');
+};
+
+// CRM P0.4 — operator-set Next Action + target date on opp records
+window._saveOppNextAction=async function(id){
+  var opp=opportunities.find(function(o){return o.id===id;});
+  if(!opp)return;
+  var taskEl=document.getElementById('opp-na-task');
+  var dateEl=document.getElementById('opp-na-date');
+  var task=taskEl?taskEl.value.trim():'';
+  var date=dateEl?dateEl.value:'';
+  opp.nextAction=task||null;
+  opp.nextActionDate=date||null;
+  opp.updatedAt=new Date().toISOString();
+  await saveOpp(opp);
+  renderOppDetail(opp);
+  renderOppSidebar();
+  if(typeof window.renderDailyBrief==='function'){try{window.renderDailyBrief();}catch(e){}}
 };
 
 window.deleteCurrentOpp=async function(){
