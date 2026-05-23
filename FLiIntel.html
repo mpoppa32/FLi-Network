@@ -8417,6 +8417,22 @@ input[type="url"], textarea, select {
     <input type="file" id="nav-import-file" accept=".json" style="display:none">
     <button class="nav-btn" id="nav-members-btn" style="display:none"></button>
     <button class="tour-nav-btn" id="nav-tour-btn" onclick="window.openTourSelector()" style="display:none"></button>
+    <div id="nav-activity-wrap" style="position:relative;margin-right:8px">
+      <button id="nav-activity-btn" onclick="window._toggleActivityDropdown&amp;&amp;window._toggleActivityDropdown()" title="Activity Log — see what changed across the workspace" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;position:relative" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.color='var(--t2)'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span id="nav-activity-dot" style="position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 8px var(--gold);display:none"></span>
+      </button>
+      <div id="nav-activity-dropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;width:340px;max-height:60vh;overflow-y:auto;background:linear-gradient(180deg,rgba(10,16,32,.98),rgba(7,13,24,.98));border:1px solid rgba(212,130,58,.25);border-radius:3px;box-shadow:0 18px 60px rgba(0,0,0,.7);z-index:90">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--b1);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase">
+          <span>Recent Activity</span>
+          <span style="color:var(--t3);font-weight:400;letter-spacing:.06em">live</span>
+        </div>
+        <div id="nav-activity-list" style="padding:4px 0"></div>
+        <div style="border-top:1px solid var(--b1);padding:8px 14px;text-align:center">
+          <button onclick="window._closeActivityDropdown();openModal('audit-log-modal');window.renderAuditLog()" style="background:none;border:none;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer">See all &rsaquo;</button>
+        </div>
+      </div>
+    </div>
     <div class="user-chip" id="user-chip-btn" onclick="if(typeof openModal==='function')openModal('user-modal')" style="cursor:pointer" title="Settings"><img id="user-chip-img" src="" alt=""></div>
     <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()"><svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="currentColor"/><rect y="5" width="16" height="2" rx="1" fill="currentColor"/><rect y="10" width="16" height="2" rx="1" fill="currentColor"/></svg></button>
   </div>
@@ -41651,6 +41667,111 @@ window.renderAuditLog = async function() {
 
 window._openContactTimeline=function(node){if(!node)return;openModal('contact-timeline-modal');var t=document.getElementById('contact-timeline-title');if(t)t.textContent=node.name+' — Relationship Timeline';window.renderContactTimeline(node.id);};
 window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLog();};
+
+// ── CRM P0.6: top-bar Activity dropdown (real-time, last 20 events) ───
+(function _corsairActivityDropdown(){
+  var STATE = { unsubscribe: null, events: [], unseen: 0, lastSeenAt: 0 };
+  var ACTION_ICONS = { meeting_logged: '📝', opp_created: '📊', opp_stage_changed: '🔄', member_added: '👥', outcome_recorded: '🏆', node_added: '🔗', vehicle_saved: '🚗', library_section_saved: '📚' };
+  function _esc(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+  function _fmtTime(at){
+    if (!at) return '';
+    var t = new Date(at).getTime();
+    if (isNaN(t)) return '';
+    var diff = Date.now() - t;
+    var m = Math.floor(diff / 60000);
+    if (m < 1) return 'just now';
+    if (m < 60) return m + 'm ago';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + 'h ago';
+    var d = Math.floor(h / 24);
+    if (d < 7) return d + 'd ago';
+    try { return new Date(at).toLocaleDateString([], { month: 'short', day: 'numeric' }); } catch(e) { return ''; }
+  }
+  function _render(){
+    var list = document.getElementById('nav-activity-list');
+    if (!list) return;
+    if (!STATE.events.length) {
+      list.innerHTML = '<div style="padding:18px 14px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.06em;text-align:center">No activity logged yet</div>';
+      return;
+    }
+    list.innerHTML = STATE.events.slice(0, 20).map(function(e){
+      var icon = ACTION_ICONS[e.action] || 'ℹ';
+      return '<div style="display:flex;gap:9px;padding:8px 14px;border-bottom:1px solid rgba(26,34,54,.3);align-items:flex-start">' +
+             '<span style="flex-shrink:0;font-size:13px;margin-top:1px">' + icon + '</span>' +
+             '<div style="flex:1;min-width:0">' +
+               '<div style="font-size:11px;color:var(--text);line-height:1.4">' + _esc(e.details || e.action) + '</div>' +
+               '<div style="font-size:9px;color:var(--t3);margin-top:2px;font-family:IBM Plex Mono,monospace;letter-spacing:.04em">' + _esc(e.user || '') + (e.at ? ' · ' + _fmtTime(e.at) : '') + '</div>' +
+             '</div>' +
+           '</div>';
+    }).join('');
+  }
+  function _refreshDot(){
+    var dot = document.getElementById('nav-activity-dot');
+    if (!dot) return;
+    dot.style.display = STATE.unseen > 0 ? 'block' : 'none';
+  }
+  function _attach(){
+    if (STATE.unsubscribe) { try { STATE.unsubscribe(); } catch(e){} STATE.unsubscribe = null; }
+    // onValue, ref, db, wsPath are module-scoped — we're inside the same <script type="module">
+    if (typeof wsPath !== 'function' || typeof onValue !== 'function' || typeof ref !== 'function' || typeof db === 'undefined') {
+      setTimeout(_attach, 600);
+      return;
+    }
+    if (typeof currentWsId === 'undefined' || !currentWsId) {
+      setTimeout(_attach, 800);
+      return;
+    }
+    STATE.wsId = currentWsId;
+    try { STATE.lastSeenAt = parseInt(localStorage.getItem('corsair-activity-lastseen')||'0', 10) || 0; } catch(e){}
+    try {
+      STATE.unsubscribe = onValue(ref(db, wsPath('audit_log')), function(snap){
+        var raw = snap.val() ? Object.values(snap.val()) : [];
+        raw.sort(function(a, b){ return (b.at||'').localeCompare(a.at||''); });
+        STATE.events = raw;
+        var unseen = 0;
+        for (var i = 0; i < STATE.events.length; i++) {
+          var ts = STATE.events[i].at ? Date.parse(STATE.events[i].at) : 0;
+          if (ts > STATE.lastSeenAt) unseen++; else break;
+        }
+        STATE.unseen = unseen;
+        var dd = document.getElementById('nav-activity-dropdown');
+        if (dd && dd.style.display !== 'none') _render();
+        _refreshDot();
+      });
+    } catch(e) {
+      setTimeout(_attach, 800);
+    }
+  }
+  window._toggleActivityDropdown = function(){
+    var dd = document.getElementById('nav-activity-dropdown');
+    if (!dd) return;
+    var open = dd.style.display !== 'none';
+    if (open) { window._closeActivityDropdown(); return; }
+    dd.style.display = 'block';
+    _render();
+    STATE.lastSeenAt = Date.now();
+    try { localStorage.setItem('corsair-activity-lastseen', String(STATE.lastSeenAt)); } catch(e){}
+    STATE.unseen = 0;
+    _refreshDot();
+  };
+  window._closeActivityDropdown = function(){
+    var dd = document.getElementById('nav-activity-dropdown');
+    if (dd) dd.style.display = 'none';
+  };
+  // Click outside to close
+  document.addEventListener('click', function(ev){
+    var dd = document.getElementById('nav-activity-dropdown');
+    var wrap = document.getElementById('nav-activity-wrap');
+    if (!dd || !wrap) return;
+    if (dd.style.display === 'none') return;
+    if (!wrap.contains(ev.target)) window._closeActivityDropdown();
+  });
+  // Re-attach on workspace switch
+  setInterval(function(){
+    if (typeof currentWsId !== 'undefined' && currentWsId && currentWsId !== STATE.wsId) _attach();
+  }, 2000);
+  _attach();
+})();
 
 
 // ══════════════════════════════════════════════════════════════════════════
