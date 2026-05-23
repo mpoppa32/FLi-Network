@@ -10411,6 +10411,16 @@ input[type="url"], textarea, select {
         </div>
       </div>
 
+      <!-- ── CRM P1.10 — BROWSER NOTIFICATIONS ── -->
+      <div style="background:var(--s1);border:1px solid rgba(212,130,58,.20);border-left:3px solid var(--gold);border-radius:2px;padding:12px 14px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:18px;height:18px;background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:var(--gold);flex-shrink:0">!</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--gold);font-weight:700">Browser Notifications</div>
+        </div>
+        <div id="notify-status" style="font-size:10px;color:var(--t3);margin-bottom:8px">Get alerts for overdue commitments and today's meetings.</div>
+        <button id="notify-toggle-btn" onclick="window._toggleNotifications&amp;&amp;window._toggleNotifications()" style="width:100%;padding:8px 12px;background:rgba(212,130,58,.08);border:1px solid rgba(212,130,58,.35);border-radius:2px;color:var(--gold);font-size:10px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase">Enable Notifications</button>
+      </div>
+
       <!-- ── MONDAY.COM SYNC ── -->
       <div style="background:var(--s1);border:1px solid rgba(78,205,196,.2);border-left:3px solid #4ecdc4;border-radius:2px;padding:12px 14px;margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -42083,6 +42093,129 @@ window.renderAuditLog = async function() {
 
 window._openContactTimeline=function(node){if(!node)return;openModal('contact-timeline-modal');var t=document.getElementById('contact-timeline-title');if(t)t.textContent=node.name+' — Relationship Timeline';window.renderContactTimeline(node.id);};
 window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLog();};
+
+// ── CRM P1.10: Browser push notifications ─────────────────────────────
+(function _corsairNotifications(){
+  function _enabled(){try{return localStorage.getItem('corsair-notify-enabled')==='1';}catch(e){return false;}}
+  function _permission(){return (typeof Notification!=='undefined')?Notification.permission:'unsupported';}
+  function _refreshUI(){
+    var btn=document.getElementById('notify-toggle-btn');
+    var status=document.getElementById('notify-status');
+    if(!btn||!status)return;
+    var perm=_permission();
+    if(perm==='unsupported'){
+      btn.textContent='Not Supported';btn.disabled=true;
+      btn.style.opacity='0.4';btn.style.cursor='not-allowed';
+      status.textContent='This browser does not support notifications.';
+      return;
+    }
+    if(perm==='denied'){
+      btn.textContent='Blocked by Browser';btn.disabled=true;
+      btn.style.opacity='0.4';btn.style.cursor='not-allowed';
+      status.textContent='Notifications were blocked. Re-enable them in the browser site settings.';
+      return;
+    }
+    if(_enabled()&&perm==='granted'){
+      btn.textContent='Disable Notifications';
+      btn.style.background='rgba(255,255,255,.04)';btn.style.color='var(--t2)';btn.style.borderColor='var(--b2)';
+      status.innerHTML='<span style="color:var(--green)">● Live</span> — alerts for overdue commitments + today\'s meetings.';
+    }else{
+      btn.textContent='Enable Notifications';
+      btn.style.background='rgba(212,130,58,.08)';btn.style.color='var(--gold)';btn.style.borderColor='rgba(212,130,58,.35)';
+      status.textContent='Get alerts for overdue commitments and today\'s meetings.';
+    }
+  }
+  window._toggleNotifications=async function(){
+    if(typeof Notification==='undefined')return;
+    if(_enabled()){
+      try{localStorage.removeItem('corsair-notify-enabled');}catch(e){}
+      _refreshUI();
+      return;
+    }
+    var perm=Notification.permission;
+    if(perm==='default'){
+      try{perm=await Notification.requestPermission();}catch(e){perm='denied';}
+    }
+    if(perm==='granted'){
+      try{localStorage.setItem('corsair-notify-enabled','1');}catch(e){}
+      try{new Notification('Corsair alerts on',{body:'You\'ll get a heads-up for overdue commitments and today\'s meetings.',icon:'/favicon.ico'});}catch(e){}
+      _check();
+    }
+    _refreshUI();
+  };
+  function _loadFired(){
+    try{return JSON.parse(localStorage.getItem('corsair-notify-fired')||'{}');}catch(e){return {};}
+  }
+  function _saveFired(map){
+    // Prune entries older than 3 days
+    var cutoff=Date.now()-3*86400000;
+    var trimmed={};
+    Object.keys(map).forEach(function(k){if(map[k]>cutoff)trimmed[k]=map[k];});
+    try{localStorage.setItem('corsair-notify-fired',JSON.stringify(trimmed));}catch(e){}
+  }
+  function _todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  function _fire(title,body,onclick,key){
+    if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
+    var fired=_loadFired();
+    if(fired[key])return;
+    try{
+      var n=new Notification(title,{body:body,icon:'/favicon.ico',tag:key,requireInteraction:false});
+      if(onclick)n.onclick=function(){try{window.focus();}catch(e){} onclick();n.close();};
+      fired[key]=Date.now();
+      _saveFired(fired);
+    }catch(e){}
+  }
+  function _check(){
+    if(!_enabled()||_permission()!=='granted')return;
+    var today=_todayStr();
+    // 1) Overdue open commitments
+    var commits=window.commitments||[];
+    var nowMs=Date.now();
+    var startOfDay=new Date();startOfDay.setHours(0,0,0,0);
+    commits.forEach(function(c){
+      if(!c||c.status!=='open')return;
+      var dd=c.deadline||c.dueAt;
+      if(!dd)return;
+      var t=Date.parse(String(dd)+(String(dd).length===10?'T00:00:00':''));
+      if(isNaN(t)||t>=startOfDay.getTime())return;
+      var daysLate=Math.floor((startOfDay.getTime()-t)/86400000);
+      _fire(
+        'Commitment overdue',
+        (c.task||'Commitment').slice(0,120)+' — '+daysLate+'d late'+(c.owner?' · '+c.owner:''),
+        function(){if(window.switchView)window.switchView('intel');if(window.switchIntelTab)window.switchIntelTab('board');},
+        'commit-'+c.id+'-'+today
+      );
+    });
+    // 2) Today's meetings
+    var mtgs=window.meetings||[];
+    var endOfDay=startOfDay.getTime()+86400000-1;
+    mtgs.forEach(function(m){
+      if(!m||!m.meta)return;
+      var ts=null;
+      if(typeof m.meta.ts==='number')ts=m.meta.ts;
+      else if(m.meta.date){var p=Date.parse(String(m.meta.date));if(!isNaN(p))ts=p;}
+      else if(typeof m.ts==='number')ts=m.ts;
+      if(ts==null||ts<startOfDay.getTime()||ts>endOfDay)return;
+      // Only alert if within next 60 minutes OR already started but not past
+      var diff=ts-nowMs;
+      if(diff>60*60*1000||diff<-30*60*1000)return;
+      _fire(
+        'Meeting soon: '+((m.meta.title||'Untitled').slice(0,80)),
+        (m.meta.att?'With '+String(m.meta.att).slice(0,80):'')+(m.meta.date?' · '+m.meta.date:''),
+        function(){if(window.switchView)window.switchView('intel');if(window.goIntelById)window.goIntelById(m.id);},
+        'mtg-'+m.id+'-'+today
+      );
+    });
+  }
+  // Refresh UI when the settings modal opens
+  document.addEventListener('click',function(ev){
+    if(ev.target&&ev.target.id==='user-chip-btn')setTimeout(_refreshUI,80);
+  });
+  // Periodic check every 5 min
+  setInterval(_check,5*60*1000);
+  // Initial check after the workspace loads
+  setTimeout(function(){_refreshUI();_check();},6000);
+})();
 
 // ── CRM P0.6: top-bar Activity dropdown (real-time, last 20 events) ───
 (function _corsairActivityDropdown(){
