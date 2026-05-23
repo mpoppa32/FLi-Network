@@ -8103,20 +8103,23 @@ input[type="url"], textarea, select {
 
 /* Phase 6.5 — COP Pipeline Board Kanban */
 .cop-kanban {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(180px, 1fr));
+  display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding-bottom: 8px;
+  overflow-y: hidden;
+  padding: 16px 20px 12px;
+  align-items: stretch;
 }
 .cop-kanban-col {
-  background: var(--surface);
+  background: var(--s1);
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 12px 12px 14px;
-  min-width: 180px;
+  width: 220px;
+  flex: 0 0 220px;
   display: flex;
   flex-direction: column;
+  max-height: calc(100vh - 180px);
 }
 .cop-kanban-col-head {
   display: flex;
@@ -8169,6 +8172,9 @@ input[type="url"], textarea, select {
   flex-direction: column;
   gap: 6px;
   flex: 1;
+  overflow-y: auto;
+  min-height: 60px;
+  margin-top: 6px;
 }
 .cop-kanban-col-empty {
   font-family: 'IBM Plex Mono', monospace;
@@ -8927,9 +8933,12 @@ input[type="url"], textarea, select {
   <div class="opp-view" id="opps-view" style="display:none">
     <!-- Left: pipeline list -->
     <div class="opp-sidebar">
-      <div style="padding:12px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;gap:6px">
         <div style="font-family:IBM Plex Mono,monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--t3)">Pipeline</div>
-        <button class="btn btn-gold btn-sm" onclick="openNewOppModal()">+ New</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="opp-board-toggle" class="btn btn-sm" onclick="window._toggleKanbanBoard&amp;&amp;window._toggleKanbanBoard()" title="Toggle the Kanban board view" style="font-size:10px;padding:4px 8px;border:1px solid var(--b2);color:var(--t2)">Board</button>
+          <button class="btn btn-gold btn-sm" onclick="openNewOppModal()">+ New</button>
+        </div>
       </div>
       <div style="padding:8px 8px 0">
         <input id="opp-search-inp" type="text" placeholder="Search opportunities..." oninput="filterOppSidebar(this.value)" style="width:100%;box-sizing:border-box;padding:6px 10px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-family:IBM Plex Sans,sans-serif;font-size:12px">
@@ -8945,6 +8954,8 @@ input[type="url"], textarea, select {
     </div>
     <!-- Right: opportunity detail -->
     <div class="opp-main" id="opp-main">
+      <!-- CRM P1.12 — Kanban Pipeline Board (drag-to-stage) -->
+      <div id="cop-kanban-board" class="cop-kanban" style="display:none"></div>
       <div id="opp-empty" style="margin:24px auto;max-width:740px;padding:24px">
         <div style="text-align:center;padding:32px 0 28px;border-bottom:1px solid rgba(26,34,54,.4);margin-bottom:28px">
           <div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase;margin-bottom:12px">Pipeline Focus</div>
@@ -15561,7 +15572,137 @@ function filterOppSidebar(q){
 function renderOppSidebar(){
   var q=(document.getElementById('opp-search-inp')||{}).value||'';
   _renderOppList(q);
+  // Keep kanban in sync when sidebar refreshes
+  if(typeof window._renderKanbanBoard==='function'){
+    var k=document.getElementById('cop-kanban-board');
+    if(k&&k.style.display!=='none')window._renderKanbanBoard();
+  }
 }
+
+// CRM P1.12 — Kanban Pipeline Board with drag-to-stage
+window._toggleKanbanBoard=function(){
+  var board=document.getElementById('cop-kanban-board');
+  var empty=document.getElementById('opp-empty');
+  var detail=document.getElementById('opp-detail');
+  var toggleBtn=document.getElementById('opp-board-toggle');
+  if(!board)return;
+  var nowOn=board.style.display==='none';
+  if(nowOn){
+    board.style.display='flex';
+    if(empty)empty.style.display='none';
+    if(detail)detail.style.display='none';
+    if(toggleBtn){toggleBtn.style.borderColor='var(--gold)';toggleBtn.style.color='var(--gold)';toggleBtn.style.background='rgba(212,130,58,.10)';}
+    try{localStorage.setItem('corsair-kanban-on','1');}catch(e){}
+    window._renderKanbanBoard();
+  }else{
+    board.style.display='none';
+    if(toggleBtn){toggleBtn.style.cssText='font-size:10px;padding:4px 8px;border:1px solid var(--b2);color:var(--t2)';}
+    try{localStorage.removeItem('corsair-kanban-on');}catch(e){}
+    if(currentOpp){if(detail)detail.style.display='block';}
+    else{if(empty)empty.style.display='block';}
+  }
+};
+
+window._renderKanbanBoard=function(){
+  var board=document.getElementById('cop-kanban-board');
+  if(!board)return;
+  if(typeof OPP_STAGES==='undefined'||!Array.isArray(OPP_STAGES))return;
+  var byStage={};
+  OPP_STAGES.forEach(function(s){byStage[s.key]=[];});
+  (opportunities||[]).forEach(function(o){
+    if(!o)return;
+    var k=o.stage||'awareness';
+    if(!byStage[k])byStage[k]=[];
+    byStage[k].push(o);
+  });
+  function escK(s){return String(s||'').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+  function nextActionLabel(o){
+    if(!o.nextAction&&!o.nextActionDate)return '';
+    var dt=o.nextActionDate?new Date(o.nextActionDate+'T00:00:00'):null;
+    var now=new Date();now.setHours(0,0,0,0);
+    var delta=dt?Math.round((dt-now)/86400000):null;
+    var col=delta==null?'var(--gold)':delta<0?'#ff6464':delta<=1?'var(--amber)':delta<=7?'var(--gold)':'var(--green)';
+    var deltaTxt=delta==null?'':delta<0?Math.abs(delta)+'d OVERDUE':delta===0?'TODAY':delta===1?'TMRW':'+'+delta+'D';
+    return '<div style="margin-top:6px;padding:4px 6px;background:rgba(7,13,24,.45);border-left:2px solid '+col+';border-radius:1px;font-family:IBM Plex Mono,monospace;font-size:9px;color:'+col+';letter-spacing:.04em;display:flex;align-items:center;gap:6px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">'+escK(o.nextAction||'(no task)')+'</span>'+(deltaTxt?'<span style="flex-shrink:0">'+deltaTxt+'</span>':'')+'</div>';
+  }
+  var h='';
+  OPP_STAGES.forEach(function(s){
+    var items=byStage[s.key]||[];
+    h+='<div class="cop-kanban-col" data-stage="'+s.key+'" style="--stage-c:'+s.color+'">'+
+       '<div class="cop-kanban-col-head">'+
+         '<div class="cop-kanban-col-title">'+
+           '<span class="cop-kanban-col-dot" style="background:'+s.color+'"></span>'+
+           escK(s.label)+
+         '</div>'+
+         '<span class="cop-kanban-col-count">'+items.length+'</span>'+
+       '</div>'+
+       '<div class="cop-kanban-col-cards" data-stage="'+s.key+'">';
+    if(!items.length){
+      h+='<div class="cop-kanban-col-empty">&mdash;</div>';
+    }else{
+      items.forEach(function(o){
+        var meta=[o.agency||'',o.value||''].filter(Boolean).join(' · ');
+        h+='<div class="cop-kanban-card" draggable="true" data-opp-id="'+escK(o.id)+'" onclick="window.selectOpp&amp;&amp;window.selectOpp(\''+escK(o.id).replace(/'/g,"\\\'")+'\');window._toggleKanbanBoard&amp;&amp;window._toggleKanbanBoard()">'+
+             '<div class="cop-kanban-card-name">'+escK(o.name||'(unnamed)')+'</div>'+
+             (meta?'<div class="cop-kanban-card-meta">'+escK(meta)+'</div>':'')+
+             nextActionLabel(o)+
+           '</div>';
+      });
+    }
+    h+='</div></div>';
+  });
+  board.innerHTML=h;
+  // Wire drag-and-drop
+  Array.prototype.forEach.call(board.querySelectorAll('.cop-kanban-card'),function(card){
+    card.addEventListener('dragstart',function(ev){
+      ev.dataTransfer.setData('text/plain',card.dataset.oppId);
+      ev.dataTransfer.effectAllowed='move';
+      card.style.opacity='0.5';
+    });
+    card.addEventListener('dragend',function(){card.style.opacity='';});
+  });
+  Array.prototype.forEach.call(board.querySelectorAll('.cop-kanban-col-cards'),function(col){
+    col.addEventListener('dragover',function(ev){ev.preventDefault();ev.dataTransfer.dropEffect='move';col.style.background='rgba(212,130,58,.06)';});
+    col.addEventListener('dragleave',function(){col.style.background='';});
+    col.addEventListener('drop',async function(ev){
+      ev.preventDefault();
+      col.style.background='';
+      var oppId=ev.dataTransfer.getData('text/plain');
+      var stage=col.dataset.stage;
+      if(!oppId||!stage)return;
+      var opp=(opportunities||[]).find(function(o){return String(o.id)===String(oppId);});
+      if(!opp||opp.stage===stage)return;
+      if(window._canWrite&&!window._canWrite()){toast('Observers cannot move pursuits');return;}
+      var prevStage=opp.stage;
+      opp.stage=stage;
+      opp.updatedAt=new Date().toISOString();
+      try{
+        await saveOpp(opp);
+        if((stage==='won'||stage==='lost')&&prevStage!==stage&&typeof recordOutcome==='function'){
+          try{await recordOutcome(opp,stage);}catch(e){}
+        }
+        toast(opp.name+' → '+(OPP_STAGES.find(function(s){return s.key===stage;})||{}).label);
+        window._renderKanbanBoard();
+      }catch(e){
+        opp.stage=prevStage;
+        toast('Stage change failed');
+      }
+    });
+  });
+};
+
+// Restore kanban-on state across reloads when the opps view is opened
+(function _restoreKanban(){
+  function check(){
+    if(typeof activeView!=='undefined'&&activeView==='opps'){
+      var board=document.getElementById('cop-kanban-board');
+      var on=false;try{on=localStorage.getItem('corsair-kanban-on')==='1';}catch(e){}
+      if(on&&board&&board.style.display==='none')window._toggleKanbanBoard();
+    }
+    setTimeout(check,1500);
+  }
+  setTimeout(check,2000);
+})();
 var _copFilters = window._copFilters || { mineOnly: false, unassignedOnly: false, byLead: null };
 window._copFilters = _copFilters;
 
