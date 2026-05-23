@@ -9406,6 +9406,12 @@ input[type="url"], textarea, select {
         <div class="fld" id="panel-govtype-fld" style="display:none"><div class="plbl">Acquisition Role</div><select id="panel-govtype" onchange="saveNetPanel()" style="width:100%;padding:7px 9px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif"><option value="">— None —</option><option value="PM">Program Manager (PM)</option><option value="CO">Contracting Officer (CO)</option><option value="COTR">COTR / Tech Rep</option><option value="Director">Director / Deputy</option><option value="Budget">Budget Authority</option><option value="Tech">Technical Director</option><option value="Legal">Legal / Policy</option><option value="Congress">Congressional Staff</option><option value="Prime">Prime Contractor</option><option value="Sub">Subcontractor</option><option value="SI">Systems Integrator</option><option value="FFRDC">FFRDC / UARC</option><option value="Advisor">Advisor</option><option value="Academic">Academia</option><option value="Investor">Investor</option></select></div>
       <div class="fld" id="panel-phone-fld" style="display:none"><div class="plbl">Phone</div><input type="tel" id="panel-phone" onchange="saveNetPanel()" placeholder="+1 555 555 5555"></div>
       <div class="fld" id="panel-email-fld" style="display:none"><div class="plbl">Email</div><input type="email" id="panel-email" onchange="saveNetPanel()" placeholder="name@org.com"></div>
+      <!-- CRM P1.13 — Free-text custom tags -->
+      <div class="fld" id="panel-tags-fld">
+        <div class="plbl">Tags</div>
+        <div id="panel-tags-chips" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;min-height:4px"></div>
+        <input type="text" id="panel-tag-input" placeholder="Add tag (hot lead · AFRL connection · ICE…) — press Enter" onkeydown="if(event.key==='Enter'){event.preventDefault();window._addNodeTag&amp;&amp;window._addNodeTag();}" style="width:100%;padding:6px 8px;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-size:11px;font-family:IBM Plex Sans,sans-serif;outline:none">
+      </div>
       <div class="fld"><div class="plbl">Intelligence Notes</div><textarea id="panel-notes" rows="5" onchange="saveNetPanel()"></textarea></div>
       <!-- CRM P1.11 — Per-contact comment thread (no meeting required) -->
       <div class="fld" id="panel-comments-fld" style="margin-top:14px">
@@ -22330,6 +22336,8 @@ function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-pan
   var exportBtn=document.getElementById('panel-export-btn');
   if(exportBtn)exportBtn.style.display=(defaultTab==='dossier'||defaultTab==='timeline360')?'block':'none';
   if(window._attachNodeComments)window._attachNodeComments(d.id);
+  if(window._renderNodeTags)window._renderNodeTags(d);
+  var _tagInp=document.getElementById('panel-tag-input');if(_tagInp)_tagInp.value='';
   openNetPanel();document.getElementById('org-legend').classList.add('panel-open');}
 function closeNetPanel(){
   var p=document.getElementById('net-panel');
@@ -22377,6 +22385,45 @@ document.addEventListener('keydown',function(ev){
 // Panel close wired to SVG mousedown in initNetwork (see below)
 
 var _netPanelSaveTimer=null;
+// CRM P1.13 — Free-text custom tags
+function _escTag(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+window._renderNodeTags=function(node){
+  var box=document.getElementById('panel-tags-chips');
+  if(!box)return;
+  var tags=(node&&Array.isArray(node.tags))?node.tags:[];
+  if(!tags.length){box.innerHTML='<span style="font-size:10px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.04em">no tags</span>';return;}
+  box.innerHTML=tags.map(function(t){
+    return '<span style="display:inline-flex;align-items:center;gap:5px;padding:2px 7px;background:rgba(212,130,58,.12);border:1px solid rgba(212,130,58,.35);border-radius:10px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.04em">'+
+           _escTag(t)+
+           '<button onclick="window._removeNodeTag&amp;&amp;window._removeNodeTag(\''+t.replace(/'/g,"\\\'")+'\')" style="background:none;border:none;color:var(--gold);font-size:13px;line-height:1;cursor:pointer;padding:0;margin-left:1px" title="Remove">&times;</button>'+
+           '</span>';
+  }).join('');
+};
+window._addNodeTag=async function(){
+  if(!selectedNode)return;
+  if(window._canWrite&&!window._canWrite()){toast('Observers cannot edit tags');return;}
+  var inp=document.getElementById('panel-tag-input');
+  if(!inp)return;
+  var tag=inp.value.trim();
+  if(!tag)return;
+  if(tag.length>40){toast('Tag too long (max 40 chars)');return;}
+  selectedNode.tags=Array.isArray(selectedNode.tags)?selectedNode.tags.slice():[];
+  if(selectedNode.tags.indexOf(tag)!==-1){inp.value='';return;}
+  selectedNode.tags.push(tag);
+  inp.value='';
+  window._renderNodeTags(selectedNode);
+  try{await saveNode(selectedNode);}catch(e){toast('Save failed');}
+  if(typeof updateFilterTags==='function')updateFilterTags();
+};
+window._removeNodeTag=async function(tag){
+  if(!selectedNode||!Array.isArray(selectedNode.tags))return;
+  if(window._canWrite&&!window._canWrite()){toast('Observers cannot edit tags');return;}
+  selectedNode.tags=selectedNode.tags.filter(function(t){return t!==tag;});
+  window._renderNodeTags(selectedNode);
+  try{await saveNode(selectedNode);}catch(e){toast('Save failed');}
+  if(typeof updateFilterTags==='function')updateFilterTags();
+};
+
 // CRM P1.11 — Per-contact comment thread
 var _nodeCommentsSub = null;
 var _nodeCommentsNodeId = null;
@@ -22887,8 +22934,10 @@ window.setFilter=setFilter;
 function applyFilter(){
   var f=activeFilter;
   visibleIds=new Set();
+  // CRM P1.13: filters prefixed with "tag:" match nodes that contain that tag
+  var tagFilter=(typeof f==='string'&&f.indexOf('tag:')===0)?f.slice(4):null;
   nodes.forEach(function(n){
-    var show=f==='all'||f==='tier1'&&n.priority===1||f==='company'&&n.type==='company'||f==='person'&&n.type==='person'||f==='government'&&n.type==='government'||(n.org===f||n.name===f);
+    var show=f==='all'||f==='tier1'&&n.priority===1||f==='company'&&n.type==='company'||f==='person'&&n.type==='person'||f==='government'&&n.type==='government'||(n.org===f||n.name===f)||(tagFilter&&Array.isArray(n.tags)&&n.tags.indexOf(tagFilter)!==-1);
     if(show)visibleIds.add(n.id);
   });
   if(ng){
@@ -22916,7 +22965,25 @@ function applyFilter(){
   updateNodeCount();
 }
 function updateNodeCount(){var el=document.getElementById('node-count');if(el)el.textContent=nodes.length?visibleIds.size+'/'+nodes.length+' nodes':'';}
-function updateFilterTags(){var cont=document.getElementById('filter-tags');if(!cont)return;cont.querySelectorAll('[data-org]').forEach(function(e){e.remove();});nodes.filter(function(n){return n.type==='company';}).forEach(function(c){if(cont.querySelector('[data-filter="'+c.name+'"]'))return;var b=document.createElement('button');b.className='ftag';b.dataset.filter=c.name;b.dataset.org='1';b.textContent=c.name;b.style.borderColor=ha(c.color||'#555',.5);b.style.color=c.color||'#555';b.addEventListener('click',function(){document.querySelectorAll('.ftag').forEach(function(t){t.style.cssText='';});this.style.background=ha(c.color||'#555',.2);this.style.borderColor=c.color||'#555';this.style.color=c.color||'#555';activeFilter=c.name;applyFilter();});cont.appendChild(b);});}
+function updateFilterTags(){var cont=document.getElementById('filter-tags');if(!cont)return;cont.querySelectorAll('[data-org]').forEach(function(e){e.remove();});cont.querySelectorAll('[data-tag]').forEach(function(e){e.remove();});nodes.filter(function(n){return n.type==='company';}).forEach(function(c){if(cont.querySelector('[data-filter="'+c.name+'"]'))return;var b=document.createElement('button');b.className='ftag';b.dataset.filter=c.name;b.dataset.org='1';b.textContent=c.name;b.style.borderColor=ha(c.color||'#555',.5);b.style.color=c.color||'#555';b.addEventListener('click',function(){document.querySelectorAll('.ftag').forEach(function(t){t.style.cssText='';});this.style.background=ha(c.color||'#555',.2);this.style.borderColor=c.color||'#555';this.style.color=c.color||'#555';activeFilter=c.name;applyFilter();});cont.appendChild(b);});
+  // CRM P1.13: append unique custom tag chips after the org chips
+  var tagCounts={};
+  nodes.forEach(function(n){if(Array.isArray(n.tags))n.tags.forEach(function(t){tagCounts[t]=(tagCounts[t]||0)+1;});});
+  Object.keys(tagCounts).sort().forEach(function(t){
+    var filterKey='tag:'+t;
+    if(cont.querySelector('[data-filter="'+filterKey+'"]'))return;
+    var b=document.createElement('button');
+    b.className='ftag';b.dataset.filter=filterKey;b.dataset.tag='1';
+    b.textContent='#'+t+' · '+tagCounts[t];
+    b.style.borderColor='rgba(212,130,58,.45)';b.style.color='var(--gold)';
+    b.addEventListener('click',function(){
+      document.querySelectorAll('.ftag').forEach(function(x){x.style.cssText='';});
+      this.style.background='rgba(212,130,58,.18)';this.style.borderColor='var(--gold)';this.style.color='var(--gold)';
+      activeFilter=filterKey;applyFilter();
+    });
+    cont.appendChild(b);
+  });
+}
 function updateOrgLegend(){var cos=nodes.filter(function(n){return n.type==='company';});var legend=document.getElementById('org-legend');if(!legend)return;if(!cos.length){legend.style.display='none';return;}legend.style.display='block';document.getElementById('org-legend-items').innerHTML=cos.map(function(c){return '<div class="ol-item"><div class="ol-dot" style="background:'+(c.color||'#555')+'"></div><span>'+c.name+'</span></div>';}).join('');}
 function buildEdgeLegend(){var rows=[['Hierarchy','#3b82f6',false],['Investment','#d4823a',false],['Partnership','#22c55e',false],['Advisory','#8b5cf6',true],['Competitive','#ef4444',true],['General','#64748b',false]];document.getElementById('edge-legend-items').innerHTML=rows.map(function(r){var line=r[2]?'<div style="height:2px;width:16px;background:repeating-linear-gradient(90deg,'+r[1]+' 0,'+r[1]+' 4px,transparent 4px,transparent 7px);flex-shrink:0"></div>':'<div class="el-solid" style="background:'+r[1]+'"></div>';return '<div class="el-item">'+line+'<span style="color:'+r[1]+'">'+r[0]+'</span></div>';}).join('');}
 
