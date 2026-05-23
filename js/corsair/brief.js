@@ -191,6 +191,121 @@ window.renderDailyBrief = function() {
     coverage.sort(function(a, b) { return a.score - b.score; });
   }
 
+  // ─── CRM P1.7: today/tomorrow agenda strip ──────────────────────────
+  // Three-cell row at the top of the brief: today's meetings, due-today
+  // commitments, this-week deadlines. Each cell is clickable when populated.
+  (function _renderAgenda() {
+    var agendaEl = document.getElementById('brief-agenda');
+    if (!agendaEl) return;
+    var startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+    var endOfDay = startOfDay.getTime() + DAY - 1;
+    var endOfWeek = startOfDay.getTime() + 7 * DAY - 1;
+
+    // Today's meetings
+    var todayMtgs = mtgs_.filter(function(m) {
+      var t = _mtgTime(m);
+      return t != null && t >= startOfDay.getTime() && t <= endOfDay;
+    }).sort(function(a, b) { return _mtgTime(a) - _mtgTime(b); });
+
+    // Due-today commitments (open status, deadline = today)
+    var dueToday = commits_.filter(function(c) {
+      if (!c || c.status !== 'open') return false;
+      var dd = c.deadline || c.dueAt;
+      if (!dd) return false;
+      var t = Date.parse(String(dd) + (String(dd).length === 10 ? 'T00:00:00' : ''));
+      if (isNaN(t)) return false;
+      return t >= startOfDay.getTime() && t <= endOfDay;
+    });
+
+    // This-week deadlines: any commit deadline in next 7 days OR opp rfp/award date in next 7 days
+    var weekDeadlines = [];
+    commits_.forEach(function(c) {
+      if (!c || c.status !== 'open') return;
+      var dd = c.deadline || c.dueAt;
+      if (!dd) return;
+      var t = Date.parse(String(dd) + (String(dd).length === 10 ? 'T00:00:00' : ''));
+      if (isNaN(t)) return;
+      if (t >= startOfDay.getTime() && t <= endOfWeek) {
+        weekDeadlines.push({ kind: 'commit', ts: t, label: c.task || c.title || 'Commitment' });
+      }
+    });
+    opps_.forEach(function(o) {
+      if (!o) return;
+      ['rfpDate', 'awardDate'].forEach(function(k) {
+        if (!o[k]) return;
+        var t = Date.parse(String(o[k]) + 'T00:00:00');
+        if (isNaN(t)) return;
+        if (t >= startOfDay.getTime() && t <= endOfWeek) {
+          weekDeadlines.push({ kind: 'opp', ts: t, label: (o.name || 'Pursuit') + (k === 'rfpDate' ? ' · RFP' : ' · AWD') });
+        }
+      });
+    });
+    weekDeadlines.sort(function(a, b) { return a.ts - b.ts; });
+
+    // Show the strip if at least one cell has content
+    var anyContent = todayMtgs.length || dueToday.length || weekDeadlines.length;
+    agendaEl.setAttribute('data-empty', anyContent ? '0' : '1');
+    if (!anyContent) { agendaEl.innerHTML = ''; return; }
+
+    function _esc(s) { return String(s == null ? '' : s).replace(/[<>&"]/g, function(c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]; }); }
+
+    var cells = [];
+    // Cell 1: Today's meetings
+    if (todayMtgs.length) {
+      var first = todayMtgs[0];
+      var t1 = (first.meta && first.meta.title) || 'Meeting';
+      var when = '';
+      var ts = _mtgTime(first);
+      if (ts) {
+        var hh = new Date(ts).getHours();
+        var mm = new Date(ts).getMinutes();
+        if (hh || mm) when = hh + ':' + String(mm).padStart(2, '0') + ' · ';
+      }
+      var more = todayMtgs.length > 1 ? ' (+' + (todayMtgs.length - 1) + ')' : '';
+      cells.push('<div class="brief-agenda-item" onclick="window.switchView&amp;&amp;window.switchView(\'intel\');window.goIntelById&amp;&amp;window.goIntelById(\'' + first.id + '\')">' +
+                 '<span class="agenda-icon">📅</span>' +
+                 '<div class="agenda-body">' +
+                   '<div class="agenda-lbl">TODAY · ' + todayMtgs.length + ' MTG' + (todayMtgs.length === 1 ? '' : 'S') + '</div>' +
+                   '<div class="agenda-detail">' + when + _esc(t1) + more + '</div>' +
+                 '</div></div>');
+    } else {
+      cells.push('<div class="brief-agenda-item is-empty"><span class="agenda-icon">📅</span><div class="agenda-body"><div class="agenda-lbl">TODAY</div><div class="agenda-detail agenda-detail-dim">no meetings</div></div></div>');
+    }
+
+    // Cell 2: Due-today commitments
+    if (dueToday.length) {
+      var c1 = dueToday[0];
+      var task = c1.task || c1.title || c1.what || 'Commitment';
+      var moreC = dueToday.length > 1 ? ' (+' + (dueToday.length - 1) + ')' : '';
+      cells.push('<div class="brief-agenda-item" onclick="window.switchView&amp;&amp;window.switchView(\'intel\');window.switchIntelTab&amp;&amp;window.switchIntelTab(\'board\')">' +
+                 '<span class="agenda-icon">⏰</span>' +
+                 '<div class="agenda-body">' +
+                   '<div class="agenda-lbl">DUE TODAY · ' + dueToday.length + '</div>' +
+                   '<div class="agenda-detail">' + _esc(task) + moreC + '</div>' +
+                 '</div></div>');
+    } else {
+      cells.push('<div class="brief-agenda-item is-empty"><span class="agenda-icon">⏰</span><div class="agenda-body"><div class="agenda-lbl">DUE TODAY</div><div class="agenda-detail agenda-detail-dim">nothing due</div></div></div>');
+    }
+
+    // Cell 3: This-week deadlines
+    if (weekDeadlines.length) {
+      var w1 = weekDeadlines[0];
+      var daysOut = Math.ceil((w1.ts - nowMs) / DAY);
+      var whenLbl = daysOut <= 0 ? 'today' : daysOut === 1 ? 'tmrw' : '+' + daysOut + 'd';
+      var moreW = weekDeadlines.length > 1 ? ' (+' + (weekDeadlines.length - 1) + ')' : '';
+      cells.push('<div class="brief-agenda-item" onclick="window.switchView&amp;&amp;window.switchView(\'' + (w1.kind === 'opp' ? 'opps' : 'intel') + '\')">' +
+                 '<span class="agenda-icon">🎯</span>' +
+                 '<div class="agenda-body">' +
+                   '<div class="agenda-lbl">7-DAY · ' + weekDeadlines.length + ' DEADLINE' + (weekDeadlines.length === 1 ? '' : 'S') + '</div>' +
+                   '<div class="agenda-detail">' + _esc(w1.label) + ' · ' + whenLbl + moreW + '</div>' +
+                 '</div></div>');
+    } else {
+      cells.push('<div class="brief-agenda-item is-empty"><span class="agenda-icon">🎯</span><div class="agenda-body"><div class="agenda-lbl">7-DAY DEADLINES</div><div class="agenda-detail agenda-detail-dim">none upcoming</div></div></div>');
+    }
+
+    agendaEl.innerHTML = cells.join('');
+  })();
+
   // Render helpers
   function _renderCol(listId, countId, items, formatter) {
     var listEl  = document.getElementById(listId);
