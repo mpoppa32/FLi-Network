@@ -9381,6 +9381,8 @@ input[type="url"], textarea, select {
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
+        <!-- CRM P2.16 — presence chip (other teammates viewing this contact) -->
+        <div id="presence-chip" style="display:none;align-items:center;gap:6px;padding:4px 9px;margin-bottom:8px;background:rgba(95,179,184,.08);border:1px solid rgba(95,179,184,.30);border-radius:10px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.08em;color:#5fb3b8;text-transform:uppercase;width:fit-content"></div>
         <!-- Top row: type label + action buttons -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div id="panel-type-lbl" style="font-family:IBM Plex Mono,monospace;font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3)"></div>
@@ -11052,7 +11054,7 @@ input[type="url"], textarea, select {
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getDatabase, ref, set, get, onValue, remove, query, orderByChild, limitToLast, endBefore } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+import { getDatabase, ref, set, get, onValue, remove, query, orderByChild, limitToLast, endBefore, onDisconnect } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
 var FB_CFG = {
@@ -22489,6 +22491,8 @@ function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-pan
   if(window._attachNodeComments)window._attachNodeComments(d.id);
   if(window._renderNodeTags)window._renderNodeTags(d);
   var _tagInp=document.getElementById('panel-tag-input');if(_tagInp)_tagInp.value='';
+  if(window._setViewing)window._setViewing('node',d.id,d.name||'');
+  if(window._renderPresenceChip)window._renderPresenceChip();
   openNetPanel();document.getElementById('org-legend').classList.add('panel-open');}
 function closeNetPanel(){
   var p=document.getElementById('net-panel');
@@ -22497,6 +22501,8 @@ function closeNetPanel(){
   if(ol)ol.classList.remove('panel-open');
   selectedNode=null;
   if(window._attachNodeComments)window._attachNodeComments(null);
+  if(window._setViewing)window._setViewing(null,null,null);
+  var pc=document.getElementById('presence-chip');if(pc){pc.style.display='none';pc.innerHTML='';}
 }
 window.closeNetPanel=closeNetPanel;
 window.openNetPanel=openNetPanel;
@@ -42101,6 +42107,92 @@ window.renderAuditLog = async function() {
 
 window._openContactTimeline=function(node){if(!node)return;openModal('contact-timeline-modal');var t=document.getElementById('contact-timeline-title');if(t)t.textContent=node.name+' — Relationship Timeline';window.renderContactTimeline(node.id);};
 window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLog();};
+
+// ── CRM P2.16: Presence indicators ────────────────────────────────────
+// Writes /presence/{uid} on connect, removes onDisconnect; updates the
+// `viewing` field when the operator opens / closes a node Inspector.
+// Subscribes to all workspace presence and renders a co-viewer chip when
+// a teammate is on the same node.
+(function _corsairPresence(){
+  var STATE = { sub: null, wsId: null, viewerIdsByNode: {}, viewerNamesByNode: {} };
+  function _writePresence(viewing){
+    if (typeof currentWsId === 'undefined' || !currentWsId) return;
+    if (!currentUser || !currentUser.uid) return;
+    var path = wsPath('presence/' + currentUser.uid);
+    var entry = {
+      uid: currentUser.uid,
+      name: currentUser.displayName || currentUser.email || 'Operator',
+      photo: currentUser.photoURL || '',
+      at: new Date().toISOString(),
+      viewing: viewing || null
+    };
+    try {
+      fbSet(path, entry);
+      onDisconnect(ref(db, path)).remove();
+    } catch(e){}
+  }
+  function _attach(){
+    if (typeof currentWsId === 'undefined' || !currentWsId || !currentUser) {
+      setTimeout(_attach, 1000);
+      return;
+    }
+    if (STATE.wsId === currentWsId && STATE.sub) return;
+    if (STATE.sub) { try{STATE.sub();}catch(e){} STATE.sub = null; }
+    STATE.wsId = currentWsId;
+    // Initial write
+    _writePresence(window._currentViewing||null);
+    // Subscribe to .info/connected to re-establish presence after reconnects
+    try {
+      onValue(ref(db, '.info/connected'), function(snap){
+        if (snap.val() === true) _writePresence(window._currentViewing||null);
+      });
+    } catch(e){}
+    // Subscribe to all workspace presence
+    try {
+      STATE.sub = onValue(ref(db, wsPath('presence')), function(snap){
+        var raw = snap.val() ? Object.values(snap.val()) : [];
+        var idsByNode = {}, namesByNode = {};
+        var myUid = currentUser ? currentUser.uid : null;
+        raw.forEach(function(p){
+          if (!p || !p.viewing || !p.viewing.kind || !p.viewing.id) return;
+          if (p.uid === myUid) return;
+          var k = p.viewing.kind + ':' + p.viewing.id;
+          if (!idsByNode[k]) { idsByNode[k] = []; namesByNode[k] = []; }
+          idsByNode[k].push(p.uid);
+          namesByNode[k].push(p.name || 'Teammate');
+        });
+        STATE.viewerIdsByNode = idsByNode;
+        STATE.viewerNamesByNode = namesByNode;
+        // Re-render the panel chip if the currently selected node has new viewers
+        window._renderPresenceChip&&window._renderPresenceChip();
+      });
+    } catch(e){}
+  }
+  window._setViewing = function(kind, id, name){
+    var v = (kind&&id)?{ kind: kind, id: id, name: name||'' }:null;
+    window._currentViewing = v;
+    _writePresence(v);
+  };
+  window._renderPresenceChip = function(){
+    var chip = document.getElementById('presence-chip');
+    if (!chip) return;
+    var sel = (typeof selectedNode !== 'undefined') ? selectedNode : null;
+    if (!sel) { chip.style.display='none'; return; }
+    var key = 'node:' + sel.id;
+    var names = STATE.viewerNamesByNode[key] || [];
+    if (!names.length) { chip.style.display='none'; chip.innerHTML=''; return; }
+    var lbl = names.length === 1
+      ? names[0] + ' is here'
+      : names[0] + ' +' + (names.length-1) + ' viewing';
+    chip.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#5fb3b8;box-shadow:0 0 8px rgba(95,179,184,.7);display:inline-block;flex-shrink:0"></span><span>'+lbl.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];})+'</span>';
+    chip.style.display='flex';
+  };
+  // Re-attach when workspace changes
+  setInterval(function(){
+    if (typeof currentWsId !== 'undefined' && currentWsId && currentWsId !== STATE.wsId) _attach();
+  }, 2500);
+  _attach();
+})();
 
 // ── CRM P1.10: Browser push notifications ─────────────────────────────
 (function _corsairNotifications(){
