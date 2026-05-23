@@ -8392,6 +8392,10 @@ input[type="url"], textarea, select {
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       <span>Contact</span>
     </button>
+    <button id="primary-followup-btn" onclick="if(window.openFollowupModal)window.openFollowupModal()" title="Set a standalone follow-up — not tied to a meeting" style="display:flex;align-items:center;gap:6px;margin-left:6px;padding:8px 12px;background:transparent;border:1px solid rgba(212,130,58,.35);border-radius:3px;color:var(--gold);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;transition:background 160ms ease,border-color 160ms ease,box-shadow 160ms ease;flex-shrink:0" onmouseover="this.style.background='rgba(212,130,58,.10)';this.style.borderColor='var(--gold)';this.style.boxShadow='0 0 14px rgba(212,130,58,.18)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(212,130,58,.35)';this.style.boxShadow='none'">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+      <span>Follow-up</span>
+    </button>
     <div class="nav-spacer"></div>
     <button onclick="window._toggleHelp()" id="help-nav-btn" style="width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;font-size:12px;font-weight:700;font-family:IBM Plex Mono,monospace;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin:0 6px;transition:all .15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.color='var(--t2)'" title="Field Guide / Help">?</button>
     <div class="sync-pill">
@@ -10856,6 +10860,34 @@ input[type="url"], textarea, select {
   </div>
 </div>
 <!-- COMMITMENT TRACKING MODAL -->
+<!-- FOLLOW-UP MODAL — standalone reminder, not tied to a meeting -->
+<div class="overlay" id="followup-modal" style="display:none">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">Add Follow-up</div>
+    <div style="font-size:11px;color:var(--t2);margin-bottom:12px">Standalone reminder — not tied to a meeting</div>
+    <div class="fld"><div class="lbl">Task *</div><input type="text" id="followup-task-inp" placeholder="Ping Sarah re: SOCOM proposal..."></div>
+    <div class="fld"><div class="lbl">Who (optional)</div>
+      <select id="followup-person-inp" style="width:100%;padding:7px 9px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="">— Anyone —</option>
+      </select>
+    </div>
+    <div class="g2" style="gap:10px">
+      <div class="fld"><div class="lbl">Due Date</div><input type="date" id="followup-deadline-inp"></div>
+      <div class="fld"><div class="lbl">Priority</div>
+        <select id="followup-priority-inp">
+          <option value="high">High</option>
+          <option value="medium" selected>Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+    </div>
+    <div class="fld"><div class="lbl">Context (optional)</div><textarea id="followup-note-inp" rows="2" placeholder="Why this matters..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+      <button class="btn btn-sm" onclick="closeModal('followup-modal')">Cancel</button>
+      <button class="btn btn-gold" onclick="confirmAddFollowup()">Add Follow-up</button>
+    </div>
+  </div>
+</div>
 <div class="overlay" id="commit-modal" style="display:none">
   <div class="modal" style="max-width:420px">
     <div class="modal-title">Track Commitment</div>
@@ -19046,6 +19078,52 @@ window.confirmTrackCommitment=async function(){
   if(currentMeeting&&currentMeeting.id===mtgId)renderIntel(currentMeeting);
 };
 
+// Standalone follow-up — not tied to a meeting (CRM P0.2)
+window.openFollowupModal=function(){
+  document.getElementById('followup-task-inp').value='';
+  document.getElementById('followup-note-inp').value='';
+  document.getElementById('followup-priority-inp').value='medium';
+  // default deadline = tomorrow
+  var t=new Date();t.setDate(t.getDate()+1);
+  var iso=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  document.getElementById('followup-deadline-inp').value=iso;
+  // populate person picker with person + government nodes
+  var sel=document.getElementById('followup-person-inp');
+  sel.innerHTML='<option value="">— Anyone —</option>';
+  var people=(typeof nodes!=='undefined'?nodes:[]).filter(function(n){return n.type==='person'||n.type==='government';}).slice().sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});
+  people.forEach(function(n){var lbl=n.name+(n.org?' · '+n.org:'')+(n.role?' · '+n.role:'');sel.innerHTML+='<option value="'+n.id+'">'+lbl+'</option>';});
+  document.getElementById('followup-modal').style.display='flex';
+  setTimeout(function(){document.getElementById('followup-task-inp').focus();},80);
+};
+
+window.confirmAddFollowup=async function(){
+  var task=document.getElementById('followup-task-inp').value.trim();
+  if(!task){toast('Task required');return;}
+  var personId=document.getElementById('followup-person-inp').value;
+  var deadline=document.getElementById('followup-deadline-inp').value;
+  var priority=document.getElementById('followup-priority-inp').value;
+  var note=document.getElementById('followup-note-inp').value.trim();
+  var person=personId?(nodeMap.get(personId)||null):null;
+  var owner=person?person.name:'';
+  var c={
+    id:'commit-'+Date.now(),
+    task:task,owner:owner,deadline:deadline,priority:priority,
+    status:'open',
+    ownerNodeId:personId||null,
+    parentMeetingId:null,
+    source:'standalone',
+    context:note||'',
+    sourceMtgId:null,
+    sourceMtgTitle:'',
+    sourceMtgDate:'',
+    created:new Date().toISOString(),
+    closedAt:null,closedNote:''
+  };
+  await saveCommitment(c);
+  closeModal('followup-modal');
+  toast('Follow-up tracked'+(owner?' — '+owner:''));
+};
+
 function renderCommitmentsSection(){
   var open=commitments.filter(function(c){return c.status==='open';});
   var now=new Date();now.setHours(0,0,0,0);
@@ -19073,7 +19151,8 @@ function renderCommitmentsSection(){
     h+='<div style="width:6px;height:6px;border-radius:50%;background:'+accentColor+';flex-shrink:0;margin-top:5px"></div>';
     h+='<div style="flex:1;min-width:0">';
     h+='<div style="font-size:12px;font-weight:500;line-height:1.4">'+c.task+'</div>';
-    h+='<div style="font-size:10px;color:var(--t2);margin-top:2px">'+(c.owner?c.owner+' · ':'')+c.sourceMtgTitle+'</div>';
+    var _origin=c.source==='standalone'?'<span style="color:var(--gold);font-family:\'IBM Plex Mono\',monospace;font-size:9px;letter-spacing:.08em">FOLLOW-UP</span>':(c.sourceMtgTitle||'');
+    h+='<div style="font-size:10px;color:var(--t2);margin-top:2px">'+(c.owner?c.owner+' · ':'')+_origin+(c.source==='standalone'&&c.context?' · '+c.context:'')+'</div>';
     h+='<div style="display:flex;align-items:center;gap:6px;margin-top:4px">';
     h+='<span style="font-size:10px;color:'+dueColor+';font-family:\'IBM Plex Mono\',monospace">'+dueLabel+'</span>';
     h+='<button onclick="updateCommitmentStatus(\''+c.id+'\',\'fulfilled\')" style="font-size:9px;padding:1px 6px;border:1px solid var(--green);border-radius:3px;background:transparent;color:var(--green);cursor:pointer">✓ Fulfilled</button>';
@@ -24239,7 +24318,7 @@ function _computeAlerts(){
         severity:daysLate>=7?'high':'medium',
         icon:'⚠',
         title:(c.owner?c.owner+': ':'')+c.task.slice(0,60),
-        body:daysLate+'d overdue · from '+c.sourceMtgTitle,
+        body:daysLate+'d overdue · '+(c.source==='standalone'?'standalone follow-up':'from '+(c.sourceMtgTitle||'meeting')),
         action:function(){switchView('timeline');},
         actionLabel:'View Timeline',
         daysLate:daysLate
