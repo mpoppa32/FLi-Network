@@ -42411,13 +42411,24 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
       return;
     }
     STATE.wsId = currentWsId;
-    try { STATE.lastSeenAt = parseInt(localStorage.getItem(('corsair-activity-lastseen-'+currentWsId))||'0', 10) || 0; } catch(e){}
+    var _stored = null;
+    try { _stored = localStorage.getItem('corsair-activity-lastseen-'+currentWsId); } catch(e){}
+    STATE.lastSeenAt = _stored != null ? (parseInt(_stored, 10) || 0) : null;
+    STATE.events = [];
     try {
       var _isFirstFire = true;
       STATE.unsubscribe = onValue(ref(db, wsPath('audit_log')), function(snap){
         var raw = snap.val() ? Object.values(snap.val()) : [];
         raw.sort(function(a, b){ return (b.at||'').localeCompare(a.at||''); });
-        var priorMostRecentAt = (STATE.events.length && STATE.events[0].at) ? Date.parse(STATE.events[0].at) : STATE.lastSeenAt;
+        var priorMostRecentAt = (STATE.events.length && STATE.events[0].at) ? Date.parse(STATE.events[0].at) : (STATE.lastSeenAt || 0);
+        // First-ever connect to this workspace: seed lastSeenAt to the most-
+        // recent event so the unseen dot only lights for events that arrive
+        // AFTER the seed. Otherwise every historical event would count as
+        // unseen on first visit.
+        if (STATE.lastSeenAt == null) {
+          STATE.lastSeenAt = raw.length && raw[0].at ? Date.parse(raw[0].at) : 0;
+          try { localStorage.setItem('corsair-activity-lastseen-'+currentWsId, String(STATE.lastSeenAt)); } catch(e){}
+        }
         STATE.events = raw;
         var unseen = 0;
         for (var i = 0; i < STATE.events.length; i++) {
