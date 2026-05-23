@@ -42175,6 +42175,11 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
       return;
     }
     if (STATE.wsId === currentWsId && STATE.sub) return;
+    // Clear our presence entry in the previous workspace so teammates there
+    // don't see us as "still viewing" after we've switched away.
+    if (STATE.wsId && STATE.wsId !== currentWsId) {
+      try { remove(ref(db, 'workspaces/'+STATE.wsId+'/presence/'+currentUser.uid)); } catch(e){}
+    }
     if (STATE.sub) { try{STATE.sub();}catch(e){} STATE.sub = null; }
     if (STATE.connSub) { try{STATE.connSub();}catch(e){} STATE.connSub = null; }
     STATE.wsId = currentWsId;
