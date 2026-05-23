@@ -582,12 +582,56 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
       return { score: 0.4, why: `${boardLabel} ${kind || "advisory body report"}` };
     }
     case "oversight_finding": {
-      // v1.4 — leverages GAO Reports v1.1 deep-parsed report attrs.
-      // Non-concurrence by the agency is the highest-signal posture event:
-      // the auditee is publicly disputing GAO's findings — leading
-      // indicator of procurement risk + contractor trouble.
-      const response = (attrs.agencyResponse as string | undefined) || "";
+      // v1.36 — publisher-aware dispatch. oversight_finding signals can
+      // come from either gao_reports (external Congressional audit) or
+      // dod_oig (internal DoD audit). They share the type but the
+      // operator reads them differently: dod_oig findings indicate
+      // problems the agency caught itself; gao_reports findings
+      // indicate problems Congress's auditors caught. Both matter, but
+      // DoD IG investigations specifically often precede enforcement
+      // action and are the highest qualitative signal.
+      //
+      // v1.4 (legacy gao_reports path) — leverages GAO Reports v1.1
+      // deep-parsed report attrs. Non-concurrence by the agency is the
+      // highest-signal posture event: the auditee is publicly disputing
+      // GAO's findings — leading indicator of procurement risk +
+      // contractor trouble.
+      const system = signal.source?.system;
       const kind = (attrs.reportKind as string | undefined) || "";
+
+      // ─── DoD IG dispatch ───────────────────────────────────────────
+      if (system === "dod_oig") {
+        const matchedContractors = Array.isArray(attrs.matchedContractors)
+          ? (attrs.matchedContractors as unknown[]).length
+          : 0;
+        const matchedPrograms = Array.isArray(attrs.matchedPrograms)
+          ? (attrs.matchedPrograms as unknown[]).length
+          : 0;
+        // Investigations are usually criminal/civil enforcement-precursor
+        // and are the highest qualitative IG signal.
+        if (kind === "investigation") {
+          return {
+            score: 0.75,
+            why: `DoD IG investigation${matchedContractors > 0 ? ` touching ${matchedContractors} contractor(s)` : ""}`,
+          };
+        }
+        if (kind === "audit" && matchedContractors > 0) {
+          return {
+            score: 0.6,
+            why: `DoD IG audit naming ${matchedContractors} contractor(s)${matchedPrograms > 0 ? `, ${matchedPrograms} program(s)` : ""}`,
+          };
+        }
+        if (kind === "audit" || kind === "evaluation") {
+          return { score: 0.5, why: `DoD IG ${kind}` };
+        }
+        if (kind === "inspection") {
+          return { score: 0.45, why: `DoD IG inspection` };
+        }
+        return { score: 0.4, why: `DoD IG ${kind || "finding"}` };
+      }
+
+      // ─── GAO dispatch (legacy v1.4 path) ───────────────────────────
+      const response = (attrs.agencyResponse as string | undefined) || "";
       const findingsCount = Array.isArray(attrs.findings) ? (attrs.findings as unknown[]).length : 0;
       const contractorsCount = Array.isArray(attrs.contractors) ? (attrs.contractors as unknown[]).length : 0;
 
@@ -619,16 +663,116 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
     case "award_terminated":
       return { score: 0.85, why: "Award terminated (T4D/T4C) — competitive opening" };
     case "analysis_publication": {
+      // v1.36 — publisher-aware dispatch. analysis_publication signals
+      // come from multiple sources now (think_tank, state_department,
+      // defense_scoop, darpa_news). Each carries different operator
+      // value:
+      //   - darpa_news: primary-source R&D program announcements,
+      //     awards, demonstrations. Highest qualitative signal (5-10
+      //     year leading indicator of acquisition).
+      //   - defense_scoop: trade-press summaries (Breaking Defense,
+      //     DefenseScoop, Defense News). Faster timing than primary
+      //     sources but less authoritative.
+      //   - state_department: DoS press releases / briefings / fact
+      //     sheets / sanctions. Primary-source for foreign policy and
+      //     export-control signals.
+      //   - think_tank: analytical publications. Pre-stages policy
+      //     direction 6-18 months ahead. Tier-agnostic (v1.10).
+      const system = signal.source?.system;
+      const title = (attrs.title as string | undefined) || "";
+
+      // ─── DARPA News dispatch ───────────────────────────────────────
+      if (system === "darpa_news") {
+        const itemKind = (attrs.itemKind as string | undefined) || "other";
+        const matchedContractors = Array.isArray(attrs.matchedContractors)
+          ? (attrs.matchedContractors as unknown[]).length
+          : 0;
+        const matchedPrograms = Array.isArray(attrs.matchedPrograms)
+          ? (attrs.matchedPrograms as unknown[]).length
+          : 0;
+        // Awards are direct $-signal: a performer was selected
+        if (itemKind === "award") {
+          return {
+            score: 0.75,
+            why: `DARPA award${matchedContractors > 0 ? ` to ${matchedContractors} performer(s)` : ""}: "${title.slice(0, 80)}"`,
+          };
+        }
+        // Program announcements / BAAs signal upcoming competition
+        if (itemKind === "program_announcement") {
+          return {
+            score: 0.65,
+            why: `DARPA program announcement${matchedPrograms > 0 ? ` (${matchedPrograms} program(s) named)` : ""}: "${title.slice(0, 80)}"`,
+          };
+        }
+        if (itemKind === "demonstration") {
+          return {
+            score: 0.55,
+            why: `DARPA demonstration: "${title.slice(0, 80)}"`,
+          };
+        }
+        if (itemKind === "leadership") {
+          return {
+            score: 0.55,
+            why: `DARPA leadership announcement: "${title.slice(0, 80)}"`,
+          };
+        }
+        if (matchedContractors > 0 || matchedPrograms > 0) {
+          return {
+            score: 0.5,
+            why: `DARPA news${matchedContractors > 0 ? ` naming ${matchedContractors} contractor(s)` : ""}${matchedPrograms > 0 ? `, ${matchedPrograms} program(s)` : ""}`,
+          };
+        }
+        return { score: 0.45, why: `DARPA news: "${title.slice(0, 80)}"` };
+      }
+
+      // ─── State Department dispatch ─────────────────────────────────
+      if (system === "state_department") {
+        const feedName = (attrs.feedName as string | undefined) || "State Dept";
+        const feedCategory = (attrs.feedCategory as string | undefined) || "";
+        // Sanctions are export-control / contractor-risk relevant
+        if (feedCategory === "sanctions") {
+          return {
+            score: 0.6,
+            why: `${feedName} sanctions / designations: "${title.slice(0, 80)}"`,
+          };
+        }
+        if (mentionsHardProgram(title)) {
+          return {
+            score: 0.55,
+            why: `${feedName} names a hard program: "${title.slice(0, 80)}"`,
+          };
+        }
+        return { score: 0.4, why: `${feedName} publication` };
+      }
+
+      // ─── Defense BD News (trade press) dispatch ────────────────────
+      if (system === "defense_scoop") {
+        const publicationName =
+          (attrs.publicationName as string | undefined) || "Trade press";
+        const matchedPrograms = Array.isArray(attrs.matchedPrograms)
+          ? (attrs.matchedPrograms as unknown[]).length
+          : 0;
+        if (mentionsHardProgram(title)) {
+          return {
+            score: 0.55,
+            why: `${publicationName} names a hard program: "${title.slice(0, 80)}"`,
+          };
+        }
+        if (matchedPrograms > 0) {
+          return {
+            score: 0.5,
+            why: `${publicationName}: ${matchedPrograms} program(s) named in body`,
+          };
+        }
+        return { score: 0.4, why: `${publicationName} article` };
+      }
+
+      // ─── Think tank (legacy v1.10 path) ────────────────────────────
       // v1.10 — think_tank publication. Magnitude is shaped by:
       //   (1) hard-program mention in title (concrete topic, not survey),
-      //   (2) author presence (named expert > aggregated commentary),
-      //   (3) tank tier (CSIS / RAND / CNAS are higher-signal than smaller
-      //   shops — but tier weighting is per-workspace operator preference,
-      //   so v1.10 stays tank-agnostic; the cross-source touches popover
-      //   shows the tank already).
-      const title = (attrs.title as string | undefined) || "";
+      //   (2) author presence (named expert > aggregated commentary).
       const author = (attrs.author as string | undefined) || "";
-      const tankName = (attrs.tankName as string | undefined) || "Think tank";
+      const tankName = (attrs.tankName as string | undefined) || "Publication";
       if (mentionsHardProgram(title)) {
         return {
           score: 0.65,
