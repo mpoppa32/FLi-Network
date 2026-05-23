@@ -9407,6 +9407,15 @@ input[type="url"], textarea, select {
       <div class="fld" id="panel-phone-fld" style="display:none"><div class="plbl">Phone</div><input type="tel" id="panel-phone" onchange="saveNetPanel()" placeholder="+1 555 555 5555"></div>
       <div class="fld" id="panel-email-fld" style="display:none"><div class="plbl">Email</div><input type="email" id="panel-email" onchange="saveNetPanel()" placeholder="name@org.com"></div>
       <div class="fld"><div class="plbl">Intelligence Notes</div><textarea id="panel-notes" rows="5" onchange="saveNetPanel()"></textarea></div>
+      <!-- CRM P1.11 — Per-contact comment thread (no meeting required) -->
+      <div class="fld" id="panel-comments-fld" style="margin-top:14px">
+        <div class="plbl" style="display:flex;align-items:center;justify-content:space-between"><span>Comments</span><span id="panel-comments-count" style="color:var(--t3);font-weight:400">0</span></div>
+        <div id="panel-comments-list" style="margin-top:6px;max-height:240px;overflow-y:auto;border:1px solid var(--b1);border-radius:2px;padding:6px 8px;background:rgba(7,13,24,.35)"></div>
+        <div style="display:flex;gap:6px;margin-top:6px;align-items:flex-start">
+          <textarea id="panel-comment-input" rows="2" placeholder="Quick observation — no meeting log needed…" style="flex:1;font-size:12px;padding:6px 8px;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-family:IBM Plex Sans,sans-serif;resize:vertical;outline:none"></textarea>
+          <button onclick="window._postNodeComment&amp;&amp;window._postNodeComment()" style="padding:6px 12px;background:rgba(212,130,58,.10);border:1px solid var(--gold);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;flex-shrink:0;align-self:stretch">Post</button>
+        </div>
+      </div>
       </div>
       <div class="panel-scroll" id="nptab-dossier" style="display:none"><div id="dossier-content" style="margin-top:8px"></div></div>
       <div class="panel-scroll" id="nptab-timeline360" style="display:none">
@@ -22320,6 +22329,7 @@ function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-pan
   if(defaultTab==='dossier')renderDossier(d);
   var exportBtn=document.getElementById('panel-export-btn');
   if(exportBtn)exportBtn.style.display=(defaultTab==='dossier'||defaultTab==='timeline360')?'block':'none';
+  if(window._attachNodeComments)window._attachNodeComments(d.id);
   openNetPanel();document.getElementById('org-legend').classList.add('panel-open');}
 function closeNetPanel(){
   var p=document.getElementById('net-panel');
@@ -22327,6 +22337,7 @@ function closeNetPanel(){
   var ol=document.getElementById('org-legend');
   if(ol)ol.classList.remove('panel-open');
   selectedNode=null;
+  if(window._attachNodeComments)window._attachNodeComments(null);
 }
 window.closeNetPanel=closeNetPanel;
 window.openNetPanel=openNetPanel;
@@ -22366,6 +22377,83 @@ document.addEventListener('keydown',function(ev){
 // Panel close wired to SVG mousedown in initNetwork (see below)
 
 var _netPanelSaveTimer=null;
+// CRM P1.11 — Per-contact comment thread
+var _nodeCommentsSub = null;
+var _nodeCommentsNodeId = null;
+function _escComment(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+function _fmtCommentTime(at){
+  if(!at)return '';
+  var t=new Date(at).getTime();
+  if(isNaN(t))return '';
+  var diff=Date.now()-t;
+  var m=Math.floor(diff/60000);
+  if(m<1)return 'just now';
+  if(m<60)return m+'m ago';
+  var h=Math.floor(m/60);
+  if(h<24)return h+'h ago';
+  var d=Math.floor(h/24);
+  if(d<7)return d+'d ago';
+  try{return new Date(at).toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'});}catch(e){return '';}
+}
+function _renderNodeComments(nodeId,comments){
+  var list=document.getElementById('panel-comments-list');
+  var countEl=document.getElementById('panel-comments-count');
+  if(!list)return;
+  if(countEl)countEl.textContent=comments.length;
+  if(!comments.length){list.innerHTML='<div style="font-size:11px;color:var(--t3);padding:8px 0;text-align:center;font-family:IBM Plex Mono,monospace;letter-spacing:.04em">no comments yet</div>';return;}
+  list.innerHTML=comments.map(function(c){
+    var mine=currentUser&&c.uid===currentUser.uid;
+    var del=mine?'<button onclick="window._deleteNodeComment&amp;&amp;window._deleteNodeComment(\''+nodeId+'\',\''+c.id+'\')" style="background:none;border:none;color:var(--t3);font-size:13px;cursor:pointer;padding:0;margin-left:6px;flex-shrink:0" title="Delete">&times;</button>':'';
+    return '<div style="padding:6px 0;border-bottom:1px dashed rgba(125,118,105,.18)">'+
+           '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.06em;color:var(--t3)">'+
+             '<span style="color:var(--gold);font-weight:700">'+_escComment(c.user||'')+'</span>'+
+             '<span>·</span><span>'+_fmtCommentTime(c.at)+'</span>'+
+             '<div style="flex:1"></div>'+del+
+           '</div>'+
+           '<div style="font-size:12px;color:var(--text);line-height:1.45;white-space:pre-wrap">'+_escComment(c.text)+'</div>'+
+           '</div>';
+  }).join('');
+  list.scrollTop=list.scrollHeight;
+}
+window._attachNodeComments=function(nodeId){
+  if(_nodeCommentsSub){try{_nodeCommentsSub();}catch(e){} _nodeCommentsSub=null;}
+  _nodeCommentsNodeId=nodeId||null;
+  _renderNodeComments(nodeId,[]);
+  if(!nodeId)return;
+  if(typeof onValue!=='function'||typeof ref!=='function'||typeof db==='undefined'||typeof wsPath!=='function')return;
+  if(typeof currentWsId==='undefined'||!currentWsId)return;
+  try{
+    _nodeCommentsSub=onValue(ref(db,wsPath('nodeComments/'+nodeId)),function(snap){
+      var raw=snap.val()?Object.values(snap.val()):[];
+      raw.sort(function(a,b){return(a.at||'').localeCompare(b.at||'');});
+      _renderNodeComments(nodeId,raw);
+    });
+  }catch(e){}
+};
+window._postNodeComment=async function(){
+  if(!selectedNode){toast('Select a contact first');return;}
+  if(window._canWrite&&!window._canWrite()){toast('Observers cannot comment');return;}
+  var inp=document.getElementById('panel-comment-input');
+  if(!inp)return;
+  var text=inp.value.trim();
+  if(!text)return;
+  var c={
+    id:'cmt-'+Date.now()+'-'+Math.random().toString(36).slice(2,5),
+    nodeId:selectedNode.id,
+    text:text,
+    uid:currentUser?currentUser.uid:null,
+    user:(currentUser&&(currentUser.displayName||currentUser.email))||'',
+    at:new Date().toISOString()
+  };
+  try{await fbSet(wsPath('nodeComments/'+selectedNode.id+'/'+c.id),c);inp.value='';}
+  catch(e){toast('Comment failed — check connection');}
+};
+window._deleteNodeComment=async function(nodeId,commentId){
+  if(!nodeId||!commentId)return;
+  try{await remove(ref(db,wsPath('nodeComments/'+nodeId+'/'+commentId)));}
+  catch(e){toast('Delete failed');}
+};
+
 function saveNetPanel(){
   if(!selectedNode)return;
   // Update in-memory immediately so UI feels instant
