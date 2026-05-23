@@ -124,3 +124,18 @@ export { plumBookMonthly } from "./jobs/plumBookMonthly";
 // entity graph with cross-association membership data)
 export { triggerIndustryAssocSync } from "./http/triggerIndustryAssocSync";
 export { industryAssocQuarterly } from "./jobs/industryAssocQuarterly";
+
+// ───────────────────────────────────────────────────────────────────────────
+// P2.14 — Gmail + Calendar auto-capture (scaffold staged 2026-05-23).
+// UNCOMMENT after setting these env vars on the deployed functions:
+//   GOOGLE_CLIENT_ID
+//   GOOGLE_CLIENT_SECRET
+//   GOOGLE_REDIRECT_URI=https://us-central1-fli-network.cloudfunctions.net/captureOAuthCallback
+// Set via functions/.env (local) or `firebase functions:secrets:set` (prod).
+// Full setup steps in docs/p2.14-gmail-calendar-plan.md Phase 1.
+// ───────────────────────────────────────────────────────────────────────────
+// export { captureOAuthStart } from "./http/captureOAuthStart";
+// export { captureOAuthCallback } from "./http/captureOAuthCallback";
+// export { triggerGmailSync } from "./http/triggerGmailSync";
+// export { triggerCalendarSync } from "./http/triggerCalendarSync";
+// export { captureHourly } from "./jobs/captureHourly";
