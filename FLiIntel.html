@@ -22643,7 +22643,15 @@ window._postNodeComment=async function(){
     user:(currentUser&&(currentUser.displayName||currentUser.email))||'',
     at:new Date().toISOString()
   };
-  try{await fbSet(wsPath('nodeComments/'+selectedNode.id+'/'+c.id),c);inp.value='';}
+  try{
+    await fbSet(wsPath('nodeComments/'+selectedNode.id+'/'+c.id),c);
+    inp.value='';
+    // CRM P2.18: surface to audit log so teammates get a notification
+    if(typeof _logAuditEvent==='function'){
+      var excerpt=text.length>80?text.slice(0,77)+'…':text;
+      _logAuditEvent('node_comment','Comment on '+(selectedNode.name||'contact')+': '+excerpt);
+    }
+  }
   catch(e){toast('Comment failed — check connection');}
 };
 window._deleteNodeComment=async function(nodeId,commentId){
@@ -42276,6 +42284,7 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
       STATE.unsubscribe = onValue(ref(db, wsPath('audit_log')), function(snap){
         var raw = snap.val() ? Object.values(snap.val()) : [];
         raw.sort(function(a, b){ return (b.at||'').localeCompare(a.at||''); });
+        var priorMostRecentAt = (STATE.events.length && STATE.events[0].at) ? Date.parse(STATE.events[0].at) : STATE.lastSeenAt;
         STATE.events = raw;
         var unseen = 0;
         for (var i = 0; i < STATE.events.length; i++) {
@@ -42286,6 +42295,34 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
         var dd = document.getElementById('nav-activity-dropdown');
         if (dd && dd.style.display !== 'none') _render();
         _refreshDot();
+        // CRM P2.18: fire browser notification on new non-self audit events
+        // (skip initial seed = priorMostRecentAt was 0/lastSeenAt; only fire on real-time additions)
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          var notifyEnabled = false;
+          try { notifyEnabled = localStorage.getItem('corsair-notify-enabled') === '1'; } catch(e){}
+          if (notifyEnabled && priorMostRecentAt > 0) {
+            STATE.events.forEach(function(e){
+              if (!e.at) return;
+              var et = Date.parse(e.at);
+              if (et <= priorMostRecentAt) return;
+              if (currentUser && e.uid === currentUser.uid) return; // skip own events
+              var firedMap = {};
+              try { firedMap = JSON.parse(localStorage.getItem('corsair-notify-fired')||'{}'); } catch(_e){}
+              var key = 'audit-' + e.uid + '-' + e.at;
+              if (firedMap[key]) return;
+              try {
+                var n = new Notification(e.user || 'Teammate', { body: (e.details || e.action || '').slice(0, 160), icon: '/favicon.ico', tag: key });
+                n.onclick = function(){ try{ window.focus(); }catch(_e){} n.close(); };
+                firedMap[key] = Date.now();
+                // Prune entries older than 3 days
+                var cutoff = Date.now() - 3*86400000;
+                var trimmed = {};
+                Object.keys(firedMap).forEach(function(k){ if (firedMap[k] > cutoff) trimmed[k] = firedMap[k]; });
+                try { localStorage.setItem('corsair-notify-fired', JSON.stringify(trimmed)); } catch(_e){}
+              } catch(_e){}
+            });
+          }
+        }
       });
     } catch(e) {
       setTimeout(_attach, 800);
