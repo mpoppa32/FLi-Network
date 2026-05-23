@@ -8808,6 +8808,7 @@ input[type="url"], textarea, select {
           <span id="voice-st" style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:0.12em;color:var(--paper-2)"></span>
           <div style="flex:1"></div>
           <span id="proc-err" style="font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:0.12em;color:#ff6464;display:none"></span>
+          <button class="btn log-process-btn cap-process-btn" id="touch-btn" type="button" title="Save the meeting record without running AI extraction — for 2-min calls" style="border:1px solid rgba(212,130,58,.4);color:var(--gold);background:transparent">SAVE TOUCH</button>
           <button class="btn btn-gold log-process-btn cap-process-btn" id="proc-btn" type="button">PROCESS &#9657;</button>
         </div>
         <div class="cap-tip tip">
@@ -10724,6 +10725,7 @@ input[type="url"], textarea, select {
   </div>
   <div style="display:flex;gap:8px;align-items:center">
     <button class="btn btn-gold" id="ql-proc-btn" onclick="processQuickLog()" style="flex:1;padding:12px;font-size:14px">Process with AI</button>
+    <button class="btn" id="ql-touch-btn" onclick="saveTouchFromQuickLog()" title="Save without AI" style="padding:12px;font-size:14px;border:1px solid rgba(212,130,58,.4);color:var(--gold)">Save Touch</button>
     <button class="btn" onclick="closeQuickLog()" style="padding:12px 16px;font-size:14px">Cancel</button>
   </div>
   <div id="ql-err" style="display:none;margin-top:8px;font-size:12px;color:var(--red)"></div>
@@ -12607,6 +12609,63 @@ window.closeQuickLog=function(){
   if(overlay)overlay.style.display='none';
   var err=document.getElementById('ql-err');
   if(err)err.style.display='none';
+};
+
+// CRM P1.8 — save a minimal "touch" meeting record without AI extraction
+window._saveTouchMeeting=async function(opts){
+  opts=opts||{};
+  var title=(opts.title||'').trim();
+  var att=(opts.att||'').trim();
+  var notes=(opts.notes||'').trim();
+  var date=opts.date||new Date().toISOString().slice(0,10);
+  var dur=(opts.dur||'').trim();
+  var type=opts.type||'Touch';
+  if(!title&&!att&&!notes){toast('Add a title, attendee, or note');return false;}
+  if(!title)title='Touch '+date;
+  var m={
+    id:'mtg-'+Date.now(),
+    meta:{title:title,date:date,att:att,dur:dur,type:type},
+    intel:{summary:notes||'',keyPeople:[],actionItems:[],risks:[],redFlags:[],openQuestions:[],milestones:[],learningInsights:[],followUpTopics:[],companies:[],companyPulse:''},
+    loggedBy:(currentUser&&currentUser.uid)||null,
+    loggedAt:new Date().toISOString(),
+    ts:Date.now(),
+    source:'touch'
+  };
+  await saveMeeting(m);
+  toast('Touch saved: '+title);
+  return true;
+};
+
+window.saveTouchFromQuickLog=async function(){
+  var title=document.getElementById('ql-title').value;
+  var att=document.getElementById('ql-att').value;
+  var notes=document.getElementById('ql-notes').value;
+  var ok=await window._saveTouchMeeting({title:title,att:att,notes:notes});
+  if(!ok)return;
+  closeQuickLog();
+  document.getElementById('ql-title').value='';
+  document.getElementById('ql-att').value='';
+  document.getElementById('ql-notes').value='';
+};
+
+window.saveTouchFromLog=async function(){
+  var title=document.getElementById('m-title').value;
+  var att=document.getElementById('m-att').value;
+  var notes=document.getElementById('m-notes').value;
+  var date=document.getElementById('m-date').value;
+  var dur=document.getElementById('m-dur').value;
+  var typeSel=document.getElementById('m-type');
+  var type=typeSel?typeSel.value:'Touch';
+  var ok=await window._saveTouchMeeting({title:title,att:att,notes:notes,date:date,dur:dur,type:type});
+  if(!ok)return;
+  // Clear the log form
+  document.getElementById('m-title').value='';
+  document.getElementById('m-att').value='';
+  document.getElementById('m-notes').value='';
+  document.getElementById('m-dur').value='';
+  document.getElementById('m-date').value=new Date().toISOString().slice(0,10);
+  // Jump to History so operator sees the saved touch
+  if(typeof switchIntelTab==='function')switchIntelTab('archive');
 };
 
 window.processQuickLog=async function(){
@@ -15118,6 +15177,8 @@ async function wireListeners(){
   document.querySelector('.intel-tabs').addEventListener('click',function(e){var tab=e.target.dataset.itab;if(tab)switchIntelTab(tab);});
   document.getElementById('ws-switcher').addEventListener('click',function(){document.getElementById('ws-screen').style.display='flex';document.getElementById('main-app').style.display='none';renderWsList();});
   document.getElementById('proc-btn').addEventListener('click',processNotes);
+  var _touchBtn=document.getElementById('touch-btn');
+  if(_touchBtn)_touchBtn.addEventListener('click',function(){if(window.saveTouchFromLog)window.saveTouchFromLog();});
   document.getElementById('voice-btn').addEventListener('click',toggleVoice);
   // Transcript paste detection — fires after clipboard text lands in textarea
   document.getElementById('m-notes').addEventListener('paste',function(){
