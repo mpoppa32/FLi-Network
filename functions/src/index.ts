@@ -90,6 +90,15 @@ export { dodOigDaily } from "./jobs/dodOigDaily";
 export { triggerDarpaNewsSync } from "./http/triggerDarpaNewsSync";
 export { darpaNewsDaily } from "./jobs/darpaNewsDaily";
 
+// NASA OIG (Phase 8.6.18 — Tier 2 defense-adjacent oversight; NASA
+// Office of Inspector General audit/evaluation/investigation reports
+// → oversight_finding Signals with attrs.publisher="nasa_oig";
+// defense-relevance keyword filter default-on; opt-in source for
+// operators who care about NASA contractor exposure (Boeing SLS,
+// Lockheed Orion, SpaceX Crew/Cargo, etc.))
+export { triggerNasaOigSync } from "./http/triggerNasaOigSync";
+export { nasaOigDaily } from "./jobs/nasaOigDaily";
+
 // Advisory Boards — DSB / DBB / DIB (Phase 8.6.8 — Tier 2 advisory body
 // reports via HTML index walk + PDF deep parse; reuses framework/pdfExtractor)
 export { triggerAdvisoryBoardsSync } from "./http/triggerAdvisoryBoardsSync";

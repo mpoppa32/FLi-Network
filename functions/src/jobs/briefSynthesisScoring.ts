@@ -630,6 +630,38 @@ function magnitudeForSignal(signal: Signal): { score: number; why: string } {
         return { score: 0.4, why: `DoD IG ${kind || "finding"}` };
       }
 
+      // ─── NASA IG dispatch ──────────────────────────────────────────
+      // Defense-adjacent — NASA contractors overlap with defense primes.
+      // Magnitude tuned slightly below DoD IG (less direct BD signal)
+      // but still meaningful when a defense prime gets named.
+      if (system === "nasa_oig") {
+        const matchedContractors = Array.isArray(attrs.matchedContractors)
+          ? (attrs.matchedContractors as unknown[]).length
+          : 0;
+        const matchedPrograms = Array.isArray(attrs.matchedPrograms)
+          ? (attrs.matchedPrograms as unknown[]).length
+          : 0;
+        if (kind === "investigation") {
+          return {
+            score: 0.65,
+            why: `NASA IG investigation${matchedContractors > 0 ? ` touching ${matchedContractors} contractor(s)` : ""}`,
+          };
+        }
+        if (kind === "audit" && matchedContractors > 0) {
+          return {
+            score: 0.55,
+            why: `NASA IG audit naming ${matchedContractors} defense-relevant contractor(s)${matchedPrograms > 0 ? `, ${matchedPrograms} program(s)` : ""}`,
+          };
+        }
+        if (kind === "audit" || kind === "evaluation") {
+          return { score: 0.45, why: `NASA IG ${kind}` };
+        }
+        if (kind === "inspection") {
+          return { score: 0.4, why: `NASA IG inspection` };
+        }
+        return { score: 0.35, why: `NASA IG ${kind || "finding"}` };
+      }
+
       // ─── GAO dispatch (legacy v1.4 path) ───────────────────────────
       const response = (attrs.agencyResponse as string | undefined) || "";
       const findingsCount = Array.isArray(attrs.findings) ? (attrs.findings as unknown[]).length : 0;

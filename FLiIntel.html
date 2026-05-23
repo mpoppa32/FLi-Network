@@ -10635,6 +10635,16 @@ input[type="url"], textarea, select {
           <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">DARPA news + program announcements + awards + demonstrations RSS → analysis_publication Signals with itemKind classification + body-text 35-contractor + 35-DARPA-program resolution. First plugin in defense R&D pipeline coverage — DARPA leads 5-10 years ahead of acquisition. Daily 17:45 UTC. Keyless.</div>
           <button onclick="window._showSourcePanelGeneric('darpa_news')" style="padding:5px 12px;border:1px solid rgba(90,138,181,.35);border-radius:2px;background:rgba(90,138,181,.08);color:#5a8ab5;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
         </div>
+
+        <!-- Phase 8.6.18 NASA OIG (Tier 2 defense-adjacent oversight, opt-in) -->
+        <div style="background:var(--s1);border:1px solid rgba(74,138,138,.15);border-left:3px solid #4a8a8a;border-radius:2px;padding:12px 14px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#4a8a8a;font-weight:600">NASA OIG <span style="color:var(--t3);font-weight:400;font-size:8px">· Tier 2 · Opt-in</span></div>
+            <span id="nasa-oig-source-status" style="font-family:'IBM Plex Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.1em;color:var(--t3);background:rgba(255,255,255,.04);padding:2px 6px;border-radius:2px;border:1px solid var(--b1)">AWAITING MIGRATION</span>
+          </div>
+          <div style="font-size:10px;color:var(--t3);line-height:1.5;margin-bottom:7px">NASA Office of Inspector General audit + evaluation + investigation reports → oversight_finding Signals tagged with reportKind. Defense-adjacent (NASA contractors overlap with defense primes — Boeing SLS, Lockheed Orion, SpaceX Crew/Cargo+Starshield). Default OFF; defense-relevance keyword filter applied on opt-in. Daily 18:00 UTC. Keyless.</div>
+          <button onclick="window._showSourcePanelGeneric('nasa_oig')" style="padding:5px 12px;border:1px solid rgba(74,138,138,.35);border-radius:2px;background:rgba(74,138,138,.08);color:#4a8a8a;font-size:10px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">Open Source Panel</button>
+        </div>
       </div>
 
       <!-- ── FOOTER ── -->
@@ -35591,6 +35601,32 @@ window._phase85Sources = {
       { key: 'maxRelatedPerSignal', label: 'Max body-mention Orgs per Signal', placeholder: '6', kind: 'number', default: 6 }
     ],
     entityCounter: { path: 'signals', filterType: 'analysis_publication', label: 'DARPA analysis publication Signals' }
+  },
+  // Phase 8.6.18 — NASA Office of Inspector General (defense-adjacent oversight)
+  nasa_oig: {
+    displayName: 'NASA OIG',
+    subtitle: 'Phase 8.6.18 v1.0 · NASA Inspector General audit + evaluation + investigation reports (defense-adjacent)',
+    color: '#4a8a8a',
+    callable: 'triggerNasaOigSync',
+    entityType: 'oversight_finding Signal (NASA-relevant contractor + program tagged)',
+    requiresKey: null,
+    cadence: 'Daily · 18:00 UTC',
+    cadenceCron: '0 18 * * *',
+    description: 'Defense-adjacent IG plugin. Sibling to dod_oig + gao_reports: NASA Office of Inspector General publishes audits + evaluations + investigations on NASA programs and contractors. NASA contractors heavily overlap with defense primes — Boeing (SLS), Lockheed Martin (Orion), Northrop Grumman (Artemis service module), SpaceX (Crew/Cargo + Starshield for Space Force), L3Harris, RTX. NASA IG findings against these contractors propagate to defense BD reputation. Default OFF (opt-in). Defense-relevance keyword filter applied on top of feed so the queue stays focused on contractor-mentioning reports. Brief Synthesis v1.36 publisher-aware scoring tunes magnitude slightly below DoD IG (less direct BD signal but still meaningful).',
+    badgeId: 'nasa-oig-source-status',
+    configPath: 'sources/nasa_oig/config',
+    healthPath: 'sources/nasa_oig',
+    fields: [
+      { key: 'rssUrl', label: 'RSS endpoint (NASA OIG Audit Reports default)', placeholder: 'https://oig.nasa.gov/rss/auditreports.xml', kind: 'text', default: 'https://oig.nasa.gov/rss/auditreports.xml' },
+      { key: 'lookbackDays', label: 'Lookback (days)', placeholder: '120', kind: 'number', default: 120 },
+      { key: 'defenseRelevantOnly', label: 'Restrict to defense-industrial-base relevant reports', placeholder: 'true', kind: 'boolean', default: true },
+      { key: 'keywords', label: 'Additional keyword filter (case-insensitive, empty = none beyond defenseRelevantOnly)', placeholder: 'SLS, Orion, Artemis', kind: 'csv', default: [] },
+      { key: 'resolveBodyOrgs', label: 'Resolve body-text contractor mentions to Org nodes', placeholder: 'true', kind: 'boolean', default: true },
+      { key: 'contractorPatterns', label: 'Contractor patterns (empty = built-in 29-name default; defense primes + space-tech)', placeholder: 'Boeing, Lockheed, SpaceX', kind: 'csv', default: [] },
+      { key: 'programPatterns', label: 'Program patterns (empty = built-in 25-program default; NASA programs w/ defense overlap)', placeholder: 'SLS, Orion, Artemis, HLS', kind: 'csv', default: [] },
+      { key: 'maxRelatedPerSignal', label: 'Max body-mention Orgs per Signal', placeholder: '6', kind: 'number', default: 6 }
+    ],
+    entityCounter: { path: 'signals', filterType: 'oversight_finding', label: 'NASA IG oversight finding Signals' }
   }
 };
 
@@ -39341,7 +39377,8 @@ window._SOURCE_HEALTH_META = [
   { key: 'state_department', label: 'State Department',                      cadenceMin: 1440,  accent: '#c8a060' },
   { key: 'defense_scoop',    label: 'Defense BD News',                        cadenceMin: 1440,  accent: '#a04060' },
   { key: 'dod_oig',          label: 'DoD OIG',                                cadenceMin: 1440,  accent: '#7060a0' },
-  { key: 'darpa_news',       label: 'DARPA News',                             cadenceMin: 1440,  accent: '#5a8ab5' }
+  { key: 'darpa_news',       label: 'DARPA News',                             cadenceMin: 1440,  accent: '#5a8ab5' },
+  { key: 'nasa_oig',         label: 'NASA OIG',                               cadenceMin: 1440,  accent: '#4a8a8a' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -40113,7 +40150,8 @@ window._renderOnboardStep3 = function() {
     { key:'state_department', label:'State Department (Tier 2)', desc:'Press releases + briefings + fact sheets + (opt-in) sanctions designations from state.gov RSS → analysis_publication Signals anchored to Department of State Org; surfaces policy moves + bilateral context relevant to BD pursuits touching foreign customers or sanctions exposure · Daily · Keyless', color:'#c8a060' },
     { key:'defense_scoop', label:'Defense BD News (Tier 2)', desc:'Breaking Defense + DefenseScoop + Defense News (default on) + FedScoop + NextGov (opt-in) RSS aggregator. Each item → analysis_publication Signal with body-text contractor + program resolution (config-driven patterns; defaults cover 28 contractors + 20 programs). Highest-frequency defense BD coverage available · Daily · Keyless', color:'#a04060' },
     { key:'dod_oig', label:'DoD OIG (Tier 2)', desc:'Department of Defense Office of Inspector General audit + evaluation + investigation reports → oversight_finding Signals tagged with reportKind (audit/evaluation/investigation/inspection) and attrs.publisher="dod_oig". Sibling to gao_reports: internal-DoD audit findings flow into the same scoring matrix as external GAO findings, but call out internal IG perspective. Body-text contractor + program resolution against config-driven 29 contractor + 26 program defaults · Daily · Keyless', color:'#7060a0' },
-    { key:'darpa_news', label:'DARPA News (Tier 2)', desc:'Defense Advanced Research Projects Agency news + program announcements + awards + demonstrations RSS → analysis_publication Signals tagged with itemKind classification (program_announcement / award / demonstration / event / leadership / other) and attrs.publisher="darpa_news". DARPA programs lead 5-10 years ahead of acquisition — surfaces emerging contractors + capability areas before they appear downstream in USAspending or SAM.gov. Body-text contractor + program resolution against 35 contractor + 35 active DARPA program defaults (ACE, RACER, Manta Ray, OpFires, X-65, etc.) · Daily · Keyless', color:'#5a8ab5' }
+    { key:'darpa_news', label:'DARPA News (Tier 2)', desc:'Defense Advanced Research Projects Agency news + program announcements + awards + demonstrations RSS → analysis_publication Signals tagged with itemKind classification (program_announcement / award / demonstration / event / leadership / other) and attrs.publisher="darpa_news". DARPA programs lead 5-10 years ahead of acquisition — surfaces emerging contractors + capability areas before they appear downstream in USAspending or SAM.gov. Body-text contractor + program resolution against 35 contractor + 35 active DARPA program defaults (ACE, RACER, Manta Ray, OpFires, X-65, etc.) · Daily · Keyless', color:'#5a8ab5' },
+    { key:'nasa_oig', label:'NASA OIG (Tier 2, opt-in)', desc:'NASA Office of Inspector General audit + evaluation + investigation reports → oversight_finding Signals tagged with reportKind and attrs.publisher="nasa_oig". Defense-adjacent: NASA contractors heavily overlap with defense primes (Boeing SLS, Lockheed Orion, SpaceX Crew/Cargo+Starshield, NG Artemis service module). Default OFF — opt-in via this checkbox. Defense-relevance keyword filter applied on top of feed · Daily · Keyless', color:'#4a8a8a' }
   ];
   for (var i = 0; i < sources.length; i++) {
     var s = sources[i];
@@ -40131,7 +40169,7 @@ window._renderOnboardStep3 = function() {
 
 window._saveOnboardingSources = async function() {
   var enabled = {};
-  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda','dod_comptroller','plum_book','industry_assoc','state_department','defense_scoop','dod_oig','darpa_news'].forEach(function(k){
+  ['sam_gov','usaspending','dod_news','gao_protest','sec_edgar','congress_gov','faca','think_tank','dsca_fms','service_news','gao_reports','advisory_boards','senate_lda','dod_comptroller','plum_book','industry_assoc','state_department','defense_scoop','dod_oig','darpa_news','nasa_oig'].forEach(function(k){
     var cb = document.getElementById('ob-src-' + k);
     enabled[k] = !!(cb && cb.checked);
   });
