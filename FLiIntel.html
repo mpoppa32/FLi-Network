@@ -10864,6 +10864,23 @@ input[type="url"], textarea, select {
   </div>
 </div>
 <!-- COMMITMENT TRACKING MODAL -->
+<!-- CMD-K UNIVERSAL SEARCH PALETTE (CRM P0.5) -->
+<div id="cmdk-overlay" style="display:none;position:fixed;inset:0;z-index:120;background:rgba(7,13,24,.78);backdrop-filter:blur(4px);align-items:flex-start;justify-content:center;padding-top:10vh">
+  <div id="cmdk-panel" style="width:min(640px,92vw);background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.99));border:1px solid rgba(212,130,58,.3);border-radius:4px;box-shadow:0 24px 80px rgba(0,0,0,.7);overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--b1)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+      <input type="text" id="cmdk-input" autocomplete="off" placeholder="Search contacts, pursuits, meetings, follow-ups…" style="flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:15px;font-family:IBM Plex Sans,sans-serif;padding:2px 0">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--t3);letter-spacing:.08em;background:rgba(255,255,255,.05);border:1px solid var(--b1);padding:3px 6px;border-radius:2px;flex-shrink:0">ESC</span>
+    </div>
+    <div id="cmdk-results" style="max-height:60vh;overflow-y:auto"></div>
+    <div style="display:flex;gap:14px;padding:8px 14px;border-top:1px solid var(--b1);background:rgba(7,13,24,.55);font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.06em;color:var(--t3)">
+      <span><span style="color:var(--gold)">&#9650;&#9660;</span> navigate</span>
+      <span><span style="color:var(--gold)">&#x21B5;</span> open</span>
+      <span style="margin-left:auto"><span style="color:var(--gold)">Cmd/Ctrl + K</span> toggle</span>
+    </div>
+  </div>
+</div>
+
 <!-- FOLLOW-UP MODAL — standalone reminder, not tied to a meeting -->
 <div class="overlay" id="followup-modal" style="display:none">
   <div class="modal" style="max-width:420px">
@@ -24824,6 +24841,255 @@ if (document.readyState === 'loading') {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
   else setTimeout(wire, 0);
+})();
+
+// ── CRM P0.5: Cmd-K Universal Search Palette ────────────────────────────
+(function _corsairCmdK(){
+  var STATE = { results: [], selected: 0, query: '', searching: false };
+
+  function _esc(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+
+  function _loadRecent(){
+    try { return JSON.parse(localStorage.getItem('corsair-cmdk-recent')||'[]'); } catch(e){ return []; }
+  }
+  function _saveRecent(q){
+    if (!q || q.length < 2) return;
+    var list = _loadRecent();
+    list = list.filter(function(x){ return x !== q; });
+    list.unshift(q);
+    list = list.slice(0, 6);
+    try { localStorage.setItem('corsair-cmdk-recent', JSON.stringify(list)); } catch(e){}
+  }
+
+  function _score(haystack, q){
+    if (!haystack) return 0;
+    var H = String(haystack).toLowerCase();
+    var Q = q.toLowerCase();
+    var i = H.indexOf(Q);
+    if (i < 0) return 0;
+    // prefix match scores higher; earlier match scores higher; shorter haystack scores higher
+    var base = i === 0 ? 100 : 50 - Math.min(i, 40);
+    return base + Math.max(0, 20 - Math.floor(H.length / 8));
+  }
+
+  function _search(q){
+    var out = [];
+    if (!q || q.length < 1) return out;
+    var nodes_ = window.nodes || [];
+    var opps_  = window.opportunities || [];
+    var mtgs_  = window.meetings || [];
+    var commits_ = window.commitments || [];
+
+    nodes_.forEach(function(n){
+      if (!n) return;
+      var s = Math.max(
+        _score(n.name, q),
+        _score(n.org, q) * 0.7,
+        _score(n.role, q) * 0.6,
+        _score(n.notes, q) * 0.4,
+        _score(n.govOrg, q) * 0.7,
+        _score(n.email, q) * 0.5,
+        _score(n.phone, q) * 0.5
+      );
+      if (s > 0) {
+        var typeLbl = n.type === 'person' ? 'PERSON' : n.type === 'government' ? 'GOV' : n.type === 'company' ? 'ORG' : (n.type||'NODE').toUpperCase();
+        var sub = [n.role, n.org || n.govOrg].filter(Boolean).join(' · ');
+        out.push({ type: 'node', id: n.id, kind: typeLbl, title: n.name || '(unnamed)', sub: sub, score: s });
+      }
+    });
+
+    opps_.forEach(function(o){
+      if (!o) return;
+      var s = Math.max(
+        _score(o.name, q),
+        _score(o.agency, q) * 0.7,
+        _score(o.vehicle, q) * 0.6,
+        _score(o.notes, q) * 0.4,
+        _score(o.nextAction, q) * 0.5
+      );
+      if (s > 0) {
+        var sub = [o.stage ? String(o.stage).toUpperCase() : '', o.agency, o.vehicle].filter(Boolean).join(' · ');
+        out.push({ type: 'opp', id: o.id, kind: 'PURSUIT', title: o.name || '(unnamed)', sub: sub, score: s });
+      }
+    });
+
+    mtgs_.forEach(function(m){
+      if (!m || !m.meta) return;
+      var s = Math.max(
+        _score(m.meta.title, q),
+        _score(m.meta.att, q) * 0.6,
+        _score((m.intel && m.intel.summary) || '', q) * 0.4
+      );
+      if (s > 0) {
+        var sub = [m.meta.date, m.meta.type, m.meta.att ? String(m.meta.att).slice(0, 40) : ''].filter(Boolean).join(' · ');
+        out.push({ type: 'meeting', id: m.id, kind: 'MEETING', title: m.meta.title || '(untitled)', sub: sub, score: s });
+      }
+    });
+
+    commits_.forEach(function(c){
+      if (!c || c.status !== 'open') return;
+      var s = Math.max(
+        _score(c.task, q),
+        _score(c.owner, q) * 0.6,
+        _score(c.context, q) * 0.4
+      );
+      if (s > 0) {
+        var sub = [c.owner, c.deadline ? 'due ' + c.deadline : '', c.source === 'standalone' ? 'follow-up' : (c.sourceMtgTitle||'')].filter(Boolean).join(' · ');
+        out.push({ type: 'commit', id: c.id, kind: c.source === 'standalone' ? 'FOLLOW-UP' : 'COMMITMENT', title: c.task || '(no task)', sub: sub, score: s });
+      }
+    });
+
+    out.sort(function(a,b){ return b.score - a.score; });
+    return out.slice(0, 30);
+  }
+
+  function _kindColor(kind){
+    if (kind === 'PERSON') return '#5fb3b8';
+    if (kind === 'GOV') return '#60a5fa';
+    if (kind === 'ORG') return '#d4823a';
+    if (kind === 'PURSUIT') return 'var(--gold)';
+    if (kind === 'MEETING') return '#a78bfa';
+    if (kind === 'FOLLOW-UP') return 'var(--gold)';
+    if (kind === 'COMMITMENT') return '#fb923c';
+    return 'var(--t2)';
+  }
+
+  function _renderResults(){
+    var box = document.getElementById('cmdk-results');
+    if (!box) return;
+    if (!STATE.query && !STATE.results.length) {
+      var recent = _loadRecent();
+      if (!recent.length) {
+        box.innerHTML = '<div style="padding:24px 18px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.06em;text-align:center">type to search contacts, pursuits, meetings, follow-ups</div>';
+        return;
+      }
+      var rh = '<div style="padding:8px 14px 6px;font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:700;letter-spacing:.18em;color:var(--t3);text-transform:uppercase">Recent</div>';
+      rh += recent.map(function(q, i){
+        return '<div class="cmdk-recent" data-idx="'+i+'" style="padding:8px 16px;font-size:12px;color:var(--t2);cursor:pointer;font-family:IBM Plex Sans,sans-serif">' + _esc(q) + '</div>';
+      }).join('');
+      box.innerHTML = rh;
+      Array.prototype.forEach.call(box.querySelectorAll('.cmdk-recent'), function(el){
+        el.addEventListener('click', function(){
+          var inp = document.getElementById('cmdk-input');
+          if (inp) { inp.value = recent[Number(el.dataset.idx)]; inp.dispatchEvent(new Event('input')); inp.focus(); }
+        });
+        el.addEventListener('mouseover', function(){ el.style.background='rgba(212,130,58,.06)'; });
+        el.addEventListener('mouseout', function(){ el.style.background='transparent'; });
+      });
+      return;
+    }
+    if (!STATE.results.length) {
+      box.innerHTML = '<div style="padding:24px 18px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.06em;text-align:center">no matches</div>';
+      return;
+    }
+    var h = '';
+    STATE.results.forEach(function(r, i){
+      var sel = i === STATE.selected;
+      var col = _kindColor(r.kind);
+      h += '<div class="cmdk-row" data-idx="' + i + '" style="display:flex;align-items:center;gap:12px;padding:9px 14px;cursor:pointer;border-left:2px solid ' + (sel ? col : 'transparent') + ';background:' + (sel ? 'rgba(212,130,58,.06)' : 'transparent') + '">' +
+           '<span style="font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:700;letter-spacing:.14em;color:' + col + ';min-width:74px;flex-shrink:0">' + r.kind + '</span>' +
+           '<div style="flex:1;min-width:0">' +
+             '<div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _esc(r.title) + '</div>' +
+             (r.sub ? '<div style="font-size:10.5px;color:var(--t3);margin-top:2px;font-family:IBM Plex Mono,monospace;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _esc(r.sub) + '</div>' : '') +
+           '</div>' +
+           (sel ? '<span style="color:'+col+';font-size:13px;flex-shrink:0">&#x21B5;</span>' : '') +
+           '</div>';
+    });
+    box.innerHTML = h;
+    Array.prototype.forEach.call(box.querySelectorAll('.cmdk-row'), function(el){
+      el.addEventListener('click', function(){ STATE.selected = Number(el.dataset.idx); _activate(); });
+      el.addEventListener('mouseover', function(){ STATE.selected = Number(el.dataset.idx); _renderResults(); });
+    });
+    // Ensure the selected row is in view
+    var selEl = box.querySelector('.cmdk-row[data-idx="' + STATE.selected + '"]');
+    if (selEl && selEl.scrollIntoView) selEl.scrollIntoView({ block: 'nearest' });
+  }
+
+  function _activate(){
+    var r = STATE.results[STATE.selected];
+    if (!r) return;
+    _saveRecent(STATE.query);
+    window._closeCmdK();
+    if (r.type === 'node') {
+      var node = (window.nodeMap && window.nodeMap.get) ? window.nodeMap.get(r.id) : null;
+      if (!node) return;
+      if (typeof window.switchView === 'function') window.switchView('network');
+      setTimeout(function(){
+        if (typeof window.openNetPanel === 'function') window.openNetPanel(node);
+        else if (typeof window.openEntityInspector === 'function') window.openEntityInspector(r.id);
+      }, 220);
+    } else if (r.type === 'opp') {
+      if (typeof window.switchView === 'function') window.switchView('opps');
+      setTimeout(function(){ if (typeof window.selectOpp === 'function') window.selectOpp(r.id); }, 220);
+    } else if (r.type === 'meeting') {
+      if (typeof window.switchView === 'function') window.switchView('intel');
+      setTimeout(function(){ if (typeof window.goIntelById === 'function') window.goIntelById(r.id); }, 220);
+    } else if (r.type === 'commit') {
+      var commit = (window.commitments || []).find(function(c){ return c.id === r.id; });
+      if (commit && commit.sourceMtgId && typeof window.goIntelById === 'function') {
+        if (typeof window.switchView === 'function') window.switchView('intel');
+        setTimeout(function(){ window.goIntelById(commit.sourceMtgId); }, 220);
+      } else {
+        if (typeof window.switchView === 'function') window.switchView('intel');
+        if (typeof window.switchIntelTab === 'function') window.switchIntelTab('board');
+      }
+    }
+  }
+
+  var _searchTimer = null;
+  function _onInput(){
+    var inp = document.getElementById('cmdk-input');
+    if (!inp) return;
+    STATE.query = inp.value.trim();
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(function(){
+      STATE.results = _search(STATE.query);
+      STATE.selected = 0;
+      _renderResults();
+    }, 90);
+  }
+
+  function _onKey(ev){
+    if (ev.key === 'Escape') { ev.preventDefault(); window._closeCmdK(); return; }
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); STATE.selected = Math.min(STATE.results.length - 1, STATE.selected + 1); _renderResults(); return; }
+    if (ev.key === 'ArrowUp') { ev.preventDefault(); STATE.selected = Math.max(0, STATE.selected - 1); _renderResults(); return; }
+    if (ev.key === 'Enter') { ev.preventDefault(); _activate(); return; }
+  }
+
+  window._openCmdK = function(){
+    var ov = document.getElementById('cmdk-overlay');
+    if (!ov) return;
+    ov.style.display = 'flex';
+    STATE.query = ''; STATE.results = []; STATE.selected = 0;
+    var inp = document.getElementById('cmdk-input');
+    if (inp) { inp.value = ''; setTimeout(function(){ inp.focus(); }, 30); }
+    _renderResults();
+  };
+  window._closeCmdK = function(){
+    var ov = document.getElementById('cmdk-overlay');
+    if (ov) ov.style.display = 'none';
+  };
+
+  function _wire(){
+    var inp = document.getElementById('cmdk-input');
+    if (inp) {
+      inp.addEventListener('input', _onInput);
+      inp.addEventListener('keydown', _onKey);
+    }
+    var ov = document.getElementById('cmdk-overlay');
+    if (ov) ov.addEventListener('click', function(ev){ if (ev.target === ov) window._closeCmdK(); });
+    // Global keyboard shortcut
+    document.addEventListener('keydown', function(ev){
+      if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'k' || ev.key === 'K')) {
+        ev.preventDefault();
+        var open = ov && ov.style.display !== 'none';
+        if (open) window._closeCmdK();
+        else window._openCmdK();
+      }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _wire);
+  else setTimeout(_wire, 0);
 })();
 window._corsairBuildRhythm = _corsairBuildRhythm;
 window._corsairRenderRhythm = _corsairRenderRhythm;
