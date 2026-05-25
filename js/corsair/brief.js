@@ -320,9 +320,15 @@ window.renderDailyBrief = function() {
   }
   _renderCol('brief-decay-list', 'brief-decay-count', decay, function(d) {
     var orgStr = d.org ? ' · ' + String(d.org).slice(0, 16) : '';
-    return '<div class="brief-item" onclick="if(window._openLogForContact)window._openLogForContact(\'' + (d.name || '').replace(/\'/g, '') + '\')">' +
+    var safeName = (d.name || '').replace(/\'/g, '');
+    var safeOrg = (d.org || '').replace(/\'/g, '');
+    // P12.9: ✉ button for one-click outreach draft. event.stopPropagation
+    // keeps the parent click (open log-meeting) from firing too.
+    var outreachBtn = '<button class="brief-item-act" title="Draft outreach" onclick="event.stopPropagation();window._openOutreachDraft&&window._openOutreachDraft(\'' + safeName + '\',' + (d.days||0) + ',\'' + safeOrg + '\')" style="margin-left:6px;padding:2px 7px;border:1px solid var(--gold);border-radius:3px;background:rgba(212,130,58,.12);color:var(--gold);font-size:10px;cursor:pointer;font-family:IBM Plex Mono,monospace;flex-shrink:0">✉</button>';
+    return '<div class="brief-item" onclick="if(window._openLogForContact)window._openLogForContact(\'' + safeName + '\')" style="align-items:center">' +
            '<span class="brief-item-title">' + (d.name || '(unnamed)') + orgStr + '</span>' +
-           '<span class="brief-item-meta">' + d.days + 'd</span></div>';
+           '<span class="brief-item-meta">' + d.days + 'd</span>' +
+           outreachBtn + '</div>';
   });
   _renderCol('brief-stale-list', 'brief-stale-count', stale, function(s) {
     var h = s.health || { score: 0, status: 'unknown' };

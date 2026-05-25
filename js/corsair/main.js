@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.8c';
-  window.Corsair.buildBlurb  = 'Accounts ROOT-CAUSE FIX — added accounts-view to _relocateViewsIntoMainApp list (was orphaned outside the flex layout, rendering off-page at top=739)';
+  window.Corsair.buildTag    = 'P12.9';
+  window.Corsair.buildBlurb  = 'Brief decay → one-click outreach drafts (email/LinkedIn templates, pre-filled with last-meeting context, copy-to-clipboard, zero send-from-app)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
