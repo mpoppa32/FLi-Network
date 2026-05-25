@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.25';
-  window.Corsair.buildBlurb  = 'Win/Loss segmentation — dashboard now breaks down outcomes by-agency and by-capture-lead. Each segment row shows win-rate bar (green/amber/red), W/L counts, deal count, and net $ won minus $ lost. Segment block auto-skips when only 1 bucket exists (no useful segmentation). recordOutcome (FLiIntel.html:17990) now captures opp.captureLead at close time so live deals feed the by-lead view; demo closed-opps got captureLead assignments (2 to user, 2 to synthetic "past staff" uid) so the demo workspace shows realistic segmentation diversity. _wlResolveLeadName resolves uids to display names via workspaceMembers + currentUser fallback';
+  window.Corsair.buildTag    = 'P13.24';
+  window.Corsair.buildBlurb  = 'Closed-deal demo seeding — Win/Loss dashboard now activates end-to-end in the demo workspace. Added 4 closed pursuits to _DEMO_DATA.opportunities (DARPA Phase I won $250K, AFRL Open Topic lost $1.5M, NSWC Crane SOTW won $2M, NSF Phase I pre-pivot lost $250K) plus 4 matching calibration records on _DEMO_DATA.calibration with tuned factor snapshots (wins show higher cadence/stance, losses higher risks/red flags) so getCalibrationWeights produces meaningful non-default multipliers. Predicted scores span all 3 brackets (78/58/42/24) so bracket-accuracy bars populate. Write loop added to _loadDemoWorkspace at ~92% so new demo users hit Win/Loss and see the fully-activated dashboard (2 wins, 2 losses, 75% accuracy, $2.25M won, $1.75M lost) instead of the insufficient-data state';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
