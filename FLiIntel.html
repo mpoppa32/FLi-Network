@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.16</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.17</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -37890,6 +37890,152 @@ window._closeAccountDetail = function(){
   var ov = document.getElementById('account-detail-overlay');
   if (ov) ov.style.display = 'none';
   window._accountsState.selectedOrgId = null;
+  // P13.17 — clear people bulk selection so it doesn't ghost-edit the next org drawer
+  if (window._drwPeopleBulkSelected) window._drwPeopleBulkSelected.clear();
+};
+
+// ═══════════════════════════════════════════════════════════════
+// P13.17 — Bulk-on-people inside the Accounts drawer.
+// Drawer-scoped selection Set on the People list. Closes the bulk-
+// actions trio: Accounts orgs (P13.8) + Opportunities (P13.9) +
+// People-in-drawer (P13.17). Three ops:
+//   • Set tier (T1/T2/T3/clear)  — mass-classify VIP contacts
+//   • Mark as POC                — only allowed when exactly 1 selected;
+//                                  uses existing _accSetPOC machinery
+//                                  (clears isPOC from others at the org)
+//   • Delete                     — permanent; removes nodes + edges
+// State is in-memory only; cleared on _closeAccountDetail / org switch.
+// ═══════════════════════════════════════════════════════════════
+window._drwPeopleBulkSelected = window._drwPeopleBulkSelected || new Set();
+
+function _drwPeopleResolvePerson(id){
+  if (window.CorsairIndex && window.CorsairIndex.byId && window.CorsairIndex.byId.get){
+    var hit = window.CorsairIndex.byId.get(String(id));
+    if (hit) return hit;
+  }
+  var all = window.nodes || [];
+  for (var i = 0; i < all.length; i++){ if (String(all[i].id) === String(id)) return all[i]; }
+  return null;
+}
+
+window._drwPeopleBulkToggle = function(personId){
+  if (!personId) return;
+  var k = String(personId);
+  if (window._drwPeopleBulkSelected.has(k)) window._drwPeopleBulkSelected.delete(k);
+  else window._drwPeopleBulkSelected.add(k);
+  // Re-render drawer to reflect selection style + bar
+  var sel = window._accountsState && window._accountsState.selectedOrgId;
+  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+};
+
+window._drwPeopleBulkClear = function(){
+  window._drwPeopleBulkSelected.clear();
+  var sel = window._accountsState && window._accountsState.selectedOrgId;
+  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+};
+
+window._drwPeopleBulkSelectAllVisible = function(){
+  var rows = document.querySelectorAll('#account-detail-panel [data-person-id]');
+  rows.forEach(function(row){
+    var id = row.getAttribute('data-person-id');
+    if (id) window._drwPeopleBulkSelected.add(String(id));
+  });
+  var sel = window._accountsState && window._accountsState.selectedOrgId;
+  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+};
+
+window._drwPeopleBulkSetTier = async function(tier){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot edit'); return; }
+  var ids = Array.from(window._drwPeopleBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  var newTier = (tier === '' || tier == null) ? null : String(tier);
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ids.length; i++){
+    var p = _drwPeopleResolvePerson(ids[i]);
+    if (!p){ fail++; continue; }
+    try {
+      p.tier = newTier;
+      await saveNode(p);
+      ok++;
+    } catch(e){ console.warn('[drw bulk tier] save failed:', e); fail++; }
+  }
+  toast((newTier ? 'Tier ' + newTier + ' set on ' : 'Tier cleared on ') + ok + (fail ? ' (' + fail + ' failed)' : '') + ' contact' + (ok===1?'':'s'));
+  var sel = window._accountsState && window._accountsState.selectedOrgId;
+  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+};
+
+window._drwPeopleBulkSetPOC = async function(){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot edit'); return; }
+  var ids = Array.from(window._drwPeopleBulkSelected);
+  if (ids.length !== 1){
+    toast('POC requires exactly 1 selected (only one POC per org)');
+    return;
+  }
+  var orgId = window._accountsState && window._accountsState.selectedOrgId;
+  if (!orgId){ toast('No org context'); return; }
+  // Reuse the existing single-set machinery — it handles the "clear from others" logic
+  if (typeof window._accSetPOC === 'function'){
+    try {
+      await window._accSetPOC(orgId, ids[0]);
+      window._drwPeopleBulkSelected.clear();
+      // _accSetPOC already re-opens the drawer; nothing more needed
+    } catch(e){
+      toast('Set POC failed: ' + (e.message || 'try again'));
+    }
+  } else {
+    toast('POC machinery unavailable');
+  }
+};
+
+window._drwPeopleBulkDelete = async function(){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot delete'); return; }
+  var ids = Array.from(window._drwPeopleBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  if (!confirm('Delete ' + ids.length + ' selected contact' + (ids.length===1?'':'s') + ' permanently?\n\nThis removes the person node and disconnects them from this org. Meetings + opps remain.')) return;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ids.length; i++){
+    var id = String(ids[i]);
+    try {
+      var idx = nodes.findIndex(function(n){ return String(n.id) === id; });
+      if (idx >= 0){
+        nodes.splice(idx, 1);
+        if (nodeMap && nodeMap.delete) nodeMap.delete(id);
+      }
+      await fbSet(wsPath('nodes/' + id), null);
+      ok++;
+    } catch(e){ console.warn('[drw bulk del] failed:', e); fail++; }
+  }
+  window._drwPeopleBulkSelected.clear();
+  if (window.CorsairIndex && window.CorsairIndex.scheduleRebuild) window.CorsairIndex.scheduleRebuild();
+  if (typeof renderNetwork === 'function') try { renderNetwork(); } catch(e){}
+  toast('Deleted ' + ok + (fail ? ' (' + fail + ' failed)' : '') + ' contact' + (ok===1?'':'s'));
+  var sel = window._accountsState && window._accountsState.selectedOrgId;
+  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+};
+
+window._drwPeopleRenderBulkBar = function(){
+  var bar = document.getElementById('drw-people-bulk-bar');
+  if (!bar) return;
+  var n = window._drwPeopleBulkSelected ? window._drwPeopleBulkSelected.size : 0;
+  if (!n){ bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = 'flex';
+  var ctrlStyle = 'padding:7px 10px;border:1px solid var(--b2);border-radius:3px;background:var(--s2);color:var(--text);font-family:IBM Plex Sans,sans-serif;font-size:12px;cursor:pointer';
+  var btnStyle  = 'padding:7px 12px;border:1px solid var(--b2);border-radius:3px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer';
+  var pocAllowed = (n === 1);
+  bar.innerHTML =
+    '<div style="font-family:Antonio,sans-serif;font-size:16px;font-weight:700;color:var(--gold);margin-right:6px"><span style="color:var(--text)">' + n + '</span> selected</div>' +
+    '<button onclick="window._drwPeopleBulkClear()" style="' + btnStyle + '">Clear</button>' +
+    '<div style="width:1px;height:22px;background:var(--b2);margin:0 4px"></div>' +
+    '<select onchange="if(this.value!==\'__noop__\'){window._drwPeopleBulkSetTier(this.value===\'\'?\'\':this.value);this.value=\'__noop__\';}" style="' + ctrlStyle + '">' +
+      '<option value="__noop__">Set tier…</option>' +
+      '<option value="1">T1 (strategic)</option>' +
+      '<option value="2">T2 (standard)</option>' +
+      '<option value="3">T3 (watch)</option>' +
+      '<option value="">— clear tier —</option>' +
+    '</select>' +
+    '<button onclick="window._drwPeopleBulkSetPOC()" ' + (pocAllowed ? '' : 'disabled ') + 'title="' + (pocAllowed ? 'Mark as Primary Point of Contact (clears POC from others at this org)' : 'POC requires exactly 1 selected') + '" style="' + btnStyle + ';color:' + (pocAllowed ? 'var(--gold)' : 'var(--t3)') + ';border-color:' + (pocAllowed ? 'rgba(212,130,58,.45)' : 'var(--b2)') + ';' + (pocAllowed ? '' : 'cursor:not-allowed;opacity:.5;') + '">★ Mark as POC</button>' +
+    '<div style="flex:1"></div>' +
+    '<button onclick="window._drwPeopleBulkDelete()" style="' + btnStyle + ';color:#ef4444;border-color:rgba(239,68,68,.45)">✕ Delete</button>';
 };
 
 // ─── P12.10 Account Snapshot — structured record per org ───
@@ -38045,6 +38191,10 @@ window._openAccountDetail = function(orgId){
     }
   }
   if (!org){ console.warn('[Accounts] org not found:', orgId); return; }
+  // P13.17 — clear people bulk selection on org switch so selections don't leak across drawers
+  if (String(window._accountsState.selectedOrgId || '') !== String(orgId) && window._drwPeopleBulkSelected){
+    window._drwPeopleBulkSelected.clear();
+  }
   window._accountsState.selectedOrgId = String(orgId);
 
   var r = _accBuildRollup(org);
@@ -38093,6 +38243,8 @@ window._openAccountDetail = function(orgId){
     '</div>';
   };
 
+  // P13.17 — bulk-on-people: drawer-scoped selection set; cleared on close / org switch
+  window._drwPeopleBulkSelected = window._drwPeopleBulkSelected || new Set();
   var peopleRows = r.people.length
     ? r.people.slice().sort(function(a,b){
         // Sort by last touch desc, then by name
@@ -38108,9 +38260,15 @@ window._openAccountDetail = function(orgId){
         var daysAgo = _accDaysAgo(lastTs);
         var role = p.role || p.title || p.acqRole || '';
         var tier = p.tier ? '<span style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--gold);border:1px solid rgba(212,130,58,.35);padding:1px 5px;border-radius:2px;letter-spacing:.1em;margin-left:6px">T' + _accEsc(p.tier) + '</span>' : '';
-        return '<div onclick="window.openNetPanel&&window.openNetPanel(' + JSON.stringify(p) + ');window._closeAccountDetail()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);cursor:pointer;margin-bottom:6px" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
+        var pocChip = p.isPOC ? '<span style="font-family:IBM Plex Mono,monospace;font-size:8px;color:#070d18;background:var(--gold);padding:1px 5px;border-radius:2px;letter-spacing:.1em;margin-left:6px;font-weight:700">POC</span>' : '';
+        var pidEsc = String(p.id).replace(/'/g,'&#39;');
+        var isSelected = window._drwPeopleBulkSelected.has(String(p.id));
+        var borderCol = isSelected ? 'var(--gold)' : 'var(--b1)';
+        var bgCol = isSelected ? 'rgba(212,130,58,.10)' : 'var(--s1)';
+        return '<div data-person-id="' + pidEsc + '" onclick="window.openNetPanel&&window.openNetPanel(' + JSON.stringify(p) + ');window._closeAccountDetail()" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid ' + borderCol + ';border-radius:3px;background:' + bgCol + ';cursor:pointer;margin-bottom:6px" onmouseover="if(!this.dataset.sel)this.style.borderColor=\'var(--gold)\'" onmouseout="if(!this.dataset.sel)this.style.borderColor=\'' + borderCol + '\'"' + (isSelected ? ' data-sel="1"' : '') + '>' +
+          '<input type="checkbox" onclick="event.stopPropagation();window._drwPeopleBulkToggle(\'' + pidEsc + '\')"' + (isSelected ? ' checked' : '') + ' style="width:15px;height:15px;cursor:pointer;flex-shrink:0;accent-color:var(--gold)" title="Select for bulk action">' +
           '<div style="flex:1;min-width:0">' +
-            '<div style="font-size:13px;font-weight:600;color:var(--text)">' + _accEsc(p.name) + tier + '</div>' +
+            '<div style="font-size:13px;font-weight:600;color:var(--text)">' + _accEsc(p.name) + tier + pocChip + '</div>' +
             (role ? '<div style="font-size:11px;color:var(--t2);margin-top:2px">' + _accEsc(role) + '</div>' : '') +
           '</div>' +
           '<div style="text-align:right;flex-shrink:0">' + (lastTs ? _accDecayChip(daysAgo) : '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.1em">NEVER MET</span>') + '</div>' +
@@ -38186,19 +38344,24 @@ window._openAccountDetail = function(orgId){
         metricTile('PEOPLE', String(r.peopleCount)) +
       '</div>' +
     '</div>' +
-    '<div style="flex:1;overflow-y:auto;padding:20px 26px 32px">' +
+    '<div style="flex:1;overflow-y:auto;padding:20px 26px 90px">' +
       _accSnapshotSection(r) +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Open Pursuits</div>' +
       oppRows +
-      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">People (' + r.peopleCount + ')</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px;display:flex;align-items:center;gap:10px">People (' + r.peopleCount + ')' +
+        (r.peopleCount ? '<button onclick="window._drwPeopleBulkSelectAllVisible()" style="background:transparent;border:1px solid var(--b2);color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:2px;cursor:pointer">Select all</button>' : '') +
+      '</div>' +
       peopleRows +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">Recent Meetings</div>' +
       mtgRows +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">Open Commitments</div>' +
       commitRows +
-    '</div>';
+    '</div>' +
+    // P13.17 — bulk-on-people sticky action bar (visible when N>0 selected)
+    '<div id="drw-people-bulk-bar" style="display:none;position:absolute;left:0;right:0;bottom:0;z-index:10;background:linear-gradient(180deg,#0d1426,#0a1020);border-top:2px solid var(--gold);box-shadow:0 -8px 24px rgba(0,0,0,.45);padding:12px 20px;flex-wrap:wrap;align-items:center;gap:10px"></div>';
 
   ov.style.display = 'block';
+  if (typeof window._drwPeopleRenderBulkBar === 'function') window._drwPeopleRenderBulkBar();
 };
 
 window._approveCapture = async function(itemId) {

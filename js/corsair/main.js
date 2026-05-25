@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.16';
-  window.Corsair.buildBlurb  = 'Saved Views on Table — completes the saved-views trio (Accounts P13.4 + Pipeline P13.10 + Table P13.16); persists sort/filterStage/filterHealth/filterAged/search/showPosture per-workspace at savedViews/{id} with surface=table; Apply / Save / Manage modal; matches gold-bordered toolbar visual of Accounts header';
+  window.Corsair.buildTag    = 'P13.17';
+  window.Corsair.buildBlurb  = 'Bulk-on-people inside Accounts drawer — completes the bulk-actions trio (Accounts P13.8 + Opps P13.9 + people-in-drawer P13.17); per-row checkbox + Select-all-visible; sticky bottom bar shows tier setter (T1/T2/T3/clear) + Mark-as-POC (only when 1 selected; reuses _accSetPOC clears-from-others logic) + Delete; selection cleared on drawer close + org switch to prevent ghost-edits';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
