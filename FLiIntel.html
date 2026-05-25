@@ -8338,7 +8338,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.9</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.10</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -35667,6 +35667,148 @@ window._closeAccountDetail = function(){
   window._accountsState.selectedOrgId = null;
 };
 
+// ─── P12.10 Account Snapshot — structured record per org ───
+// Status palette (operator-facing relationship lifecycle)
+var _ACC_STATUS_OPTS = [
+  { val: '',          label: '— set status —', color: 'var(--t3)' },
+  { val: 'prospect',  label: 'Prospect',       color: '#94a3b8' },
+  { val: 'qualified', label: 'Qualified',      color: '#5fb3b8' },
+  { val: 'active',    label: 'Active Pursuit', color: '#d4823a' },
+  { val: 'customer',  label: 'Customer',       color: '#22c55e' },
+  { val: 'dormant',   label: 'Dormant',        color: '#7d7669' }
+];
+var _ACC_TIER_OPTS = [
+  { val: '',          label: '— tier —' },
+  { val: 'strategic', label: 'Strategic' },
+  { val: 'standard',  label: 'Standard' },
+  { val: 'watch',     label: 'Watch' }
+];
+
+function _accStatusMeta(val){
+  for (var i=0;i<_ACC_STATUS_OPTS.length;i++){ if (_ACC_STATUS_OPTS[i].val === (val||'')) return _ACC_STATUS_OPTS[i]; }
+  return _ACC_STATUS_OPTS[0];
+}
+function _accCommsStatus(daysSinceTouch){
+  if (daysSinceTouch == null) return { label: 'No prior contact', color: 'var(--t3)' };
+  if (daysSinceTouch <= 14)   return { label: 'Active dialogue',  color: '#22c55e' };
+  if (daysSinceTouch <= 30)   return { label: 'Responding',       color: '#facc15' };
+  if (daysSinceTouch <= 60)   return { label: 'Going cold',       color: '#fb923c' };
+  return { label: 'Ghosting',                                     color: '#ef4444' };
+}
+function _accIsoDateOrEmpty(ts){
+  if (!ts) return '';
+  var d = new Date(Number(ts));
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().split('T')[0];
+}
+
+// Save handler — write a single field on the org node and re-render
+window._accSetField = async function(orgId, field, value){
+  var org = (window.CorsairIndex && window.CorsairIndex.byId && window.CorsairIndex.byId.get && window.CorsairIndex.byId.get(String(orgId))) || null;
+  if (!org && window.nodes){
+    for (var i = 0; i < window.nodes.length; i++){ if (String(window.nodes[i].id) === String(orgId)){ org = window.nodes[i]; break; } }
+  }
+  if (!org){ toast('Org not found'); return; }
+  // Date field — accept YYYY-MM-DD, store as ms timestamp
+  if (field === 'nextAccountActionTs' && typeof value === 'string'){
+    value = value ? Date.parse(value) : null;
+  }
+  // Clear empty strings to null for cleaner data
+  if (value === '' && (field === 'accountOwner' || field === 'accountStatus' || field === 'accountTier' || field === 'nextAccountActionTs')) value = null;
+  org[field] = value;
+  try {
+    await saveNode(org);
+    if (window._openAccountDetail) window._openAccountDetail(String(orgId)); // re-render
+    if (window._renderAccountsView) window._renderAccountsView();
+  } catch(e){
+    toast('Save failed: ' + (e.message || 'try again'));
+  }
+};
+
+// POC setter — flag one person, clear on all others at this org
+window._accSetPOC = async function(orgId, personId){
+  var org = (window.CorsairIndex && window.CorsairIndex.byId && window.CorsairIndex.byId.get && window.CorsairIndex.byId.get(String(orgId))) || null;
+  if (!org){ toast('Org not found'); return; }
+  var orgKey = String(org.name||'').toLowerCase().trim();
+  var people = (window.CorsairIndex.peopleByOrg && window.CorsairIndex.peopleByOrg.get && window.CorsairIndex.peopleByOrg.get(orgKey)) || [];
+  var saves = [];
+  for (var i = 0; i < people.length; i++){
+    var p = people[i];
+    var shouldBe = String(p.id) === String(personId);
+    var was = !!p.isPOC;
+    if (shouldBe !== was){
+      p.isPOC = shouldBe ? true : null;
+      saves.push(saveNode(p));
+    }
+  }
+  if (saves.length){
+    try { await Promise.all(saves); } catch(e){ toast('POC save failed: ' + (e.message||'try again')); return; }
+  }
+  if (window._openAccountDetail) window._openAccountDetail(String(orgId));
+  if (window._renderAccountsView) window._renderAccountsView();
+};
+
+function _accSnapshotSection(r){
+  var org = r.org;
+  var members = (window.workspaceMembers && Array.isArray(window.workspaceMembers)) ? window.workspaceMembers : [];
+  var ownerOpts = '<option value="">— unowned —</option>' + members.map(function(m){
+    var sel = (org.accountOwner && String(org.accountOwner) === String(m.uid)) ? ' selected' : '';
+    return '<option value="' + _accEsc(m.uid) + '"' + sel + '>' + _accEsc(m.name || m.email || m.uid) + '</option>';
+  }).join('');
+  var statusOpts = _ACC_STATUS_OPTS.map(function(o){
+    var sel = (String(org.accountStatus||'') === o.val) ? ' selected' : '';
+    return '<option value="' + o.val + '"' + sel + '>' + _accEsc(o.label) + '</option>';
+  }).join('');
+  var tierOpts = _ACC_TIER_OPTS.map(function(o){
+    var sel = (String(org.accountTier||'') === o.val) ? ' selected' : '';
+    return '<option value="' + o.val + '"' + sel + '>' + _accEsc(o.label) + '</option>';
+  }).join('');
+  var statusMeta = _accStatusMeta(org.accountStatus);
+  var comms = _accCommsStatus(r.daysSinceTouch);
+  // POC: find which person is flagged isPOC, else show "— not set —"
+  var pocPerson = null;
+  for (var i = 0; i < r.people.length; i++){ if (r.people[i] && r.people[i].isPOC){ pocPerson = r.people[i]; break; } }
+  var pocOpts = '<option value="">— not set —</option>' + r.people.map(function(p){
+    var sel = (pocPerson && String(pocPerson.id) === String(p.id)) ? ' selected' : '';
+    return '<option value="' + _accEsc(p.id) + '"' + sel + '>' + _accEsc(p.name) + (p.role ? ' · ' + _accEsc(String(p.role).slice(0,32)) : '') + '</option>';
+  }).join('');
+
+  var orgIdEsc = _accEsc(org.id);
+  var selStyle = 'padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:3px;color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif;width:100%;box-sizing:border-box;cursor:pointer';
+  var inpStyle = 'padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:3px;color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif;width:100%;box-sizing:border-box';
+  var lblStyle = 'font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;color:var(--t3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;display:block';
+
+  var fld = function(label, control){
+    return '<div><div style="' + lblStyle + '">' + label + '</div>' + control + '</div>';
+  };
+
+  var nextDateVal = _accIsoDateOrEmpty(org.nextAccountActionTs);
+  var notesVal = _accEsc(org.accountNotes || '');
+  var nextActVal = _accEsc(org.nextAccountAction || '');
+
+  return '<div style="background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid #2a3550;border-top:2px solid var(--gold);border-radius:3px;padding:16px 18px;margin-bottom:20px">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase">Account Snapshot</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:' + comms.color + ';letter-spacing:.1em;font-weight:700">' + _accEsc(comms.label.toUpperCase()) + (r.daysSinceTouch != null ? ' · ' + r.daysSinceTouch + 'D' : '') + '</div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">' +
+      fld('Owner',  '<select onchange="window._accSetField(\'' + orgIdEsc + '\', \'accountOwner\', this.value)" style="' + selStyle + '">' + ownerOpts + '</select>') +
+      fld('Status', '<select onchange="window._accSetField(\'' + orgIdEsc + '\', \'accountStatus\', this.value)" style="' + selStyle + ';color:' + statusMeta.color + ';font-weight:700">' + statusOpts + '</select>') +
+      fld('Tier',   '<select onchange="window._accSetField(\'' + orgIdEsc + '\', \'accountTier\', this.value)" style="' + selStyle + '">' + tierOpts + '</select>') +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
+      fld('Primary POC', '<select onchange="window._accSetPOC(\'' + orgIdEsc + '\', this.value)" style="' + selStyle + '">' + pocOpts + '</select>') +
+      fld('Next action date', '<input type="date" value="' + nextDateVal + '" onchange="window._accSetField(\'' + orgIdEsc + '\', \'nextAccountActionTs\', this.value)" style="' + inpStyle + '"/>') +
+    '</div>' +
+    '<div style="margin-bottom:12px">' +
+      fld('Next account action', '<input type="text" value="' + nextActVal + '" placeholder="e.g. introduce Bryce, send TI capability deck, schedule Q3 review…" onblur="if(this.value!==this.defaultValue)window._accSetField(\'' + orgIdEsc + '\', \'nextAccountAction\', this.value)" style="' + inpStyle + '"/>') +
+    '</div>' +
+    '<div>' +
+      fld('Account notes', '<textarea rows="3" placeholder="What you need to know to walk in cold — history, politics, blockers, internal context…" onblur="if(this.value!==this.defaultValue)window._accSetField(\'' + orgIdEsc + '\', \'accountNotes\', this.value)" style="' + inpStyle + ';resize:vertical;line-height:1.5;font-family:IBM Plex Sans,sans-serif">' + notesVal + '</textarea>') +
+    '</div>' +
+  '</div>';
+}
+
 window._openAccountDetail = function(orgId){
   var idx = window.CorsairIndex || {};
   var org = (idx.byId && idx.byId.get && idx.byId.get(String(orgId))) || null;
@@ -35820,6 +35962,7 @@ window._openAccountDetail = function(orgId){
       '</div>' +
     '</div>' +
     '<div style="flex:1;overflow-y:auto;padding:20px 26px 32px">' +
+      _accSnapshotSection(r) +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Open Pursuits</div>' +
       oppRows +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">People (' + r.peopleCount + ')</div>' +
