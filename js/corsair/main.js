@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.31';
-  window.Corsair.buildBlurb  = 'Pre-Bryce fix #4 — Race condition: Table view + Pipeline Forecast + Win/Loss dashboard could all render with 0 data if user clicked their tabs before the Firebase listeners fired. switchView calls each render once on view-change; the listeners had no re-render hooks. Wired opportunities + calibration listeners to re-render those three surfaces when data arrives. Now if Mike lands fresh on Table while opps are still loading, the count flips from 0→122 as soon as the snapshot resolves';
+  window.Corsair.buildTag    = 'P13.32';
+  window.Corsair.buildBlurb  = 'Pre-Bryce fix #5 — Rhythm strip (#corsair-rhythm) had no max-height, so a workspace with many critical items (Demo: 14 critical + 5 watch) rendered the strip at 600+px tall, consuming the entire viewport and squeezing every flex:1 view below (winloss/table/accounts) down to ~14px. Diagnosed via Chrome MCP layout query on Demo Workspace. Capped strip at max-height:42vh with overflow-y:auto for internal scroll. Now active views always have at least ~58vh of vertical space regardless of critical-item count';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
