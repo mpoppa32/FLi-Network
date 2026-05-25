@@ -8341,7 +8341,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.32</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.33</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9020,7 +9020,7 @@ input[type="url"], textarea, select {
           <div style="font-size:14px;color:var(--t2);line-height:1.6;max-width:580px;margin:0 auto">Track named programs, vehicles, and pursuits. Every meeting you log links to the opportunity. Every commitment surfaces. Every contact in the acquisition chain stays visible. This is your living deal record — not a spreadsheet.</div>
           <button class="empty-state-cta" onclick="openNewOppModal()" style="margin-top:22px;padding:13px 28px;border:1px solid var(--gold);border-radius:7px;background:rgba(212,130,58,.15);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:IBM Plex Sans,sans-serif;letter-spacing:.08em;text-transform:uppercase;display:inline-flex;align-items:center;gap:8px;box-shadow:0 0 24px rgba(212,130,58,.15)">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v11M1 6.5h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            Create First Opportunity
+            New Opportunity
           </button>
         </div>
         <div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:14px">What attaches to every opportunity</div>
@@ -27284,10 +27284,15 @@ function _corsairBuildRhythm(){
   });
 
   // ── 1. Overdue commitments (from tl_commitments and commitments) ──
+  // P13.33 — the _tlSet was built for dedup but never applied. Demo loader
+  // (and the live recordOutcome path for some commitment types) writes the
+  // same id to BOTH tl_commitments/{id} and commitments/{id}, so the
+  // unfiltered concat surfaced every overdue card twice on the Brief view.
+  // Apply the filter the original author clearly intended.
   var _tlSet = new Set((tlCommitments || []).map(function(c){return c.id;}));
   var allCommits = [].concat(
     (tlCommitments || []).map(function(c){return Object.assign({_src:'tl',_cid:c.id},c);}),
-    (commitments || []).map(function(c){return Object.assign({_src:'commit',_cid:c.id},c);})
+    (commitments || []).filter(function(c){return c && !_tlSet.has(c.id);}).map(function(c){return Object.assign({_src:'commit',_cid:c.id},c);})
   );
   allCommits.forEach(function(c){
     if (!c) return;

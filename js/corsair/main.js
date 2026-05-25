@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.32';
-  window.Corsair.buildBlurb  = 'Pre-Bryce fix #5 — Rhythm strip (#corsair-rhythm) had no max-height, so a workspace with many critical items (Demo: 14 critical + 5 watch) rendered the strip at 600+px tall, consuming the entire viewport and squeezing every flex:1 view below (winloss/table/accounts) down to ~14px. Diagnosed via Chrome MCP layout query on Demo Workspace. Capped strip at max-height:42vh with overflow-y:auto for internal scroll. Now active views always have at least ~58vh of vertical space regardless of critical-item count';
+  window.Corsair.buildTag    = 'P13.33';
+  window.Corsair.buildBlurb  = 'Pre-Bryce fix #6+7 — (a) Brief CRITICAL section was rendering every overdue commitment 2x side-by-side. _corsairBuildRhythm built _tlSet for dedup but never applied it; demo loader writes each commitment to BOTH tl_commitments/{id} AND commitments/{id} so the unfiltered concat doubled every card. Applied the intended filter. (b) Pipeline empty-state button said "Create FIRST Opportunity" even when 122 opps existed — relabeled to "New Opportunity" so it reads correctly regardless of opp count';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
