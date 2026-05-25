@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.6';
-  window.Corsair.buildBlurb  = 'P2.14 — Gmail/Calendar auto-capture LIVE';
+  window.Corsair.buildTag    = 'P12.7';
+  window.Corsair.buildBlurb  = 'P2.14 — capture sync default-on; skip reasons surfaced in Test Now';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

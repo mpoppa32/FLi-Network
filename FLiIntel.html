@@ -8338,7 +8338,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.6</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.7</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -33535,11 +33535,17 @@ window._testAutoCapture = async function() {
       callGmail({ workspaceId: currentWsId }),
       callCal({ workspaceId: currentWsId })
     ]);
-    var gm = (both[0] && both[0].data) || {};
-    var cl = (both[1] && both[1].data) || {};
+    var gm = (both[0] && both[0].data && both[0].data.result) || (both[0] && both[0].data) || {};
+    var cl = (both[1] && both[1].data && both[1].data.result) || (both[1] && both[1].data) || {};
+    var gmCount = gm.written || gm.captured || 0;
+    var clCount = cl.written || cl.captured || 0;
+    var gmFetched = gm.fetched || 0;
+    var clFetched = cl.fetched || 0;
+    var gmNote = gm.skipped ? ' (skipped: ' + gm.skipped + ')' : (gmFetched > 0 && gmCount === 0 ? ' (' + gmFetched + ' fetched, none matched filters)' : '');
+    var clNote = cl.skipped ? ' (skipped: ' + cl.skipped + ')' : (clFetched > 0 && clCount === 0 ? ' (' + clFetched + ' fetched, none matched filters)' : '');
     res.style.display = 'block';
-    res.style.color = 'var(--green)';
-    res.textContent = '✓ Synced — Gmail: ' + (gm.captured||0) + ' new · Calendar: ' + (cl.captured||0) + ' new. Open Capture tab to review.';
+    res.style.color = (gmCount + clCount > 0) ? 'var(--green)' : 'var(--gold)';
+    res.textContent = '✓ Synced — Gmail: ' + gmCount + ' new' + gmNote + ' · Calendar: ' + clCount + ' new' + clNote + '.';
   } catch(e) {
     res.style.display = 'block';
     res.style.color = 'var(--red)';

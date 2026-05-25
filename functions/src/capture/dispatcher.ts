@@ -93,7 +93,8 @@ export async function syncGmail(uid: string, workspaceId: string): Promise<SyncR
     }
     const stateSnap = await db.ref(wsPath(workspaceId, "captureState/gmail")).get();
     const state: GmailState = (stateSnap.val() as GmailState) ?? {};
-    if (!state.enabled) {
+    // Default-on: if captureState was never explicitly disabled, sync. Operator can opt out via UI later.
+    if (state.enabled === false) {
       result.skipped = "disabled";
       log.info("sync_skipped", { reason: "disabled" });
       return result;
@@ -151,7 +152,7 @@ export async function syncCalendar(
     }
     const stateSnap = await db.ref(wsPath(workspaceId, "captureState/calendar")).get();
     const state: CalendarState = (stateSnap.val() as CalendarState) ?? {};
-    if (!state.enabled) {
+    if (state.enabled === false) {
       result.skipped = "disabled";
       return result;
     }
