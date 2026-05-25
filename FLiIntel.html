@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.14</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.15</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8414,6 +8414,7 @@ input[type="url"], textarea, select {
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();openModal('import-data-modal');setTimeout(function(){if(window._impSetType)window._impSetType('person')},60)"><span style="color:var(--gold);width:18px;display:inline-block">⬆</span><span>Import Data</span><span class="tm-meta">CSV / paste bulk-add</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('json')"><span style="color:#22c55e;width:18px;display:inline-block">⬇</span><span>Backup JSON</span><span class="tm-meta">full workspace, lossless</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('csv')"><span style="color:#5b8fc4;width:18px;display:inline-block">⬇</span><span>Export CSVs</span><span class="tm-meta">4 files · meetings/contacts/opps/commits</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._exportWorkspacePDF&&window._exportWorkspacePDF()"><span style="color:#a78bfa;width:18px;display:inline-block">📄</span><span>Print / PDF Report</span><span class="tm-meta">board-deck snapshot in new tab</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._tourStart&&window._tourStart()"><span style="color:#a78bfa;width:18px;display:inline-block">★</span><span>Replay tour</span><span class="tm-meta">5-step onboarding walkthrough</span></button>
           <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
           <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Analytics</div>
@@ -11059,6 +11060,9 @@ input[type="url"], textarea, select {
   </div>
   <div class="mob-drawer-item" onclick="closeMobDrawer();window.exportWorkspace&&window.exportWorkspace('csv')">
     <span class="di-icon" style="color:#5b8fc4">⬇</span><span>Export CSVs <span style="font-size:11px;color:var(--t3)">— 4 files</span></span>
+  </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();window._exportWorkspacePDF&&window._exportWorkspacePDF()">
+    <span class="di-icon" style="color:#a78bfa">📄</span><span>Print / PDF <span style="font-size:11px;color:var(--t3)">— board snapshot</span></span>
   </div>
   <div class="mob-drawer-item" onclick="closeMobDrawer();if(window._openCmdK)window._openCmdK()">
     <span class="di-icon">🔍</span><span>Search <span style="font-size:11px;color:var(--t3)">— contacts, pursuits, meetings</span></span>
@@ -45878,6 +45882,220 @@ window.exportWorkspace = async function(format) {
       toast('Full workspace export downloaded (' + meetings.length + ' meetings, ' + opportunities.length + ' opps, ' + nodes.length + ' contacts)');
     }
   } catch(e) { toast('Export failed: ' + (e.message || 'Try again')); }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// P13.15 — Workspace PDF/print report
+// Generates a self-contained HTML document with the workspace snapshot
+// and opens it in a new tab. Operator hits Cmd-P / Ctrl-P to save as
+// PDF for board / investor / weekly-review decks.
+// ═══════════════════════════════════════════════════════════════
+window._exportWorkspacePDF = function(){
+  try {
+    var ws = (window.currentWs || {});
+    var u  = (window.currentUser || {});
+    var when = new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+
+    var allOpps = window.opportunities || [];
+    var openOpps = allOpps.filter(function(o){
+      var s = String(o && o.stage || '').toLowerCase();
+      return s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
+    });
+    var wonOpps = allOpps.filter(function(o){return String(o && o.stage || '').toLowerCase() === 'won';});
+
+    // Pipeline totals
+    var totalPipe = 0, weightedPipe = 0;
+    openOpps.forEach(function(o){
+      var v = Number(o.value || 0);
+      var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+      if (p > 1) p = p / 100;
+      totalPipe += v;
+      weightedPipe += v * p;
+    });
+
+    // Counts
+    var nodeCount = (window.nodes || []).length;
+    var peopleCount = (window.nodes || []).filter(function(n){return n && n.type === 'person';}).length;
+    var orgCount = (window.nodes || []).filter(function(n){return n && (n.type === 'company' || n.type === 'government');}).length;
+    var mtgCount = (window.meetings || []).length;
+    var commitCount = (window.commitments || []).filter(function(c){return c && (!c.status || c.status === 'open' || c.status === 'pending');}).length;
+
+    // Helpers
+    function fmt$(v){
+      v = Number(v) || 0;
+      if (v >= 1e9) return '$' + (v/1e9).toFixed(1) + 'B';
+      if (v >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M';
+      if (v >= 1e3) return '$' + (v/1e3).toFixed(0) + 'K';
+      return v ? '$' + v : '$0';
+    }
+    function esc(s){ return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
+
+    // Top 10 deals by score
+    var topDeals = openOpps.slice()
+      .map(function(o){ return { o: o, s: typeof window._dealScore === 'function' ? window._dealScore(o) : 0 }; })
+      .sort(function(a,b){ return b.s - a.s; })
+      .slice(0, 10);
+
+    // Stage breakdown
+    var stages = (window.OPP_STAGES || []).filter(function(s){
+      var l = String(s && (s.key || s)).toLowerCase();
+      return l !== 'won' && l !== 'lost' && l !== 'no-bid';
+    });
+    var stageRows = stages.map(function(s){
+      var key = (s && s.key) || s;
+      var lbl = (s && s.label) || s;
+      var inStage = openOpps.filter(function(o){return o.stage === key;});
+      var sum = inStage.reduce(function(a,o){return a + (Number(o.value)||0);}, 0);
+      return { lbl: lbl, count: inStage.length, sum: sum };
+    });
+
+    // Accounts by status
+    var orgs = (window.nodes || []).filter(function(n){return n && (n.type === 'company' || n.type === 'government');});
+    var statusGroups = {};
+    var statusOrder = ['active','qualified','prospect','customer','dormant','_unset'];
+    statusOrder.forEach(function(k){statusGroups[k] = [];});
+    orgs.forEach(function(o){
+      var s = o.accountStatus || '_unset';
+      if (!statusGroups[s]) statusGroups[s] = [];
+      statusGroups[s].push(o);
+    });
+    var statusLabels = { active:'Active Pursuit', qualified:'Qualified', prospect:'Prospect', customer:'Customer', dormant:'Dormant', _unset:'No status set' };
+
+    // Recent meetings (last 10)
+    var recentMeetings = (window.meetings || []).slice()
+      .sort(function(a,b){return Number(b.ts||0) - Number(a.ts||0);})
+      .slice(0, 10);
+
+    // Open commitments due soonest
+    var openCommits = (window.commitments || [])
+      .filter(function(c){return c && (!c.status || c.status === 'open' || c.status === 'pending');})
+      .sort(function(a,b){return (Number(a.dueAt||a.dueDate||9e15)) - (Number(b.dueAt||b.dueDate||9e15));})
+      .slice(0, 12);
+
+    // Build the report HTML
+    var html = '<!doctype html><html><head><meta charset="utf-8">' +
+      '<title>' + esc(ws.name || 'Corsair') + ' · Workspace Report · ' + esc(when) + '</title>' +
+      '<style>' +
+        '@page{margin:0.6in;}' +
+        '*{box-sizing:border-box;}' +
+        'body{font-family:Georgia,"Times New Roman",serif;background:#fff;color:#1a1a1a;margin:0;padding:36px 48px;line-height:1.5;}' +
+        '.header{border-bottom:3px solid #b86b2a;padding-bottom:16px;margin-bottom:24px;}' +
+        '.brand{font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:.22em;color:#b86b2a;font-weight:700;text-transform:uppercase;margin-bottom:8px;}' +
+        'h1{font-family:Helvetica,Arial,sans-serif;font-size:28px;font-weight:700;margin:0 0 6px;color:#1a1a1a;letter-spacing:-.01em;}' +
+        '.meta{font-family:Helvetica,Arial,sans-serif;font-size:11px;color:#555;letter-spacing:.04em;}' +
+        '.section{margin:28px 0;page-break-inside:avoid;}' +
+        '.section-hdr{font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:.18em;color:#b86b2a;font-weight:700;text-transform:uppercase;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #d4cab8;}' +
+        '.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;}' +
+        '.tile{border:1px solid #d4cab8;padding:12px 14px;background:#f9f4eb;}' +
+        '.tile-lbl{font-family:Helvetica,Arial,sans-serif;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#777;font-weight:700;}' +
+        '.tile-val{font-family:Helvetica,Arial,sans-serif;font-size:24px;font-weight:700;color:#1a1a1a;margin-top:4px;}' +
+        '.tile-sub{font-family:Helvetica,Arial,sans-serif;font-size:10px;color:#777;letter-spacing:.06em;margin-top:3px;}' +
+        'table{width:100%;border-collapse:collapse;font-family:Helvetica,Arial,sans-serif;font-size:11px;}' +
+        'th{text-align:left;background:#f1ead9;color:#5a5040;padding:6px 9px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;border-bottom:2px solid #b86b2a;}' +
+        'td{padding:6px 9px;border-bottom:1px solid #e5dfd2;color:#1a1a1a;vertical-align:top;}' +
+        '.score{font-weight:700;}' +
+        '.score-hi{color:#2d6a4f;}' +
+        '.score-md{color:#aa771c;}' +
+        '.score-lo{color:#9a2e2e;}' +
+        '.footer{margin-top:36px;border-top:1px solid #d4cab8;padding-top:12px;font-family:Helvetica,Arial,sans-serif;font-size:9px;color:#888;letter-spacing:.06em;}' +
+        '@media print{body{padding:0;}.section{page-break-inside:avoid;}.section-hdr{page-break-after:avoid;}}' +
+      '</style></head><body>';
+
+    // Header
+    html += '<div class="header">' +
+      '<div class="brand">CORSAIR · Defense Capture OS</div>' +
+      '<h1>' + esc(ws.name || 'Workspace') + ' · State Snapshot</h1>' +
+      '<div class="meta">' + esc(when) + ' &nbsp;·&nbsp; Prepared by ' + esc(u.displayName || u.email || 'operator') + '</div>' +
+    '</div>';
+
+    // Workspace pulse tiles
+    html += '<div class="section"><div class="section-hdr">Workspace pulse</div>' +
+      '<div class="tiles">' +
+        '<div class="tile"><div class="tile-lbl">Pipeline</div><div class="tile-val">' + fmt$(totalPipe) + '</div><div class="tile-sub">' + openOpps.length + ' open pursuits</div></div>' +
+        '<div class="tile"><div class="tile-lbl">Weighted</div><div class="tile-val">' + fmt$(weightedPipe) + '</div><div class="tile-sub">value × p(win)</div></div>' +
+        '<div class="tile"><div class="tile-lbl">Contacts</div><div class="tile-val">' + peopleCount + '</div><div class="tile-sub">' + orgCount + ' orgs · ' + nodeCount + ' total</div></div>' +
+        '<div class="tile"><div class="tile-lbl">Won lifetime</div><div class="tile-val">' + wonOpps.length + '</div><div class="tile-sub">' + mtgCount + ' meetings · ' + commitCount + ' open commits</div></div>' +
+      '</div></div>';
+
+    // Stage breakdown
+    html += '<div class="section"><div class="section-hdr">Pipeline by stage</div>' +
+      '<table><thead><tr><th>Stage</th><th style="text-align:right">Count</th><th style="text-align:right">Pipeline $</th></tr></thead><tbody>';
+    stageRows.forEach(function(r){
+      html += '<tr><td>' + esc(r.lbl) + '</td><td style="text-align:right">' + r.count + '</td><td style="text-align:right">' + fmt$(r.sum) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+
+    // Top 10 priority deals
+    if (topDeals.length){
+      html += '<div class="section"><div class="section-hdr">Top 10 priority deals · by Corsair Deal Score</div>' +
+        '<table><thead><tr><th style="width:36px">Score</th><th>Opportunity</th><th>Agency / Customer</th><th>Stage</th><th style="text-align:right">Value</th><th style="text-align:right">p(win)</th></tr></thead><tbody>';
+      topDeals.forEach(function(t){
+        var o = t.o;
+        var s = t.s;
+        var sc = s >= 60 ? 'score-hi' : s >= 30 ? 'score-md' : 'score-lo';
+        var p = Number(o.pwin != null ? o.pwin : (o.winProb||0));
+        if (p > 1) p = Math.round(p);
+        else p = Math.round(p * 100);
+        html += '<tr><td class="score ' + sc + '">' + s + '</td><td>' + esc(o.name || '(unnamed)') + '</td><td>' + esc(o.agency || '—') + '</td><td>' + esc(o.stage || '—') + '</td><td style="text-align:right">' + fmt$(Number(o.value)||0) + '</td><td style="text-align:right">' + p + '%</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    // Accounts by status
+    html += '<div class="section"><div class="section-hdr">Accounts by status</div>' +
+      '<table><thead><tr><th>Status</th><th style="text-align:right">Accounts</th><th>Sample (top 5 by name)</th></tr></thead><tbody>';
+    statusOrder.forEach(function(k){
+      var list = statusGroups[k] || [];
+      if (!list.length) return;
+      var sample = list.slice().sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).slice(0,5).map(function(n){return n.name;}).join(' · ');
+      html += '<tr><td>' + esc(statusLabels[k] || k) + '</td><td style="text-align:right">' + list.length + '</td><td>' + esc(sample) + (list.length > 5 ? ' &nbsp;<span style="color:#999">+ ' + (list.length - 5) + ' more</span>' : '') + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+
+    // Recent meetings
+    if (recentMeetings.length){
+      html += '<div class="section"><div class="section-hdr">Recent meetings · last ' + recentMeetings.length + '</div>' +
+        '<table><thead><tr><th style="width:90px">Date</th><th>Meeting</th><th>Key people</th></tr></thead><tbody>';
+      recentMeetings.forEach(function(m){
+        var title = (m.meta && m.meta.title) || m.title || '(untitled)';
+        var date = m.ts ? new Date(Number(m.ts)).toLocaleDateString() : '';
+        var people = ((m.intel && m.intel.keyPeople) || []).map(function(p){return p.name;}).filter(Boolean).slice(0,4).join(', ');
+        html += '<tr><td>' + esc(date) + '</td><td>' + esc(title) + '</td><td>' + esc(people || '—') + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    // Open commitments due soonest
+    if (openCommits.length){
+      html += '<div class="section"><div class="section-hdr">Open commitments · by due date</div>' +
+        '<table><thead><tr><th>Task</th><th>Owner / Who</th><th style="width:110px">Due</th></tr></thead><tbody>';
+      openCommits.forEach(function(c){
+        var task = c.task || c.text || '(no description)';
+        var due = c.dueAt || c.dueDate;
+        var dueTxt = due ? new Date(Number(due)).toLocaleDateString() : '—';
+        var who = c.owner || c.who || '—';
+        html += '<tr><td>' + esc(task) + '</td><td>' + esc(who) + '</td><td>' + esc(dueTxt) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    html += '<div class="footer">' +
+      'Generated by Corsair · ' + esc(when) + ' · This snapshot reflects the workspace as of generation. Pipeline numbers are weighted forecasts, not guarantees. ' +
+      'Use Cmd+P (Mac) or Ctrl+P (Windows) to save as PDF.' +
+    '</div>';
+    html += '</body></html>';
+
+    var w = window.open('', '_blank');
+    if (!w){ toast('Pop-ups blocked. Allow pop-ups for this site to print the report.'); return; }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    setTimeout(function(){ try { w.focus(); } catch(e){} }, 300);
+    toast('Report opened in a new tab — Cmd-P / Ctrl-P to save as PDF');
+  } catch(e){
+    console.error('[exportWorkspacePDF]', e);
+    toast('Report failed: ' + (e.message || 'try again'));
+  }
 };
 
 function _downloadFile(content, filename, mimeType) {

@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.14';
-  window.Corsair.buildBlurb  = 'Subsurface typography migration (#9) — inspector.js / cop.js / rhythm.js hardcoded font sizes (~36 inline px values) replaced with var(--text-*) tokens; finishes the P12.11 platform visual standard arc across all major modules';
+  window.Corsair.buildTag    = 'P13.15';
+  window.Corsair.buildBlurb  = 'Workspace PDF/Print report (#8) — single-click board-deck snapshot in new tab; pulse + stage breakdown + top 10 priority deals + accounts by status + recent meetings + open commitments; print-styled CSS so Cmd-P saves clean PDF';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
