@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.12';
-  window.Corsair.buildBlurb  = 'Top tab restructure — primary nav is now BRIEF · ACCOUNTS · PIPELINE · TABLE · INSPECTOR; Graph/Posture/Rhythm/Ask moved to More dropdown (commit 2/3 of platform visual standard)';
+  window.Corsair.buildTag    = 'P12.13';
+  window.Corsair.buildBlurb  = 'Pipeline Kanban + Opp sidebar migrated to type system + paddings — platform visual standard arc complete (commit 3/3)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
