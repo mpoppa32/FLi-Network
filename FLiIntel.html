@@ -8338,7 +8338,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.7</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.8</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8435,6 +8435,7 @@ input[type="url"], textarea, select {
           <button class="tools-menu-item" data-view="capture" onclick="window._toolsMenuSelect('capture')"><span style="color:#f59e0b;width:18px;display:inline-block;position:relative">⚡<span id="tools-capture-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;background:var(--red);color:#fff;border-radius:7px;font-size:8px;font-weight:700;line-height:14px;text-align:center;padding:0 3px"></span></span><span>Auto-Capture</span><span class="tm-meta">pending review</span></button>
           <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
           <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Analytics</div>
+          <button class="tools-menu-item" data-view="accounts" onclick="window._toolsMenuSelect('accounts')"><span style="color:var(--gold);width:18px;display:inline-block">◆</span><span>Accounts</span><span class="tm-meta">org rollup · everything in one pane</span></button>
           <button class="tools-menu-item" data-view="pulse" onclick="window._toolsMenuSelect('pulse')"><span style="color:var(--green);width:18px;display:inline-block">📡</span><span>Intel Center</span><span class="tm-meta">live web intel</span></button>
           <button class="tools-menu-item" data-view="bdperf" onclick="window._toolsMenuSelect('bdperf')"><span style="color:#fb923c;width:18px;display:inline-block">📊</span><span>BD Stats</span><span class="tm-meta">pipeline analytics</span></button>
           <button class="tools-menu-item" data-view="team" onclick="window._toolsMenuSelect('team')"><span style="color:#38bdf8;width:18px;display:inline-block">👥</span><span>Team</span><span class="tm-meta">workspace activity</span></button>
@@ -9706,6 +9707,45 @@ input[type="url"], textarea, select {
     </div>
     <div id="capture-list" style="max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:10px"></div>
   </div>
+</div>
+
+<!-- ══ ACCOUNTS / ORG ROLLUP VIEW (P12.8) ════════════════════════ -->
+<div id="accounts-view" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg)">
+  <div style="padding:22px 26px 16px;border-bottom:1px solid rgba(26,34,54,.5);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;background:linear-gradient(180deg,var(--s1),var(--bg));gap:14px;flex-wrap:wrap">
+    <div>
+      <div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:8px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);display:inline-block"></span>
+        Account Intelligence Rollup
+      </div>
+      <div style="font-family:Antonio,sans-serif;font-size:28px;font-weight:700;color:var(--text);line-height:1;letter-spacing:-.01em">Accounts</div>
+      <div style="font-size:13px;color:var(--t2);margin-top:6px"><span id="accounts-count-label">0 orgs</span> · Everything you have on every customer, prime, sub, and agency</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input id="accounts-search" type="text" placeholder="Filter by name…" oninput="window._renderAccountsView&&window._renderAccountsView()" style="padding:9px 14px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif;width:200px"/>
+      <select id="accounts-sort" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:9px 14px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="pipeline">Sort: Pipeline $</option>
+        <option value="recent">Sort: Most recent touch</option>
+        <option value="stale">Sort: Most decayed</option>
+        <option value="opps">Sort: Open opp count</option>
+        <option value="people">Sort: People count</option>
+        <option value="name">Sort: Name (A→Z)</option>
+      </select>
+      <select id="accounts-type-filter" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:9px 14px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:12px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="">All Types</option>
+        <option value="government">Government / Agencies</option>
+        <option value="company">Companies (Primes/Subs/Partners)</option>
+      </select>
+    </div>
+  </div>
+  <div id="accounts-main-area" style="flex:1;overflow-y:auto;padding:20px 24px 40px">
+    <div id="accounts-grid" style="max-width:1280px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px"></div>
+    <div id="accounts-empty" style="display:none;text-align:center;padding:48px 0;color:var(--t3);font-size:13px;font-family:IBM Plex Sans,sans-serif"></div>
+  </div>
+</div>
+
+<!-- Account detail drawer — slides in from right when an org card is clicked -->
+<div id="account-detail-overlay" onclick="if(event.target===this)window._closeAccountDetail&&window._closeAccountDetail()" style="display:none;position:fixed;inset:0;background:rgba(7,13,24,.72);z-index:200;backdrop-filter:blur(4px)">
+  <div id="account-detail-panel" style="position:absolute;right:0;top:0;bottom:0;width:min(720px,92vw);background:var(--bg);border-left:1px solid var(--b1);box-shadow:-12px 0 40px rgba(0,0,0,.5);overflow-y:auto;display:flex;flex-direction:column"></div>
 </div>
 
 <!-- SBIR PIPELINE TRACKER VIEW -->
@@ -15482,6 +15522,7 @@ function switchView(v){
   if(v==='bdperf')renderBdPerfView();
   if(v==='sbir')renderSbirView();
   if(v==='capture')renderCaptureView();
+  if(v==='accounts'&&window._renderAccountsView)window._renderAccountsView();
   if(window._onViewSwitch)window._onViewSwitch(v);
   if(v==='rfi')renderRfiView();
   if(v==='comp')renderCompView();
@@ -35297,6 +35338,337 @@ function renderCaptureView() {
     '</div>';
   }).join('');
 }
+
+// ═══════════════════════════════════════════════════════════════
+// P12.8 — ACCOUNTS / ORG ROLLUP VIEW
+// Defense BD is org-centric (DARPA, Lockheed, AFRL...). This collapses
+// the "everything Lockheed" query from 4 surfaces down to one click.
+// Pulls from CorsairIndex (peopleByOrg, oppsById, meetingsByAttendee).
+// ═══════════════════════════════════════════════════════════════
+
+window._accountsState = window._accountsState || { selectedOrgId: null };
+
+function _accEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function _accFmt$(v){
+  v = Number(v) || 0;
+  if (v >= 1e9) return '$' + (v/1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M';
+  if (v >= 1e3) return '$' + (v/1e3).toFixed(0) + 'K';
+  return v ? '$' + v : '—';
+}
+function _accDaysAgo(ts){
+  if (!ts) return null;
+  var d = Math.floor((Date.now() - Number(ts)) / 86400000);
+  return d >= 0 ? d : 0;
+}
+function _accDecayChip(days){
+  if (days == null) return '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.1em">NO TOUCH</span>';
+  if (days <= 7)  return '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--green);letter-spacing:.1em">FRESH · ' + days + 'd</span>';
+  if (days <= 30) return '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:#facc15;letter-spacing:.1em">WARM · ' + days + 'd</span>';
+  if (days <= 90) return '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:#fb923c;letter-spacing:.1em">COOLING · ' + days + 'd</span>';
+  return '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--red);letter-spacing:.1em">DECAYED · ' + days + 'd</span>';
+}
+
+function _accOrgTypeChip(t){
+  if (t === 'government') return '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:#5fb3b8;background:rgba(95,179,184,.12);border:1px solid rgba(95,179,184,.35);padding:2px 7px;border-radius:2px;letter-spacing:.1em">GOV</span>';
+  return '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--gold);background:rgba(212,130,58,.1);border:1px solid rgba(212,130,58,.35);padding:2px 7px;border-radius:2px;letter-spacing:.1em">COMPANY</span>';
+}
+
+// Build the per-org rollup record. O(1)-ish per org thanks to CorsairIndex.
+function _accBuildRollup(org){
+  var idx = window.CorsairIndex || {};
+  var orgKey = String(org.name||'').toLowerCase().trim();
+  var people = (idx.peopleByOrg && idx.peopleByOrg.get && idx.peopleByOrg.get(orgKey)) || [];
+
+  var allOpps = window.opportunities || [];
+  var openOpps = [];
+  var closedWins = 0;
+  var totalPipeline = 0;
+  var weightedPipeline = 0;
+  for (var i = 0; i < allOpps.length; i++){
+    var o = allOpps[i];
+    if (!o) continue;
+    var aMatch = String(o.agency || o.customer || '').toLowerCase().trim();
+    if (!aMatch || aMatch !== orgKey) continue;
+    var stg = String(o.stage || '').toLowerCase();
+    if (stg === 'won' || stg === 'lost' || stg === 'no-bid' || stg === 'no_bid') {
+      if (stg === 'won') closedWins++;
+      continue;
+    }
+    openOpps.push(o);
+    var v = Number(o.value || o.contractValue || 0);
+    totalPipeline += v;
+    var p = Number(o.winProb || o.pWin || 0);
+    if (p > 1) p = p/100;
+    weightedPipeline += v * p;
+  }
+
+  // Last touch: max meeting ts across people linked to this org
+  var lastTouch = 0;
+  for (var pi = 0; pi < people.length; pi++){
+    var mtgs = (idx.meetingsByAttendee && idx.meetingsByAttendee.get && idx.meetingsByAttendee.get(String(people[pi].id))) || [];
+    for (var mi = 0; mi < mtgs.length; mi++){
+      var ts = Number(mtgs[mi].ts || 0);
+      if (ts > lastTouch) lastTouch = ts;
+    }
+  }
+
+  return {
+    org: org,
+    people: people,
+    peopleCount: people.length,
+    openOpps: openOpps,
+    openOppCount: openOpps.length,
+    pipeline: totalPipeline,
+    weighted: weightedPipeline,
+    closedWins: closedWins,
+    lastTouch: lastTouch,
+    daysSinceTouch: _accDaysAgo(lastTouch)
+  };
+}
+
+window._renderAccountsView = function(){
+  var grid = document.getElementById('accounts-grid');
+  var empty = document.getElementById('accounts-empty');
+  var label = document.getElementById('accounts-count-label');
+  if (!grid) return;
+  var idx = window.CorsairIndex || {};
+  if (!idx.byType || !idx.byType.size){
+    grid.innerHTML = '';
+    if (empty){ empty.style.display = 'block'; empty.textContent = 'Workspace not loaded yet. Switch to another view and back.'; }
+    if (label) label.textContent = '0 orgs';
+    return;
+  }
+  var typeFilter = (document.getElementById('accounts-type-filter')||{}).value || '';
+  var searchQ = ((document.getElementById('accounts-search')||{}).value || '').toLowerCase().trim();
+  var sortBy = (document.getElementById('accounts-sort')||{}).value || 'pipeline';
+
+  var orgs = [];
+  if (!typeFilter || typeFilter === 'company')   orgs = orgs.concat((idx.byType.get('company') || []));
+  if (!typeFilter || typeFilter === 'government') orgs = orgs.concat((idx.byType.get('government') || []));
+
+  // Build rollups
+  var rollups = [];
+  for (var i = 0; i < orgs.length; i++){
+    var org = orgs[i];
+    if (!org || !org.name) continue;
+    if (searchQ && org.name.toLowerCase().indexOf(searchQ) === -1) continue;
+    rollups.push(_accBuildRollup(org));
+  }
+
+  // Sort
+  rollups.sort(function(a,b){
+    if (sortBy === 'pipeline') return b.pipeline - a.pipeline;
+    if (sortBy === 'opps')     return b.openOppCount - a.openOppCount;
+    if (sortBy === 'people')   return b.peopleCount - a.peopleCount;
+    if (sortBy === 'recent')   return (b.lastTouch||0) - (a.lastTouch||0);
+    if (sortBy === 'stale')    return (b.daysSinceTouch||9999) - (a.daysSinceTouch||9999);
+    if (sortBy === 'name')     return String(a.org.name).localeCompare(String(b.org.name));
+    return 0;
+  });
+
+  if (label) label.textContent = rollups.length + ' org' + (rollups.length !== 1 ? 's' : '');
+  if (empty) empty.style.display = rollups.length ? 'none' : 'block';
+  if (!rollups.length && empty) empty.textContent = searchQ ? 'No orgs match "' + _accEsc(searchQ) + '".' : 'No orgs in this workspace yet.';
+
+  grid.innerHTML = rollups.map(function(r){
+    var oppLine = r.openOppCount
+      ? '<span style="color:var(--gold);font-weight:700">' + r.openOppCount + ' open</span> · ' + _accFmt$(r.pipeline) + ' pipe · ' + _accFmt$(r.weighted) + ' weighted'
+      : '<span style="color:var(--t3)">No open pursuits</span>';
+    var nextOpp = r.openOpps[0];
+    var nextAction = (nextOpp && (nextOpp.nextAction || nextOpp.next_action)) ? '<div style="font-size:11px;color:var(--t2);margin-top:6px;line-height:1.4"><span style="color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.1em">NEXT · </span>' + _accEsc(String((nextOpp.nextAction || nextOpp.next_action)).slice(0,80)) + '</div>' : '';
+    return '<div class="account-card" onclick="window._openAccountDetail(\'' + _accEsc(r.org.id) + '\')" style="background:linear-gradient(180deg,var(--s1),var(--s2));border:1px solid var(--b1);border-radius:3px;padding:16px 18px;cursor:pointer;transition:border-color 140ms ease, box-shadow 140ms ease" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.boxShadow=\'0 0 18px rgba(212,130,58,.18)\'" onmouseout="this.style.borderColor=\'var(--b1)\';this.style.boxShadow=\'none\'">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+            _accOrgTypeChip(r.org.type) +
+            (r.closedWins ? '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--green);letter-spacing:.1em">' + r.closedWins + ' WON</span>' : '') +
+          '</div>' +
+          '<div style="font-family:Antonio,sans-serif;font-size:18px;font-weight:700;color:var(--text);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _accEsc(r.org.name) + '</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0">' + _accDecayChip(r.daysSinceTouch) + '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:11px;color:var(--t2);margin-top:10px">' +
+        '<div><span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.1em">PEOPLE</span><div style="color:var(--text);font-weight:600;font-size:13px;margin-top:2px">' + r.peopleCount + '</div></div>' +
+        '<div><span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.1em">PIPELINE</span><div style="color:var(--text);font-weight:600;font-size:13px;margin-top:2px">' + _accFmt$(r.pipeline) + '</div></div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--t2);margin-top:10px;padding-top:10px;border-top:1px solid var(--b1);line-height:1.5">' + oppLine + '</div>' +
+      nextAction +
+    '</div>';
+  }).join('');
+};
+
+window._closeAccountDetail = function(){
+  var ov = document.getElementById('account-detail-overlay');
+  if (ov) ov.style.display = 'none';
+  window._accountsState.selectedOrgId = null;
+};
+
+window._openAccountDetail = function(orgId){
+  var idx = window.CorsairIndex || {};
+  var org = (idx.byId && idx.byId.get && idx.byId.get(String(orgId))) || null;
+  if (!org){
+    // Fallback scan
+    var allNodes = window.nodes || [];
+    for (var i = 0; i < allNodes.length; i++){
+      if (String(allNodes[i].id) === String(orgId)){ org = allNodes[i]; break; }
+    }
+  }
+  if (!org){ console.warn('[Accounts] org not found:', orgId); return; }
+  window._accountsState.selectedOrgId = String(orgId);
+
+  var r = _accBuildRollup(org);
+  var ov = document.getElementById('account-detail-overlay');
+  var panel = document.getElementById('account-detail-panel');
+  if (!ov || !panel) return;
+
+  // Commitments touching anyone at this org
+  var allCommits = window.commitments || [];
+  var orgPeopleIds = {};
+  for (var ppi = 0; ppi < r.people.length; ppi++) orgPeopleIds[String(r.people[ppi].id)] = 1;
+  var openCommits = [];
+  for (var ci = 0; ci < allCommits.length; ci++){
+    var c = allCommits[ci];
+    if (!c) continue;
+    if (c.status && c.status !== 'open' && c.status !== 'pending') continue;
+    var who = String(c.who || c.assigneeId || c.personId || '');
+    if (orgPeopleIds[who] || (c.who && r.people.some(function(p){return p.name && c.who.toLowerCase && c.who.toLowerCase().indexOf(String(p.name).toLowerCase().split(' ')[0]) >= 0;}))){
+      openCommits.push(c);
+    }
+  }
+  openCommits.sort(function(a,b){ return (Number(a.dueAt||a.dueDate||0)) - (Number(b.dueAt||b.dueDate||0)); });
+
+  // Recent meetings — collected from all attendees, deduped
+  var mtgSet = {};
+  var allMeetings = [];
+  for (var pi2 = 0; pi2 < r.people.length; pi2++){
+    var pmtgs = (idx.meetingsByAttendee && idx.meetingsByAttendee.get && idx.meetingsByAttendee.get(String(r.people[pi2].id))) || [];
+    for (var mi2 = 0; mi2 < pmtgs.length; mi2++){
+      var mtg = pmtgs[mi2];
+      var mid = String(mtg.id || mi2 + '-' + pi2);
+      if (mtgSet[mid]) continue;
+      mtgSet[mid] = 1;
+      allMeetings.push(mtg);
+    }
+  }
+  allMeetings.sort(function(a,b){ return Number(b.ts||0) - Number(a.ts||0); });
+  var recentMeetings = allMeetings.slice(0, 8);
+
+  // Header metric tiles
+  var metricTile = function(label, val, color){
+    color = color || 'var(--text)';
+    return '<div style="background:var(--s2);border:1px solid var(--b1);border-radius:3px;padding:10px 12px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.12em">' + label + '</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:20px;font-weight:700;color:' + color + ';margin-top:4px;line-height:1">' + val + '</div>' +
+    '</div>';
+  };
+
+  var peopleRows = r.people.length
+    ? r.people.slice().sort(function(a,b){
+        // Sort by last touch desc, then by name
+        var amt = (idx.meetingsByAttendee && idx.meetingsByAttendee.get && idx.meetingsByAttendee.get(String(a.id))) || [];
+        var bmt = (idx.meetingsByAttendee && idx.meetingsByAttendee.get && idx.meetingsByAttendee.get(String(b.id))) || [];
+        var aLast = amt.reduce(function(m,x){return Math.max(m, Number(x.ts||0));},0);
+        var bLast = bmt.reduce(function(m,x){return Math.max(m, Number(x.ts||0));},0);
+        if (bLast !== aLast) return bLast - aLast;
+        return String(a.name||'').localeCompare(String(b.name||''));
+      }).map(function(p){
+        var mts = (idx.meetingsByAttendee && idx.meetingsByAttendee.get && idx.meetingsByAttendee.get(String(p.id))) || [];
+        var lastTs = mts.reduce(function(m,x){return Math.max(m, Number(x.ts||0));},0);
+        var daysAgo = _accDaysAgo(lastTs);
+        var role = p.role || p.title || p.acqRole || '';
+        var tier = p.tier ? '<span style="font-family:IBM Plex Mono,monospace;font-size:8px;color:var(--gold);border:1px solid rgba(212,130,58,.35);padding:1px 5px;border-radius:2px;letter-spacing:.1em;margin-left:6px">T' + _accEsc(p.tier) + '</span>' : '';
+        return '<div onclick="window.openNetPanel&&window.openNetPanel(' + JSON.stringify(p) + ');window._closeAccountDetail()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);cursor:pointer;margin-bottom:6px" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;font-weight:600;color:var(--text)">' + _accEsc(p.name) + tier + '</div>' +
+            (role ? '<div style="font-size:11px;color:var(--t2);margin-top:2px">' + _accEsc(role) + '</div>' : '') +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0">' + (lastTs ? _accDecayChip(daysAgo) : '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.1em">NEVER MET</span>') + '</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--t3);font-size:12px;padding:14px 0;font-style:italic">No contacts at this org yet.</div>';
+
+  var oppRows = r.openOpps.length
+    ? r.openOpps.slice().sort(function(a,b){ return (Number(b.value||0)) - (Number(a.value||0)); }).map(function(o){
+        var stage = o.stage || 'unknown';
+        var val = _accFmt$(Number(o.value||0));
+        var pWin = Number(o.winProb||o.pWin||0);
+        if (pWin > 1) pWin = pWin/100;
+        var pWinTxt = pWin ? Math.round(pWin*100) + '%' : '—';
+        var nxt = o.nextAction || o.next_action || '';
+        var nxtDate = o.nextActionDate || o.next_action_date || '';
+        return '<div onclick="window.selectOpp&&window.selectOpp(\'' + _accEsc(o.id) + '\');window._closeAccountDetail()" style="border:1px solid var(--b1);border-radius:3px;background:var(--s1);padding:11px 13px;cursor:pointer;margin-bottom:6px" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px">' +
+            '<div style="font-size:13px;font-weight:600;color:var(--text);flex:1;min-width:0">' + _accEsc(o.name) + '</div>' +
+            '<div style="text-align:right;flex-shrink:0"><span style="font-family:Antonio,sans-serif;font-size:16px;font-weight:700;color:var(--gold)">' + val + '</span></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:10px;align-items:center;font-size:11px;color:var(--t2)">' +
+            '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:#5fb3b8;letter-spacing:.1em;text-transform:uppercase">' + _accEsc(stage) + '</span>' +
+            '<span style="color:var(--t3)">·</span>' +
+            '<span>p(win) ' + pWinTxt + '</span>' +
+          '</div>' +
+          (nxt ? '<div style="font-size:11px;color:var(--t2);margin-top:6px;line-height:1.4"><span style="color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.1em">NEXT · </span>' + _accEsc(String(nxt).slice(0,100)) + (nxtDate ? ' <span style="color:var(--t3)">(' + _accEsc(nxtDate) + ')</span>' : '') + '</div>' : '') +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--t3);font-size:12px;padding:14px 0;font-style:italic">No open pursuits.</div>';
+
+  var mtgRows = recentMeetings.length
+    ? recentMeetings.map(function(m){
+        var title = (m.meta && m.meta.title) || m.title || 'Meeting';
+        var dt = m.ts ? new Date(Number(m.ts)).toLocaleDateString() : '';
+        return '<div style="border:1px solid var(--b1);border-radius:3px;background:var(--s1);padding:9px 12px;margin-bottom:6px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
+            '<div style="font-size:12px;font-weight:600;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _accEsc(title) + '</div>' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--t3);letter-spacing:.1em;flex-shrink:0">' + _accEsc(dt) + '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--t3);font-size:12px;padding:14px 0;font-style:italic">No recent meetings with anyone at this org.</div>';
+
+  var commitRows = openCommits.length
+    ? openCommits.slice(0,8).map(function(c){
+        var due = c.dueAt || c.dueDate;
+        var dueTxt = due ? new Date(Number(due)).toLocaleDateString() : '—';
+        var overdue = due && Number(due) < Date.now();
+        return '<div style="border:1px solid ' + (overdue ? 'rgba(239,68,68,.4)' : 'var(--b1)') + ';border-radius:3px;background:var(--s1);padding:9px 12px;margin-bottom:6px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+            '<div style="font-size:12px;color:var(--text);flex:1;min-width:0">' + _accEsc(c.task||c.text||'(no description)') + '</div>' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:' + (overdue?'var(--red)':'var(--t3)') + ';letter-spacing:.1em;flex-shrink:0">' + (overdue?'OVERDUE · ':'') + _accEsc(dueTxt) + '</div>' +
+          '</div>' +
+          (c.who ? '<div style="font-size:11px;color:var(--t2);margin-top:4px">' + _accEsc(c.who) + '</div>' : '') +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--t3);font-size:12px;padding:14px 0;font-style:italic">No open commitments touching this org.</div>';
+
+  panel.innerHTML =
+    '<div style="padding:22px 26px 18px;border-bottom:1px solid var(--b1);background:linear-gradient(180deg,var(--s1),var(--bg));flex-shrink:0">' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' + _accOrgTypeChip(r.org.type) + _accDecayChip(r.daysSinceTouch) + '</div>' +
+          '<div style="font-family:Antonio,sans-serif;font-size:28px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-.01em">' + _accEsc(r.org.name) + '</div>' +
+        '</div>' +
+        '<button onclick="window._closeAccountDetail()" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">' +
+        metricTile('PIPELINE', _accFmt$(r.pipeline), 'var(--gold)') +
+        metricTile('WEIGHTED', _accFmt$(r.weighted)) +
+        metricTile('OPEN OPPS', String(r.openOppCount)) +
+        metricTile('PEOPLE', String(r.peopleCount)) +
+      '</div>' +
+    '</div>' +
+    '<div style="flex:1;overflow-y:auto;padding:20px 26px 32px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Open Pursuits</div>' +
+      oppRows +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">People (' + r.peopleCount + ')</div>' +
+      peopleRows +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">Recent Meetings</div>' +
+      mtgRows +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">Open Commitments</div>' +
+      commitRows +
+    '</div>';
+
+  ov.style.display = 'block';
+};
 
 window._approveCapture = async function(itemId) {
   var item = pendingCapture.find(function(p){return p.id===itemId;});
