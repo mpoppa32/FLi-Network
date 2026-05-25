@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.17</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.18</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9414,6 +9414,8 @@ input[type="url"], textarea, select {
     </div>
     <div class="net-panel" id="net-panel">
       <div class="panel-hdr">
+        <!-- P13.18 — Breadcrumbs (populated by openNetPanel) -->
+        <div id="np-breadcrumbs"></div>
         <!-- CRM P2.16 — presence chip (other teammates viewing this contact) -->
         <div id="presence-chip" style="display:none;align-items:center;gap:6px;padding:4px 9px;margin-bottom:8px;background:rgba(95,179,184,.08);border:1px solid rgba(95,179,184,.30);border-radius:10px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.08em;color:#5fb3b8;text-transform:uppercase;width:fit-content"></div>
         <!-- Top row: type label + action buttons -->
@@ -18513,6 +18515,8 @@ function renderOppDetail(opp){
   var latestPulse=pulses[pulses.length-1];
 
   var h='';
+  // P13.18 — breadcrumbs from prior drawer hops, if any
+  if (typeof window._navRenderBreadcrumbs === 'function') h += window._navRenderBreadcrumbs();
   // ── Header — operator-grade pursuit dossier title block ──
   var nmEsc=(opp.name||'').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
   var safeNm=opp.name.replace(/'/g,"\\'");
@@ -24407,7 +24411,7 @@ function nodeLeave(){document.getElementById('tooltip').classList.remove('show')
 function switchNetTab(tab,el){currentNetTab=tab;document.querySelectorAll('.panel-tab').forEach(function(t){t.classList.remove('active');});if(el)el.classList.add('active');['profile','dossier','timeline360','network'].forEach(function(t){var tabEl=document.getElementById('nptab-'+t);if(tabEl)tabEl.style.display=t===tab?'block':'none';});var exportBtn=document.getElementById('panel-export-btn');if(exportBtn)exportBtn.style.display=(tab==='dossier'||tab==='timeline360')?'block':'none';if(tab==='dossier'&&selectedNode)renderDossier(selectedNode);if(tab==='timeline360'&&selectedNode)renderTimeline360(selectedNode);if(tab==='network'&&selectedNode)renderNetConn(selectedNode);}
 window.switchNetTab=switchNetTab;
 
-function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-panel');if(_np){_np.style.visibility='';_np.style.pointerEvents='';}var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>'+(d.govType?'&nbsp;&nbsp;'+_govTypeBadge(d.govType):'');var briefBtn=document.getElementById('panel-brief-btn');if(briefBtn)briefBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var tlBtn=document.getElementById('panel-timeline-btn');if(tlBtn)tlBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var prepBtn=document.getElementById('panel-prep-btn');if(prepBtn)prepBtn.style.display=(d.type==='person'||d.type==='government')?'flex':'none';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';
+function openNetPanel(d){selectedNode=d;var _np=document.getElementById('net-panel');if(_np){_np.style.visibility='';_np.style.pointerEvents='';}var _bc=document.getElementById('np-breadcrumbs');if(_bc)_bc.innerHTML=(typeof window._navRenderBreadcrumbs==='function')?window._navRenderBreadcrumbs():'';var c=nc(d);document.getElementById('panel-type-lbl').innerHTML='<span style="color:'+c+'">'+d.type.toUpperCase()+' -- T'+(d.priority||2)+'</span>'+(d.govType?'&nbsp;&nbsp;'+_govTypeBadge(d.govType):'');var briefBtn=document.getElementById('panel-brief-btn');if(briefBtn)briefBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var tlBtn=document.getElementById('panel-timeline-btn');if(tlBtn)tlBtn.style.display=(d.type==='person'||d.type==='government')?'inline-flex':'none';var prepBtn=document.getElementById('panel-prep-btn');if(prepBtn)prepBtn.style.display=(d.type==='person'||d.type==='government')?'flex':'none';document.getElementById('panel-name').value=d.name||'';document.getElementById('panel-role').value=d.role||'';document.getElementById('panel-org').value=d.org||'';document.getElementById('panel-notes').value=d.notes||'';
   var gtFld=document.getElementById('panel-govtype-fld');
   var gtSel=document.getElementById('panel-govtype');
   var showGovType=(d.type==='person'||d.type==='government');
@@ -38038,6 +38042,70 @@ window._drwPeopleRenderBulkBar = function(){
     '<button onclick="window._drwPeopleBulkDelete()" style="' + btnStyle + ';color:#ef4444;border-color:rgba(239,68,68,.45)">✕ Delete</button>';
 };
 
+// ═══════════════════════════════════════════════════════════════
+// P13.18 — Breadcrumbs in drawers (meeting → opp → account walk-up)
+// Session-scoped nav stack of {type, id, name}. Every entity-open
+// pushes; revisiting an entry in the stack truncates back to it.
+// Rendered at the top of: Inspector (NetPanel), Account drawer,
+// and Opp detail. Stack is in-memory only — never persisted.
+// _openRecent (P13.12) is reused as the per-type routing layer.
+// ═══════════════════════════════════════════════════════════════
+window._corsairNavStack = window._corsairNavStack || [];
+window._corsairNavMax = 6;
+
+window._navPush = function(type, id, name){
+  if (!type || !id || !name) return;
+  var stack = window._corsairNavStack;
+  if (stack.length && stack[stack.length-1].type === type && String(stack[stack.length-1].id) === String(id)) return;
+  for (var i = stack.length - 1; i >= 0; i--){
+    if (stack[i].type === type && String(stack[i].id) === String(id)){
+      stack.length = i;
+      break;
+    }
+  }
+  stack.push({ type: type, id: String(id), name: String(name) });
+  if (stack.length > window._corsairNavMax) stack.splice(0, stack.length - window._corsairNavMax);
+};
+
+window._navBack = function(toIndex){
+  var stack = window._corsairNavStack;
+  if (toIndex == null || toIndex < 0 || toIndex >= stack.length) return;
+  var target = stack[toIndex];
+  stack.length = toIndex;
+  if (typeof window._closeAccountDetail === 'function') try { window._closeAccountDetail(); } catch(e){}
+  if (typeof window.closeNetPanel === 'function') try { window.closeNetPanel(); } catch(e){}
+  if (typeof window._openRecent === 'function') window._openRecent(target.type, target.id);
+};
+
+window._navClear = function(){ window._corsairNavStack = []; };
+
+window._navRenderBreadcrumbs = function(){
+  var stack = window._corsairNavStack || [];
+  if (stack.length < 2) return '';
+  var prior = stack.slice(0, -1);
+  var shown = prior.slice(-3);
+  var startIdx = prior.length - shown.length;
+  var typeColor = { node: '#5fb3b8', person: '#5fb3b8', opp: 'var(--gold)', account: 'var(--gold)', org: 'var(--gold)' };
+  var typeIcon  = { node: '&#9673;', person: '&#9673;', opp: '&#9638;', account: '&#9670;', org: '&#9670;' };
+  var esc = function(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); };
+  var html = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:10px;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.06em">';
+  html += '<span style="color:var(--t3);margin-right:4px">&#8617;</span>';
+  shown.forEach(function(entry, i){
+    var globalIdx = startIdx + i;
+    var col = typeColor[entry.type] || 'var(--t2)';
+    var ic = typeIcon[entry.type] || '&middot;';
+    var escName = esc(entry.name);
+    var truncated = escName.length > 22 ? escName.slice(0, 22) + '&hellip;' : escName;
+    html += '<button onclick="event.stopPropagation();window._navBack(' + globalIdx + ')" title="Back to ' + escName + '" style="display:flex;align-items:center;gap:5px;padding:3px 8px;background:transparent;border:1px solid rgba(26,34,54,.6);border-radius:2px;color:var(--t2);cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.04em" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.color=\'var(--gold)\'" onmouseout="this.style.borderColor=\'rgba(26,34,54,.6)\';this.style.color=\'var(--t2)\'">';
+    html += '<span style="color:' + col + ';font-size:9px">' + ic + '</span>' + truncated;
+    html += '</button>';
+    if (i < shown.length - 1) html += '<span style="color:var(--t3)">&rsaquo;</span>';
+  });
+  html += '<span style="color:var(--t3);margin-left:2px">&rsaquo;</span>';
+  html += '</div>';
+  return html;
+};
+
 // ─── P12.10 Account Snapshot — structured record per org ───
 // Status palette (operator-facing relationship lifecycle)
 var _ACC_STATUS_OPTS = [
@@ -38328,8 +38396,11 @@ window._openAccountDetail = function(orgId){
       }).join('')
     : '<div style="color:var(--t3);font-size:12px;padding:14px 0;font-style:italic">No open commitments touching this org.</div>';
 
+  // P13.18 — breadcrumbs from prior drawer hops, if any
+  var bc = (typeof window._navRenderBreadcrumbs === 'function') ? window._navRenderBreadcrumbs() : '';
   panel.innerHTML =
     '<div style="padding:22px 26px 18px;border-bottom:1px solid var(--b1);background:linear-gradient(180deg,var(--s1),var(--bg));flex-shrink:0">' +
+      bc +
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px">' +
         '<div style="flex:1;min-width:0">' +
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' + _accOrgTypeChip(r.org.type) + _accDecayChip(r.daysSinceTouch) + '</div>' +
@@ -45643,7 +45714,8 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
     if (!wrap.contains(ev.target)) window._closeRecentsDropdown();
   });
 
-  // Wrap entity-open paths so opens get recorded automatically
+  // Wrap entity-open paths so opens get recorded automatically.
+  // P13.18 — also push onto the breadcrumb nav stack.
   (function(){
     var origOpenNet = window.openNetPanel;
     if (typeof origOpenNet === 'function'){
@@ -45657,6 +45729,7 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
           if (n && n.id && n.name){
             var extra = n.type === 'company' ? 'Company' : n.type === 'government' ? 'Government' : (n.role || '');
             window._recordRecent('node', n.id, n.name, extra);
+            if (typeof window._navPush === 'function') window._navPush('node', n.id, n.name);
           }
         } catch(e){}
         return origOpenNet.apply(this, arguments);
@@ -45667,7 +45740,10 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
       window.selectOpp = function(id){
         try {
           var o = (window.opportunities||[]).find(function(x){ return String(x.id) === String(id); });
-          if (o && o.name) window._recordRecent('opp', o.id, o.name, (o.agency || '') + (o.stage ? ' · ' + o.stage : ''));
+          if (o && o.name){
+            window._recordRecent('opp', o.id, o.name, (o.agency || '') + (o.stage ? ' · ' + o.stage : ''));
+            if (typeof window._navPush === 'function') window._navPush('opp', o.id, o.name);
+          }
         } catch(e){}
         return origSelect.apply(this, arguments);
       };
@@ -45677,7 +45753,10 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
       window._openAccountDetail = function(orgId){
         try {
           var org = (window.CorsairIndex && window.CorsairIndex.byId && window.CorsairIndex.byId.get && window.CorsairIndex.byId.get(String(orgId))) || (window.nodes||[]).find(function(x){ return String(x.id) === String(orgId); });
-          if (org && org.name) window._recordRecent('account', org.id, org.name, org.type === 'government' ? 'Government' : 'Company');
+          if (org && org.name){
+            window._recordRecent('account', org.id, org.name, org.type === 'government' ? 'Government' : 'Company');
+            if (typeof window._navPush === 'function') window._navPush('account', org.id, org.name);
+          }
         } catch(e){}
         return origAccDetail.apply(this, arguments);
       };

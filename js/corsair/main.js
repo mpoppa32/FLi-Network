@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.17';
-  window.Corsair.buildBlurb  = 'Bulk-on-people inside Accounts drawer — completes the bulk-actions trio (Accounts P13.8 + Opps P13.9 + people-in-drawer P13.17); per-row checkbox + Select-all-visible; sticky bottom bar shows tier setter (T1/T2/T3/clear) + Mark-as-POC (only when 1 selected; reuses _accSetPOC clears-from-others logic) + Delete; selection cleared on drawer close + org switch to prevent ghost-edits';
+  window.Corsair.buildTag    = 'P13.18';
+  window.Corsair.buildBlurb  = 'Breadcrumbs in drawers — session-scoped nav stack of {type,id,name}; pushed automatically on openNetPanel/selectOpp/_openAccountDetail (alongside P13.12 Recents wraps); rendered at top of Inspector + Account drawer + Opp detail showing last 3 prior entries as clickable chips; clicking a chip closes current drawer + truncates stack + re-routes via _openRecent (P13.12 routing reused); revisiting an entry truncates back-traversal rather than duplicating';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
