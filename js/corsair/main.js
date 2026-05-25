@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.8a';
-  window.Corsair.buildBlurb  = 'Accounts — org rollup view (hotfix: registered in _CORSAIR_VIEWS so the view actually displays)';
+  window.Corsair.buildTag    = 'P12.8b';
+  window.Corsair.buildBlurb  = 'Accounts cards — high-contrast hotfix (gold top border + lighter card bg so they pop against the dark page bg)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
