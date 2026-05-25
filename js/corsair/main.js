@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.15';
-  window.Corsair.buildBlurb  = 'Form readability — every modal label was hardcoded 9px !important; now var(--text-xs)=11px. Modal titles 18px→22px Antonio. .btn-sm 11px→12px. Textareas migrated to vars';
+  window.Corsair.buildTag    = 'P12.16';
+  window.Corsair.buildBlurb  = 'Account cards show structured record state — Owner / Status pill / POC name + Health stripe visible at a glance; filters for Owner / Status / Health added; new sorts (health worst-first, status workflow, owner A→Z). Account record arc commit 2/4';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

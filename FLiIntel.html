@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.15</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.16</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9701,11 +9701,34 @@ input[type="url"], textarea, select {
       <input id="accounts-search" type="text" placeholder="Filter by name…" oninput="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;width:240px"/>
       <select id="accounts-sort" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
         <option value="pipeline">Sort: Pipeline $</option>
+        <option value="health">Sort: Health (worst first)</option>
         <option value="recent">Sort: Most recent touch</option>
         <option value="stale">Sort: Most decayed</option>
+        <option value="status">Sort: Status (workflow)</option>
+        <option value="owner">Sort: Owner (A→Z)</option>
         <option value="opps">Sort: Open opp count</option>
         <option value="people">Sort: People count</option>
         <option value="name">Sort: Name (A→Z)</option>
+      </select>
+      <select id="accounts-status-filter" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="">All Statuses</option>
+        <option value="prospect">Prospect</option>
+        <option value="qualified">Qualified</option>
+        <option value="active">Active Pursuit</option>
+        <option value="customer">Customer</option>
+        <option value="dormant">Dormant</option>
+        <option value="_unset">— No status set</option>
+      </select>
+      <select id="accounts-owner-filter" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="">All Owners</option>
+        <option value="_me">Mine</option>
+        <option value="_unowned">Unowned</option>
+      </select>
+      <select id="accounts-health-filter" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="">All Health</option>
+        <option value="green">Green · complete</option>
+        <option value="yellow">Yellow · partial</option>
+        <option value="red">Red · incomplete</option>
       </select>
       <select id="accounts-type-filter" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
         <option value="">All Types</option>
@@ -35567,6 +35590,32 @@ function _accBuildRollup(org){
     }
   }
 
+  // P12.16: surface the structured-record state on the card itself
+  // Owner: resolve account.accountOwner (uid) -> workspace member
+  var owner = null;
+  if (org.accountOwner && window.workspaceMembers && Array.isArray(window.workspaceMembers)){
+    for (var oi = 0; oi < window.workspaceMembers.length; oi++){
+      if (String(window.workspaceMembers[oi].uid) === String(org.accountOwner)){
+        owner = window.workspaceMembers[oi];
+        break;
+      }
+    }
+  }
+  // POC: the person at this org flagged isPOC
+  var poc = null;
+  for (var ppi = 0; ppi < people.length; ppi++){ if (people[ppi] && people[ppi].isPOC){ poc = people[ppi]; break; } }
+
+  // Health: red (very incomplete) / yellow (partial OR cooling comms) / green (record complete + active comms)
+  var fieldsFilled = 0;
+  if (org.accountOwner)  fieldsFilled++;
+  if (org.accountStatus) fieldsFilled++;
+  if (poc)               fieldsFilled++;
+  var commsCold = (_accDaysAgo(lastTouch) != null && _accDaysAgo(lastTouch) > 30);
+  var health;
+  if (fieldsFilled === 0)                            health = 'red';
+  else if (fieldsFilled < 3 || commsCold)            health = 'yellow';
+  else                                               health = 'green';
+
   return {
     org: org,
     people: people,
@@ -35577,7 +35626,12 @@ function _accBuildRollup(org){
     weighted: weightedPipeline,
     closedWins: closedWins,
     lastTouch: lastTouch,
-    daysSinceTouch: _accDaysAgo(lastTouch)
+    daysSinceTouch: _accDaysAgo(lastTouch),
+    owner: owner,
+    poc: poc,
+    statusMeta: _accStatusMeta(org.accountStatus),
+    health: health,
+    fieldsFilled: fieldsFilled
   };
 }
 
@@ -35593,21 +35647,63 @@ window._renderAccountsView = function(){
     if (label) label.textContent = '0 orgs';
     return;
   }
-  var typeFilter = (document.getElementById('accounts-type-filter')||{}).value || '';
+  var typeFilter   = (document.getElementById('accounts-type-filter')||{}).value || '';
+  var statusFilter = (document.getElementById('accounts-status-filter')||{}).value || '';
+  var ownerFilter  = (document.getElementById('accounts-owner-filter')||{}).value || '';
+  var healthFilter = (document.getElementById('accounts-health-filter')||{}).value || '';
   var searchQ = ((document.getElementById('accounts-search')||{}).value || '').toLowerCase().trim();
   var sortBy = (document.getElementById('accounts-sort')||{}).value || 'pipeline';
+
+  // P12.16: dynamically populate owner-filter options with workspace members
+  var ownerFilterEl = document.getElementById('accounts-owner-filter');
+  if (ownerFilterEl && window.workspaceMembers && Array.isArray(window.workspaceMembers)){
+    var hasMembers = ownerFilterEl.querySelector('option[data-member="1"]');
+    if (!hasMembers && window.workspaceMembers.length){
+      var curVal = ownerFilterEl.value;
+      window.workspaceMembers.forEach(function(m){
+        var opt = document.createElement('option');
+        opt.value = m.uid;
+        opt.textContent = m.name || m.email || m.uid;
+        opt.setAttribute('data-member','1');
+        ownerFilterEl.appendChild(opt);
+      });
+      ownerFilterEl.value = curVal;
+    }
+  }
 
   var orgs = [];
   if (!typeFilter || typeFilter === 'company')   orgs = orgs.concat((idx.byType.get('company') || []));
   if (!typeFilter || typeFilter === 'government') orgs = orgs.concat((idx.byType.get('government') || []));
 
-  // Build rollups
+  var currentUid = (window.currentUser && window.currentUser.uid) ? String(window.currentUser.uid) : '';
+
+  // Status workflow order for status-sort (Active first as most operational)
+  var _statusOrder = { 'active':1, 'qualified':2, 'prospect':3, 'customer':4, 'dormant':5, '':6 };
+
+  // Build rollups (with filtering)
   var rollups = [];
   for (var i = 0; i < orgs.length; i++){
     var org = orgs[i];
     if (!org || !org.name) continue;
     if (searchQ && org.name.toLowerCase().indexOf(searchQ) === -1) continue;
-    rollups.push(_accBuildRollup(org));
+    var r = _accBuildRollup(org);
+    // Status filter
+    if (statusFilter){
+      if (statusFilter === '_unset' && org.accountStatus) continue;
+      if (statusFilter !== '_unset' && String(org.accountStatus||'') !== statusFilter) continue;
+    }
+    // Owner filter
+    if (ownerFilter){
+      if (ownerFilter === '_unowned' && org.accountOwner) continue;
+      if (ownerFilter === '_me'){
+        if (!currentUid || String(org.accountOwner||'') !== currentUid) continue;
+      } else if (ownerFilter !== '_unowned' && ownerFilter !== '_me'){
+        if (String(org.accountOwner||'') !== ownerFilter) continue;
+      }
+    }
+    // Health filter
+    if (healthFilter && r.health !== healthFilter) continue;
+    rollups.push(r);
   }
 
   // Sort
@@ -35618,6 +35714,22 @@ window._renderAccountsView = function(){
     if (sortBy === 'recent')   return (b.lastTouch||0) - (a.lastTouch||0);
     if (sortBy === 'stale')    return (b.daysSinceTouch||9999) - (a.daysSinceTouch||9999);
     if (sortBy === 'name')     return String(a.org.name).localeCompare(String(b.org.name));
+    if (sortBy === 'health'){
+      var hRank = { 'red':1, 'yellow':2, 'green':3 };
+      var diff = (hRank[a.health]||9) - (hRank[b.health]||9);
+      return diff !== 0 ? diff : (b.pipeline - a.pipeline);
+    }
+    if (sortBy === 'status'){
+      var sa = _statusOrder[String(a.org.accountStatus||'')] || 99;
+      var sb = _statusOrder[String(b.org.accountStatus||'')] || 99;
+      var sd = sa - sb;
+      return sd !== 0 ? sd : (b.pipeline - a.pipeline);
+    }
+    if (sortBy === 'owner'){
+      var oa = a.owner ? String(a.owner.name||'').toLowerCase() : 'zzzz';
+      var ob = b.owner ? String(b.owner.name||'').toLowerCase() : 'zzzz';
+      return oa.localeCompare(ob);
+    }
     return 0;
   });
 
@@ -35631,22 +35743,43 @@ window._renderAccountsView = function(){
       : '<span style="color:var(--t3)">No open pursuits</span>';
     var nextOpp = r.openOpps[0];
     var nextAction = (nextOpp && (nextOpp.nextAction || nextOpp.next_action)) ? '<div style="font-size:11px;color:var(--t2);margin-top:6px;line-height:1.4"><span style="color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.1em">NEXT · </span>' + _accEsc(String((nextOpp.nextAction || nextOpp.next_action)).slice(0,80)) + '</div>' : '';
-    return '<div class="account-card" onclick="window._openAccountDetail(\'' + _accEsc(r.org.id) + '\')" style="background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid #2a3550;border-top:2px solid var(--gold);border-radius:3px;padding:20px 22px;cursor:pointer;transition:border-color 140ms ease, box-shadow 140ms ease;box-shadow:0 2px 8px rgba(0,0,0,.4)" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.boxShadow=\'0 0 18px rgba(212,130,58,.32)\'" onmouseout="this.style.borderColor=\'#2a3550\';this.style.borderTopColor=\'var(--gold)\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,.4)\'">' +
-      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">' +
+    // P12.16: health stripe + structured-record state (Owner / Status / POC)
+    var healthBar = r.health === 'green' ? 'background:#22c55e' :
+                    r.health === 'yellow' ? 'background:#facc15' :
+                    'background:#ef4444';
+    var statusPill = r.statusMeta && r.statusMeta.val
+      ? '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:' + r.statusMeta.color + ';background:rgba(212,130,58,.08);border:1px solid ' + r.statusMeta.color + '40;padding:2px 8px;border-radius:2px;letter-spacing:.1em;font-weight:700;text-transform:uppercase">' + _accEsc(r.statusMeta.label) + '</span>'
+      : '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);background:rgba(125,118,105,.08);border:1px dashed var(--b2);padding:2px 8px;border-radius:2px;letter-spacing:.1em;font-weight:700">— SET STATUS —</span>';
+    var ownerLine = r.owner
+      ? '<div style="font-size:var(--text-xs);color:var(--t2);font-family:IBM Plex Mono,monospace;letter-spacing:.08em"><span style="color:var(--t3)">OWNER · </span><span style="color:var(--gold);font-weight:700">' + _accEsc(String(r.owner.name||r.owner.email||'').split(' ')[0]) + '</span></div>'
+      : '<div style="font-size:var(--text-xs);color:#fb923c;font-family:IBM Plex Mono,monospace;letter-spacing:.08em;font-weight:700">UNOWNED</div>';
+    var pocLine = r.poc
+      ? '<div style="font-size:var(--text-xs);color:var(--t2);font-family:IBM Plex Mono,monospace;letter-spacing:.08em;margin-top:3px"><span style="color:var(--t3)">POC · </span><span style="color:var(--text);font-weight:600">' + _accEsc(r.poc.name) + '</span></div>'
+      : '<div style="font-size:var(--text-xs);color:#fb923c;font-family:IBM Plex Mono,monospace;letter-spacing:.08em;margin-top:3px;font-weight:700">NO POC SET</div>';
+
+    return '<div class="account-card" onclick="window._openAccountDetail(\'' + _accEsc(r.org.id) + '\')" style="position:relative;background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid #2a3550;border-top:2px solid var(--gold);border-radius:3px;padding:20px 22px;cursor:pointer;transition:border-color 140ms ease, box-shadow 140ms ease;box-shadow:0 2px 8px rgba(0,0,0,.4);overflow:hidden" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.boxShadow=\'0 0 18px rgba(212,130,58,.32)\'" onmouseout="this.style.borderColor=\'#2a3550\';this.style.borderTopColor=\'var(--gold)\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,.4)\'">' +
+      // Health stripe along the left edge
+      '<div style="position:absolute;left:0;top:0;bottom:0;width:4px;' + healthBar + '"></div>' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">' +
         '<div style="flex:1;min-width:0">' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
             _accOrgTypeChip(r.org.type) +
-            (r.closedWins ? '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--green);letter-spacing:.1em">' + r.closedWins + ' WON</span>' : '') +
+            statusPill +
+            (r.closedWins ? '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--green);letter-spacing:.1em;font-weight:700">' + r.closedWins + ' WON</span>' : '') +
           '</div>' +
-          '<div style="font-family:Antonio,sans-serif;font-size:22px;font-weight:700;color:var(--text);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _accEsc(r.org.name) + '</div>' +
+          '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--text);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _accEsc(r.org.name) + '</div>' +
         '</div>' +
         '<div style="text-align:right;flex-shrink:0">' + _accDecayChip(r.daysSinceTouch) + '</div>' +
       '</div>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;font-size:13px;color:var(--t2);margin-top:12px">' +
-        '<div><span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.12em">PEOPLE</span><div style="color:var(--text);font-weight:700;font-size:18px;margin-top:3px;font-family:Antonio,sans-serif">' + r.peopleCount + '</div></div>' +
-        '<div><span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.12em">PIPELINE</span><div style="color:var(--text);font-weight:700;font-size:18px;margin-top:3px;font-family:Antonio,sans-serif">' + _accFmt$(r.pipeline) + '</div></div>' +
+      '<div style="margin:10px 0 12px">' +
+        ownerLine +
+        pocLine +
       '</div>' +
-      '<div style="font-size:13px;color:var(--t2);margin-top:12px;padding-top:12px;border-top:1px solid var(--b1);line-height:1.5">' + oppLine + '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;font-size:var(--text-sm);color:var(--t2);margin-top:12px;padding-top:12px;border-top:1px solid var(--b1)">' +
+        '<div><span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.12em;font-weight:700">PEOPLE</span><div style="color:var(--text);font-weight:700;font-size:var(--text-lg);margin-top:3px;font-family:Antonio,sans-serif">' + r.peopleCount + '</div></div>' +
+        '<div><span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.12em;font-weight:700">PIPELINE</span><div style="color:var(--text);font-weight:700;font-size:var(--text-lg);margin-top:3px;font-family:Antonio,sans-serif">' + _accFmt$(r.pipeline) + '</div></div>' +
+      '</div>' +
+      '<div style="font-size:var(--text-sm);color:var(--t2);margin-top:12px;line-height:var(--leading-snug)">' + oppLine + '</div>' +
       nextAction +
     '</div>';
   }).join('');
