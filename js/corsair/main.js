@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.8b';
-  window.Corsair.buildBlurb  = 'Accounts cards — high-contrast hotfix (gold top border + lighter card bg so they pop against the dark page bg)';
+  window.Corsair.buildTag    = 'P12.8c';
+  window.Corsair.buildBlurb  = 'Accounts ROOT-CAUSE FIX — added accounts-view to _relocateViewsIntoMainApp list (was orphaned outside the flex layout, rendering off-page at top=739)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
