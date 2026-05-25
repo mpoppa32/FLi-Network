@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.24';
-  window.Corsair.buildBlurb  = 'Closed-deal demo seeding — Win/Loss dashboard now activates end-to-end in the demo workspace. Added 4 closed pursuits to _DEMO_DATA.opportunities (DARPA Phase I won $250K, AFRL Open Topic lost $1.5M, NSWC Crane SOTW won $2M, NSF Phase I pre-pivot lost $250K) plus 4 matching calibration records on _DEMO_DATA.calibration with tuned factor snapshots (wins show higher cadence/stance, losses higher risks/red flags) so getCalibrationWeights produces meaningful non-default multipliers. Predicted scores span all 3 brackets (78/58/42/24) so bracket-accuracy bars populate. Write loop added to _loadDemoWorkspace at ~92% so new demo users hit Win/Loss and see the fully-activated dashboard (2 wins, 2 losses, 75% accuracy, $2.25M won, $1.75M lost) instead of the insufficient-data state';
+  window.Corsair.buildTag    = 'P13.26';
+  window.Corsair.buildBlurb  = 'CRITICAL FIX — BD Glossary line 12539 (Sub/Subcontractor entry) had \"prime\\\\\\\\s contract\" — double-backslash before the apostrophe broke out of the single-quoted string literal, leaving stray \"s contract\" as an unexpected identifier. JavaScript parse error halted the entire inline body script, which is why the page hung on the Corsair loading splash. Fixed to \"prime\\\\\\\\\'s\" (proper single-backslash escape). Diagnosed via Chrome MCP: console showed SyntaxError: Unexpected identifier \"s\" at FLiIntel.html:12538:110. P13.25 segmentation stays reverted until this fix is confirmed live; will reapply as a follow-up';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
