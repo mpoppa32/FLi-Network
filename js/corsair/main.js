@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.8';
-  window.Corsair.buildBlurb  = 'Accounts — org rollup view (people/opps/meetings/commitments per customer/prime/sub/agency in one pane)';
+  window.Corsair.buildTag    = 'P12.8a';
+  window.Corsair.buildBlurb  = 'Accounts — org rollup view (hotfix: registered in _CORSAIR_VIEWS so the view actually displays)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
