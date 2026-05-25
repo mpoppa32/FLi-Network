@@ -8319,7 +8319,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.26</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.27</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -18014,7 +18014,8 @@ async function recordOutcome(opp,outcome){
     factors:{},
     closedAt:new Date().toISOString(),
     agency:opp.agency||'',
-    value:opp.value||''
+    value:opp.value||'',
+    captureLead:opp.captureLead||'' // P13.27 — for Win/Loss segmentation by lead
   };
   // Snapshot factor states numerically for weight learning
   var now=new Date();
@@ -23561,11 +23562,82 @@ window._renderWinLossView = function(){
     h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:16px 20px;margin-bottom:18px;font-size:12px;color:var(--t2);font-style:italic;line-height:1.55">Factor weights stay at baseline until both wins <em>and</em> losses are recorded. Currently: ' + stats.wins + ' won &middot; ' + stats.losses + ' lost.</div>';
   }
 
+  // P13.27 — Segmentation: by-agency + by-capture-lead breakdowns
+  h += _wlSegmentBlock('Win rate by agency', records, 'agency', null);
+  h += _wlSegmentBlock('Win rate by capture lead', records, 'captureLead', _wlResolveLeadName);
+
   // Closed-deal log
   h += _wlClosedDealsList(records);
   h += '</div>';
   body.innerHTML = h;
 };
+
+// P13.27 — resolve a captureLead uid to a friendly display name
+// via workspaceMembers; falls back to the uid itself or a special label
+function _wlResolveLeadName(uid){
+  if (!uid) return 'Unassigned';
+  // Synthetic demo lead — pretty-print without exposing the synthetic uid
+  if (typeof uid === 'string' && uid.indexOf('demo-lead-') === 0){
+    return uid.replace('demo-lead-past-okonkwo', 'James Okonkwo (past)').replace(/^demo-lead-/, '');
+  }
+  var members = (window.workspaceMembers && Array.isArray(window.workspaceMembers)) ? window.workspaceMembers : [];
+  var m = members.find(function(x){ return x && String(x.uid) === String(uid); });
+  if (m) return m.name || m.email || uid;
+  if (window.currentUser && window.currentUser.uid === uid){
+    return window.currentUser.displayName || window.currentUser.email || 'You';
+  }
+  return uid;
+}
+
+// P13.27 — render a segmentation block (by-agency / by-lead). Skips when
+// the segmentation key has fewer than 2 distinct buckets (single-bucket
+// "segmentation" is just the headline number, not useful).
+function _wlSegmentBlock(title, records, fieldKey, labelFn){
+  var buckets = {};
+  records.forEach(function(r){
+    var raw = r[fieldKey] || '';
+    var key = String(raw || '__unknown__');
+    if (!buckets[key]) buckets[key] = { key: key, raw: raw, wins:0, losses:0, n:0, valueWon:0, valueLost:0 };
+    var b = buckets[key];
+    b.n++;
+    var v = _wlNum$(r.value);
+    if (r.outcome === 'won')  { b.wins++;   b.valueWon  += v; }
+    if (r.outcome === 'lost') { b.losses++; b.valueLost += v; }
+  });
+  var keys = Object.keys(buckets);
+  if (keys.length < 2) return ''; // single bucket = nothing to segment
+
+  // Sort by deal count desc, ties broken by win rate desc
+  keys.sort(function(a,b){
+    var ba = buckets[a], bb = buckets[b];
+    if (bb.n !== ba.n) return bb.n - ba.n;
+    var wra = ba.n ? ba.wins/ba.n : 0;
+    var wrb = bb.n ? bb.wins/bb.n : 0;
+    return wrb - wra;
+  });
+
+  var html = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:18px 22px;margin-bottom:18px">';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:14px">' + _wlEsc(title) + ' &middot; ' + keys.length + ' bucket' + (keys.length===1?'':'s') + '</div>';
+  keys.forEach(function(k){
+    var b = buckets[k];
+    var winRate = b.n ? Math.round(b.wins / b.n * 100) : 0;
+    var barColor = winRate >= 60 ? 'var(--green)' : winRate >= 30 ? 'var(--amber)' : 'var(--red)';
+    var label = '';
+    if (k === '__unknown__') label = (fieldKey === 'captureLead' ? 'Unassigned' : '— unknown —');
+    else if (typeof labelFn === 'function') label = labelFn(b.raw);
+    else label = b.raw || '—';
+    var net = b.valueWon - b.valueLost;
+    html += '<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">';
+    html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:12px;color:var(--text);font-weight:600;width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + _wlEsc(label) + '">' + _wlEsc(label) + '</div>';
+    html += '<div style="flex:1;height:6px;background:rgba(26,34,54,.5);border-radius:3px;overflow:hidden"><div style="width:' + winRate + '%;height:100%;background:' + barColor + ';border-radius:3px"></div></div>';
+    html += '<div style="font-family:Antonio,sans-serif;font-size:14px;font-weight:700;color:' + barColor + ';min-width:46px;text-align:right">' + winRate + '%</div>';
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);min-width:88px;text-align:right">' + b.wins + 'W / ' + b.losses + 'L (' + b.n + ')</div>';
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:' + (net >= 0 ? 'var(--green)' : 'var(--red)') + ';min-width:78px;text-align:right" title="$ won minus $ lost">' + (net >= 0 ? '+' : '') + _wlFmt$(Math.abs(net)) + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
 
 window.toggleCalibrationPanel=function(){
   var panel=document.getElementById('opp-calibration-panel');
@@ -36737,12 +36809,26 @@ window._loadDemoWorkspace = async function() {
         'demo-o-2': { value: 3500000, pwin: 0.45, captureLead: myUid, stageEnteredAt: nowMs - 18*86400000 },
         'demo-o-3': { value: 1500000, pwin: 0.70, captureLead: myUid, stageEnteredAt: nowMs - 25*86400000 },
         'demo-o-4': { value: 5000000, pwin: 0.25, captureLead: null,  stageEnteredAt: nowMs - 45*86400000 },
-        'demo-o-5': { value: 2000000, pwin: 0.15, captureLead: null,  stageEnteredAt: nowMs - 50*86400000 }
+        'demo-o-5': { value: 2000000, pwin: 0.15, captureLead: null,  stageEnteredAt: nowMs - 50*86400000 },
+        // P13.27 — closed deals get capture leads so Win/Loss by-lead segmentation has data.
+        // Mix the user with synthetic past-staff uids to demonstrate the segmentation feel.
+        'demo-o-6': { captureLead: myUid                       },
+        'demo-o-7': { captureLead: 'demo-lead-past-okonkwo'    },
+        'demo-o-8': { captureLead: myUid                       },
+        'demo-o-9': { captureLead: 'demo-lead-past-okonkwo'    }
       };
       D.opportunities.forEach(function(o){
         var enr = OPP_FIELDS[o.id];
         if (enr) Object.assign(o, enr);
       });
+      // P13.27 — propagate captureLead onto the matching calibration records
+      // so the Win/Loss by-lead segmentation renders without an extra lookup.
+      if (Array.isArray(D.calibration)){
+        D.calibration.forEach(function(r){
+          var opp = D.opportunities.find(function(o){ return o.id === r.oppId; });
+          if (opp && opp.captureLead) r.captureLead = opp.captureLead;
+        });
+      }
     })();
 
     _st(15, 'Writing 27 contacts and organizations...');
