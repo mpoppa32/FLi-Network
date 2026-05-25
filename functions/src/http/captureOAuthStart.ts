@@ -10,7 +10,7 @@ import { buildConsentUrl } from "../capture/oauth";
 import { createLogger } from "../framework/logger";
 
 export const captureOAuthStart = onRequest(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"] },
   (req, res): void => {
     const log = createLogger({ source: "captureOAuthStart" });
     const uid = String(req.query.uid ?? "");

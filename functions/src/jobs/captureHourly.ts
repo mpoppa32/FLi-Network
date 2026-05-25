@@ -21,6 +21,7 @@ export const captureHourly = onSchedule(
     memory: "1GiB",
     timeoutSeconds: 540,
     retryCount: 1,
+    secrets: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
   },
   async (event) => {
     const jobId = generateJobId("captureHourly");

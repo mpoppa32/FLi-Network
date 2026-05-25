@@ -24,7 +24,7 @@ events will appear in the Auto-Capture review queue on the next sync.</p>
 </body></html>`;
 
 export const captureOAuthCallback = onRequest(
-  { region: "us-central1" },
+  { region: "us-central1", secrets: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"] },
   async (req, res): Promise<void> => {
     const log = createLogger({ source: "captureOAuthCallback" });
     const code = String(req.query.code ?? "");

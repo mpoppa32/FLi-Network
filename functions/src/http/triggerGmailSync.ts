@@ -9,7 +9,7 @@ import { syncGmail } from "../capture/dispatcher";
 import { createLogger } from "../framework/logger";
 
 export const triggerGmailSync = onCall(
-  { region: "us-central1", memory: "512MiB", timeoutSeconds: 540 },
+  { region: "us-central1", memory: "512MiB", timeoutSeconds: 540, secrets: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"] },
   async (request) => {
     const log = createLogger({ source: "triggerGmailSync" });
     if (!request.auth) {
