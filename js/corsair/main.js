@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.11';
-  window.Corsair.buildBlurb  = 'Platform typography standard — bumped --text-* scale + line-height system + migrated Daily Brief CSS to use vars + paddings expanded across Brief surfaces (commit 1/3 of platform visual standard)';
+  window.Corsair.buildTag    = 'P12.12';
+  window.Corsair.buildBlurb  = 'Top tab restructure — primary nav is now BRIEF · ACCOUNTS · PIPELINE · TABLE · INSPECTOR; Graph/Posture/Rhythm/Ask moved to More dropdown (commit 2/3 of platform visual standard)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
