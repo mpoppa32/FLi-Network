@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.9';
-  window.Corsair.buildBlurb  = 'Bulk actions on Opportunities — checkbox on every Kanban + sidebar card; sticky action bar with bulk-set Stage / Capture Lead / p(win); bulk-export CSV; bulk-delete. Same pattern as P13.8 Accounts';
+  window.Corsair.buildTag    = 'P13.10';
+  window.Corsair.buildBlurb  = 'Saved Views on Pipeline (mirrors P13.4 Accounts pattern) — capture search + mineOnly + unassignedOnly + byLead as a named view; shared per-workspace; manage modal for delete; one-click apply';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

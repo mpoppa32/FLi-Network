@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.9</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.10</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8949,6 +8949,12 @@ input[type="url"], textarea, select {
       </div>
       <div style="padding:8px 8px 0">
         <input id="opp-search-inp" type="text" placeholder="Search opportunities..." oninput="filterOppSidebar(this.value)" style="width:100%;box-sizing:border-box;padding:6px 10px;background:var(--s2);border:1px solid var(--b2);border-radius:var(--rsm);color:var(--text);font-family:IBM Plex Sans,sans-serif;font-size:12px">
+        <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+          <select id="pipe-saved-views" onchange="window._pipeApplySavedView&&window._pipeApplySavedView(this.value)" style="flex:1;padding:6px 8px;border:1px solid var(--gold);border-radius:var(--rsm);background:rgba(212,130,58,.08);color:var(--gold);font-size:11px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+            <option value="">★ Saved views</option>
+          </select>
+          <button onclick="window._pipeSaveCurrentView&&window._pipeSaveCurrentView()" title="Save current filters as a named view" style="padding:6px 10px;border:1px solid var(--gold);border-radius:var(--rsm);background:transparent;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;flex-shrink:0">+ Save</button>
+        </div>
       </div>
       <div style="padding:8px;overflow-y:auto;flex:1">
         <div id="opp-stage-list"></div>
@@ -16364,6 +16370,8 @@ function renderOppSidebar(){
   if (typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){}
   // P13.9 — Bulk action bar (auto-hidden when nothing selected)
   if (typeof window._oppRenderBulkBar === 'function') try { window._oppRenderBulkBar(); } catch(e){}
+  // P13.10 — Pipeline saved views (cheap RTDB read on each render)
+  if (typeof window._pipeLoadSavedViews === 'function') try { window._pipeLoadSavedViews(); } catch(e){}
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -16617,6 +16625,169 @@ window._toggleKanbanBoard=function(){
     if(currentOpp){if(detail)detail.style.display='block';}
     else{if(empty)empty.style.display='block';}
   }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// P13.10 — Saved Views on Pipeline (mirrors P13.4 Accounts pattern)
+// Shared per-workspace storage at workspaces/{wsId}/savedViews/{id}
+// with surface='pipeline'. Mike + Bryce both see saved views.
+// ═══════════════════════════════════════════════════════════════
+window._pipeSavedViews = window._pipeSavedViews || {};
+
+window._pipeLoadSavedViews = async function(){
+  if (!currentWsId) return;
+  try {
+    var snap = await get(ref(db, wsPath('savedViews')));
+    var data = snap.val() || {};
+    window._pipeSavedViews = data;
+    var sel = document.getElementById('pipe-saved-views');
+    if (!sel) return;
+    var current = sel.value;
+    var keys = Object.keys(data).filter(function(k){
+      var v = data[k];
+      return v && v.surface === 'pipeline';
+    }).sort(function(a,b){
+      return String(data[a].name||'').localeCompare(String(data[b].name||''));
+    });
+    var opts = ['<option value="">★ Saved views</option>'];
+    keys.forEach(function(k){
+      opts.push('<option value="' + String(k).replace(/"/g,'&quot;') + '">' + String(data[k].name||'(untitled)').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + '</option>');
+    });
+    if (keys.length){
+      opts.push('<option disabled>──────────</option>');
+      opts.push('<option value="__manage_pipe">⚙ Manage views…</option>');
+    }
+    sel.innerHTML = opts.join('');
+    if (current && data[current]) sel.value = current;
+  } catch(e){
+    console.warn('[pipeSavedViews] load failed:', e);
+  }
+};
+
+window._pipeSaveCurrentView = async function(){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot save views'); return; }
+  var name = prompt('Save current Pipeline filters as view named:');
+  if (!name || !name.trim()) return;
+  name = name.trim().slice(0, 80);
+  var f = (window._copFilters || {});
+  var snapshot = {
+    id: 'pv-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    name: name,
+    surface: 'pipeline',
+    filters: {
+      search:         (document.getElementById('opp-search-inp')||{}).value || '',
+      mineOnly:       !!f.mineOnly,
+      unassignedOnly: !!f.unassignedOnly,
+      byLead:         f.byLead || ''
+    },
+    createdBy: (window.currentUser && window.currentUser.uid) || '',
+    createdByName: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || '',
+    created: new Date().toISOString()
+  };
+  try {
+    await fbSet(wsPath('savedViews/' + snapshot.id), snapshot);
+    window._pipeSavedViews[snapshot.id] = snapshot;
+    await window._pipeLoadSavedViews();
+    var sel = document.getElementById('pipe-saved-views');
+    if (sel) sel.value = snapshot.id;
+    toast('Pipeline view "' + name + '" saved');
+  } catch(e){
+    toast('Save failed: ' + (e.message || 'try again'));
+  }
+};
+
+window._pipeApplySavedView = function(id){
+  if (!id) return;
+  if (id === '__manage_pipe'){
+    window._pipeOpenManageViews();
+    var sel = document.getElementById('pipe-saved-views');
+    if (sel) sel.value = '';
+    return;
+  }
+  var v = window._pipeSavedViews[id];
+  if (!v || !v.filters) return;
+  var f = v.filters;
+  var searchInp = document.getElementById('opp-search-inp');
+  if (searchInp) searchInp.value = f.search || '';
+  if (window._copFilters){
+    window._copFilters.mineOnly       = !!f.mineOnly;
+    window._copFilters.unassignedOnly = !!f.unassignedOnly;
+    window._copFilters.byLead         = f.byLead || null;
+  }
+  if (typeof renderOppSidebar === 'function') try { renderOppSidebar(); } catch(e){}
+};
+
+window._pipeDeleteSavedView = async function(id){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot delete views'); return; }
+  var v = window._pipeSavedViews[id];
+  if (!v) return;
+  if (!confirm('Delete saved view "' + (v.name||'') + '"?')) return;
+  try {
+    await fbSet(wsPath('savedViews/' + id), null);
+    delete window._pipeSavedViews[id];
+    await window._pipeLoadSavedViews();
+    if (typeof window._pipeRenderManageViews === 'function') window._pipeRenderManageViews();
+    toast('Deleted "' + (v.name||'') + '"');
+  } catch(e){
+    toast('Delete failed: ' + (e.message || 'try again'));
+  }
+};
+
+window._pipeOpenManageViews = function(){
+  var modal = document.getElementById('manage-pipe-views-modal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'manage-pipe-views-modal';
+    modal.className = 'overlay';
+    modal.innerHTML = '<div class="modal" style="max-width:560px;padding:0">' +
+      '<div style="padding:22px 28px 14px;border-bottom:1px solid var(--b1)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">' +
+          '<div>' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.16em;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:4px">Pipeline · shared</div>' +
+            '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--text);line-height:1.15">Saved Pipeline Views</div>' +
+          '</div>' +
+          '<button onclick="closeModal(\'manage-pipe-views-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="manage-pipe-views-body" style="padding:18px 28px 24px;max-height:60vh;overflow-y:auto"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+  window._pipeRenderManageViews();
+  openModal('manage-pipe-views-modal');
+};
+
+window._pipeRenderManageViews = function(){
+  var body = document.getElementById('manage-pipe-views-body');
+  if (!body) return;
+  var data = window._pipeSavedViews || {};
+  var keys = Object.keys(data).filter(function(k){return data[k] && data[k].surface === 'pipeline';});
+  if (!keys.length){
+    body.innerHTML = '<div style="color:var(--t3);font-size:var(--text-sm);text-align:center;padding:18px;font-style:italic">No saved Pipeline views yet. Apply some filters, then click "+ Save".</div>';
+    return;
+  }
+  keys.sort(function(a,b){ return String(data[a].name||'').localeCompare(String(data[b].name||'')); });
+  var esc = function(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});};
+  body.innerHTML = keys.map(function(k){
+    var v = data[k];
+    var f = v.filters || {};
+    var filterBits = [];
+    if (f.mineOnly)       filterBits.push('mine only');
+    if (f.unassignedOnly) filterBits.push('unassigned');
+    if (f.byLead)         filterBits.push('lead=' + f.byLead);
+    if (f.search)         filterBits.push('search="' + f.search + '"');
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);margin-bottom:8px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:var(--text-base);font-weight:600;color:var(--text);margin-bottom:3px">' + esc(v.name||'(untitled)') + '</div>' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.04em;margin-bottom:4px">' + (filterBits.length ? esc(filterBits.join(' · ')) : 'no filters set') + '</div>' +
+        '<div style="font-size:var(--text-xs);color:var(--t3)">By ' + esc(v.createdByName || v.createdBy || 'unknown') + (v.created ? ' · ' + new Date(v.created).toLocaleDateString() : '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0">' +
+        '<button onclick="closeModal(\'manage-pipe-views-modal\');window._pipeApplySavedView(\'' + esc(k) + '\');var s=document.getElementById(\'pipe-saved-views\');if(s)s.value=\'' + esc(k) + '\'" class="btn btn-sm" style="color:var(--gold);border-color:rgba(212,130,58,.4)">Apply</button>' +
+        '<button onclick="window._pipeDeleteSavedView(\'' + esc(k) + '\')" class="btn btn-sm" style="color:var(--red);border-color:rgba(239,68,68,.3)">Delete</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 };
 
 // ═══════════════════════════════════════════════════════════════
