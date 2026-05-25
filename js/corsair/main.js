@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.10';
-  window.Corsair.buildBlurb  = 'Saved Views on Pipeline (mirrors P13.4 Accounts pattern) — capture search + mineOnly + unassignedOnly + byLead as a named view; shared per-workspace; manage modal for delete; one-click apply';
+  window.Corsair.buildTag    = 'P13.11';
+  window.Corsair.buildBlurb  = 'Conversion funnel % on Pipeline Forecast (#3) — each stage row now shows historical % of opps that reached the next stage; uses stageHistory + current stage so both closed and in-flight deals contribute';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
