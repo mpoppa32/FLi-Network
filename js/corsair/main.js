@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.13';
-  window.Corsair.buildBlurb  = 'Pipeline Kanban + Opp sidebar migrated to type system + paddings — platform visual standard arc complete (commit 3/3)';
+  window.Corsair.buildTag    = 'P12.14';
+  window.Corsair.buildBlurb  = 'Top nav legibility — mode-btn labels bumped 8.5px→12px (var(--text-sm)), padding 6/12→10/18, dead #mode-graph centerpiece CSS removed; primary action buttons (Log Meeting / +Contact / +Follow-up) bumped 10px→12px, padding 8/12→10/16';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
