@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.18';
-  window.Corsair.buildBlurb  = 'New-contact / new-org → account-fill toast prompt with one-click jump to Snapshot. Closes the Account-record arc loop (4/4 — every entry path now reinforces the structured record)';
+  window.Corsair.buildTag    = 'P13.0';
+  window.Corsair.buildBlurb  = 'CSV / paste bulk import (1/7 of competitive-parity arc) — contacts/orgs/opps with auto-detected column mapping, preview, downloadable templates, progress + summary toast';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
