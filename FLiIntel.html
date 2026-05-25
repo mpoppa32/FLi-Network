@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.16</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.17</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9738,6 +9738,8 @@ input[type="url"], textarea, select {
     </div>
   </div>
   <div id="accounts-main-area" style="flex:1;overflow-y:auto;padding:20px 24px 40px">
+    <!-- P12.17: incomplete-records nudge banner (arc 3/4) — auto-hidden when all green -->
+    <div id="accounts-attention-banner" style="display:none;max-width:1400px;margin:0 auto 16px;background:linear-gradient(180deg,rgba(239,68,68,.10),rgba(250,204,21,.04));border:1px solid rgba(239,68,68,.35);border-left:4px solid #ef4444;border-radius:3px;padding:14px 18px;align-items:center;gap:14px;flex-wrap:wrap"></div>
     <div id="accounts-grid" style="max-width:1400px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px"></div>
     <div id="accounts-empty" style="display:none;text-align:center;padding:48px 0;color:var(--t3);font-size:13px;font-family:IBM Plex Sans,sans-serif"></div>
   </div>
@@ -35635,6 +35637,39 @@ function _accBuildRollup(org){
   };
 }
 
+// P12.17 — Incomplete-accounts attention banner (arc 3/4)
+// Sticky-top of Accounts surface; shows org-hygiene totals + filter shortcuts.
+// Auto-hides when all green so it stays out of the way once records are complete.
+function _accRenderAttentionBanner(totals, currentHealthFilter){
+  var banner = document.getElementById('accounts-attention-banner');
+  if (!banner) return;
+  var needs = (totals.red || 0) + (totals.yellow || 0);
+  if (needs === 0){
+    banner.style.display = 'none';
+    return;
+  }
+  // If user has already drilled into red/yellow via the filter, dim the banner so it doesn't shout
+  var muted = currentHealthFilter === 'red' || currentHealthFilter === 'yellow';
+  banner.style.display = 'flex';
+  banner.style.opacity = muted ? '0.5' : '1';
+  banner.innerHTML =
+    '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--text);line-height:1;letter-spacing:-.01em;flex-shrink:0">' + needs + '</div>' +
+    '<div style="flex:1;min-width:200px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);font-weight:700;letter-spacing:.14em;color:#ef4444;text-transform:uppercase;margin-bottom:2px">Records Need Attention</div>' +
+      '<div style="font-size:var(--text-sm);color:var(--t2);line-height:var(--leading-snug)">' +
+        '<span style="color:#ef4444;font-weight:700">' + (totals.red||0) + ' red</span> · ' +
+        '<span style="color:#facc15;font-weight:700">' + (totals.yellow||0) + ' yellow</span> · ' +
+        '<span style="color:#22c55e;font-weight:700">' + (totals.green||0) + ' green</span>' +
+        ' &nbsp;&nbsp;<span style="color:var(--t3)">— Owner / Status / POC not all set, or comms cooling</span>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap">' +
+      ((totals.red||0) ? '<button onclick="var s=document.getElementById(\'accounts-health-filter\');if(s){s.value=\'red\';window._renderAccountsView&&window._renderAccountsView();}" style="padding:8px 14px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);border-radius:3px;color:#ef4444;font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">Show ' + totals.red + ' Red</button>' : '') +
+      ((totals.yellow||0) ? '<button onclick="var s=document.getElementById(\'accounts-health-filter\');if(s){s.value=\'yellow\';window._renderAccountsView&&window._renderAccountsView();}" style="padding:8px 14px;background:rgba(250,204,21,.12);border:1px solid rgba(250,204,21,.5);border-radius:3px;color:#facc15;font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">Show ' + totals.yellow + ' Yellow</button>' : '') +
+      (muted ? '<button onclick="var s=document.getElementById(\'accounts-health-filter\');if(s){s.value=\'\';window._renderAccountsView&&window._renderAccountsView();}" style="padding:8px 14px;background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">Clear filter</button>' : '') +
+    '</div>';
+}
+
 window._renderAccountsView = function(){
   var grid = document.getElementById('accounts-grid');
   var empty = document.getElementById('accounts-empty');
@@ -35679,6 +35714,19 @@ window._renderAccountsView = function(){
 
   // Status workflow order for status-sort (Active first as most operational)
   var _statusOrder = { 'active':1, 'qualified':2, 'prospect':3, 'customer':4, 'dormant':5, '':6 };
+
+  // P12.17: Workspace-wide health counts (BEFORE applying user filters)
+  // — so the banner reflects org-hygiene reality, not the filtered slice
+  var totalHealth = { red: 0, yellow: 0, green: 0 };
+  for (var hi = 0; hi < orgs.length; hi++){
+    var ho = orgs[hi];
+    if (!ho || !ho.name) continue;
+    var hr = _accBuildRollup(ho);
+    if (hr.health === 'red')         totalHealth.red++;
+    else if (hr.health === 'yellow') totalHealth.yellow++;
+    else                             totalHealth.green++;
+  }
+  _accRenderAttentionBanner(totalHealth, healthFilter);
 
   // Build rollups (with filtering)
   var rollups = [];
