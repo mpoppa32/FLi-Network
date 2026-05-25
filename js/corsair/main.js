@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.1';
-  window.Corsair.buildBlurb  = 'Backup + portability surfaced (2/7) — More-menu entries for Backup JSON + Export CSVs; CSV export extended to include opportunities + commitments (was just meetings + contacts)';
+  window.Corsair.buildTag    = 'P13.2';
+  window.Corsair.buildBlurb  = 'Pipeline Forecast dashboard (3/7) — total / weighted / avg pipeline tiles, 6-month close-month bars (weighted vs unweighted), stage funnel + velocity (median days in stage). Collapsible; auto-renders on Pipeline view';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
