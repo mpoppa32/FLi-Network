@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.10';
-  window.Corsair.buildBlurb  = 'Account Snapshot — structured org record (Owner / Status / Tier / POC / Comms / Next Action / Notes) inline-editable in Accounts drawer; the Salesforce-style key-pillars that make every account legible at a glance';
+  window.Corsair.buildTag    = 'P12.10a';
+  window.Corsair.buildBlurb  = 'Accounts promoted to top-level tab + readability bumps (larger fonts, bigger cards, wider drawer) — surface dignity for the foundational account record';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
