@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.11</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.12</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8464,6 +8464,18 @@ input[type="url"], textarea, select {
     <button id="nav-search-btn" onclick="window._openCmdK&amp;&amp;window._openCmdK()" title="Universal search (Cmd/Ctrl + K)" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:8px;transition:all .15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.color='var(--t2)'">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
     </button>
+    <div id="nav-recents-wrap" style="position:relative;margin-right:8px">
+      <button id="nav-recents-btn" onclick="window._toggleRecentsDropdown&amp;&amp;window._toggleRecentsDropdown()" title="Recently viewed — last 10 opps / contacts / accounts you opened" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.color='var(--t2)'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
+      <div id="nav-recents-dropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;width:340px;max-height:60vh;overflow-y:auto;background:linear-gradient(180deg,rgba(10,16,32,.98),rgba(7,13,24,.98));border:1px solid rgba(212,130,58,.25);border-radius:3px;box-shadow:0 18px 60px rgba(0,0,0,.7);z-index:90">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--b1);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase">
+          <span>Recently Viewed</span>
+          <span style="color:var(--t3);font-weight:400;letter-spacing:.06em">last 10</span>
+        </div>
+        <div id="nav-recents-list" style="padding:4px 0"></div>
+      </div>
+    </div>
     <div id="nav-activity-wrap" style="position:relative;margin-right:8px">
       <button id="nav-activity-btn" onclick="window._toggleActivityDropdown&amp;&amp;window._toggleActivityDropdown()" title="Activity Log — see what changed across the workspace" style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;position:relative" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='rgba(255,255,255,.1)';this.style.color='var(--t2)'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -45070,6 +45082,148 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
       setTimeout(_attach, 800);
     }
   }
+  // ═════════════════════════════════════════════════════════════
+  // P13.12 — Recently Viewed (per-workspace, last 10 entity opens)
+  // Wraps openNetPanel + selectOpp + _openAccountDetail. Stack lives in
+  // localStorage so it survives reloads.
+  // ═════════════════════════════════════════════════════════════
+  function _rcKey(){ return 'corsair-recents-' + (window.currentWsId || 'default'); }
+  function _rcLoad(){
+    try { var raw = localStorage.getItem(_rcKey()); return raw ? JSON.parse(raw) : []; } catch(e){ return []; }
+  }
+  function _rcSave(arr){
+    try { localStorage.setItem(_rcKey(), JSON.stringify(arr.slice(0,15))); } catch(e){}
+  }
+  window._recordRecent = function(type, id, name, extra){
+    if (!id || !name) return;
+    var arr = _rcLoad();
+    // Dedupe — bump to top
+    arr = arr.filter(function(e){ return !(e.type === type && String(e.id) === String(id)); });
+    arr.unshift({ type: type, id: String(id), name: String(name), extra: extra || '', ts: Date.now() });
+    _rcSave(arr);
+    if (document.getElementById('nav-recents-dropdown') && document.getElementById('nav-recents-dropdown').style.display !== 'none'){
+      _renderRecents();
+    }
+  };
+  window._clearRecents = function(){
+    _rcSave([]);
+    _renderRecents();
+  };
+  function _renderRecents(){
+    var list = document.getElementById('nav-recents-list');
+    if (!list) return;
+    var arr = _rcLoad();
+    if (!arr.length){
+      list.innerHTML = '<div style="padding:18px 14px;color:var(--t3);font-size:var(--text-sm);text-align:center;font-style:italic">No recent entities yet. Open an opp, contact, or account and it\'ll show up here.</div>';
+      return;
+    }
+    var typeIcon = { node:'◉', opp:'▦', account:'◆' };
+    var typeColor = { node:'#5fb3b8', opp:'var(--gold)', account:'var(--gold)' };
+    var rows = arr.slice(0,10).map(function(e){
+      var ic = typeIcon[e.type] || '·';
+      var col = typeColor[e.type] || 'var(--t2)';
+      var ago = (function(ts){
+        var sec = Math.floor((Date.now()-ts)/1000);
+        if (sec < 60) return 'now';
+        if (sec < 3600) return Math.floor(sec/60) + 'm';
+        if (sec < 86400) return Math.floor(sec/3600) + 'h';
+        return Math.floor(sec/86400) + 'd';
+      })(e.ts);
+      var escName = String(e.name||'').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});
+      var escExtra = String(e.extra||'').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});
+      var escId = String(e.id||'').replace(/'/g,"\\'");
+      return '<div onclick="window._openRecent(\'' + e.type + '\',\'' + escId + '\');window._closeRecentsDropdown&&window._closeRecentsDropdown()" style="display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid rgba(26,34,54,.4)" onmouseover="this.style.background=\'rgba(212,130,58,.06)\'" onmouseout="this.style.background=\'transparent\'">' +
+        '<span style="color:' + col + ';font-family:IBM Plex Mono,monospace;font-size:14px;flex-shrink:0">' + ic + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:var(--text-sm);color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escName + '</div>' +
+          (escExtra ? '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.04em;margin-top:2px">' + escExtra + '</div>' : '') +
+        '</div>' +
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em;flex-shrink:0">' + ago + '</span>' +
+      '</div>';
+    }).join('');
+    list.innerHTML = rows +
+      '<div style="padding:8px 14px;text-align:center;border-top:1px solid var(--b1)">' +
+        '<button onclick="window._clearRecents()" style="background:transparent;border:none;color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.1em;cursor:pointer;text-transform:uppercase">Clear recents</button>' +
+      '</div>';
+  }
+  window._openRecent = function(type, id){
+    if (type === 'opp'){
+      if (typeof window.selectOpp === 'function') window.selectOpp(id);
+      switchView('cop');
+    } else if (type === 'account'){
+      switchView('accounts');
+      setTimeout(function(){ if (window._openAccountDetail) window._openAccountDetail(id); }, 60);
+    } else if (type === 'node'){
+      // Find the node and open net panel
+      var n = (window.nodes||[]).find(function(x){ return String(x.id) === String(id); });
+      if (n && typeof window.openNetPanel === 'function'){
+        switchView('graph');
+        setTimeout(function(){ window.openNetPanel(n); }, 60);
+      }
+    }
+  };
+  window._toggleRecentsDropdown = function(){
+    var dd = document.getElementById('nav-recents-dropdown');
+    if (!dd) return;
+    var open = dd.style.display !== 'none';
+    if (open) { window._closeRecentsDropdown(); return; }
+    _renderRecents();
+    dd.style.display = 'block';
+  };
+  window._closeRecentsDropdown = function(){
+    var dd = document.getElementById('nav-recents-dropdown');
+    if (dd) dd.style.display = 'none';
+  };
+  // Click-outside to close
+  document.addEventListener('click', function(ev){
+    var dd = document.getElementById('nav-recents-dropdown');
+    var wrap = document.getElementById('nav-recents-wrap');
+    if (!dd || !wrap) return;
+    if (dd.style.display === 'none') return;
+    if (!wrap.contains(ev.target)) window._closeRecentsDropdown();
+  });
+
+  // Wrap entity-open paths so opens get recorded automatically
+  (function(){
+    var origOpenNet = window.openNetPanel;
+    if (typeof origOpenNet === 'function'){
+      window.openNetPanel = function(node){
+        try {
+          // Argument may be a node object or an id
+          var n = node;
+          if (typeof node === 'string' || typeof node === 'number'){
+            n = (window.nodes||[]).find(function(x){ return String(x.id) === String(node); });
+          }
+          if (n && n.id && n.name){
+            var extra = n.type === 'company' ? 'Company' : n.type === 'government' ? 'Government' : (n.role || '');
+            window._recordRecent('node', n.id, n.name, extra);
+          }
+        } catch(e){}
+        return origOpenNet.apply(this, arguments);
+      };
+    }
+    var origSelect = window.selectOpp;
+    if (typeof origSelect === 'function'){
+      window.selectOpp = function(id){
+        try {
+          var o = (window.opportunities||[]).find(function(x){ return String(x.id) === String(id); });
+          if (o && o.name) window._recordRecent('opp', o.id, o.name, (o.agency || '') + (o.stage ? ' · ' + o.stage : ''));
+        } catch(e){}
+        return origSelect.apply(this, arguments);
+      };
+    }
+    var origAccDetail = window._openAccountDetail;
+    if (typeof origAccDetail === 'function'){
+      window._openAccountDetail = function(orgId){
+        try {
+          var org = (window.CorsairIndex && window.CorsairIndex.byId && window.CorsairIndex.byId.get && window.CorsairIndex.byId.get(String(orgId))) || (window.nodes||[]).find(function(x){ return String(x.id) === String(orgId); });
+          if (org && org.name) window._recordRecent('account', org.id, org.name, org.type === 'government' ? 'Government' : 'Company');
+        } catch(e){}
+        return origAccDetail.apply(this, arguments);
+      };
+    }
+  })();
+
   window._toggleActivityDropdown = function(){
     var dd = document.getElementById('nav-activity-dropdown');
     if (!dd) return;

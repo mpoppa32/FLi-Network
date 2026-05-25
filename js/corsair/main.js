@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.11';
-  window.Corsair.buildBlurb  = 'Conversion funnel % on Pipeline Forecast (#3) — each stage row now shows historical % of opps that reached the next stage; uses stageHistory + current stage so both closed and in-flight deals contribute';
+  window.Corsair.buildTag    = 'P13.12';
+  window.Corsair.buildBlurb  = 'Recently Viewed (#4) — clock-icon dropdown in topnav (left of Activity), tracks last 10 opens across opps / contacts / accounts; auto-records via wrappers on openNetPanel + selectOpp + _openAccountDetail; persists in localStorage per workspace';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
