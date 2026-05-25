@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.4';
-  window.Corsair.buildBlurb  = 'Saved views on Accounts (6/7) — capture current filters+sort as named view, shared across Mike + Bryce via RTDB; manage/delete modal; one-click apply';
+  window.Corsair.buildTag    = 'P13.5';
+  window.Corsair.buildBlurb  = 'Per-opp Deal Score on Pipeline cards (7/7) — 0-100 weighted score (stage + p(win) + touch recency + stage freshness), color-coded chip on every Kanban card. Competitive-parity arc complete';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

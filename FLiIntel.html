@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.4</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.5</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16590,6 +16590,71 @@ window._toggleKanbanBoard=function(){
   }
 };
 
+// ═══════════════════════════════════════════════════════════════
+// P13.5 — Per-opp Deal Score (competitive-parity arc 7/7)
+// 0-100 weighted score so the operator can answer 'which 10 deals
+// should I obsess over today?' Surfaces on every Kanban card.
+// ═══════════════════════════════════════════════════════════════
+window._dealScore = function(o){
+  if (!o) return 0;
+  var stage = String(o.stage||'').toLowerCase();
+  // Stage base (0-35)
+  var stageBase = 0;
+  if      (stage.indexOf('opp id')>=0)         stageBase = 6;
+  else if (stage.indexOf('qualify')>=0)        stageBase = 12;
+  else if (stage.indexOf('capture')>=0)        stageBase = 18;
+  else if (stage.indexOf('bid decision')>=0)   stageBase = 23;
+  else if (stage.indexOf('proposal')>=0)       stageBase = 26;
+  else if (stage.indexOf('final')>=0)          stageBase = 30;
+  else if (stage.indexOf('submitted')>=0)      stageBase = 33;
+  else if (stage.indexOf('eval')>=0 || stage.indexOf('award')>=0) stageBase = 35;
+  else if (stage.indexOf('won')>=0 || stage.indexOf('lost')>=0)   return 0;
+  else stageBase = 5;
+  // Win-prob (0-30)
+  var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+  if (p > 1) p = p/100;
+  if (p > 1) p = 1;
+  var winScore = Math.round(p * 30);
+  // Touch recency from last meeting on this opp (0-20)
+  var touchScore = 0;
+  var idx = window.CorsairIndex || {};
+  var mtgs = (idx.meetingsByOppId && idx.meetingsByOppId.get && idx.meetingsByOppId.get(String(o.id))) || [];
+  if (mtgs.length){
+    var lastTs = mtgs.reduce(function(m,x){return Math.max(m, Number(x.ts||0));}, 0);
+    var days = lastTs ? Math.floor((Date.now() - lastTs) / 86400000) : 9999;
+    if      (days <= 7)  touchScore = 20;
+    else if (days <= 30) touchScore = 14;
+    else if (days <= 60) touchScore = 8;
+    else if (days <= 90) touchScore = 3;
+    else                 touchScore = 0;
+  }
+  // Stage freshness (0-15) — newer in stage = fresher
+  var freshScore = 0;
+  if (o.stageEnteredAt){
+    var stageDays = Math.floor((Date.now() - Number(o.stageEnteredAt)) / 86400000);
+    if      (stageDays <= 14) freshScore = 15;
+    else if (stageDays <= 30) freshScore = 10;
+    else if (stageDays <= 60) freshScore = 5;
+    else                      freshScore = 0;
+  } else {
+    freshScore = 8; // neutral if no history
+  }
+  return Math.min(100, stageBase + winScore + touchScore + freshScore);
+};
+
+window._dealScoreColor = function(score){
+  if (score >= 60) return '#22c55e';
+  if (score >= 30) return '#facc15';
+  return '#ef4444';
+};
+
+window._dealScoreChip = function(o, opts){
+  opts = opts || {};
+  var s = window._dealScore(o);
+  var color = window._dealScoreColor(s);
+  return '<span title="Deal score: stage + p(win) + touch recency + stage freshness" style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);font-weight:700;letter-spacing:.06em;color:' + color + ';background:rgba(0,0,0,.25);border:1px solid ' + color + '40;padding:2px 6px;border-radius:3px;display:inline-flex;align-items:center;gap:4px"><span style="width:5px;height:5px;border-radius:50%;background:' + color + '"></span>' + s + '</span>';
+};
+
 window._renderKanbanBoard=function(){
   var board=document.getElementById('cop-kanban-board');
   if(!board)return;
@@ -16629,8 +16694,12 @@ window._renderKanbanBoard=function(){
     }else{
       items.forEach(function(o){
         var meta=[o.agency||'',o.value||''].filter(Boolean).join(' · ');
+        var scoreChip = (typeof window._dealScoreChip === 'function') ? window._dealScoreChip(o) : '';
         h+='<div class="cop-kanban-card" draggable="true" data-opp-id="'+escK(o.id)+'" onclick="window.selectOpp&amp;&amp;window.selectOpp(\''+escK(o.id).replace(/'/g,"\\\'")+'\');window._toggleKanbanBoard&amp;&amp;window._toggleKanbanBoard()">'+
-             '<div class="cop-kanban-card-name">'+escK(o.name||'(unnamed)')+'</div>'+
+             '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">'+
+               '<div class="cop-kanban-card-name" style="flex:1;min-width:0;margin:0">'+escK(o.name||'(unnamed)')+'</div>'+
+               scoreChip+
+             '</div>'+
              (meta?'<div class="cop-kanban-card-meta">'+escK(meta)+'</div>':'')+
              nextActionLabel(o)+
            '</div>';
