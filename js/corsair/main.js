@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.8';
-  window.Corsair.buildBlurb  = 'Bulk actions on Accounts — checkbox on every card; sticky action bar when N>0 selected; bulk-set Owner / Status / Tier in one shot; bulk-export CSV; bulk-delete. After CSV import this turns a 50-card cleanup from 30 minutes into 30 seconds';
+  window.Corsair.buildTag    = 'P13.9';
+  window.Corsair.buildBlurb  = 'Bulk actions on Opportunities — checkbox on every Kanban + sidebar card; sticky action bar with bulk-set Stage / Capture Lead / p(win); bulk-export CSV; bulk-delete. Same pattern as P13.8 Accounts';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

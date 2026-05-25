@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.8</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.9</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8961,6 +8961,8 @@ input[type="url"], textarea, select {
     </div>
     <!-- Right: opportunity detail -->
     <div class="opp-main" id="opp-main">
+      <!-- P13.9 — Bulk action bar for opportunities (sticky bottom; auto-shows when N>0) -->
+      <div id="opp-bulk-bar" style="display:none;position:sticky;bottom:0;z-index:80;background:linear-gradient(180deg,#0d1426,#0a1020);border-top:2px solid var(--gold);box-shadow:0 -8px 24px rgba(0,0,0,.45);padding:14px 24px;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;order:99"></div>
       <!-- P13.2 — Pipeline Forecast panel (collapsible; rendered above Kanban) -->
       <div id="cop-forecast-panel" style="display:none;padding:18px 24px 4px"></div>
       <!-- CRM P1.12 — Kanban Pipeline Board (drag-to-stage) -->
@@ -16360,6 +16362,8 @@ function renderOppSidebar(){
   }
   // P13.2 — Forecast panel
   if (typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){}
+  // P13.9 — Bulk action bar (auto-hidden when nothing selected)
+  if (typeof window._oppRenderBulkBar === 'function') try { window._oppRenderBulkBar(); } catch(e){}
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -16613,6 +16617,157 @@ window._toggleKanbanBoard=function(){
     if(currentOpp){if(detail)detail.style.display='block';}
     else{if(empty)empty.style.display='block';}
   }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// P13.9 — Bulk actions on Opportunities
+// Mirrors the Accounts bulk pattern (P13.8). State in-memory; cleared
+// on view nav-away. Available from both Kanban and sidebar surfaces.
+// ═══════════════════════════════════════════════════════════════
+window._oppBulkSelected = window._oppBulkSelected || new Set();
+
+window._oppBulkToggle = function(oppId){
+  if (!oppId) return;
+  var k = String(oppId);
+  if (window._oppBulkSelected.has(k)) window._oppBulkSelected.delete(k);
+  else window._oppBulkSelected.add(k);
+  if (typeof renderOppSidebar === 'function') try { renderOppSidebar(); } catch(e){}
+  if (typeof window._renderKanbanBoard === 'function') try { window._renderKanbanBoard(); } catch(e){}
+  if (typeof window._oppRenderBulkBar === 'function') window._oppRenderBulkBar();
+};
+
+window._oppBulkClear = function(){
+  window._oppBulkSelected.clear();
+  if (typeof renderOppSidebar === 'function') try { renderOppSidebar(); } catch(e){}
+  if (typeof window._renderKanbanBoard === 'function') try { window._renderKanbanBoard(); } catch(e){}
+  if (typeof window._oppRenderBulkBar === 'function') window._oppRenderBulkBar();
+};
+
+window._oppBulkSelectAllVisible = function(){
+  // Add every currently-visible opp card to the selection (sidebar OR kanban)
+  var cards = document.querySelectorAll('[data-opp-id]');
+  cards.forEach(function(card){
+    var id = card.getAttribute('data-opp-id');
+    if (id) window._oppBulkSelected.add(String(id));
+  });
+  if (typeof renderOppSidebar === 'function') try { renderOppSidebar(); } catch(e){}
+  if (typeof window._renderKanbanBoard === 'function') try { window._renderKanbanBoard(); } catch(e){}
+  if (typeof window._oppRenderBulkBar === 'function') window._oppRenderBulkBar();
+};
+
+window._oppBulkApplyField = async function(field, value){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot edit opportunities'); return; }
+  var ids = Array.from(window._oppBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  // For pwin, normalize input ('60', '60%', '0.6') to 0-100 number
+  if (field === 'pwin' && value != null && value !== ''){
+    var p = Number(String(value).replace(/[^0-9.\-]/g,''));
+    if (isNaN(p)) p = 0;
+    if (p > 1 && p <= 100) value = p;
+    else if (p <= 1) value = Math.round(p * 100);
+    else value = 100;
+  }
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ids.length; i++){
+    var opp = (window.opportunities||[]).find(function(o){ return String(o.id) === String(ids[i]); });
+    if (!opp){ fail++; continue; }
+    try {
+      opp[field] = value;
+      await saveOpp(opp);
+      ok++;
+    } catch(e){ console.warn('[oppBulk] save failed:', e); fail++; }
+  }
+  toast('Updated ' + field + ' on ' + ok + (fail ? ' (' + fail + ' failed)' : '') + ' opp' + (ok===1?'':'s'));
+  if (typeof renderOppSidebar === 'function') try { renderOppSidebar(); } catch(e){}
+  if (typeof window._renderKanbanBoard === 'function') try { window._renderKanbanBoard(); } catch(e){}
+  if (window.CorsairIndex && window.CorsairIndex.scheduleRebuild) window.CorsairIndex.scheduleRebuild();
+  window._oppRenderBulkBar();
+};
+
+window._oppBulkDelete = async function(){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot delete'); return; }
+  var ids = Array.from(window._oppBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  if (!confirm('Delete ' + ids.length + ' selected opportunit' + (ids.length===1?'y':'ies') + '? This is permanent. Linked meetings stay but lose their opp tag.')) return;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ids.length; i++){
+    var id = String(ids[i]);
+    try {
+      var idx = opportunities.findIndex(function(o){ return String(o.id) === id; });
+      if (idx >= 0) opportunities.splice(idx, 1);
+      await fbSet(wsPath('opportunities/' + id), null);
+      ok++;
+    } catch(e){ console.warn('[oppBulk] delete failed:', e); fail++; }
+  }
+  window._oppBulkSelected.clear();
+  if (window.CorsairIndex && window.CorsairIndex.scheduleRebuild) window.CorsairIndex.scheduleRebuild();
+  if (typeof renderOppSidebar === 'function') try { renderOppSidebar(); } catch(e){}
+  if (typeof window._renderKanbanBoard === 'function') try { window._renderKanbanBoard(); } catch(e){}
+  window._oppRenderBulkBar();
+  toast('Deleted ' + ok + (fail ? ' (' + fail + ' failed)' : '') + ' opp' + (ok===1?'':'s'));
+};
+
+window._oppBulkExportCSV = function(){
+  var ids = Array.from(window._oppBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  var rows = [['name','agency','stage','value','pwin','nextAction','nextActionDate','vehicle','rfpDate','captureLead','notes']];
+  ids.forEach(function(id){
+    var o = (window.opportunities||[]).find(function(x){ return String(x.id) === String(id); });
+    if (!o) return;
+    rows.push([
+      o.name||'', o.agency||'', o.stage||'',
+      o.value||0,
+      o.pwin != null ? o.pwin : (o.winProb||''),
+      o.nextAction||'', o.nextActionDate||'',
+      o.vehicle||'', o.rfpDate||'',
+      o.captureLead || o.lead || '',
+      (o.notes||'').replace(/\n/g,' ')
+    ]);
+  });
+  var csv = rows.map(function(r){ return r.map(function(c){ var s = String(c==null?'':c).replace(/"/g,'""'); return (s.indexOf(',')>=0 || s.indexOf('"')>=0 || s.indexOf('\n')>=0) ? '"'+s+'"' : s; }).join(','); }).join('\n');
+  if (typeof _downloadFile === 'function'){
+    _downloadFile(csv, (currentWs && currentWs.name ? currentWs.name : 'corsair') + '_opps_selected_' + new Date().toISOString().split('T')[0] + '.csv', 'text/csv');
+    toast('Exported ' + ids.length + ' opp' + (ids.length===1?'':'s'));
+  }
+};
+
+window._oppRenderBulkBar = function(){
+  var bar = document.getElementById('opp-bulk-bar');
+  if (!bar) return;
+  var n = window._oppBulkSelected.size;
+  if (n === 0){ bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  // Stage options from OPP_STAGES
+  var stageOpts = '<option value="">-- set stage --</option>' + ((window.OPP_STAGES || []).map(function(s){
+    var key = (s && s.key) || s; var lbl = (s && s.label) || s;
+    return '<option value="' + String(key).replace(/"/g,'&quot;') + '">' + String(lbl).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + '</option>';
+  }).join(''));
+
+  // Capture lead options from workspace members
+  var members = (window.workspaceMembers && Array.isArray(window.workspaceMembers)) ? window.workspaceMembers : [];
+  var leadOpts = '<option value="">-- set capture lead --</option><option value="">(unassign)</option>' + members.map(function(m){
+    var name = m.name || m.email || m.uid;
+    return '<option value="' + String(name).replace(/"/g,'&quot;') + '">' + String(name).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + '</option>';
+  }).join('');
+
+  var ctrlStyle = 'padding:9px 12px;background:var(--s2);border:1px solid var(--b2);border-radius:3px;color:var(--text);font-family:IBM Plex Sans,sans-serif;font-size:var(--text-sm);cursor:pointer';
+  var btnStyle  = 'padding:9px 14px;background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer';
+
+  bar.innerHTML =
+    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+      '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--gold);line-height:1">' + n + '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.14em;color:var(--gold);text-transform:uppercase;font-weight:700">Selected</div>' +
+      '<button onclick="window._oppBulkSelectAllVisible()" style="' + btnStyle + '">Select all visible</button>' +
+      '<button onclick="window._oppBulkClear()" style="' + btnStyle + '">Clear</button>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<select onchange="if(this.value){window._oppBulkApplyField(\'stage\', this.value);this.selectedIndex=0;}" style="' + ctrlStyle + '">' + stageOpts + '</select>' +
+      '<select onchange="if(this.value!==null){window._oppBulkApplyField(\'captureLead\', this.value);this.selectedIndex=0;}" style="' + ctrlStyle + '">' + leadOpts + '</select>' +
+      '<input type="text" placeholder="p(win) %" onkeydown="if(event.key===\'Enter\' && this.value){window._oppBulkApplyField(\'pwin\', this.value);this.value=\'\';}" style="' + ctrlStyle + ';width:110px" title="Press Enter to apply p(win) % to all selected"/>' +
+      '<button onclick="window._oppBulkExportCSV()" style="' + btnStyle + ';color:var(--gold);border-color:var(--gold)">⬇ Export CSV</button>' +
+      '<button onclick="window._oppBulkDelete()" style="' + btnStyle + ';color:var(--red);border-color:rgba(239,68,68,.5)">✕ Delete</button>' +
+    '</div>';
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -16876,7 +17031,12 @@ window._renderKanbanBoard=function(){
       items.forEach(function(o){
         var meta=[o.agency||'',o.value||''].filter(Boolean).join(' · ');
         var scoreChip = (typeof window._dealScoreChip === 'function') ? window._dealScoreChip(o) : '';
-        h+='<div class="cop-kanban-card" draggable="true" data-opp-id="'+escK(o.id)+'" onclick="window.selectOpp&amp;&amp;window.selectOpp(\''+escK(o.id).replace(/'/g,"\\\'")+'\');window._toggleKanbanBoard&amp;&amp;window._toggleKanbanBoard()">'+
+        // P13.9: bulk-select checkbox
+        var isSel = window._oppBulkSelected && window._oppBulkSelected.has && window._oppBulkSelected.has(String(o.id));
+        var selRing = isSel ? 'border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)' : '';
+        var checkbox = '<div onclick="event.stopPropagation();window._oppBulkToggle(\''+escK(o.id).replace(/'/g,"\\\'")+'\')" title="Select for bulk action" style="position:absolute;top:5px;left:5px;width:16px;height:16px;border:1.5px solid '+(isSel?'var(--gold)':'var(--b2)')+';border-radius:2px;background:'+(isSel?'var(--gold)':'rgba(7,13,24,.6)')+';cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;color:'+(isSel?'#070d18':'transparent')+';line-height:1;z-index:3">✓</div>';
+        h+='<div class="cop-kanban-card" draggable="true" data-opp-id="'+escK(o.id)+'" style="position:relative;padding-left:28px;'+selRing+'" onclick="window.selectOpp&amp;&amp;window.selectOpp(\''+escK(o.id).replace(/'/g,"\\\'")+'\');window._toggleKanbanBoard&amp;&amp;window._toggleKanbanBoard()">'+
+             checkbox+
              '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">'+
                '<div class="cop-kanban-card-name" style="flex:1;min-width:0;margin:0">'+escK(o.name||'(unnamed)')+'</div>'+
                scoreChip+
@@ -17142,7 +17302,13 @@ function _renderOppList(q){
     var lead = o.captureLead || o.lead || '';
     var isClosed = (o.stage === 'won' || o.stage === 'lost');
 
-    return '<div class="cop-card' + (isActive ? ' active' : '') + (isClosed ? ' closed' : '') + '" data-stage="' + s.key + '" style="--stage-c:' + s.color + '" onclick="selectOpp(\'' + o.id + '\')">'
+    // P13.9: bulk-select checkbox
+    var isOppSel = window._oppBulkSelected && window._oppBulkSelected.has && window._oppBulkSelected.has(String(o.id));
+    var oppSelRing = isOppSel ? 'box-shadow:inset 0 0 0 2px var(--gold)' : '';
+    var oppCheckbox = '<div onclick="event.stopPropagation();window._oppBulkToggle(\'' + String(o.id).replace(/'/g,"\\'") + '\')" title="Select for bulk action" style="position:absolute;top:8px;right:8px;width:18px;height:18px;border:1.5px solid '+(isOppSel?'var(--gold)':'var(--b2)')+';border-radius:2px;background:'+(isOppSel?'var(--gold)':'rgba(7,13,24,.6)')+';cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;color:'+(isOppSel?'#070d18':'transparent')+';line-height:1;z-index:5">✓</div>';
+
+    return '<div class="cop-card' + (isActive ? ' active' : '') + (isClosed ? ' closed' : '') + '" data-stage="' + s.key + '" data-opp-id="' + o.id + '" style="--stage-c:' + s.color + ';position:relative;' + oppSelRing + '" onclick="selectOpp(\'' + o.id + '\')">'
+      + oppCheckbox
       + '<div class="cop-card-strip" style="background:' + s.color + '"></div>'
       + '<div class="cop-card-body">'
         + '<div class="cop-card-row1">'
