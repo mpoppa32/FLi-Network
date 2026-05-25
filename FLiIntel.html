@@ -8319,7 +8319,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.23</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.24</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -36406,8 +36406,85 @@ window._DEMO_DATA.opportunities = [
     contacts: [],
     competitors: 'Shield AI, Anduril Industries',
     createdAt: _demoTS(45)
+  },
+  // ── P13.24 — closed pursuits (past work) so the Win/Loss dashboard activates ──
+  {
+    id: 'demo-o-6',
+    name: 'DARPA SBIR Phase I — Autonomous ISR seed',
+    agency: 'DARPA',
+    vehicle: 'SBIR Phase I',
+    value: 250000,
+    stage: 'won',
+    rfp: _demoDate(420),
+    award: _demoDate(370),
+    notes: 'Phase I that opened the door to current Phase II/III pursuit chain with TTO. Martinez first contact came out of this work.',
+    meetings: [],
+    contacts: ['demo-n-2'],
+    competitors: '',
+    createdAt: _demoTS(430)
+  },
+  {
+    id: 'demo-o-7',
+    name: 'AFRL Open Topic — Edge inference benchmark',
+    agency: 'AFRL',
+    vehicle: 'SBIR Open Topic',
+    value: 1500000,
+    stage: 'lost',
+    rfp: _demoDate(360),
+    award: _demoDate(300),
+    notes: 'Competed against Lockheed + Raytheon. Lost on past performance + integration risk. Lessons drove the current AFWERX Phase II win.',
+    meetings: [],
+    contacts: [],
+    competitors: 'Lockheed Martin, Raytheon Technologies',
+    createdAt: _demoTS(380)
+  },
+  {
+    id: 'demo-o-8',
+    name: 'NSWC Crane SOTW — Quick-Turn Capability',
+    agency: 'NSWC Crane',
+    vehicle: 'SOTW',
+    value: 2000000,
+    stage: 'won',
+    rfp: _demoDate(280),
+    award: _demoDate(240),
+    notes: 'SOTW quick-turn capability delivery. Won on demo-day performance + responsive contracting from CWO Lee.',
+    meetings: [],
+    contacts: ['demo-n-7'],
+    competitors: '',
+    createdAt: _demoTS(290)
+  },
+  {
+    id: 'demo-o-9',
+    name: 'NSF SBIR Phase I — pre-pivot',
+    agency: 'NSF',
+    vehicle: 'SBIR Phase I',
+    value: 250000,
+    stage: 'lost',
+    rfp: _demoDate(540),
+    award: _demoDate(480),
+    notes: 'Pre-defense pivot work. Lost the NSF Phase I; reading the loss reviews pushed us toward dual-use defense + autonomy where margins live.',
+    meetings: [],
+    contacts: [],
+    competitors: '',
+    createdAt: _demoTS(560)
   }
 ];
+
+// ── P13.24 — calibration records (closed-deal outcomes that activate Win/Loss dashboard) ──
+// Each record matches one closed opp (demo-o-6..9). Factor values are tuned so the
+// learned-weights math produces meaningful non-default multipliers (wins show higher
+// cadence/stance, losses show more risks/red-flags). Predicted scores span all 3
+// brackets (0-33 / 34-66 / 67-100) so the bracket-accuracy chart populates.
+window._DEMO_DATA.calibration = [
+  { id:'demo-cal-1', oppId:'demo-o-6', oppName:'DARPA SBIR Phase I — Autonomous ISR seed', outcome:'won',  predictedScore:78, factors:{ recentMtgs:6, stanceNet:3, hiRisks:0, redFlags:0, stage:'won' },  closedAt:_demoTS(370)*1, agency:'DARPA',     value:250000  },
+  { id:'demo-cal-2', oppId:'demo-o-8', oppName:'NSWC Crane SOTW — Quick-Turn Capability',   outcome:'won',  predictedScore:58, factors:{ recentMtgs:4, stanceNet:2, hiRisks:1, redFlags:0, stage:'won' },  closedAt:_demoTS(240)*1, agency:'NSWC Crane', value:2000000 },
+  { id:'demo-cal-3', oppId:'demo-o-7', oppName:'AFRL Open Topic — Edge inference benchmark', outcome:'lost', predictedScore:42, factors:{ recentMtgs:2, stanceNet:0, hiRisks:2, redFlags:1, stage:'lost' }, closedAt:_demoTS(300)*1, agency:'AFRL',      value:1500000 },
+  { id:'demo-cal-4', oppId:'demo-o-9', oppName:'NSF SBIR Phase I — pre-pivot',               outcome:'lost', predictedScore:24, factors:{ recentMtgs:1, stanceNet:-1, hiRisks:2, redFlags:1, stage:'lost' }, closedAt:_demoTS(480)*1, agency:'NSF',       value:250000  }
+];
+// Convert _demoTS millis to ISO strings for closedAt (recordOutcome writes ISO format)
+window._DEMO_DATA.calibration.forEach(function(r){
+  r.closedAt = new Date(r.closedAt).toISOString();
+});
 
 window._DEMO_DATA.commitments = [
   // OVERDUE
@@ -36705,6 +36782,15 @@ window._loadDemoWorkspace = async function() {
       });
       await doWrite('commitment ' + (i+1) + '/' + D.commitments.length, wsPath('commitments/' + cm.id), norm);
       await doWrite('tl_commitment ' + (i+1) + '/' + D.commitments.length, wsPath('tl_commitments/' + cm.id), norm);
+    }
+
+    // P13.24 — seed closed-deal calibration records so Win/Loss dashboard activates
+    if (Array.isArray(D.calibration) && D.calibration.length){
+      _st(92, 'Seeding closed-deal calibration history...');
+      for (var i = 0; i < D.calibration.length; i++){
+        var cr = D.calibration[i];
+        await doWrite('calibration ' + (i+1) + '/' + D.calibration.length + ' (' + cr.outcome + ')', wsPath('calibration/' + cr.id), cr);
+      }
     }
 
     // P13.21 — seed 3 sample saved views (showcases the P13.4 / P13.10 / P13.16 feature)

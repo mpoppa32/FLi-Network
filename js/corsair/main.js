@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.23';
-  window.Corsair.buildBlurb  = 'Win/Loss Analysis dashboard — new top-level view (More menu) that reads calibrationRecords (already synced from RTDB; populated automatically when an opp\'s stage transitions to won/lost via recordOutcome). Insufficient-data state until N>=3 closed pursuits: shows progress bar (X of 3) + preview cards explaining what the dashboard surfaces + any partial closed-deal log. Full dashboard at N>=3: top stats tiles (win rate, closed count, $ won, $ lost, model accuracy), bracket-accuracy bars (0-33/34-66/67-100), learned factor weights (cadence/stance/risks/red flags) with x-multipliers, full closed-deal log with predicted-vs-actual checks. Registered through the three view registries (_CORSAIR_VIEWS + _relocateViewsIntoMainApp + switchView routing) per the new-view-checklist memory';
+  window.Corsair.buildTag    = 'P13.24';
+  window.Corsair.buildBlurb  = 'Closed-deal demo seeding — Win/Loss dashboard now activates end-to-end in the demo workspace. Added 4 closed pursuits to _DEMO_DATA.opportunities (DARPA Phase I won $250K, AFRL Open Topic lost $1.5M, NSWC Crane SOTW won $2M, NSF Phase I pre-pivot lost $250K) plus 4 matching calibration records on _DEMO_DATA.calibration with tuned factor snapshots (wins show higher cadence/stance, losses higher risks/red flags) so getCalibrationWeights produces meaningful non-default multipliers. Predicted scores span all 3 brackets (78/58/42/24) so bracket-accuracy bars populate. Write loop added to _loadDemoWorkspace at ~92% so new demo users hit Win/Loss and see the fully-activated dashboard (2 wins, 2 losses, 75% accuracy, $2.25M won, $1.75M lost) instead of the insufficient-data state';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
