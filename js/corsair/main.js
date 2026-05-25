@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.5';
-  window.Corsair.buildBlurb  = 'Phase 5g — Posture column (off by default; toggle in filter bar)';
+  window.Corsair.buildTag    = 'P12.6';
+  window.Corsair.buildBlurb  = 'P2.14 — Gmail/Calendar auto-capture LIVE';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
