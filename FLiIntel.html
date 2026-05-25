@@ -8338,7 +8338,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.5</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.6</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -33494,77 +33494,68 @@ window._renderAutoCaptureSetup = function() {
   return h;
 };
 
-// ── Connect Google Account for Auto-Capture ──────────────────
-window._connectGoogleAutoCapture = async function() {
-  var calClientId = localStorage.getItem('flintel_gcal_cid') || '';
-  if (!calClientId) {
-    toast('Add your Google Calendar Client ID in Settings first');
-    return;
-  }
-  // Build OAuth URL — scopes: gmail.readonly + calendar.readonly
-  var scopes = [
-    'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/calendar.readonly'
-  ].join(' ');
-  var redirectUri = encodeURIComponent(window.location.href.split('?')[0]);
-  var state = encodeURIComponent(JSON.stringify({wsId: currentWsId, uid: currentUser&&currentUser.uid}));
-  var url = 'https://accounts.google.com/o/oauth2/v2/auth'
-    + '?client_id=' + encodeURIComponent(calClientId)
-    + '&redirect_uri=' + redirectUri
-    + '&response_type=code'
-    + '&scope=' + encodeURIComponent(scopes)
-    + '&access_type=offline'
-    + '&prompt=consent'
-    + '&state=' + state;
-  // Store that we're in an OAuth flow
-  try { localStorage.setItem('flintel_oauth_pending', '1'); } catch(e) {}
-  window.location.href = url;
+// ── Connect Google Account for Auto-Capture (P2.14 backend) ──
+window._connectGoogleAutoCapture = function() {
+  if (!currentUser || !currentUser.uid) { toast('Sign in first'); return; }
+  var url = 'https://us-central1-fli-network.cloudfunctions.net/captureOAuthStart?uid=' + encodeURIComponent(currentUser.uid);
+  var w = 520, h = 640;
+  var left = (window.screen.width  - w) / 2;
+  var top  = (window.screen.height - h) / 2;
+  var popup = window.open(url, 'corsair-oauth', 'width='+w+',height='+h+',left='+left+',top='+top+',resizable=yes,scrollbars=yes');
+  if (!popup) { toast('Allow popups for this site to connect Google'); return; }
+  // Poll for token landing; refresh status when it arrives
+  var tries = 0;
+  var poll = setInterval(function() {
+    tries++;
+    if (popup.closed || tries > 120) {
+      clearInterval(poll);
+      if (window._refreshAutoCaptureStatus) window._refreshAutoCaptureStatus();
+    }
+  }, 2000);
 };
 
-// ── Test Auto-Capture ────────────────────────────────────────
+// ── Test Auto-Capture (P2.14 — calls deployed Gmail+Calendar sync) ──
 window._testAutoCapture = async function() {
   var btn = document.getElementById('autocap-test-btn');
   var res = document.getElementById('autocap-test-result');
   if (!btn || !res) return;
-  var endpoint = localStorage.getItem('flintel_mcp_endpoint') || '';
-  var token = localStorage.getItem('flintel_mcp_token') || '';
-  if (!endpoint) {
+  if (!currentUser || !currentUser.uid) {
     res.style.display = 'block';
     res.style.color = 'var(--red)';
-    res.textContent = '✕ Set your MCP endpoint URL in Settings first';
+    res.textContent = '✕ Sign in first';
     return;
   }
   btn.textContent = 'Running...';
   btn.disabled = true;
   res.style.display = 'none';
   try {
-    var resp = await fetch(endpoint + '/triggerCapture', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
-      body: JSON.stringify({ wsId: currentWsId })
-    });
+    var callGmail = window._httpsCallable(fbFunctions, 'triggerGmailSync');
+    var callCal   = window._httpsCallable(fbFunctions, 'triggerCalendarSync');
+    var both = await Promise.all([
+      callGmail({ workspaceId: currentWsId }),
+      callCal({ workspaceId: currentWsId })
+    ]);
+    var gm = (both[0] && both[0].data) || {};
+    var cl = (both[1] && both[1].data) || {};
     res.style.display = 'block';
-    if (resp.ok) {
-      res.style.color = 'var(--green)';
-      res.textContent = '✓ Capture triggered — check the Capture tab in ~30 seconds';
-    } else {
-      res.style.color = 'var(--red)';
-      res.textContent = '✕ Error ' + resp.status + ' — check Cloud Function logs';
-    }
+    res.style.color = 'var(--green)';
+    res.textContent = '✓ Synced — Gmail: ' + (gm.captured||0) + ' new · Calendar: ' + (cl.captured||0) + ' new. Open Capture tab to review.';
   } catch(e) {
     res.style.display = 'block';
     res.style.color = 'var(--red)';
-    res.textContent = '✕ ' + (e.message||'Network error');
+    res.textContent = '✕ ' + (e.message||'Sync failed — check Cloud Function logs');
   }
   btn.textContent = '⚡ Test Now';
   btn.disabled = false;
 };
 
-// ── Check OAuth token status on modal open ───────────────────
+// ── Check OAuth token status on modal open (P2.14 — user-scoped path) ──
 window._refreshAutoCaptureStatus = async function() {
-  if (!currentWsId || !currentUser) return;
-  var snap = await get(ref(db, wsPath('oauthTokens/' + currentUser.uid)));
+  if (!currentUser || !currentUser.uid) return;
+  var snap = await get(ref(db, 'users/' + currentUser.uid + '/captureAuth/google'));
   var tokens = snap.val();
+  if (tokens && tokens.accessToken) tokens.access_token = tokens.accessToken;
+  if (tokens && tokens.expiresAt) tokens.expiry_date = new Date(tokens.expiresAt).getTime();
   var gmailDot = document.getElementById('gmail-dot');
   var gmailTxt = document.getElementById('gmail-status-text');
   var gcalDot = document.getElementById('gcal-dot');

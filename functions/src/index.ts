@@ -134,8 +134,8 @@ export { industryAssocQuarterly } from "./jobs/industryAssocQuarterly";
 // Set via functions/.env (local) or `firebase functions:secrets:set` (prod).
 // Full setup steps in docs/p2.14-gmail-calendar-plan.md Phase 1.
 // ───────────────────────────────────────────────────────────────────────────
-// export { captureOAuthStart } from "./http/captureOAuthStart";
-// export { captureOAuthCallback } from "./http/captureOAuthCallback";
-// export { triggerGmailSync } from "./http/triggerGmailSync";
-// export { triggerCalendarSync } from "./http/triggerCalendarSync";
-// export { captureHourly } from "./jobs/captureHourly";
+export { captureOAuthStart } from "./http/captureOAuthStart";
+export { captureOAuthCallback } from "./http/captureOAuthCallback";
+export { triggerGmailSync } from "./http/triggerGmailSync";
+export { triggerCalendarSync } from "./http/triggerCalendarSync";
+export { captureHourly } from "./jobs/captureHourly";
