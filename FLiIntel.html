@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.0</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.1</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8412,6 +8412,8 @@ input[type="url"], textarea, select {
           <button class="tools-menu-item" data-view="timeline" onclick="window._toolsMenuSelect('timeline')"><span style="color:#38bdf8;width:18px;display:inline-block">⏱</span><span>Timeline</span><span class="tm-meta">commitments over time</span></button>
           <button class="tools-menu-item" data-view="capture" onclick="window._toolsMenuSelect('capture')"><span style="color:#f59e0b;width:18px;display:inline-block;position:relative">⚡<span id="tools-capture-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;background:var(--red);color:#fff;border-radius:7px;font-size:8px;font-weight:700;line-height:14px;text-align:center;padding:0 3px"></span></span><span>Auto-Capture</span><span class="tm-meta">pending review</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();openModal('import-data-modal');setTimeout(function(){if(window._impSetType)window._impSetType('person')},60)"><span style="color:var(--gold);width:18px;display:inline-block">⬆</span><span>Import Data</span><span class="tm-meta">CSV / paste bulk-add</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('json')"><span style="color:#22c55e;width:18px;display:inline-block">⬇</span><span>Backup JSON</span><span class="tm-meta">full workspace, lossless</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('csv')"><span style="color:#5b8fc4;width:18px;display:inline-block">⬇</span><span>Export CSVs</span><span class="tm-meta">4 files · meetings/contacts/opps/commits</span></button>
           <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
           <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Analytics</div>
           <button class="tools-menu-item" data-view="pulse" onclick="window._toolsMenuSelect('pulse')"><span style="color:var(--green);width:18px;display:inline-block">📡</span><span>Intel Center</span><span class="tm-meta">live web intel</span></button>
@@ -10980,6 +10982,12 @@ input[type="url"], textarea, select {
   </div>
   <div class="mob-drawer-item" onclick="closeMobDrawer();openModal('import-data-modal');setTimeout(function(){if(window._impSetType)window._impSetType('person')},60)">
     <span class="di-icon" style="color:var(--gold)">⬆</span><span>Import Data <span style="font-size:11px;color:var(--t3)">— CSV bulk-add</span></span>
+  </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();window.exportWorkspace&&window.exportWorkspace('json')">
+    <span class="di-icon" style="color:#22c55e">⬇</span><span>Backup JSON <span style="font-size:11px;color:var(--t3)">— full workspace</span></span>
+  </div>
+  <div class="mob-drawer-item" onclick="closeMobDrawer();window.exportWorkspace&&window.exportWorkspace('csv')">
+    <span class="di-icon" style="color:#5b8fc4">⬇</span><span>Export CSVs <span style="font-size:11px;color:var(--t3)">— 4 files</span></span>
   </div>
   <div class="mob-drawer-item" onclick="closeMobDrawer();if(window._openCmdK)window._openCmdK()">
     <span class="di-icon">🔍</span><span>Search <span style="font-size:11px;color:var(--t3)">— contacts, pursuits, meetings</span></span>
@@ -44260,7 +44268,21 @@ window.exportWorkspace = async function(format) {
       });
       var ccsv = crows.map(function(row) { return row.map(function(cell) { var s = String(cell || '').replace(/"/g, '""'); return s.includes(',') ? '"' + s + '"' : s; }).join(','); }).join('\n');
       _downloadFile(ccsv, (currentWs.name || 'corsair') + '_contacts_' + new Date().toISOString().split('T')[0] + '.csv', 'text/csv');
-      toast('Exported meetings + contacts CSVs');
+      // P13.1: opportunities CSV — same shape as the import template so round-trips cleanly
+      var orows = [['name','agency','stage','value','winProb','nextAction','nextActionDate','vehicle','due','notes']];
+      exportData.opportunities.forEach(function(o){
+        orows.push([o.name||'', o.agency||'', o.stage||'', o.value||0, o.pwin||'', o.nextAction||'', o.nextActionDate||'', o.vehicle||'', o.due||'', (o.notes||'').replace(/\n/g,' ')]);
+      });
+      var ocsv = orows.map(function(row){ return row.map(function(cell){ var s = String(cell == null ? '' : cell).replace(/"/g,'""'); return (s.indexOf(',')>=0 || s.indexOf('"')>=0 || s.indexOf('\n')>=0) ? '"' + s + '"' : s; }).join(','); }).join('\n');
+      _downloadFile(ocsv, (currentWs.name || 'corsair') + '_opportunities_' + new Date().toISOString().split('T')[0] + '.csv', 'text/csv');
+      // P13.1: commitments CSV
+      var krows = [['task','owner','deadline','status']];
+      exportData.commitments.forEach(function(c){
+        krows.push([c.task||'', c.owner||'', c.deadline||'', c.status||'open']);
+      });
+      var kcsv = krows.map(function(row){ return row.map(function(cell){ var s = String(cell == null ? '' : cell).replace(/"/g,'""'); return (s.indexOf(',')>=0 || s.indexOf('"')>=0) ? '"' + s + '"' : s; }).join(','); }).join('\n');
+      _downloadFile(kcsv, (currentWs.name || 'corsair') + '_commitments_' + new Date().toISOString().split('T')[0] + '.csv', 'text/csv');
+      toast('Exported 4 CSVs · meetings + contacts + opportunities + commitments');
     } else {
       // Full JSON export
       var json = JSON.stringify(exportData, null, 2);

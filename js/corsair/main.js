@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.0';
-  window.Corsair.buildBlurb  = 'CSV / paste bulk import (1/7 of competitive-parity arc) — contacts/orgs/opps with auto-detected column mapping, preview, downloadable templates, progress + summary toast';
+  window.Corsair.buildTag    = 'P13.1';
+  window.Corsair.buildBlurb  = 'Backup + portability surfaced (2/7) — More-menu entries for Backup JSON + Export CSVs; CSV export extended to include opportunities + commitments (was just meetings + contacts)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
