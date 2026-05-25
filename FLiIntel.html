@@ -1494,8 +1494,9 @@ body.de3d-expanded #de3d-expand-btn:hover { background:rgba(244,237,224,.06) !im
 }
 .tl-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2)}
 .tl-dot{border-radius:50%;background:rgba(150,150,150,.15);border-style:solid;border-color:#888;flex-shrink:0}
-.net-empty{position:absolute;top:50%;left:calc(224px + (100% - 224px)/2);transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:5}
-.net-empty p{font-size:var(--text-base);color:var(--t3);margin-top:8px;line-height:1.8}
+.net-empty{position:absolute;top:50%;left:calc(224px + (100% - 224px)/2);transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:5;max-width:420px;padding:24px 32px;background:rgba(7,13,24,.55);border:1px solid rgba(212,130,58,.18);border-radius:4px;backdrop-filter:blur(2px)}
+.net-empty p{font-size:14px;color:var(--paper);margin-top:12px;line-height:1.6;font-family:IBM Plex Sans,sans-serif}
+.net-empty p .net-empty-hint{display:block;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.08em;margin-top:8px;text-transform:uppercase}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CALENDAR
@@ -8318,7 +8319,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.18</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.19</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9486,7 +9487,7 @@ input[type="url"], textarea, select {
       <div class="tl-item"><div class="tl-dot" style="width:16px;height:16px;border-width:2px;opacity:.6"></div><span>2 Active</span></div>
       <div class="tl-item"><div class="tl-dot" style="width:9px;height:9px;border-width:1px;opacity:.3"></div><span>3 Track</span></div>
     </div>
-    <div class="net-empty" id="net-empty"><svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="margin:0 auto;display:block;opacity:.15"><circle cx="24" cy="24" r="8" fill="none" stroke="#8b5cf6" stroke-width="2"/><circle cx="8" cy="10" r="4" fill="#8b5cf6" opacity=".6"/><circle cx="40" cy="10" r="4" fill="#8b5cf6" opacity=".6"/><circle cx="8" cy="38" r="4" fill="#8b5cf6" opacity=".6"/><circle cx="40" cy="38" r="4" fill="#8b5cf6" opacity=".6"/></svg><p>No nodes yet<br>Use + buttons above to add</p></div>
+    <div class="net-empty" id="net-empty"><svg width="56" height="56" viewBox="0 0 48 48" fill="none" style="margin:0 auto;display:block;opacity:.45"><circle cx="24" cy="24" r="8" fill="none" stroke="#d4823a" stroke-width="2"/><circle cx="8" cy="10" r="4" fill="#d4823a" opacity=".7"/><circle cx="40" cy="10" r="4" fill="#d4823a" opacity=".7"/><circle cx="8" cy="38" r="4" fill="#d4823a" opacity=".7"/><circle cx="40" cy="38" r="4" fill="#d4823a" opacity=".7"/><line x1="14" y1="13" x2="20" y2="19" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="34" y1="13" x2="28" y2="19" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="14" y1="35" x2="20" y2="29" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="34" y1="35" x2="28" y2="29" stroke="#d4823a" stroke-width="1.5" opacity=".5"/></svg><p>The Entity Graph is empty<span class="net-empty-hint">Add an entity with the + buttons in the left sidebar<br/>&mdash; or open an account / opp first and they&rsquo;ll surface here</span></p></div>
     <div class="status-bar" id="net-status"></div>
   </div>
 
@@ -16345,7 +16346,14 @@ function switchView(v){
   _showOnlyView(v);
   _setActiveMode(_modeKeyForView(v));
 
-  if(v==='network'){if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
+  if(v==='network'){
+    // P13.19 — diagnostic on graph entry (auto-trail for blank-render investigations)
+    try {
+      var _nv = document.getElementById('network-view');
+      var _ne = document.getElementById('net-empty');
+      console.log('[Corsair graph] enter · nodes=' + ((window.nodes||[]).length) + ' links=' + ((window.links||[]).length) + ' visibleIds=' + (typeof visibleIds==='object'?visibleIds.size:'?') + ' sim=' + (typeof sim!=='undefined'&&sim?'ready':'null') + ' svg=' + (typeof svgEl!=='undefined'&&svgEl?'ready':'null') + ' nvDisplay=' + (_nv?_nv.style.display:'?') + ' netEmptyDisplay=' + (_ne?_ne.style.display:'?') + ' ws=' + (window.currentWsId||'?'));
+    } catch(e){}
+    if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
     // Resume 3D engine if user previously had it active
     try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); setTimeout(function(){ if(window.nodes&&window.nodes.length) window.DiscoveryEngine3D.loadGraph(window.nodes, window.links||[]); }, 80); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active'); } }catch(e){}
   }

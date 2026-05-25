@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.18';
-  window.Corsair.buildBlurb  = 'Breadcrumbs in drawers — session-scoped nav stack of {type,id,name}; pushed automatically on openNetPanel/selectOpp/_openAccountDetail (alongside P13.12 Recents wraps); rendered at top of Inspector + Account drawer + Opp detail showing last 3 prior entries as clickable chips; clicking a chip closes current drawer + truncates stack + re-routes via _openRecent (P13.12 routing reused); revisiting an entry truncates back-traversal rather than duplicating';
+  window.Corsair.buildTag    = 'P13.19';
+  window.Corsair.buildBlurb  = 'Entity Graph smoke-test hardening — code-side review found no structural break (initNetwork/renderNetwork/_showOnlyView all wired correctly; network-view already inside main-app); upgraded the canvas empty-state from faint single-line to legible card with amber gold-on-ink panel + better hint copy ("Add an entity with the + buttons in the left sidebar"); added auto-diagnostic console log on graph view entry that captures nodes/links/visibleIds/sim/svg/nvDisplay/netEmptyDisplay/ws state — leaves a trail so any future blank-render report can be triaged from the console alone';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
