@@ -8319,7 +8319,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.19</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.20</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9487,7 +9487,7 @@ input[type="url"], textarea, select {
       <div class="tl-item"><div class="tl-dot" style="width:16px;height:16px;border-width:2px;opacity:.6"></div><span>2 Active</span></div>
       <div class="tl-item"><div class="tl-dot" style="width:9px;height:9px;border-width:1px;opacity:.3"></div><span>3 Track</span></div>
     </div>
-    <div class="net-empty" id="net-empty"><svg width="56" height="56" viewBox="0 0 48 48" fill="none" style="margin:0 auto;display:block;opacity:.45"><circle cx="24" cy="24" r="8" fill="none" stroke="#d4823a" stroke-width="2"/><circle cx="8" cy="10" r="4" fill="#d4823a" opacity=".7"/><circle cx="40" cy="10" r="4" fill="#d4823a" opacity=".7"/><circle cx="8" cy="38" r="4" fill="#d4823a" opacity=".7"/><circle cx="40" cy="38" r="4" fill="#d4823a" opacity=".7"/><line x1="14" y1="13" x2="20" y2="19" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="34" y1="13" x2="28" y2="19" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="14" y1="35" x2="20" y2="29" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="34" y1="35" x2="28" y2="29" stroke="#d4823a" stroke-width="1.5" opacity=".5"/></svg><p>The Entity Graph is empty<span class="net-empty-hint">Add an entity with the + buttons in the left sidebar<br/>&mdash; or open an account / opp first and they&rsquo;ll surface here</span></p></div>
+    <div class="net-empty" id="net-empty"><svg width="56" height="56" viewBox="0 0 48 48" fill="none" style="margin:0 auto;display:block;opacity:.45"><circle cx="24" cy="24" r="8" fill="none" stroke="#d4823a" stroke-width="2"/><circle cx="8" cy="10" r="4" fill="#d4823a" opacity=".7"/><circle cx="40" cy="10" r="4" fill="#d4823a" opacity=".7"/><circle cx="8" cy="38" r="4" fill="#d4823a" opacity=".7"/><circle cx="40" cy="38" r="4" fill="#d4823a" opacity=".7"/><line x1="14" y1="13" x2="20" y2="19" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="34" y1="13" x2="28" y2="19" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="14" y1="35" x2="20" y2="29" stroke="#d4823a" stroke-width="1.5" opacity=".5"/><line x1="34" y1="35" x2="28" y2="29" stroke="#d4823a" stroke-width="1.5" opacity=".5"/></svg><p>The Entity Graph is empty<span class="net-empty-hint">Add an entity from the toolbar &mdash; click <button onclick="window.toggleAddMenu&&window.toggleAddMenu()" style="background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.45);border-radius:2px;color:var(--green);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.08em;padding:2px 7px;cursor:pointer;pointer-events:auto;margin:0 2px">&oplus; ADD</button> above<br/>&mdash; or open an Account / Pursuit and entities surface here</span></p></div>
     <div class="status-bar" id="net-status"></div>
   </div>
 
@@ -24153,7 +24153,20 @@ sim=d3.forceSimulation()
   .on('tick',ticked);
 window.addEventListener('resize',resizeCanvas);}
 
-function resizeCanvas(){var netView=document.getElementById('network-view');if(!netView||netView.style.display==='none')return;W=netView.offsetWidth-220;H=netView.offsetHeight-42;if(svgEl){svgEl.setAttribute('width',W);svgEl.setAttribute('height',H);}}
+function resizeCanvas(){var netView=document.getElementById('network-view');if(!netView||netView.style.display==='none')return;W=netView.offsetWidth-220;H=netView.offsetHeight-42;if(svgEl){svgEl.setAttribute('width',W);svgEl.setAttribute('height',H);}
+  // P13.20 — d3.forceCenter captures W/H by value at sim creation. After
+  // initNetwork ran with the hidden view (W=800/H=600 defaults), the center
+  // force pulled nodes toward (400,300) — upper-left in a wider viewport.
+  // Update it now that we have real dims, and on every subsequent resize.
+  if (typeof sim !== 'undefined' && sim){
+    var cf = sim.force('center');
+    if (cf && typeof cf.x === 'function'){ cf.x(W/2); cf.y(H/2); }
+    // Recompute org radial ring positions for the new viewport
+    if (typeof computeOrgAngles === 'function') try { computeOrgAngles(); } catch(e){}
+    // Gentle alpha bump so the new center settles without a hard reset
+    if (typeof nodes !== 'undefined' && nodes.length) sim.alpha(0.08).restart();
+  }
+}
 
 function nr(d){var a=d.type==='company'?SZ.company:d.type==='person'?SZ.person:d.type==='government'?SZ.company:SZ.deal;return a[(d.priority||2)-1];}
 function nc(d){if(d.type==='company'||d.type==='government'){var oppN=new Set(opportunities.map(function(o){return(o.name||'').toLowerCase();}));if(d.bdTarget||(d.name&&oppN.has(d.name.toLowerCase())))return'#d4823a'; // BD target: gold

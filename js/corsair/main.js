@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.19';
-  window.Corsair.buildBlurb  = 'Entity Graph smoke-test hardening — code-side review found no structural break (initNetwork/renderNetwork/_showOnlyView all wired correctly; network-view already inside main-app); upgraded the canvas empty-state from faint single-line to legible card with amber gold-on-ink panel + better hint copy ("Add an entity with the + buttons in the left sidebar"); added auto-diagnostic console log on graph view entry that captures nodes/links/visibleIds/sim/svg/nvDisplay/netEmptyDisplay/ws state — leaves a trail so any future blank-render report can be triaged from the console alone';
+  window.Corsair.buildTag    = 'P13.20';
+  window.Corsair.buildBlurb  = 'Entity Graph correctness arc — (1) d3.forceCenter drift fix: initNetwork ran while view was hidden with W=800/H=600 defaults, so the center force pulled nodes toward stale coords forever; resizeCanvas now updates forceCenter.x/.y + recomputes org radial ring + gentle alpha bump on real-viewport resize. (2) Accurate empty-state hint: P13.19 said "+ buttons in the left sidebar" but the actual add menu is ⊕ Add ▾ in the top toolbar; new copy points there with an inline gold-green clickable ⊕ ADD chip that opens the menu in one click';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
