@@ -8341,7 +8341,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.34</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.35</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -38424,20 +38424,40 @@ function _drwPeopleResolvePerson(id){
   return null;
 }
 
+// P13.35 — preserve scroll position across drawer re-render so checkbox
+// clicks don't snap the user back to the top of the drawer (was an
+// unfixed UX wrinkle in the original P13.17 ship).
+function _drwSnapshotScrollAndReRender(){
+  var sel = window._accountsState && window._accountsState.selectedOrgId;
+  if (!sel || !window._openAccountDetail) return;
+  // The scrollable area inside the drawer is the second flex child of
+  // #account-detail-panel (the content div with overflow-y:auto).
+  var panel = document.getElementById('account-detail-panel');
+  var scrollEl = panel ? panel.querySelector(':scope > div[style*="overflow-y:auto"]') : null;
+  var savedTop = scrollEl ? scrollEl.scrollTop : 0;
+  window._openAccountDetail(sel);
+  // After re-render the scrollable div is a NEW element — find it fresh.
+  if (savedTop > 0){
+    requestAnimationFrame(function(){
+      var p2 = document.getElementById('account-detail-panel');
+      var newScrollEl = p2 ? p2.querySelector(':scope > div[style*="overflow-y:auto"]') : null;
+      if (newScrollEl) newScrollEl.scrollTop = savedTop;
+    });
+  }
+}
+
 window._drwPeopleBulkToggle = function(personId){
   if (!personId) return;
   var k = String(personId);
   if (window._drwPeopleBulkSelected.has(k)) window._drwPeopleBulkSelected.delete(k);
   else window._drwPeopleBulkSelected.add(k);
-  // Re-render drawer to reflect selection style + bar
-  var sel = window._accountsState && window._accountsState.selectedOrgId;
-  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+  // Re-render drawer to reflect selection style + bar (preserves scroll)
+  _drwSnapshotScrollAndReRender();
 };
 
 window._drwPeopleBulkClear = function(){
   window._drwPeopleBulkSelected.clear();
-  var sel = window._accountsState && window._accountsState.selectedOrgId;
-  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+  _drwSnapshotScrollAndReRender();
 };
 
 window._drwPeopleBulkSelectAllVisible = function(){
@@ -38446,8 +38466,7 @@ window._drwPeopleBulkSelectAllVisible = function(){
     var id = row.getAttribute('data-person-id');
     if (id) window._drwPeopleBulkSelected.add(String(id));
   });
-  var sel = window._accountsState && window._accountsState.selectedOrgId;
-  if (sel && window._openAccountDetail) window._openAccountDetail(sel);
+  _drwSnapshotScrollAndReRender();
 };
 
 window._drwPeopleBulkSetTier = async function(tier){

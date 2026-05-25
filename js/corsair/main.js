@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.34';
-  window.Corsair.buildBlurb  = 'Pre-Bryce fix #8 — Timeline view threw "ReferenceError: h is not defined" on switch and rendered blank. Caught via Chrome MCP smoke-test loop across all More-menu views. renderTLCard at FLiIntel.html:24328 assigned to `h` without declaring it first (h=\'<div...\' instead of var h=\'<div...\'). Strict mode in the inline module body made that fatal. One-character fix';
+  window.Corsair.buildTag    = 'P13.35';
+  window.Corsair.buildBlurb  = 'Pre-Bryce fix #9 — Account drawer scroll-reset on bulk-checkbox click. P13.17 People bulk-actions worked but every checkbox toggle (and "Select all") snapped the drawer scroll back to the top, hiding the user\'s selection. Added _drwSnapshotScrollAndReRender helper that captures scrollTop on the content div, triggers the re-render, then restores scrollTop on the new content div via requestAnimationFrame. Applied to bulk-toggle / bulk-clear / select-all-visible';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
