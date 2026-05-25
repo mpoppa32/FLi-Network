@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.33';
-  window.Corsair.buildBlurb  = 'Pre-Bryce fix #6+7 — (a) Brief CRITICAL section was rendering every overdue commitment 2x side-by-side. _corsairBuildRhythm built _tlSet for dedup but never applied it; demo loader writes each commitment to BOTH tl_commitments/{id} AND commitments/{id} so the unfiltered concat doubled every card. Applied the intended filter. (b) Pipeline empty-state button said "Create FIRST Opportunity" even when 122 opps existed — relabeled to "New Opportunity" so it reads correctly regardless of opp count';
+  window.Corsair.buildTag    = 'P13.34';
+  window.Corsair.buildBlurb  = 'Pre-Bryce fix #8 — Timeline view threw "ReferenceError: h is not defined" on switch and rendered blank. Caught via Chrome MCP smoke-test loop across all More-menu views. renderTLCard at FLiIntel.html:24328 assigned to `h` without declaring it first (h=\'<div...\' instead of var h=\'<div...\'). Strict mode in the inline module body made that fatal. One-character fix';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
