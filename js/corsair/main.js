@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.2';
-  window.Corsair.buildBlurb  = 'Pipeline Forecast dashboard (3/7) — total / weighted / avg pipeline tiles, 6-month close-month bars (weighted vs unweighted), stage funnel + velocity (median days in stage). Collapsible; auto-renders on Pipeline view';
+  window.Corsair.buildTag    = 'P13.3';
+  window.Corsair.buildBlurb  = 'First-run onboarding tour (5/7) — 5-step welcome walkthrough fires once per (uid,ws) pair on workspace open. Replayable from More menu. (Skipped 4/7 native email send — needs Google Cloud Console config)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

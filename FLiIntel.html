@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.2</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.3</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8414,6 +8414,7 @@ input[type="url"], textarea, select {
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();openModal('import-data-modal');setTimeout(function(){if(window._impSetType)window._impSetType('person')},60)"><span style="color:var(--gold);width:18px;display:inline-block">⬆</span><span>Import Data</span><span class="tm-meta">CSV / paste bulk-add</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('json')"><span style="color:#22c55e;width:18px;display:inline-block">⬇</span><span>Backup JSON</span><span class="tm-meta">full workspace, lossless</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('csv')"><span style="color:#5b8fc4;width:18px;display:inline-block">⬇</span><span>Export CSVs</span><span class="tm-meta">4 files · meetings/contacts/opps/commits</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._tourStart&&window._tourStart()"><span style="color:#a78bfa;width:18px;display:inline-block">★</span><span>Replay tour</span><span class="tm-meta">5-step onboarding walkthrough</span></button>
           <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
           <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Analytics</div>
           <button class="tools-menu-item" data-view="pulse" onclick="window._toolsMenuSelect('pulse')"><span style="color:var(--green);width:18px;display:inline-block">📡</span><span>Intel Center</span><span class="tm-meta">live web intel</span></button>
@@ -10069,6 +10070,27 @@ input[type="url"], textarea, select {
   </div>
   <div id="portfolio-content" style="flex:1;overflow-y:auto"></div>
 </div></div>
+<!-- ONBOARDING TOUR MODAL (P13.3) — first-run walkthrough for new operators -->
+<div class="overlay" id="onboarding-tour-modal" style="display:none;z-index:9990">
+  <div class="modal" style="max-width:640px;padding:0;background:linear-gradient(180deg,#0e1628,#070d18);border:1px solid var(--gold);box-shadow:0 24px 80px rgba(0,0,0,.75),0 0 60px rgba(212,130,58,.15)">
+    <div style="padding:28px 32px 8px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px">
+      <div>
+        <div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.18em;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:4px" id="tour-step-counter">Welcome · Step 1 of 5</div>
+        <div id="tour-title" style="font-family:Antonio,sans-serif;font-size:var(--text-2xl);font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-.01em">Welcome to Corsair</div>
+      </div>
+      <button onclick="window._tourSkip()" style="background:none;border:1px solid var(--b2);color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);letter-spacing:.1em;cursor:pointer;padding:6px 12px;border-radius:3px">Skip tour</button>
+    </div>
+    <div id="tour-body" style="padding:18px 32px 4px;font-size:var(--text-base);color:var(--t2);line-height:var(--leading-normal);min-height:160px"></div>
+    <div style="padding:18px 32px 24px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--b1);margin-top:14px">
+      <div id="tour-dots" style="display:flex;gap:6px"></div>
+      <div style="display:flex;gap:8px">
+        <button id="tour-back-btn" onclick="window._tourBack()" class="btn" style="display:none">← Back</button>
+        <button id="tour-next-btn" onclick="window._tourNext()" class="btn btn-gold">Next →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- IMPORT DATA MODAL (P13.0) — CSV/paste bulk import for contacts, orgs, opportunities -->
 <div class="overlay" id="import-data-modal" style="display:none">
   <div class="modal" style="max-width:760px;max-height:90vh;display:flex;flex-direction:column;padding:0">
@@ -11824,7 +11846,7 @@ function _relocateViewsIntoMainApp(){
     if(el && el.parentElement !== mainApp){ mainApp.appendChild(el); }
   });
 }
-async function selectWorkspace(wsId){try{currentWsId=wsId;_relocateViewsIntoMainApp();var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;window.currentWs=ws;window.currentWsId=wsId;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView!=='function')return;var savedView=null;try{savedView=localStorage.getItem('corsair-default-view');}catch(e){}var validLanding={network:1,graph:1,table:1,inspector:1,opps:1,cop:1,rhythm:1,posture:1};if(savedView&&validLanding[savedView]){switchView(savedView);}else{switchView('intel');if(typeof switchIntelTab==='function')switchIntelTab('log');}},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;_relocateViewsIntoMainApp();var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;window.currentWs=ws;window.currentWsId=wsId;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);if(window._tourCheckAndAutoStart)setTimeout(window._tourCheckAndAutoStart,2200);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView!=='function')return;var savedView=null;try{savedView=localStorage.getItem('corsair-default-view');}catch(e){}var validLanding={network:1,graph:1,table:1,inspector:1,opps:1,cop:1,rhythm:1,posture:1};if(savedView&&validLanding[savedView]){switchView(savedView);}else{switchView('intel');if(typeof switchIntelTab==='function')switchIntelTab('log');}},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
@@ -12409,6 +12431,112 @@ function _outreachLastCommitFor(name){
   }
   return null;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// P13.3 — First-run onboarding tour (competitive-parity arc 5/7)
+// 5 steps; fires once per (uid, workspace) pair. Pure code, no
+// external dependencies. Tour state in localStorage so re-logins
+// don't re-prompt.
+// ═══════════════════════════════════════════════════════════════
+var _TOUR_STEPS = [
+  {
+    title: 'Welcome to Corsair',
+    body:
+      '<p style="margin:0 0 14px">Corsair is a defense BD intelligence platform built around one principle: every relationship, every pursuit, every signal in one place — organized the way capture managers actually work.</p>' +
+      '<p style="margin:0 0 14px;color:var(--text)">This 60-second tour walks the 5 surfaces you\'ll use daily.</p>' +
+      '<div style="background:rgba(212,130,58,.06);border:1px solid rgba(212,130,58,.3);border-left:3px solid var(--gold);padding:11px 14px;border-radius:3px;font-size:var(--text-sm);color:var(--t2);font-family:IBM Plex Mono,monospace;letter-spacing:.04em">Tap <strong style="color:var(--gold)">Skip tour</strong> any time — you can replay this from Settings.</div>'
+  },
+  {
+    title: 'Brief — your morning landing',
+    body:
+      '<p style="margin:0 0 12px"><strong style="color:var(--gold)">☀ Brief</strong> is the default tab. Open Corsair in the morning, see today\'s decay alerts, stale pursuits, upcoming meetings, commitments due, and weak-coverage accounts in one glance.</p>' +
+      '<p style="margin:0 0 12px">Each item is one click → drill into the contact, opp, or meeting that needs attention.</p>' +
+      '<p style="margin:0;color:var(--t3);font-size:var(--text-sm)">Tip: decay alerts have a ✉ button next to them — one click gives you a pre-filled email or LinkedIn re-engage template.</p>'
+  },
+  {
+    title: 'Accounts — org-anchored records',
+    body:
+      '<p style="margin:0 0 12px"><strong style="color:var(--gold)">◆ Accounts</strong> is where you manage relationships at the organization level — DARPA, Lockheed, AFRL, etc. — like Salesforce Accounts.</p>' +
+      '<p style="margin:0 0 12px">Each account has structured pillars: <strong style="color:var(--text)">Owner · Status · Tier · POC · Comms · Next Action · Notes</strong>. The health stripe on every card tells you at a glance which records need attention.</p>' +
+      '<p style="margin:0;color:var(--t3);font-size:var(--text-sm)">Red stripe = missing Owner/Status/POC. Click any card to open the drawer and fill in the snapshot.</p>'
+  },
+  {
+    title: 'Pipeline — deals in motion',
+    body:
+      '<p style="margin:0 0 12px"><strong style="color:var(--gold)">▦ Pipeline</strong> is your deal stage view (formerly COP). The Forecast panel at the top shows weighted pipeline by close-month and stage velocity. Below: a Kanban board you can drag opps across.</p>' +
+      '<p style="margin:0 0 12px">10 defense-BD stages: Opp ID → Qualify → Capture → Bid Decision → Proposal → Final Rev → Submitted → Eval/Award → Won → Lost.</p>' +
+      '<p style="margin:0;color:var(--t3);font-size:var(--text-sm)">Stage history is auto-tracked, so velocity reporting is automatic — no manual stage-age entry.</p>'
+  },
+  {
+    title: 'Quick actions + bulk import',
+    body:
+      '<p style="margin:0 0 12px">Top right corner has 3 always-visible buttons:</p>' +
+      '<ul style="margin:0 0 14px;padding-left:18px;color:var(--text)">' +
+        '<li style="margin-bottom:6px"><strong style="color:var(--gold)">+ Log Meeting</strong> — paste a transcript, Corsair extracts entities, stances, action items, risks, commitments.</li>' +
+        '<li style="margin-bottom:6px"><strong style="color:var(--gold)">+ Contact</strong> — fast add.</li>' +
+        '<li><strong style="color:var(--gold)">+ Follow-up</strong> — standalone reminder without logging a meeting.</li>' +
+      '</ul>' +
+      '<p style="margin:0;color:var(--t3);font-size:var(--text-sm)">For bulk loading: <strong style="color:var(--gold)">More menu → Import Data</strong>. Paste from Excel or upload a CSV. Templates are downloadable.</p>'
+  }
+];
+
+window._tourState = { step: 0 };
+
+window._tourRender = function(){
+  var s = window._tourState.step;
+  var step = _TOUR_STEPS[s];
+  if (!step) return;
+  var n = _TOUR_STEPS.length;
+  var counter = document.getElementById('tour-step-counter');
+  var title = document.getElementById('tour-title');
+  var body = document.getElementById('tour-body');
+  var dots = document.getElementById('tour-dots');
+  var backBtn = document.getElementById('tour-back-btn');
+  var nextBtn = document.getElementById('tour-next-btn');
+  if (counter) counter.textContent = (s === 0 ? 'Welcome · ' : 'Tour · ') + 'Step ' + (s+1) + ' of ' + n;
+  if (title) title.textContent = step.title;
+  if (body) body.innerHTML = step.body;
+  if (backBtn) backBtn.style.display = s === 0 ? 'none' : 'inline-block';
+  if (nextBtn) nextBtn.textContent = s === n-1 ? 'Got it — start using Corsair →' : 'Next →';
+  if (dots){
+    var bits = [];
+    for (var i = 0; i < n; i++){
+      bits.push('<div style="width:8px;height:8px;border-radius:50%;background:' + (i===s?'var(--gold)':'rgba(125,118,105,.3)') + ';transition:background 200ms"></div>');
+    }
+    dots.innerHTML = bits.join('');
+  }
+};
+window._tourNext = function(){
+  var n = _TOUR_STEPS.length;
+  if (window._tourState.step >= n-1){ window._tourFinish(); return; }
+  window._tourState.step++;
+  window._tourRender();
+};
+window._tourBack = function(){
+  if (window._tourState.step <= 0) return;
+  window._tourState.step--;
+  window._tourRender();
+};
+window._tourFinish = function(){
+  try {
+    var key = 'corsair-tour-completed-' + (window.currentWsId || 'default') + '-' + ((window.currentUser && window.currentUser.uid) || 'anon');
+    localStorage.setItem(key, '1');
+  } catch(e){}
+  closeModal('onboarding-tour-modal');
+};
+window._tourSkip = window._tourFinish;
+window._tourStart = function(){
+  window._tourState.step = 0;
+  window._tourRender();
+  openModal('onboarding-tour-modal');
+};
+window._tourCheckAndAutoStart = function(){
+  try {
+    var key = 'corsair-tour-completed-' + (window.currentWsId || 'default') + '-' + ((window.currentUser && window.currentUser.uid) || 'anon');
+    if (localStorage.getItem(key) === '1') return;
+    setTimeout(function(){ window._tourStart(); }, 1400);
+  } catch(e){}
+};
 
 // ═══════════════════════════════════════════════════════════════
 // P13.0 — CSV / PASTE BULK IMPORT (contacts, orgs, opportunities)
