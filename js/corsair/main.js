@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.35';
-  window.Corsair.buildBlurb  = 'Pre-Bryce fix #9 — Account drawer scroll-reset on bulk-checkbox click. P13.17 People bulk-actions worked but every checkbox toggle (and "Select all") snapped the drawer scroll back to the top, hiding the user\'s selection. Added _drwSnapshotScrollAndReRender helper that captures scrollTop on the content div, triggers the re-render, then restores scrollTop on the new content div via requestAnimationFrame. Applied to bulk-toggle / bulk-clear / select-all-visible';
+  window.Corsair.buildTag    = 'P13.36';
+  window.Corsair.buildBlurb  = 'Pre-Bryce auto-heal — old demo workspaces that predate P13.24 calibration seeding (loaded before tonight\'s arc) auto-detect on next load: if isDemo workspace + 0 cal records + seed available, fbSet the 4 calibration records + the 4 closed-deal opps (demo-o-6..9 with captureLead) in one batch. Guarded by per-workspace flag to prevent re-seeding loop. Mike no longer needs to delete + reload his existing Demo Workspace tomorrow morning — Win/Loss dashboard auto-activates on next open';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

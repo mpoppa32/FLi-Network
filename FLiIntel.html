@@ -8341,7 +8341,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.35</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.36</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12307,6 +12307,44 @@ function connectWorkspace(){
     // teammates). Without this, opening Win/Loss before the listener
     // fired stuck on insufficient-data state even when N>=3.
     if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){}
+    // P13.36 — auto-heal old demo workspaces that predate P13.24's calibration
+    // seeding. If the current workspace is flagged isDemo + has zero cal
+    // records + the demo seed is loaded with cal records to write, seed them
+    // once. Guard flag prevents re-seeding on subsequent listener fires.
+    try {
+      if (currentWs && currentWs.isDemo && calibrationRecords.length === 0
+          && window._DEMO_DATA && Array.isArray(window._DEMO_DATA.calibration)
+          && window._DEMO_DATA.calibration.length > 0) {
+        window._demoHealedFor = window._demoHealedFor || {};
+        if (!window._demoHealedFor[currentWsId]) {
+          window._demoHealedFor[currentWsId] = true;
+          var D = window._DEMO_DATA;
+          var myUid = currentUser && currentUser.uid;
+          // Propagate captureLead from opps (if present) onto cal records
+          D.calibration.forEach(function(r){
+            var opp = (window.opportunities||[]).find(function(o){ return o.id === r.oppId; });
+            if (opp && opp.captureLead) r.captureLead = opp.captureLead;
+          });
+          // Also seed the closed-deal opps (demo-o-6..9) if missing so the
+          // Pipeline kanban shows populated Won/Lost columns alongside the
+          // activated Win/Loss dashboard. Skip if same id already exists.
+          var existingOppIds = {};
+          (window.opportunities||[]).forEach(function(o){ if(o && o.id) existingOppIds[o.id] = 1; });
+          var closedDemoOpps = (D.opportunities||[]).filter(function(o){
+            return o && (o.stage === 'won' || o.stage === 'lost') && !existingOppIds[o.id];
+          });
+          // P13.21-style enrichment for closed opps so captureLead is set
+          var CLOSED_LEAD_MAP = { 'demo-o-6': myUid, 'demo-o-7':'demo-lead-past-okonkwo', 'demo-o-8': myUid, 'demo-o-9':'demo-lead-past-okonkwo' };
+          closedDemoOpps.forEach(function(o){ if (CLOSED_LEAD_MAP[o.id]) o.captureLead = CLOSED_LEAD_MAP[o.id]; });
+          var writes = D.calibration.map(function(r){ return fbSet(wsPath('calibration/' + r.id), r); });
+          writes = writes.concat(closedDemoOpps.map(function(o){ return fbSet(wsPath('opportunities/' + o.id), o); }));
+          Promise.all(writes).then(function(){
+            console.log('[Corsair] Auto-healed demo workspace ' + currentWsId + ': seeded ' + D.calibration.length + ' calibration records + ' + closedDemoOpps.length + ' closed opps');
+            if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){}
+          }).catch(function(e){ console.warn('[Corsair] Demo auto-heal write failed:', e); });
+        }
+      }
+    } catch(e) { console.warn('[Corsair] Demo auto-heal exception:', e); }
   });
   // ── LEDGER (Phase 7.5.3 — Posture Layer obligations) ──
   var uLedger=onValue(ref(db,wsPath('ledger')),function(snap){
