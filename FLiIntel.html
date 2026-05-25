@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.7</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.8</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9747,7 +9747,9 @@ input[type="url"], textarea, select {
       </select>
     </div>
   </div>
-  <div id="accounts-main-area" style="flex:1;overflow-y:auto;padding:20px 24px 40px">
+  <!-- P13.8 — Bulk action bar (sticky bottom; visible when N>0 selected) -->
+  <div id="accounts-bulk-bar" style="display:none;position:absolute;left:0;right:0;bottom:0;z-index:80;background:linear-gradient(180deg,#0d1426,#0a1020);border-top:2px solid var(--gold);box-shadow:0 -8px 24px rgba(0,0,0,.45);padding:14px 24px;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between"></div>
+  <div id="accounts-main-area" style="flex:1;overflow-y:auto;padding:20px 24px 40px;position:relative">
     <!-- P12.17: incomplete-records nudge banner (arc 3/4) — auto-hidden when all green -->
     <div id="accounts-attention-banner" style="display:none;max-width:1400px;margin:0 auto 16px;background:linear-gradient(180deg,rgba(239,68,68,.10),rgba(250,204,21,.04));border:1px solid rgba(239,68,68,.35);border-left:4px solid #ef4444;border-radius:3px;padding:14px 18px;align-items:center;gap:14px;flex-wrap:wrap"></div>
     <div id="accounts-grid" style="max-width:1400px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px"></div>
@@ -36659,6 +36661,158 @@ function _accBuildRollup(org){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// P13.8 — Bulk actions on Accounts
+// Multi-select cards (checkbox top-right), apply Owner/Status/Tier
+// in one shot or bulk-delete. State is in-memory only (Set) so
+// nav-away clears the selection — by design, to prevent ghost-edits.
+// ═══════════════════════════════════════════════════════════════
+window._accBulkSelected = window._accBulkSelected || new Set();
+
+window._accBulkToggle = function(orgId){
+  if (!orgId) return;
+  var k = String(orgId);
+  if (window._accBulkSelected.has(k)) window._accBulkSelected.delete(k);
+  else window._accBulkSelected.add(k);
+  if (window._renderAccountsView) window._renderAccountsView();
+};
+
+window._accBulkClear = function(){
+  window._accBulkSelected.clear();
+  if (window._renderAccountsView) window._renderAccountsView();
+};
+
+window._accBulkSelectAllVisible = function(){
+  // Add every currently-visible card to the selection
+  var cards = document.querySelectorAll('.account-card[data-org-id]');
+  cards.forEach(function(card){
+    var id = card.getAttribute('data-org-id');
+    if (id) window._accBulkSelected.add(String(id));
+  });
+  if (window._renderAccountsView) window._renderAccountsView();
+};
+
+function _accBulkResolveOrg(id){
+  if (window.CorsairIndex && window.CorsairIndex.byId && window.CorsairIndex.byId.get){
+    var hit = window.CorsairIndex.byId.get(String(id));
+    if (hit) return hit;
+  }
+  var all = window.nodes || [];
+  for (var i = 0; i < all.length; i++){ if (String(all[i].id) === String(id)) return all[i]; }
+  return null;
+}
+
+window._accBulkApplyField = async function(field, value){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot edit'); return; }
+  var ids = Array.from(window._accBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  if (value === '' && (field === 'accountOwner' || field === 'accountStatus' || field === 'accountTier')) value = null;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ids.length; i++){
+    var org = _accBulkResolveOrg(ids[i]);
+    if (!org){ fail++; continue; }
+    try {
+      org[field] = value;
+      await saveNode(org);
+      ok++;
+    } catch(e){ console.warn('[bulk] save failed:', e); fail++; }
+  }
+  toast('Updated ' + field.replace(/^account/,'').toLowerCase() + ' on ' + ok + (fail ? ' (' + fail + ' failed)' : '') + ' account' + (ok===1?'':'s'));
+  if (window._renderAccountsView) window._renderAccountsView();
+};
+
+window._accBulkDelete = async function(){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot delete'); return; }
+  var ids = Array.from(window._accBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  if (!confirm('Delete ' + ids.length + ' selected account' + (ids.length===1?'':'s') + '? This is permanent. Linked contacts will remain but lose their org affiliation.')) return;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ids.length; i++){
+    var id = String(ids[i]);
+    try {
+      // Remove from local arrays
+      var idx = nodes.findIndex(function(n){ return String(n.id) === id; });
+      if (idx >= 0){
+        nodes.splice(idx, 1);
+        if (nodeMap && nodeMap.delete) nodeMap.delete(id);
+      }
+      // Remove from RTDB
+      await fbSet(wsPath('nodes/' + id), null);
+      ok++;
+    } catch(e){ console.warn('[bulk] delete failed:', e); fail++; }
+  }
+  window._accBulkSelected.clear();
+  if (window.CorsairIndex && window.CorsairIndex.scheduleRebuild) window.CorsairIndex.scheduleRebuild();
+  if (typeof renderNetwork === 'function') try { renderNetwork(); } catch(e){}
+  if (window._renderAccountsView) window._renderAccountsView();
+  toast('Deleted ' + ok + (fail ? ' (' + fail + ' failed)' : '') + ' account' + (ok===1?'':'s'));
+};
+
+window._accBulkExportCSV = function(){
+  var ids = Array.from(window._accBulkSelected);
+  if (!ids.length){ toast('Nothing selected'); return; }
+  var rows = [['name','type','accountOwner','accountStatus','accountTier','accountNotes','nextAccountAction','nextAccountActionDate']];
+  ids.forEach(function(id){
+    var org = _accBulkResolveOrg(id);
+    if (!org) return;
+    var nadt = org.nextAccountActionTs ? new Date(org.nextAccountActionTs).toISOString().split('T')[0] : '';
+    rows.push([
+      org.name || '', org.type || '',
+      org.accountOwner || '', org.accountStatus || '', org.accountTier || '',
+      (org.accountNotes || '').replace(/\n/g,' '),
+      org.nextAccountAction || '', nadt
+    ]);
+  });
+  var csv = rows.map(function(r){ return r.map(function(c){ var s = String(c==null?'':c).replace(/"/g,'""'); return (s.indexOf(',')>=0 || s.indexOf('"')>=0 || s.indexOf('\n')>=0) ? '"'+s+'"' : s; }).join(','); }).join('\n');
+  if (typeof _downloadFile === 'function'){
+    _downloadFile(csv, (currentWs && currentWs.name ? currentWs.name : 'corsair') + '_accounts_selected_' + new Date().toISOString().split('T')[0] + '.csv', 'text/csv');
+    toast('Exported ' + ids.length + ' account' + (ids.length===1?'':'s'));
+  }
+};
+
+window._accRenderBulkBar = function(){
+  var bar = document.getElementById('accounts-bulk-bar');
+  if (!bar) return;
+  var n = window._accBulkSelected.size;
+  if (n === 0){
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+
+  // Build owner options from workspace members
+  var members = (window.workspaceMembers && Array.isArray(window.workspaceMembers)) ? window.workspaceMembers : [];
+  var ownerOpts = '<option value="">-- set owner --</option><option value="">(unassign)</option>' + members.map(function(m){
+    return '<option value="' + _accEsc(m.uid) + '">' + _accEsc(m.name || m.email || m.uid) + '</option>';
+  }).join('');
+
+  var statusOpts = '<option value="">-- set status --</option>' + _ACC_STATUS_OPTS.filter(function(o){return o.val;}).map(function(o){
+    return '<option value="' + o.val + '">' + _accEsc(o.label) + '</option>';
+  }).join('');
+
+  var tierOpts = '<option value="">-- set tier --</option>' + _ACC_TIER_OPTS.filter(function(o){return o.val;}).map(function(o){
+    return '<option value="' + o.val + '">' + _accEsc(o.label) + '</option>';
+  }).join('');
+
+  var ctrlStyle = 'padding:9px 12px;background:var(--s2);border:1px solid var(--b2);border-radius:3px;color:var(--text);font-family:IBM Plex Sans,sans-serif;font-size:var(--text-sm);cursor:pointer';
+  var btnStyle  = 'padding:9px 14px;background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer';
+
+  bar.innerHTML =
+    '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+      '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--gold);line-height:1">' + n + '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.14em;color:var(--gold);text-transform:uppercase;font-weight:700">Selected</div>' +
+      '<button onclick="window._accBulkSelectAllVisible()" style="' + btnStyle + '">Select all visible</button>' +
+      '<button onclick="window._accBulkClear()" style="' + btnStyle + '">Clear</button>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+      '<select onchange="if(this.value!==null){window._accBulkApplyField(\'accountOwner\', this.value);this.selectedIndex=0;}" style="' + ctrlStyle + '">' + ownerOpts + '</select>' +
+      '<select onchange="if(this.value){window._accBulkApplyField(\'accountStatus\', this.value);this.selectedIndex=0;}" style="' + ctrlStyle + '">' + statusOpts + '</select>' +
+      '<select onchange="if(this.value){window._accBulkApplyField(\'accountTier\', this.value);this.selectedIndex=0;}" style="' + ctrlStyle + '">' + tierOpts + '</select>' +
+      '<button onclick="window._accBulkExportCSV()" style="' + btnStyle + ';color:var(--gold);border-color:var(--gold)">⬇ Export CSV</button>' +
+      '<button onclick="window._accBulkDelete()" style="' + btnStyle + ';color:var(--red);border-color:rgba(239,68,68,.5)">✕ Delete</button>' +
+    '</div>';
+};
+
+// ═══════════════════════════════════════════════════════════════
 // P13.4 — Saved Views on Accounts (competitive-parity arc 6/7)
 // Per-workspace storage at workspaces/{wsId}/savedViews/{viewId}.
 // Mike and Bryce see each other's saved views (shared workspace state).
@@ -36877,6 +37031,8 @@ window._renderAccountsView = function(){
 
   // P13.4: load saved views (once per render — cheap RTDB read)
   if (window._accLoadSavedViews) window._accLoadSavedViews();
+  // P13.8: render bulk action bar (auto-hidden when nothing selected)
+  if (window._accRenderBulkBar) window._accRenderBulkBar();
 
   // P12.16: dynamically populate owner-filter options with workspace members
   var ownerFilterEl = document.getElementById('accounts-owner-filter');
@@ -36994,9 +37150,13 @@ window._renderAccountsView = function(){
       ? '<div style="font-size:var(--text-xs);color:var(--t2);font-family:IBM Plex Mono,monospace;letter-spacing:.08em;margin-top:3px"><span style="color:var(--t3)">POC · </span><span style="color:var(--text);font-weight:600">' + _accEsc(r.poc.name) + '</span></div>'
       : '<div style="font-size:var(--text-xs);color:#fb923c;font-family:IBM Plex Mono,monospace;letter-spacing:.08em;margin-top:3px;font-weight:700">NO POC SET</div>';
 
-    return '<div class="account-card" onclick="window._openAccountDetail(\'' + _accEsc(r.org.id) + '\')" style="position:relative;background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid #2a3550;border-top:2px solid var(--gold);border-radius:3px;padding:20px 22px;cursor:pointer;transition:border-color 140ms ease, box-shadow 140ms ease;box-shadow:0 2px 8px rgba(0,0,0,.4);overflow:hidden" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.boxShadow=\'0 0 18px rgba(212,130,58,.32)\'" onmouseout="this.style.borderColor=\'#2a3550\';this.style.borderTopColor=\'var(--gold)\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,.4)\'">' +
+    var isSelected = window._accBulkSelected && window._accBulkSelected.has && window._accBulkSelected.has(String(r.org.id));
+    var selectedRing = isSelected ? 'box-shadow:0 0 0 2px var(--gold),0 2px 8px rgba(0,0,0,.4);border-color:var(--gold)' : 'box-shadow:0 2px 8px rgba(0,0,0,.4)';
+    return '<div class="account-card" data-org-id="' + _accEsc(r.org.id) + '" onclick="window._openAccountDetail(\'' + _accEsc(r.org.id) + '\')" style="position:relative;background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid ' + (isSelected ? 'var(--gold)' : '#2a3550') + ';border-top:2px solid var(--gold);border-radius:3px;padding:20px 22px;cursor:pointer;transition:border-color 140ms ease, box-shadow 140ms ease;' + selectedRing + ';overflow:hidden" onmouseover="if(!this.classList.contains(\'is-selected\')){this.style.borderColor=\'var(--gold)\';this.style.boxShadow=\'0 0 18px rgba(212,130,58,.32)\'}" onmouseout="if(!this.classList.contains(\'is-selected\')){this.style.borderColor=\'#2a3550\';this.style.borderTopColor=\'var(--gold)\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,.4)\'}"' + (isSelected ? ' class="account-card is-selected"' : '') + '>' +
       // Health stripe along the left edge
       '<div style="position:absolute;left:0;top:0;bottom:0;width:4px;' + healthBar + '"></div>' +
+      // P13.8: bulk-select checkbox (top-right corner)
+      '<div onclick="event.stopPropagation();window._accBulkToggle(\'' + _accEsc(r.org.id) + '\')" title="Select for bulk action" style="position:absolute;top:8px;right:10px;width:20px;height:20px;border:1.5px solid ' + (isSelected ? 'var(--gold)' : 'var(--b2)') + ';border-radius:3px;background:' + (isSelected ? 'var(--gold)' : 'rgba(7,13,24,.6)') + ';cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:' + (isSelected ? '#070d18' : 'transparent') + ';line-height:1;z-index:2">✓</div>' +
       '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">' +
         '<div style="flex:1;min-width:0">' +
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
