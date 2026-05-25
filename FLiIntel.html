@@ -8333,7 +8333,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.28</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.29</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16625,9 +16625,21 @@ window._renderCopForecast = function(){
     }
   });
 
-  // Stage funnel
-  var stages = (window.OPP_STAGES || ['Opp ID','Qualify','Capture','Bid Decision','Proposal','Final Rev','Submitted','Eval/Award']).filter(function(s){
-    var l = String(s).toLowerCase();
+  // Stage funnel — P13.29 FIX: OPP_STAGES is an array of {key,label,color}
+  // objects; normalize to keys array + build separate labels lookup so the
+  // bucketing keys + render labels both work. Previously the raw object
+  // was used as a map key (collapsed to "[object Object]") and printed
+  // directly into the funnel rows, so every stage row read "[object Object]"
+  // and no opps landed in any bucket.
+  var _stageRaw = (window.OPP_STAGES || ['Opp ID','Qualify','Capture','Bid Decision','Proposal','Final Rev','Submitted','Eval/Award']);
+  var stageLabels = {};
+  var stages = _stageRaw.map(function(s){
+    var k = (s && s.key) || String(s);
+    var lbl = (s && s.label) || String(s);
+    stageLabels[k] = lbl;
+    return k;
+  }).filter(function(k){
+    var l = String(k).toLowerCase();
     return l !== 'won' && l !== 'lost' && l !== 'no-bid' && l !== 'no_bid';
   });
   var byStage = {};
@@ -16764,7 +16776,7 @@ window._renderCopForecast = function(){
       convChip = '<div style="min-width:60px;flex-shrink:0"></div>';
     }
     return '<div style="display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px dashed rgba(125,118,105,.12)">' +
-      '<div style="width:120px;font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);color:var(--t2);letter-spacing:.08em;font-weight:700;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + s + '</div>' +
+      '<div style="width:120px;font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);color:var(--t2);letter-spacing:.08em;font-weight:700;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + (stageLabels[s]||s) + '">' + (stageLabels[s]||s) + '</div>' +
       '<div style="flex:1;position:relative;height:20px;background:rgba(125,118,105,.06);border-radius:2px;overflow:hidden">' +
         '<div style="position:absolute;top:0;bottom:0;left:0;width:' + pct + '%;background:rgba(91,143,196,.25)"></div>' +
         '<div style="position:absolute;top:0;left:8px;right:8px;line-height:20px;display:flex;justify-content:space-between;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--text);font-weight:700;letter-spacing:.06em">' +

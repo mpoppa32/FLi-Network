@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.28';
-  window.Corsair.buildBlurb  = 'Pre-Bryce inventory fix — global input/select/textarea{width:100%} rule combined with flex-wrap on view header toolbars was forcing every Accounts dropdown onto its own row, stacking 6 filters vertically, pushing the 50-card grid completely off-screen. Diagnosed via Chrome MCP layout query (toolbar parent flex-wrap + each select 1370px wide). Added an ID-scoped CSS override targeting Accounts/Table/Pipeline view headers + Account drawer + bulk-action bars so those selects size to content while modals + form fields keep their full-width behavior';
+  window.Corsair.buildTag    = 'P13.29';
+  window.Corsair.buildBlurb  = 'Pre-Bryce fix #2: Pipeline Forecast stage funnel printed "[object Object]" 5 times. Diagnosed via Chrome MCP — OPP_STAGES is an array of {key,label,color} objects (moved to pipeline.js in P9.9) but _renderCopForecast still treated entries as strings: object-as-map-key collapsed to "[object Object]", so byStage[o.stage] never matched any opp (count + value both 0) AND the row label printed the object directly. Fixed by normalizing stages to a keys array upfront, building a stageLabels lookup, and rendering stageLabels[s] in the funnel row. Bucket counts, value sums, conversion %, and velocity all populate correctly now';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
