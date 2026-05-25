@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.27';
-  window.Corsair.buildBlurb  = 'Win/Loss segmentation reapplied — after P13.26 confirmed the load was fixed, restoring the P13.25 work that was reverted to isolate the diagnosis. Dashboard breaks down outcomes by-agency and by-capture-lead. Each segment row: win-rate bar (green/amber/red), W/L counts, deal count, net $ won minus $ lost. Auto-skips when <2 buckets exist. recordOutcome captures opp.captureLead at close time so live deals feed the by-lead view; demo closed-opps got captureLead assignments (2 to user, 2 to synthetic past-staff uid) for realistic segmentation diversity. _wlResolveLeadName resolves uids via workspaceMembers + currentUser fallback';
+  window.Corsair.buildTag    = 'P13.28';
+  window.Corsair.buildBlurb  = 'Pre-Bryce inventory fix — global input/select/textarea{width:100%} rule combined with flex-wrap on view header toolbars was forcing every Accounts dropdown onto its own row, stacking 6 filters vertically, pushing the 50-card grid completely off-screen. Diagnosed via Chrome MCP layout query (toolbar parent flex-wrap + each select 1370px wide). Added an ID-scoped CSS override targeting Accounts/Table/Pipeline view headers + Account drawer + bulk-action bars so those selects size to content while modals + form fields keep their full-width behavior';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
