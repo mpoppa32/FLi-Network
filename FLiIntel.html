@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.17</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P12.18</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -23338,8 +23338,57 @@ window.openAddModal=openAddModal;
 function selectAddTier(t){addTier=t;[1,2,3].forEach(function(i){var b=document.getElementById('add-tier-'+i);b.style.cssText='';});var b=document.getElementById('add-tier-'+t);b.style.background='var(--gold)';b.style.color='#0b0d11';b.style.borderColor='var(--gold)';b.style.fontWeight='600';}
 window.selectAddTier=selectAddTier;
 
-async function confirmAddNode(){var name=document.getElementById('add-node-name').value.trim();if(!name){toast('Name required');return;}var type=document.getElementById('add-node-type').value;var org=(type==='company'||type==='government')?'':document.getElementById('add-node-org').value;var govOrgEl=document.getElementById('add-node-govorg');var govOrg=(type==='government'&&govOrgEl)?govOrgEl.value:'';var phoneEl=document.getElementById('add-node-phone');var emailEl=document.getElementById('add-node-email');var phone=(phoneEl&&phoneEl.value)?phoneEl.value.trim():'';var email=(emailEl&&emailEl.value)?emailEl.value.trim():'';var cx=W/2+(Math.random()-.5)*220,cy=H/2+(Math.random()-.5)*220;var node={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),type:type,name:name,role:document.getElementById('add-node-role').value.trim(),org:org,notes:document.getElementById('add-node-notes').value.trim(),priority:addTier,meetings:[],x:cx,y:cy,pinned:true,color:null,created:new Date().toISOString()};node.govOrg=govOrg||null;var govTypeEl=document.getElementById('add-node-govtype');node.govType=(govTypeEl&&govTypeEl.value)?govTypeEl.value:_inferGovType(node.role);if(phone)node.phone=phone;if(email)node.email=email;if(type==='company'||type==='government'){node.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}nodes.push(node);nodeMap.set(node.id,node);if(type==='company'||type==='government')companyByName.set(node.name.toLowerCase(),node);await saveNode(node);closeModal('add-node-modal');switchView('network');renderNetwork();updateFilterTags();updateOrgLegend();document.getElementById('net-empty').style.display='none';setTimeout(function(){openNetPanel(node);},200);}
+async function confirmAddNode(){var name=document.getElementById('add-node-name').value.trim();if(!name){toast('Name required');return;}var type=document.getElementById('add-node-type').value;var org=(type==='company'||type==='government')?'':document.getElementById('add-node-org').value;var govOrgEl=document.getElementById('add-node-govorg');var govOrg=(type==='government'&&govOrgEl)?govOrgEl.value:'';var phoneEl=document.getElementById('add-node-phone');var emailEl=document.getElementById('add-node-email');var phone=(phoneEl&&phoneEl.value)?phoneEl.value.trim():'';var email=(emailEl&&emailEl.value)?emailEl.value.trim():'';var cx=W/2+(Math.random()-.5)*220,cy=H/2+(Math.random()-.5)*220;var node={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),type:type,name:name,role:document.getElementById('add-node-role').value.trim(),org:org,notes:document.getElementById('add-node-notes').value.trim(),priority:addTier,meetings:[],x:cx,y:cy,pinned:true,color:null,created:new Date().toISOString()};node.govOrg=govOrg||null;var govTypeEl=document.getElementById('add-node-govtype');node.govType=(govTypeEl&&govTypeEl.value)?govTypeEl.value:_inferGovType(node.role);if(phone)node.phone=phone;if(email)node.email=email;if(type==='company'||type==='government'){node.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}nodes.push(node);nodeMap.set(node.id,node);if(type==='company'||type==='government')companyByName.set(node.name.toLowerCase(),node);await saveNode(node);closeModal('add-node-modal');switchView('network');renderNetwork();updateFilterTags();updateOrgLegend();document.getElementById('net-empty').style.display='none';setTimeout(function(){openNetPanel(node);},200);if(window._promptAccountFillForNewNode)setTimeout(function(){window._promptAccountFillForNewNode(node);},900);}
 window.confirmAddNode=confirmAddNode;
+
+// P12.18 — Account-fill prompt on new-contact/new-org creation (arc 4/4)
+// When Mike/Bryce add a new person at an org with no account record fields,
+// OR add a new company/gov-org, a non-blocking toast asks them to fill the
+// 3 pillars (Owner / Status / POC). One click jumps to the drawer Snapshot.
+window._promptAccountFillForNewNode = function(node){
+  if (!node) return;
+  var orgRecord = null;
+  if (node.type === 'company' || node.type === 'government'){
+    orgRecord = node;
+  } else if (node.type === 'person'){
+    // Resolve the person's org by name (org or govOrg)
+    var orgName = String(node.org || node.govOrg || '').toLowerCase().trim();
+    if (!orgName) return; // unaffiliated; no account to set up
+    var all = window.nodes || [];
+    for (var i = 0; i < all.length; i++){
+      var n = all[i];
+      if (!n) continue;
+      if ((n.type === 'company' || n.type === 'government') && String(n.name||'').toLowerCase().trim() === orgName){
+        orgRecord = n; break;
+      }
+    }
+  }
+  if (!orgRecord) return;
+  // Skip if already substantially set up
+  var fieldsFilled = 0;
+  if (orgRecord.accountOwner)  fieldsFilled++;
+  if (orgRecord.accountStatus) fieldsFilled++;
+  // POC: check if anyone at this org has isPOC
+  var idx = window.CorsairIndex || {};
+  var people = (idx.peopleByOrg && idx.peopleByOrg.get && idx.peopleByOrg.get(String(orgRecord.name||'').toLowerCase().trim())) || [];
+  for (var pi = 0; pi < people.length; pi++){ if (people[pi].isPOC){ fieldsFilled++; break; } }
+  if (fieldsFilled >= 2) return; // mostly set up; don't nag
+
+  // Build a toast with an action link
+  var orgEsc = String(orgRecord.name||'').replace(/'/g, '&#39;').replace(/"/g,'&quot;');
+  var orgIdEsc = String(orgRecord.id||'').replace(/'/g, '&#39;');
+  var msg = '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+    '<div style="flex:1;min-width:200px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.14em;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:3px">New record — finish setup</div>' +
+      '<div style="font-size:var(--text-sm);color:var(--text);line-height:var(--leading-snug)">Set Owner · Status · POC on <strong>' + orgEsc + '</strong> so the account is searchable + delegable.</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;flex-shrink:0">' +
+      '<button onclick="document.getElementById(\'toast\').classList.remove(\'show\');switchView(\'accounts\');setTimeout(function(){window._openAccountDetail&&window._openAccountDetail(\'' + orgIdEsc + '\')},80)" style="padding:7px 14px;background:var(--gold);border:none;border-radius:3px;color:#070d18;font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">Set up now</button>' +
+      '<button onclick="document.getElementById(\'toast\').classList.remove(\'show\')" style="padding:7px 12px;background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">Later</button>' +
+    '</div>' +
+  '</div>';
+  toast(msg, 9000);
+};
 
 function toggleEdgeMode(){edgeMode=!edgeMode;edgeSource=null;var btn=document.getElementById('edge-btn'),cv=document.getElementById('net-canvas');if(edgeMode){btn.classList.add('active');cv.style.cursor='crosshair';setNetStatus('Edge mode: click source node');}else{btn.classList.remove('active');cv.style.cursor='grab';clearNetStatus();resetStrokes();}}
 window.toggleEdgeMode=toggleEdgeMode;

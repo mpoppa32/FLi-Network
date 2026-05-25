@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P12.17';
-  window.Corsair.buildBlurb  = 'Records-need-attention banner on Accounts page — counts red/yellow/green, one-click filter-to-incomplete; auto-hides when all green. Account record arc 3/4';
+  window.Corsair.buildTag    = 'P12.18';
+  window.Corsair.buildBlurb  = 'New-contact / new-org → account-fill toast prompt with one-click jump to Snapshot. Closes the Account-record arc loop (4/4 — every entry path now reinforces the structured record)';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
