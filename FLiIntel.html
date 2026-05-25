@@ -8319,7 +8319,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.22</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.23</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8421,6 +8421,7 @@ input[type="url"], textarea, select {
           <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Analytics</div>
           <button class="tools-menu-item" data-view="pulse" onclick="window._toolsMenuSelect('pulse')"><span style="color:var(--green);width:18px;display:inline-block">📡</span><span>Intel Center</span><span class="tm-meta">live web intel</span></button>
           <button class="tools-menu-item" data-view="bdperf" onclick="window._toolsMenuSelect('bdperf')"><span style="color:#fb923c;width:18px;display:inline-block">📊</span><span>BD Stats</span><span class="tm-meta">pipeline analytics</span></button>
+          <button class="tools-menu-item" data-view="winloss" onclick="window._toolsMenuSelect('winloss')"><span style="color:var(--gold);width:18px;display:inline-block">🏆</span><span>Win/Loss Analysis</span><span class="tm-meta">closed deals · model calibration</span></button>
           <button class="tools-menu-item" data-view="team" onclick="window._toolsMenuSelect('team')"><span style="color:#38bdf8;width:18px;display:inline-block">👥</span><span>Team</span><span class="tm-meta">workspace activity</span></button>
           <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
           <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:8px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Procurement</div>
@@ -10340,6 +10341,22 @@ input[type="url"], textarea, select {
   <div id="rhythm-view-body" style="flex:1;overflow-y:auto;padding:18px 22px 40px"></div>
 </div>
 
+<!-- WIN/LOSS VIEW — P13.23: closed-deal analytics + model calibration dashboard -->
+<div id="winloss-view" data-surface="light" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--text)">
+  <div style="padding:20px 26px 14px;border-bottom:1px solid rgba(26,34,54,.5);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;background:linear-gradient(180deg,var(--s1),var(--bg));gap:14px;flex-wrap:wrap">
+    <div>
+      <div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:8px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);display:inline-block"></span>
+        Win/Loss Analysis
+      </div>
+      <div style="font-family:Antonio,sans-serif;font-size:28px;font-weight:700;color:var(--text);line-height:1;letter-spacing:-.01em">What predicts wins for this team</div>
+      <div style="font-size:12px;color:var(--t2);margin-top:6px">Closed-deal patterns &middot; model accuracy &middot; learned factor weights</div>
+    </div>
+    <div id="winloss-view-meta" style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;text-align:right"></div>
+  </div>
+  <div id="winloss-view-body" style="flex:1;overflow-y:auto;padding:18px 22px 40px"></div>
+</div>
+
 <!-- PASS-DOWN BRIEF MODAL — Phase 7.1 / 7.5.4 -->
 <div class="overlay" id="passdown-brief-modal" style="display:none">
   <div class="modal" data-surface="posture" style="max-width:760px;background:var(--bg);color:var(--text);border:1px solid var(--rule);max-height:88vh;display:flex;flex-direction:column">
@@ -11902,7 +11919,7 @@ document.getElementById('ws-create-btn').addEventListener('click',async function
 function _relocateViewsIntoMainApp(){
   var mainApp = document.getElementById('main-app');
   if(!mainApp) return;
-  ['team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view'].forEach(function(id){
+  ['team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view','winloss-view'].forEach(function(id){
     var el = document.getElementById(id);
     if(el && el.parentElement !== mainApp){ mainApp.appendChild(el); }
   });
@@ -16289,7 +16306,7 @@ async function wireListeners(){
 }
 
 // ── VIEW REGISTRY — all switchable view container IDs (suffix '-view') ──
-var _CORSAIR_VIEWS=['intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts'];
+var _CORSAIR_VIEWS=['intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts','winloss'];
 
 // Map mode aliases → underlying view IDs
 var _CORSAIR_MODE_ALIAS={'graph':'network','cop':'opps'};
@@ -16370,6 +16387,7 @@ function switchView(v){
   if(v==='sbir')renderSbirView();
   if(v==='capture')renderCaptureView();
   if(v==='accounts'&&window._renderAccountsView)window._renderAccountsView();
+  if(v==='winloss'&&window._renderWinLossView)window._renderWinLossView();
   if(window._onViewSwitch)window._onViewSwitch(v);
   if(v==='rfi')renderRfiView();
   if(v==='comp')renderCompView();
@@ -23372,6 +23390,182 @@ function renderCalibrationStrip(){
     el.style.cssText='display:flex;align-items:center;padding:7px 10px;border-top:1px solid var(--b1)';
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// P13.23 — Win/Loss Analysis dashboard
+// Workspace-level view surfaced from the More menu. Reads the
+// existing calibrationRecords array (each record = one closed deal
+// with predictedScore + factor snapshot, written by recordOutcome).
+// Shows insufficient-data state until N>=3 closed pursuits exist;
+// then renders aggregate stats + bracket accuracy + learned factor
+// weights + closed-deal log. Auto-populates as deals close.
+// ══════════════════════════════════════════════════════════════
+function _wlEsc(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
+function _wlFmt$(n){
+  var v = Number(n||0);
+  if (!isFinite(v) || v === 0) return '—';
+  if (v >= 1e9) return '$' + (v/1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return '$' + (v/1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M';
+  if (v >= 1e3) return '$' + (v/1e3).toFixed(0) + 'K';
+  return '$' + v.toFixed(0);
+}
+function _wlNum$(v){
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  var m = String(v).replace(/[^0-9.]/g,'');
+  return Number(m) || 0;
+}
+function _wlMetricTile(label, val, color, sub){
+  color = color || 'var(--text)';
+  return '<div style="background:var(--s2);border:1px solid var(--b1);border-radius:3px;padding:14px 16px">' +
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.14em;font-weight:700;text-transform:uppercase">' + label + '</div>' +
+    '<div style="font-family:Antonio,sans-serif;font-size:28px;font-weight:700;color:' + color + ';margin-top:6px;line-height:1">' + val + '</div>' +
+    (sub ? '<div style="font-size:11px;color:var(--t3);margin-top:4px;font-family:IBM Plex Mono,monospace;letter-spacing:.04em">' + sub + '</div>' : '') +
+  '</div>';
+}
+function _wlPreviewCard(title, body, color){
+  return '<div style="border:1px solid var(--b1);border-left:3px solid ' + color + ';border-radius:3px;padding:12px 14px;background:var(--s2)">' +
+    '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px">' + title + '</div>' +
+    '<div style="font-size:11px;color:var(--t2);line-height:1.55">' + body + '</div>' +
+  '</div>';
+}
+function _wlClosedDealsList(records){
+  if (!records.length) return '';
+  var sorted = records.slice().sort(function(a,b){
+    return new Date(b.closedAt||0).getTime() - new Date(a.closedAt||0).getTime();
+  });
+  var rows = sorted.map(function(r){
+    var win = r.outcome === 'won';
+    var dotColor = win ? 'var(--green)' : 'var(--red)';
+    var pillBg   = win ? 'rgba(34,197,94,.10)'  : 'rgba(239,68,68,.10)';
+    var pillCol  = win ? '#22c55e'              : '#ef4444';
+    var dt = r.closedAt ? new Date(r.closedAt).toLocaleDateString() : '—';
+    var pred = r.predictedScore != null ? Math.round(r.predictedScore) + '%' : '—';
+    var predCorrect = (r.predictedScore != null) && ((r.predictedScore >= 50) === win);
+    return '<div style="display:flex;align-items:center;gap:14px;padding:10px 14px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);margin-bottom:6px">' +
+      '<span style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';box-shadow:0 0 8px ' + dotColor + ';flex-shrink:0"></span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _wlEsc(r.oppName || '(unnamed)') + '</div>' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.04em;margin-top:2px">' + _wlEsc(r.agency || '—') + ' &middot; closed ' + dt + '</div>' +
+      '</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:16px;font-weight:700;color:var(--gold);flex-shrink:0;min-width:64px;text-align:right">' + _wlFmt$(_wlNum$(r.value)) + '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:' + (predCorrect ? 'var(--green)' : 'var(--t3)') + ';letter-spacing:.06em;flex-shrink:0;min-width:80px;text-align:right" title="' + (predCorrect ? 'Model predicted correctly' : 'Model missed this one') + '">PRED ' + pred + (predCorrect ? ' ✓' : '') + '</div>' +
+      '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:2px;background:' + pillBg + ';color:' + pillCol + ';font-weight:700;flex-shrink:0">' + (win ? 'WON' : 'LOST') + '</span>' +
+    '</div>';
+  }).join('');
+  return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:18px 20px;margin-bottom:20px">' +
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:12px">Closed Deal Log &middot; ' + records.length + '</div>' +
+    rows +
+  '</div>';
+}
+window._renderWinLossView = function(){
+  var body = document.getElementById('winloss-view-body');
+  if (!body) return;
+  var meta = document.getElementById('winloss-view-meta');
+  var records = window.calibrationRecords || [];
+  var n = records.length;
+  if (meta) meta.textContent = n + ' CLOSED · ' + (n>=3 ? 'MODEL ACTIVE' : 'MODEL CALIBRATING');
+
+  // ── INSUFFICIENT-DATA STATE (N<3) ─────────────────────────────────
+  if (n < 3){
+    var rem = 3 - n;
+    var pct = Math.round(n/3*100);
+    body.innerHTML =
+      '<div style="max-width:920px;margin:0 auto">' +
+        '<div style="background:linear-gradient(180deg,var(--s1),var(--bg));border:1px solid rgba(212,130,58,.35);border-radius:6px;padding:24px 28px;margin-bottom:20px">' +
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:8px">Insufficient data &middot; ' + n + ' of 3 closed deals</div>' +
+          '<div style="font-family:Antonio,sans-serif;font-size:26px;font-weight:700;color:var(--text);margin-bottom:14px;line-height:1.1">Close ' + rem + ' more pursuit' + (rem===1?'':'s') + ' to activate the calibration model</div>' +
+          '<div style="height:6px;background:rgba(26,34,54,.6);border-radius:3px;overflow:hidden;margin-bottom:16px"><div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,var(--gold),#fbbf24);box-shadow:0 0 12px rgba(212,130,58,.5);transition:width .4s"></div></div>' +
+          '<div style="font-size:13px;color:var(--t2);line-height:1.6">Every won or lost pursuit feeds the calibration engine. Once 3 outcomes land, this dashboard surfaces what predicts wins for <em>your</em> team — measured against your actual win-rate, not generic benchmarks. Mark a pursuit Won or Lost from the Opp detail panel (or via the Pipeline Kanban) and it auto-populates here.</div>' +
+        '</div>' +
+        '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:18px 22px;margin-bottom:20px">' +
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:14px">What this dashboard surfaces once active</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">' +
+            _wlPreviewCard('Win rate &amp; value',     'Total wins / closed; $ won vs $ lost. Tracks your conversion ratio against actual revenue capture.', '#22c55e') +
+            _wlPreviewCard('Bracket accuracy',         'How well your predicted scores match outcomes across 0&ndash;33% / 34&ndash;66% / 67&ndash;100% confidence bands.', '#5fb3b8') +
+            _wlPreviewCard('Learned factor weights',   'Which signals (cadence, stance, risks, red flags) actually predicted wins for your team. The model self-adjusts.', '#fb923c') +
+            _wlPreviewCard('Closed-deal log',          'Every closed pursuit with predicted vs actual + the factor snapshot at close. Click a row to revisit context.', '#a78bfa') +
+          '</div>' +
+        '</div>' +
+        _wlClosedDealsList(records) +
+      '</div>';
+    return;
+  }
+
+  // ── FULL DASHBOARD (N>=3) ────────────────────────────────────────
+  var stats = (typeof getCalibrationStats === 'function') ? getCalibrationStats() : null;
+  var weights = (typeof getCalibrationWeights === 'function') ? getCalibrationWeights() : null;
+  if (!stats){
+    body.innerHTML = '<div style="color:var(--t3);font-size:13px;padding:24px;text-align:center;font-style:italic">Calibration data unavailable.</div>';
+    return;
+  }
+
+  // Aggregate value won / lost
+  var wonVal = 0, lostVal = 0;
+  records.forEach(function(r){
+    var v = _wlNum$(r.value);
+    if (r.outcome === 'won') wonVal += v;
+    else if (r.outcome === 'lost') lostVal += v;
+  });
+  var winRate = stats.n > 0 ? Math.round(stats.wins / stats.n * 100) : 0;
+  var winRateColor = winRate >= 50 ? 'var(--green)' : winRate >= 30 ? 'var(--amber)' : 'var(--red)';
+  var accColor = stats.accuracy >= 60 ? 'var(--green)' : stats.accuracy >= 40 ? 'var(--amber)' : 'var(--red)';
+
+  var h = '<div style="max-width:1100px;margin:0 auto">';
+  // Top stats tiles
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:18px">';
+  h += _wlMetricTile('Win rate',     winRate + '%', winRateColor, stats.wins + ' won · ' + stats.losses + ' lost');
+  h += _wlMetricTile('Closed deals', String(stats.n), 'var(--gold)', 'sample size');
+  h += _wlMetricTile('$ won',        _wlFmt$(wonVal), 'var(--green)', wonVal > 0 ? 'capture revenue' : 'no $ tracked');
+  h += _wlMetricTile('$ lost',       _wlFmt$(lostVal), 'var(--red)',  lostVal > 0 ? 'foregone' : 'no $ tracked');
+  h += _wlMetricTile('Model accuracy', stats.accuracy + '%', accColor, 'predicted vs actual');
+  h += '</div>';
+
+  // Bracket accuracy
+  if (stats.brackets && stats.brackets.some(function(b){return b.total > 0;})){
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:18px 22px;margin-bottom:18px">';
+    h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:14px">Bracket accuracy &middot; how confidently you call them right</div>';
+    stats.brackets.forEach(function(b){
+      if (!b.total) return;
+      var pct = Math.round(b.wins / b.total * 100);
+      var barColor = pct >= 60 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)';
+      h += '<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">';
+      h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t2);width:90px;font-weight:700">' + b.label + '</div>';
+      h += '<div style="flex:1;height:7px;background:rgba(26,34,54,.5);border-radius:4px;overflow:hidden"><div style="width:' + pct + '%;height:100%;background:' + barColor + ';border-radius:4px"></div></div>';
+      h += '<div style="font-family:Antonio,sans-serif;font-size:16px;font-weight:700;color:' + barColor + ';min-width:46px;text-align:right">' + pct + '%</div>';
+      h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);min-width:64px;text-align:right">' + b.wins + '/' + b.total + ' won</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  // Learned weights (only if non-default — needs both wins AND losses)
+  if (weights && !weights.default){
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:18px 22px;margin-bottom:18px">';
+    h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase;margin-bottom:6px">Learned factor weights &middot; what predicts wins for your team</div>';
+    h += '<div style="font-size:11px;color:var(--t3);margin-bottom:14px;font-style:italic">&times;1.0 = no change vs baseline &middot; &gt;1.0 = factor strongly predicts wins &middot; &lt;1.0 = factor was misleading</div>';
+    [['Cadence','cadence','Meeting frequency in the last 90 days'],['Stance','stance','Net positive vs negative key-person stances'],['Risks','risks','Count of high-severity risks raised'],['Red flags','redFlags','Explicit red-flag callouts across meetings']].forEach(function(triple){
+      var key = triple[1];
+      var wv = weights[key] || 1;
+      var barPct = Math.max(0, Math.min(100, Math.round((wv - 0.5) / 2 * 100)));
+      var wColor = wv > 1.2 ? 'var(--green)' : wv < 0.8 ? 'var(--red)' : 'var(--t2)';
+      h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+      h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:12px;color:var(--text);font-weight:600;width:90px">' + triple[0] + '</div>';
+      h += '<div style="flex:1;height:6px;background:rgba(26,34,54,.5);border-radius:3px;overflow:hidden"><div style="width:' + barPct + '%;height:100%;background:' + wColor + ';border-radius:3px"></div></div>';
+      h += '<div style="font-family:Antonio,sans-serif;font-size:15px;font-weight:700;color:' + wColor + ';min-width:50px;text-align:right">&times;' + wv.toFixed(2) + '</div>';
+      h += '</div>';
+      h += '<div style="font-size:10px;color:var(--t3);margin-left:102px;margin-bottom:10px;font-family:IBM Plex Mono,monospace;letter-spacing:.04em">' + triple[2] + '</div>';
+    });
+    h += '</div>';
+  } else if (weights && weights.default){
+    h += '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:6px;padding:16px 20px;margin-bottom:18px;font-size:12px;color:var(--t2);font-style:italic;line-height:1.55">Factor weights stay at baseline until both wins <em>and</em> losses are recorded. Currently: ' + stats.wins + ' won &middot; ' + stats.losses + ' lost.</div>';
+  }
+
+  // Closed-deal log
+  h += _wlClosedDealsList(records);
+  h += '</div>';
+  body.innerHTML = h;
+};
 
 window.toggleCalibrationPanel=function(){
   var panel=document.getElementById('opp-calibration-panel');

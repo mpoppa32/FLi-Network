@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.22';
-  window.Corsair.buildBlurb  = 'Polish pass on tonight\'s six commits — (1) "Corsairligence" rebrand typo fixed in 3 places (Intel Layer eyebrow, demo loader heading, MCP API panel) — find-replace artifact from the original FLI Intelligence → Corsair rename; (2) demo-n-11 (COL Williams) removed from ORG_FIELDS map — he\'s a person not an org so the account-snapshot fields were getting attached as inert noise; (3) added Atlas Defense (n-24), Northrop (n-14), Raytheon (n-15) to ORG_FIELDS so all 9 company-type nodes in the demo have account-record fields populated and don\'t flag red incomplete-record stripes';
+  window.Corsair.buildTag    = 'P13.23';
+  window.Corsair.buildBlurb  = 'Win/Loss Analysis dashboard — new top-level view (More menu) that reads calibrationRecords (already synced from RTDB; populated automatically when an opp\'s stage transitions to won/lost via recordOutcome). Insufficient-data state until N>=3 closed pursuits: shows progress bar (X of 3) + preview cards explaining what the dashboard surfaces + any partial closed-deal log. Full dashboard at N>=3: top stats tiles (win rate, closed count, $ won, $ lost, model accuracy), bracket-accuracy bars (0-33/34-66/67-100), learned factor weights (cadence/stance/risks/red flags) with x-multipliers, full closed-deal log with predicted-vs-actual checks. Registered through the three view registries (_CORSAIR_VIEWS + _relocateViewsIntoMainApp + switchView routing) per the new-view-checklist memory';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
