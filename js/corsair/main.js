@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.13';
-  window.Corsair.buildBlurb  = 'BD Glossary (#6) — ? button in topnav opens searchable glossary of 35+ defense-BD terms grouped by category (Account record / Pipeline / Federal acquisition / Contacts / Surfaces / Workspace). Bryce day-1 self-serve help';
+  window.Corsair.buildTag    = 'P13.14';
+  window.Corsair.buildBlurb  = 'Subsurface typography migration (#9) — inspector.js / cop.js / rhythm.js hardcoded font sizes (~36 inline px values) replaced with var(--text-*) tokens; finishes the P12.11 platform visual standard arc across all major modules';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
