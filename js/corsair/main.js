@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.15';
-  window.Corsair.buildBlurb  = 'Workspace PDF/Print report (#8) — single-click board-deck snapshot in new tab; pulse + stage breakdown + top 10 priority deals + accounts by status + recent meetings + open commitments; print-styled CSS so Cmd-P saves clean PDF';
+  window.Corsair.buildTag    = 'P13.16';
+  window.Corsair.buildBlurb  = 'Saved Views on Table — completes the saved-views trio (Accounts P13.4 + Pipeline P13.10 + Table P13.16); persists sort/filterStage/filterHealth/filterAged/search/showPosture per-workspace at savedViews/{id} with surface=table; Apply / Save / Manage modal; matches gold-bordered toolbar visual of Accounts header';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

@@ -146,6 +146,9 @@ var _tblState = {
   search:  '',
   showPosture: false           // Phase 5g — Posture column off by default
 };
+// P13.16 — expose to window so saved-views machinery (in FLiIntel.html)
+// can snapshot + restore. Mutate fields in place; do not replace the ref.
+window._tblState = _tblState;
 
 window._tblSetSort = function(key) {
   if (_tblState.sortKey === key) {
@@ -897,6 +900,8 @@ window._renderTableView = function() {
   body.innerHTML = h;
   // Refresh bulk-bar visibility based on persisted selection
   _tblUpdateSelectionUI();
+  // P13.16 — refresh saved-views dropdown (cheap RTDB read on each render)
+  if (typeof window._tblLoadSavedViews === 'function') try { window._tblLoadSavedViews(); } catch(e){}
   console.log('[Table] Phase 5d rendered: ' + processed.length + ' / ' + allOpps.length + ' pursuits, sort=' + _tblState.sortKey + '/' + _tblState.sortDir + ', selected=' + _tblSelected.size);
 };
 

@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.15</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.16</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10388,7 +10388,7 @@ input[type="url"], textarea, select {
 
 <!-- TABLE VIEW — Phase 5: operator's morning surface (spreadsheet-grade) -->
 <div id="table-view" data-surface="light" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--text)">
-  <div style="padding:18px 26px 12px;border-bottom:1px solid var(--rule);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;gap:14px">
+  <div style="padding:18px 26px 12px;border-bottom:1px solid var(--rule);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;gap:14px;flex-wrap:wrap">
     <div>
       <div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--t3);text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:8px">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold);display:inline-block"></span>
@@ -10396,6 +10396,13 @@ input[type="url"], textarea, select {
       </div>
       <div style="font-family:IBM Plex Sans,sans-serif;font-size:24px;font-weight:600;color:var(--text);line-height:1.15;letter-spacing:-.01em">Every pursuit, dense and scannable</div>
       <div style="font-size:12px;color:var(--t2);margin-top:6px;font-style:italic">The morning surface. Run the desk one move at a time.</div>
+    </div>
+    <!-- P13.16 — Saved Views on Table (mirrors P13.4 Accounts + P13.10 Pipeline) -->
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="tbl-saved-views" onchange="window._tblApplySavedView&&window._tblApplySavedView(this.value)" style="padding:9px 14px;border:1px solid var(--gold);border-radius:6px;background:rgba(212,130,58,.08);color:var(--gold);font-size:13px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="">&#9733; Saved views</option>
+      </select>
+      <button onclick="window._tblSaveCurrentView&&window._tblSaveCurrentView()" title="Save current Table filters + sort as a named view" style="padding:9px 12px;border:1px solid var(--gold);border-radius:6px;background:transparent;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">+ Save</button>
     </div>
   </div>
   <div id="table-view-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column"></div>
@@ -16974,6 +16981,177 @@ window._pipeRenderManageViews = function(){
       '<div style="display:flex;gap:6px;flex-shrink:0">' +
         '<button onclick="closeModal(\'manage-pipe-views-modal\');window._pipeApplySavedView(\'' + esc(k) + '\');var s=document.getElementById(\'pipe-saved-views\');if(s)s.value=\'' + esc(k) + '\'" class="btn btn-sm" style="color:var(--gold);border-color:rgba(212,130,58,.4)">Apply</button>' +
         '<button onclick="window._pipeDeleteSavedView(\'' + esc(k) + '\')" class="btn btn-sm" style="color:var(--red);border-color:rgba(239,68,68,.3)">Delete</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+};
+
+// ═══════════════════════════════════════════════════════════════
+// P13.16 — Saved Views on Table (mirrors P13.10 Pipeline pattern)
+// Shared per-workspace storage at workspaces/{wsId}/savedViews/{id}
+// with surface='table'. Persists sortKey/sortDir + filterStage/Health/
+// Aged + search + showPosture (the full Table configuration).
+// ═══════════════════════════════════════════════════════════════
+window._tblSavedViews = window._tblSavedViews || {};
+
+window._tblLoadSavedViews = async function(){
+  if (!currentWsId) return;
+  try {
+    var snap = await get(ref(db, wsPath('savedViews')));
+    var data = snap.val() || {};
+    window._tblSavedViews = data;
+    var sel = document.getElementById('tbl-saved-views');
+    if (!sel) return;
+    var current = sel.value;
+    var keys = Object.keys(data).filter(function(k){
+      var v = data[k];
+      return v && v.surface === 'table';
+    }).sort(function(a,b){
+      return String(data[a].name||'').localeCompare(String(data[b].name||''));
+    });
+    var opts = ['<option value="">&#9733; Saved views</option>'];
+    keys.forEach(function(k){
+      opts.push('<option value="' + String(k).replace(/"/g,'&quot;') + '">' + String(data[k].name||'(untitled)').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + '</option>');
+    });
+    if (keys.length){
+      opts.push('<option disabled>──────────</option>');
+      opts.push('<option value="__manage_tbl">&#9881; Manage views…</option>');
+    }
+    sel.innerHTML = opts.join('');
+    if (current && data[current]) sel.value = current;
+  } catch(e){
+    console.warn('[tblSavedViews] load failed:', e);
+  }
+};
+
+window._tblSaveCurrentView = async function(){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot save views'); return; }
+  var name = prompt('Save current Table filters + sort as view named:');
+  if (!name || !name.trim()) return;
+  name = name.trim().slice(0, 80);
+  var s = (window._tblState || {});
+  var snapshot = {
+    id: 'tv-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    name: name,
+    surface: 'table',
+    filters: {
+      sortKey:      s.sortKey || 'default',
+      sortDir:      s.sortDir || 'asc',
+      filterStage:  s.filterStage || '',
+      filterHealth: s.filterHealth || '',
+      filterAged:   !!s.filterAged,
+      search:       s.search || '',
+      showPosture:  !!s.showPosture
+    },
+    createdBy: (window.currentUser && window.currentUser.uid) || '',
+    createdByName: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || '',
+    created: new Date().toISOString()
+  };
+  try {
+    await fbSet(wsPath('savedViews/' + snapshot.id), snapshot);
+    window._tblSavedViews[snapshot.id] = snapshot;
+    await window._tblLoadSavedViews();
+    var sel = document.getElementById('tbl-saved-views');
+    if (sel) sel.value = snapshot.id;
+    toast('Table view "' + name + '" saved');
+  } catch(e){
+    toast('Save failed: ' + (e.message || 'try again'));
+  }
+};
+
+window._tblApplySavedView = function(id){
+  if (!id) return;
+  if (id === '__manage_tbl'){
+    window._tblOpenManageViews();
+    var sel = document.getElementById('tbl-saved-views');
+    if (sel) sel.value = '';
+    return;
+  }
+  var v = window._tblSavedViews[id];
+  if (!v || !v.filters) return;
+  var f = v.filters;
+  if (window._tblState){
+    window._tblState.sortKey      = f.sortKey || 'default';
+    window._tblState.sortDir      = f.sortDir || 'asc';
+    window._tblState.filterStage  = f.filterStage || '';
+    window._tblState.filterHealth = f.filterHealth || '';
+    window._tblState.filterAged   = !!f.filterAged;
+    window._tblState.search       = f.search || '';
+    window._tblState.showPosture  = !!f.showPosture;
+  }
+  if (typeof window._renderTableView === 'function') try { window._renderTableView(); } catch(e){}
+};
+
+window._tblDeleteSavedView = async function(id){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot delete views'); return; }
+  var v = window._tblSavedViews[id];
+  if (!v) return;
+  if (!confirm('Delete saved view "' + (v.name||'') + '"?')) return;
+  try {
+    await fbSet(wsPath('savedViews/' + id), null);
+    delete window._tblSavedViews[id];
+    await window._tblLoadSavedViews();
+    if (typeof window._tblRenderManageViews === 'function') window._tblRenderManageViews();
+    toast('Deleted "' + (v.name||'') + '"');
+  } catch(e){
+    toast('Delete failed: ' + (e.message || 'try again'));
+  }
+};
+
+window._tblOpenManageViews = function(){
+  var modal = document.getElementById('manage-tbl-views-modal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'manage-tbl-views-modal';
+    modal.className = 'overlay';
+    modal.innerHTML = '<div class="modal" style="max-width:560px;padding:0">' +
+      '<div style="padding:22px 28px 14px;border-bottom:1px solid var(--b1)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">' +
+          '<div>' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.16em;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:4px">Table · shared</div>' +
+            '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--text);line-height:1.15">Saved Table Views</div>' +
+          '</div>' +
+          '<button onclick="closeModal(\'manage-tbl-views-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">&times;</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="manage-tbl-views-body" style="padding:18px 28px 24px;max-height:60vh;overflow-y:auto"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+  window._tblRenderManageViews();
+  openModal('manage-tbl-views-modal');
+};
+
+window._tblRenderManageViews = function(){
+  var body = document.getElementById('manage-tbl-views-body');
+  if (!body) return;
+  var data = window._tblSavedViews || {};
+  var keys = Object.keys(data).filter(function(k){return data[k] && data[k].surface === 'table';});
+  if (!keys.length){
+    body.innerHTML = '<div style="color:var(--t3);font-size:var(--text-sm);text-align:center;padding:18px;font-style:italic">No saved Table views yet. Apply some filters or a sort, then click "+ Save".</div>';
+    return;
+  }
+  keys.sort(function(a,b){ return String(data[a].name||'').localeCompare(String(data[b].name||'')); });
+  var esc = function(s){return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});};
+  body.innerHTML = keys.map(function(k){
+    var v = data[k];
+    var f = v.filters || {};
+    var bits = [];
+    if (f.sortKey && f.sortKey !== 'default') bits.push('sort=' + f.sortKey + ' ' + (f.sortDir || 'asc'));
+    if (f.filterStage)  bits.push('stage=' + f.filterStage);
+    if (f.filterHealth) bits.push('health=' + f.filterHealth);
+    if (f.filterAged)   bits.push('aged only');
+    if (f.showPosture)  bits.push('+posture');
+    if (f.search)       bits.push('search="' + f.search + '"');
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);margin-bottom:8px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:var(--text-base);font-weight:600;color:var(--text);margin-bottom:3px">' + esc(v.name||'(untitled)') + '</div>' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.04em;margin-bottom:4px">' + (bits.length ? esc(bits.join(' · ')) : 'no filters set') + '</div>' +
+        '<div style="font-size:var(--text-xs);color:var(--t3)">By ' + esc(v.createdByName || v.createdBy || 'unknown') + (v.created ? ' · ' + new Date(v.created).toLocaleDateString() : '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0">' +
+        '<button onclick="closeModal(\'manage-tbl-views-modal\');window._tblApplySavedView(\'' + esc(k) + '\');var s=document.getElementById(\'tbl-saved-views\');if(s)s.value=\'' + esc(k) + '\'" class="btn btn-sm" style="color:var(--gold);border-color:rgba(212,130,58,.4)">Apply</button>' +
+        '<button onclick="window._tblDeleteSavedView(\'' + esc(k) + '\')" class="btn btn-sm" style="color:var(--red);border-color:rgba(239,68,68,.3)">Delete</button>' +
       '</div>' +
     '</div>';
   }).join('');
