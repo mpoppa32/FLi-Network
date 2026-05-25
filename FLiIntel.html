@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.6</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.7</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16675,7 +16675,163 @@ window._dealScoreChip = function(o, opts){
   opts = opts || {};
   var s = window._dealScore(o);
   var color = window._dealScoreColor(s);
-  return '<span title="Deal score: stage + p(win) + touch recency + stage freshness" style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);font-weight:700;letter-spacing:.06em;color:' + color + ';background:rgba(0,0,0,.25);border:1px solid ' + color + '40;padding:2px 6px;border-radius:3px;display:inline-flex;align-items:center;gap:4px"><span style="width:5px;height:5px;border-radius:50%;background:' + color + '"></span>' + s + '</span>';
+  var oid = String(o.id||'').replace(/'/g,"\\'");
+  return '<span title="Click for deal-score breakdown + suggested next moves" onclick="event.stopPropagation();window._openDealScoreDetail&&window._openDealScoreDetail(\'' + oid + '\')" style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);font-weight:700;letter-spacing:.06em;color:' + color + ';background:rgba(0,0,0,.25);border:1px solid ' + color + '40;padding:2px 6px;border-radius:3px;display:inline-flex;align-items:center;gap:4px;cursor:pointer"><span style="width:5px;height:5px;border-radius:50%;background:' + color + '"></span>' + s + '</span>';
+};
+
+// P13.7 — Deal Score Breakdown (coaching panel)
+// Computes factor-by-factor contributions + actionable suggestions.
+// Same formula as _dealScore so totals match across surfaces.
+window._dealScoreBreakdown = function(o){
+  if (!o) return null;
+  var stage = String(o.stage||'').toLowerCase();
+  var stageBase = 0;
+  if      (stage.indexOf('opp id')>=0)         stageBase = 6;
+  else if (stage.indexOf('qualify')>=0)        stageBase = 12;
+  else if (stage.indexOf('capture')>=0)        stageBase = 18;
+  else if (stage.indexOf('bid decision')>=0)   stageBase = 23;
+  else if (stage.indexOf('proposal')>=0)       stageBase = 26;
+  else if (stage.indexOf('final')>=0)          stageBase = 30;
+  else if (stage.indexOf('submitted')>=0)      stageBase = 33;
+  else if (stage.indexOf('eval')>=0 || stage.indexOf('award')>=0) stageBase = 35;
+  else stageBase = 5;
+
+  var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+  if (p > 1) p = p/100;
+  if (p > 1) p = 1;
+  var winScore = Math.round(p * 30);
+  var winPct = Math.round(p * 100);
+
+  var touchScore = 0;
+  var lastTs = 0;
+  var idx = window.CorsairIndex || {};
+  var mtgs = (idx.meetingsByOppId && idx.meetingsByOppId.get && idx.meetingsByOppId.get(String(o.id))) || [];
+  if (mtgs.length){
+    lastTs = mtgs.reduce(function(m,x){return Math.max(m, Number(x.ts||0));}, 0);
+    var tdays = lastTs ? Math.floor((Date.now() - lastTs) / 86400000) : 9999;
+    if      (tdays <= 7)  touchScore = 20;
+    else if (tdays <= 30) touchScore = 14;
+    else if (tdays <= 60) touchScore = 8;
+    else if (tdays <= 90) touchScore = 3;
+    else                  touchScore = 0;
+  }
+  var touchDays = lastTs ? Math.floor((Date.now() - lastTs) / 86400000) : null;
+
+  var freshScore = 0;
+  var stageDays = null;
+  if (o.stageEnteredAt){
+    stageDays = Math.floor((Date.now() - Number(o.stageEnteredAt)) / 86400000);
+    if      (stageDays <= 14) freshScore = 15;
+    else if (stageDays <= 30) freshScore = 10;
+    else if (stageDays <= 60) freshScore = 5;
+    else                      freshScore = 0;
+  } else {
+    freshScore = 8;
+  }
+
+  var total = Math.min(100, stageBase + winScore + touchScore + freshScore);
+
+  // Suggestions — rank weakest factors and emit operator-grade prompts
+  var suggestions = [];
+  if (touchScore <= 5){
+    if (touchDays == null) suggestions.push({ urgency: 'high', text: 'No meetings logged on this opp yet — schedule a touch this week or log a recent one if you forgot.' });
+    else suggestions.push({ urgency: 'high', text: 'Last touch was ' + touchDays + ' days ago. Send re-engage outreach or get a meeting on the calendar within 7 days.' });
+  }
+  if (freshScore <= 5){
+    if (stageDays != null && stageDays > 30){
+      suggestions.push({ urgency: 'high', text: 'Stuck in ' + (o.stage||'this stage') + ' for ' + stageDays + ' days. Either advance the stage (proposal sent / decision made / etc.) or formally pause + add a note explaining why.' });
+    }
+  }
+  if (winScore <= 9){
+    suggestions.push({ urgency: 'med', text: 'p(win) is ' + winPct + '%. Update if you have new signal — either bump it (capture brief landed, champion confirmed) or down-rate it honestly so the forecast reflects reality.' });
+  }
+  if (stageBase <= 12 && total >= 40){
+    suggestions.push({ urgency: 'med', text: 'Still in an early stage but score is healthy — push for the qualification gate so it can move into Capture.' });
+  }
+  if (!suggestions.length){
+    if (total >= 70) suggestions.push({ urgency: 'low', text: 'This deal is hot. Keep the cadence. Make sure your capture plan + teaming are locked.' });
+    else if (total >= 50) suggestions.push({ urgency: 'low', text: 'Solid mid-funnel deal. Look at the lowest factor below — moving it 5 points typically takes one focused action.' });
+    else suggestions.push({ urgency: 'med', text: 'Several factors are sub-optimal. Pick the lowest one below and address it today.' });
+  }
+
+  return {
+    total: total,
+    color: window._dealScoreColor(total),
+    factors: [
+      { label: 'Stage',          score: stageBase,  max: 35, color: stageBase  >= 22 ? '#22c55e' : stageBase  >= 12 ? '#facc15' : '#ef4444', detail: o.stage || '(no stage)' },
+      { label: 'Win probability',score: winScore,   max: 30, color: winScore   >= 18 ? '#22c55e' : winScore   >= 9  ? '#facc15' : '#ef4444', detail: winPct + '%' },
+      { label: 'Touch recency',  score: touchScore, max: 20, color: touchScore >= 14 ? '#22c55e' : touchScore >= 8  ? '#facc15' : '#ef4444', detail: touchDays == null ? 'no meetings logged' : touchDays + ' days since last' },
+      { label: 'Stage freshness',score: freshScore, max: 15, color: freshScore >= 10 ? '#22c55e' : freshScore >= 5  ? '#facc15' : '#ef4444', detail: stageDays == null ? 'no stage history' : stageDays + ' days in stage' }
+    ],
+    suggestions: suggestions
+  };
+};
+
+window._openDealScoreDetail = function(oppId){
+  var o = (window.opportunities || []).find(function(x){ return String(x.id) === String(oppId); });
+  if (!o){ if (typeof toast === 'function') toast('Opp not found'); return; }
+  var b = window._dealScoreBreakdown(o);
+  if (!b) return;
+
+  var modal = document.getElementById('deal-score-modal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'deal-score-modal';
+    modal.className = 'overlay';
+    modal.innerHTML = '<div class="modal" id="deal-score-modal-inner" style="max-width:540px;padding:0"></div>';
+    document.body.appendChild(modal);
+  }
+  var inner = document.getElementById('deal-score-modal-inner');
+
+  var esc = function(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); };
+  var urgencyColor = function(u){ return u === 'high' ? '#ef4444' : u === 'med' ? '#facc15' : '#22c55e'; };
+
+  var factorsHtml = b.factors.map(function(f){
+    var pct = Math.round((f.score / f.max) * 100);
+    return '<div style="margin-bottom:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">' +
+        '<span style="font-family:IBM Plex Sans,sans-serif;font-size:var(--text-sm);color:var(--text);font-weight:600">' + f.label + '</span>' +
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);color:' + f.color + ';font-weight:700;letter-spacing:.04em">' + f.score + ' / ' + f.max + '</span>' +
+      '</div>' +
+      '<div style="height:7px;background:rgba(125,118,105,.08);border-radius:2px;overflow:hidden">' +
+        '<div style="height:100%;width:' + pct + '%;background:' + f.color + ';transition:width 400ms ease"></div>' +
+      '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.04em;margin-top:3px">' + esc(f.detail) + '</div>' +
+    '</div>';
+  }).join('');
+
+  var sugHtml = b.suggestions.map(function(s){
+    return '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;background:rgba(7,13,24,.45);border-left:3px solid ' + urgencyColor(s.urgency) + ';border-radius:2px;margin-bottom:6px">' +
+      '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.12em;color:' + urgencyColor(s.urgency) + ';font-weight:700;flex-shrink:0;margin-top:2px">' + s.urgency.toUpperCase() + '</span>' +
+      '<span style="font-size:var(--text-sm);color:var(--text);line-height:var(--leading-snug)">' + esc(s.text) + '</span>' +
+    '</div>';
+  }).join('');
+
+  inner.innerHTML =
+    '<div style="padding:22px 26px 14px;border-bottom:1px solid var(--b1);display:flex;justify-content:space-between;align-items:flex-start;gap:14px;background:linear-gradient(180deg,var(--s1),var(--bg))">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.14em;color:' + b.color + ';text-transform:uppercase;font-weight:700;margin-bottom:4px">Deal Score · ' + (b.total >= 60 ? 'Priority' : b.total >= 30 ? 'Watch' : 'Stalled') + '</div>' +
+        '<div style="font-family:Antonio,sans-serif;font-size:var(--text-2xl);font-weight:700;color:var(--text);line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(o.name||'(unnamed)') + '</div>' +
+        '<div style="font-size:var(--text-xs);color:var(--t3);margin-top:4px;font-family:IBM Plex Mono,monospace;letter-spacing:.06em">' + esc(o.agency||'').toUpperCase() + (o.agency && o.stage ? ' · ' : '') + esc(String(o.stage||'').toUpperCase()) + '</div>' +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0">' +
+        '<div style="font-family:Antonio,sans-serif;font-size:48px;font-weight:700;color:' + b.color + ';line-height:1">' + b.total + '</div>' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.1em;margin-top:2px">OF 100</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:18px 26px 8px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--t3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px">Factor breakdown</div>' +
+      factorsHtml +
+    '</div>' +
+    '<div style="padding:6px 26px 8px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--t3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">What would move the needle</div>' +
+      sugHtml +
+    '</div>' +
+    '<div style="padding:14px 26px 22px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+      '<button class="btn" onclick="closeModal(\'deal-score-modal\')">Close</button>' +
+      '<button class="btn btn-gold" onclick="closeModal(\'deal-score-modal\');window.selectOpp&&window.selectOpp(\'' + String(o.id||'').replace(/\'/g,"\\'") + '\')">Open opportunity →</button>' +
+    '</div>';
+  openModal('deal-score-modal');
 };
 
 window._renderKanbanBoard=function(){

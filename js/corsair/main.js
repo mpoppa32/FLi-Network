@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.6';
-  window.Corsair.buildBlurb  = 'Deal Score expanded across surfaces — sidebar opp cards (5th metric), Brief STALE rows (chip in meta), Pipeline Forecast top-5 priority deals list. The "which 10 deals to obsess over today" answer now visible on every surface';
+  window.Corsair.buildTag    = 'P13.7';
+  window.Corsair.buildBlurb  = 'Deal Score coaching panel — click any score chip → factor breakdown (Stage/Win/Touch/Freshness bars) + ranked "what would move the needle" suggestions. Turns Deal Score from descriptive into prescriptive';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
