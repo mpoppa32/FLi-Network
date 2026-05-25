@@ -8319,7 +8319,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.20</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.21</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -36431,6 +36431,44 @@ window._loadDemoWorkspace = async function() {
 
     var D = window._DEMO_DATA;
 
+    // P13.21 — enrich demo seed with recent schema additions
+    // (Account Snapshot fields, isPOC, tier on people, numeric value+pwin
+    // +captureLead+stageEnteredAt on opps). Runs at load time so accountOwner
+    // and captureLead can resolve to the current user's uid.
+    (function _enrichDemo(){
+      var nowMs = Date.now();
+      var myUid = currentUser.uid;
+      var ORG_FIELDS = {
+        'demo-n-1':  { accountOwner: myUid, accountStatus:'active',    accountTier:'strategic', accountNotes:'DARPA TTO — anchor customer for autonomous ISR stack. Martinez (PM) champion; Chen (Tech Director) constructively skeptical; Park (COTR) procedural execution lead.', nextAccountAction:'Deliver edge latency benchmarks + schedule Phase III shaping conversation with Martinez', nextAccountActionTs: nowMs + 5*86400000 },
+        'demo-n-5':  { accountOwner: myUid, accountStatus:'qualified', accountTier:'strategic', accountNotes:'USSOCOM J6 driving Tradewinds path. Thompson champion; Lee (SOFWERX) liaison. Q3 demo on calendar.',           nextAccountAction:'Lock SOFWERX demo logistics + confirm Tradewinds award timeline',                              nextAccountActionTs: nowMs + 10*86400000 },
+        'demo-n-8':  { accountOwner: myUid, accountStatus:'customer',  accountTier:'standard',  accountNotes:'AFWERX Phase II SBIR in execution. Vasquez (Spark Lead) strong advocate; Kim (CO) process-focused on contract execution.', nextAccountAction:'Submit Q3 milestone deliverable + open Phase III conversation with Vasquez',                        nextAccountActionTs: nowMs + 14*86400000 },
+        'demo-n-11': { accountOwner: myUid, accountStatus:'prospect',  accountTier:'standard',  accountNotes:'Army Futures Command (Williams) — capability development interest from AUSA conversation. No active pursuit yet.',         nextAccountAction:'Send AFC capability one-pager + request follow-up briefing window',                                  nextAccountActionTs: nowMs + 21*86400000 },
+        'demo-n-12': { accountOwner: myUid, accountStatus:'dormant',   accountTier:'watch',     accountNotes:'Lockheed competes on most autonomy pursuits. Friendly relationship with O\\u2019Brien (BD Director). Watch but do not pursue.', nextAccountAction:'Annual touch-base with O\\u2019Brien at HASC reception',                                              nextAccountActionTs: nowMs + 60*86400000 },
+        'demo-n-16': { accountOwner: myUid, accountStatus:'qualified', accountTier:'standard',  accountNotes:'Anduril is potential teaming partner on sensors integration. Walsh open to Phase III teaming.',                              nextAccountAction:'Finalize teaming agreement scope on DARPA Phase III with Walsh',                                       nextAccountActionTs: nowMs + 7*86400000 },
+        'demo-n-18': { accountOwner: myUid, accountStatus:'prospect',  accountTier:'watch',     accountNotes:'Shield AI met briefly at I/ITSEC. Reyes is contact but no clear engagement path yet.',                                       nextAccountAction:'Decide whether to pursue or shelve based on Q3 capacity',                                              nextAccountActionTs: nowMs + 30*86400000 },
+        'demo-n-20': { accountOwner: myUid, accountStatus:'qualified', accountTier:'standard',  accountNotes:'BAH (Torres) has strong OSD relationships. Could be teaming partner OR competitor on innovation work — read carefully.',     nextAccountAction:'Sound out Torres on Defense Innovation portfolio for FY26',                                            nextAccountActionTs: nowMs + 21*86400000 }
+      };
+      var POC_PEOPLE = ['demo-n-2','demo-n-6','demo-n-9','demo-n-11','demo-n-13','demo-n-17','demo-n-19','demo-n-21'];
+      var TIER_MAP = { 'demo-n-2':1,'demo-n-3':1,'demo-n-4':2,'demo-n-6':1,'demo-n-7':2,'demo-n-9':1,'demo-n-10':2,'demo-n-11':2,'demo-n-13':2,'demo-n-17':1,'demo-n-19':3,'demo-n-21':2,'demo-n-22':2,'demo-n-23':1 };
+      D.nodes.forEach(function(n){
+        var enr = ORG_FIELDS[n.id];
+        if (enr) Object.assign(n, enr);
+        if (POC_PEOPLE.indexOf(n.id) >= 0) n.isPOC = true;
+        if (TIER_MAP[n.id]) n.tier = TIER_MAP[n.id];
+      });
+      var OPP_FIELDS = {
+        'demo-o-1': { value: 8000000, pwin: 0.65, captureLead: myUid, stageEnteredAt: nowMs - 30*86400000 },
+        'demo-o-2': { value: 3500000, pwin: 0.45, captureLead: myUid, stageEnteredAt: nowMs - 18*86400000 },
+        'demo-o-3': { value: 1500000, pwin: 0.70, captureLead: myUid, stageEnteredAt: nowMs - 25*86400000 },
+        'demo-o-4': { value: 5000000, pwin: 0.25, captureLead: null,  stageEnteredAt: nowMs - 45*86400000 },
+        'demo-o-5': { value: 2000000, pwin: 0.15, captureLead: null,  stageEnteredAt: nowMs - 50*86400000 }
+      };
+      D.opportunities.forEach(function(o){
+        var enr = OPP_FIELDS[o.id];
+        if (enr) Object.assign(o, enr);
+      });
+    })();
+
     _st(15, 'Writing 27 contacts and organizations...');
     for (var i = 0; i < D.nodes.length; i++) {
       var n = D.nodes[i];
@@ -36468,6 +36506,23 @@ window._loadDemoWorkspace = async function() {
       });
       await doWrite('commitment ' + (i+1) + '/' + D.commitments.length, wsPath('commitments/' + cm.id), norm);
       await doWrite('tl_commitment ' + (i+1) + '/' + D.commitments.length, wsPath('tl_commitments/' + cm.id), norm);
+    }
+
+    // P13.21 — seed 3 sample saved views (showcases the P13.4 / P13.10 / P13.16 feature)
+    _st(95, 'Seeding sample saved views...');
+    var _nowIso = new Date().toISOString();
+    var _byName = currentUser.displayName || currentUser.email || 'Demo User';
+    var DEMO_VIEWS = [
+      { id:'demo-sv-acc-1',  surface:'accounts', name:'Strategic — Active Customers', filters:{ sortBy:'pipeline', statusFilter:'active', ownerFilter:'_me', healthFilter:'', typeFilter:'government', searchQ:'' } },
+      { id:'demo-sv-pipe-1', surface:'pipeline', name:'My pursuits — leading capture', filters:{ search:'', mineOnly:true, unassignedOnly:false, byLead:'' } },
+      { id:'demo-sv-tbl-1',  surface:'table',    name:'Top weighted — show posture',   filters:{ sortKey:'weighted', sortDir:'desc', filterStage:'', filterHealth:'', filterAged:false, search:'', showPosture:true } }
+    ];
+    for (var i = 0; i < DEMO_VIEWS.length; i++){
+      var v = DEMO_VIEWS[i];
+      v.createdBy = currentUser.uid;
+      v.createdByName = _byName;
+      v.created = _nowIso;
+      await doWrite('saved view ' + (i+1) + '/' + DEMO_VIEWS.length + ' (' + v.surface + ')', wsPath('savedViews/' + v.id), v);
     }
 
     _st(100, 'Intelligence workspace ready');

@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.20';
-  window.Corsair.buildBlurb  = 'Entity Graph correctness arc — (1) d3.forceCenter drift fix: initNetwork ran while view was hidden with W=800/H=600 defaults, so the center force pulled nodes toward stale coords forever; resizeCanvas now updates forceCenter.x/.y + recomputes org radial ring + gentle alpha bump on real-viewport resize. (2) Accurate empty-state hint: P13.19 said "+ buttons in the left sidebar" but the actual add menu is ⊕ Add ▾ in the top toolbar; new copy points there with an inline gold-green clickable ⊕ ADD chip that opens the menu in one click';
+  window.Corsair.buildTag    = 'P13.21';
+  window.Corsair.buildBlurb  = 'Demo workspace enrichment — the demo seed (27 nodes, 19 links, 12 meetings, 5 opps, 8 commitments) was rich but predated the last month of schema additions. Enriched at load time with: (a) Account Snapshot fields on 8 key orgs (accountOwner/Status/Tier/Notes/nextAccountAction); (b) isPOC flag on 8 people across customer + partner + competitor orgs; (c) tier (1/2/3) on 14 key people; (d) numeric value + pwin + captureLead + stageEnteredAt on all 5 opps so Deal Score, weighted pipeline, days-in-stage, and Forecast panel populate properly; (e) 3 sample saved views (Accounts strategic-active, Pipeline mine, Table top-weighted) so new users see the saved-views feature already populated';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
