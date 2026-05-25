@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.29';
-  window.Corsair.buildBlurb  = 'Pre-Bryce fix #2: Pipeline Forecast stage funnel printed "[object Object]" 5 times. Diagnosed via Chrome MCP — OPP_STAGES is an array of {key,label,color} objects (moved to pipeline.js in P9.9) but _renderCopForecast still treated entries as strings: object-as-map-key collapsed to "[object Object]", so byStage[o.stage] never matched any opp (count + value both 0) AND the row label printed the object directly. Fixed by normalizing stages to a keys array upfront, building a stageLabels lookup, and rendering stageLabels[s] in the funnel row. Bucket counts, value sums, conversion %, and velocity all populate correctly now';
+  window.Corsair.buildTag    = 'P13.30';
+  window.Corsair.buildBlurb  = 'Pre-Bryce fix #3 — Table view was blank because table-view + pulse-view were ORPHANED at body level (parent: body, not main-app). Classic new-view-checklist bug that bit P12.8 (Accounts). _relocateViewsIntoMainApp registry was missing both IDs. Diagnosed via Chrome MCP layout query — tvTop:739 / tvParentId:"" / tvHeight:4391 — view rendered below the visible viewport. Added "table-view" and "pulse-view" to the relocator array';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
