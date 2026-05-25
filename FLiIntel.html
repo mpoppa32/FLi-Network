@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.5</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.6</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16554,7 +16554,30 @@ window._renderCopForecast = function(){
             funnelHtml +
             '<div style="margin-top:8px;font-size:var(--text-2xs);color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.04em">velocity = median days currently in stage (active opps only)</div>' +
           '</div>' +
-        '</div>'
+        '</div>' +
+        // P13.6: Top 5 priority deals by Deal Score
+        (function(){
+          if (typeof window._dealScore !== 'function') return '';
+          var scored = opps.map(function(o){ return { o: o, s: window._dealScore(o) }; })
+                          .sort(function(a,b){ return b.s - a.s; })
+                          .slice(0, 5);
+          if (!scored.length) return '';
+          var rows = scored.map(function(x){
+            var o = x.o;
+            var chip = window._dealScoreChip(o);
+            var v = Number(o.value || 0);
+            var vTxt = v >= 1e6 ? '$' + (v/1e6).toFixed(1) + 'M' : (v >= 1e3 ? '$' + (v/1e3).toFixed(0) + 'K' : (v ? '$' + v : '—'));
+            return '<div onclick="window.selectOpp&&window.selectOpp(\'' + String(o.id).replace(/\'/g,"\\'") + '\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);margin-bottom:6px;cursor:pointer;transition:border-color 140ms" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
+              '<div style="flex:1;min-width:0">' +
+                '<div style="font-size:var(--text-sm);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + String(o.name||'(unnamed)').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + '</div>' +
+                '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em;margin-top:2px">' + (o.agency||'').toString().toUpperCase().replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + ' · ' + String(o.stage||'').toUpperCase() + ' · ' + vTxt + '</div>' +
+              '</div>' +
+              chip +
+            '</div>';
+          }).join('');
+          return '<div style="margin-top:18px"><div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--t3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">Top 5 priority deals · by score</div>' + rows +
+            '<div style="margin-top:8px;font-size:var(--text-2xs);color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.04em">these are the deals to obsess over today — click to drill in</div></div>';
+        })()
       ) +
     '</div>';
 };
@@ -16976,6 +16999,12 @@ function _renderOppList(q){
           + '<div class="cop-metric"><div class="cop-metric-lbl">PWIN</div><div class="cop-metric-val cop-pw-' + pwCol + '">' + pw + '%</div></div>'
           + '<div class="cop-metric"><div class="cop-metric-lbl">MTGS</div><div class="cop-metric-val">' + mtgCount + '</div></div>'
           + '<div class="cop-metric"><div class="cop-metric-lbl">LAST</div><div class="cop-metric-val">' + (lastTs ? (daysSince === 0 ? 'TDY' : daysSince + 'D') : '—') + '</div></div>'
+          + (function(){
+              if (typeof window._dealScore !== 'function' || isClosed) return '';
+              var ds = window._dealScore(o);
+              var dc = window._dealScoreColor(ds);
+              return '<div class="cop-metric" title="Deal score: stage + p(win) + touch recency + stage freshness"><div class="cop-metric-lbl">SCORE</div><div class="cop-metric-val" style="color:' + dc + '">' + ds + '</div></div>';
+            })()
         + '</div>'
         + lifecycleBar(o.stage)
         + (function(){

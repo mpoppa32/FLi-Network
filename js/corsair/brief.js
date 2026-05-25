@@ -334,6 +334,12 @@ window.renderDailyBrief = function() {
     var h = s.health || { score: 0, status: 'unknown' };
     var pillTxt = h.status === 'unknown' ? '—' : String(h.score);
     var pill = '<span class="health-pill health-' + h.status + '" title="Health ' + h.score + ' · ' + (h.factors ? (h.factors.attendees + ' attendees · ' + h.factors.meetings + ' meetings') : '') + '">' + pillTxt + '</span>';
+    // P13.6: deal score chip — look up full opp record by id, compute via window._dealScore
+    var scoreChip = '';
+    if (typeof window._dealScoreChip === 'function' && s.id){
+      var fullOpp = (window.opportunities || []).find(function(oo){ return String(oo.id) === String(s.id); });
+      if (fullOpp) scoreChip = window._dealScoreChip(fullOpp);
+    }
     // CRM P0.4: operator-set nextAction + target date inline
     var naLine = '';
     if (s.nextAction || s.nextActionTs) {
@@ -349,7 +355,7 @@ window.renderDailyBrief = function() {
                '</div>';
     }
     var headRow = '<span class="brief-item-title">' + pill + s.name + '</span>' +
-                  '<span class="brief-item-meta">' + (s.days == null ? 'never' : s.days + 'd · ' + s.stage) + '</span>';
+                  '<span class="brief-item-meta" style="display:flex;align-items:center;gap:6px">' + scoreChip + '<span>' + (s.days == null ? 'never' : s.days + 'd · ' + s.stage) + '</span></span>';
     if (naLine) {
       return '<div class="brief-item" style="flex-direction:column;align-items:stretch;gap:0" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' +
              '<div style="display:flex;justify-content:space-between;gap:8px;width:100%">' + headRow + '</div>' +

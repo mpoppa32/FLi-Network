@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.5';
-  window.Corsair.buildBlurb  = 'Per-opp Deal Score on Pipeline cards (7/7) — 0-100 weighted score (stage + p(win) + touch recency + stage freshness), color-coded chip on every Kanban card. Competitive-parity arc complete';
+  window.Corsair.buildTag    = 'P13.6';
+  window.Corsair.buildBlurb  = 'Deal Score expanded across surfaces — sidebar opp cards (5th metric), Brief STALE rows (chip in meta), Pipeline Forecast top-5 priority deals list. The "which 10 deals to obsess over today" answer now visible on every surface';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
