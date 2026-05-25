@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.30';
-  window.Corsair.buildBlurb  = 'Pre-Bryce fix #3 — Table view was blank because table-view + pulse-view were ORPHANED at body level (parent: body, not main-app). Classic new-view-checklist bug that bit P12.8 (Accounts). _relocateViewsIntoMainApp registry was missing both IDs. Diagnosed via Chrome MCP layout query — tvTop:739 / tvParentId:"" / tvHeight:4391 — view rendered below the visible viewport. Added "table-view" and "pulse-view" to the relocator array';
+  window.Corsair.buildTag    = 'P13.31';
+  window.Corsair.buildBlurb  = 'Pre-Bryce fix #4 — Race condition: Table view + Pipeline Forecast + Win/Loss dashboard could all render with 0 data if user clicked their tabs before the Firebase listeners fired. switchView calls each render once on view-change; the listeners had no re-render hooks. Wired opportunities + calibration listeners to re-render those three surfaces when data arrives. Now if Mike lands fresh on Table while opps are still loading, the count flips from 0→122 as soon as the snapshot resolves';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

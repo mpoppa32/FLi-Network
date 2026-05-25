@@ -8333,7 +8333,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.30</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.31</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12251,6 +12251,13 @@ function connectWorkspace(){
     if(window._invalidateEntityGraph)window._invalidateEntityGraph();
     renderOppSidebar();
     updateOppSelectors();
+    // P13.31 — re-render Table view + Pipeline Forecast + Win/Loss dashboard
+    // when opps update so users who landed on those views before the
+    // Firebase listener fired see the data populate (was: stuck on
+    // "0 of 0 pursuits" if switchView ran first).
+    if(typeof window._renderTableView === 'function') try { window._renderTableView(); } catch(e){}
+    if(typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){}
+    if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){}
     if(currentOpp){var upd=opportunities.find(function(o){return o.id===currentOpp.id;});if(upd){currentOpp=upd;renderOppDetail(upd);}}
     // 3.11 live reload hook
     if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
@@ -12287,6 +12294,11 @@ function connectWorkspace(){
   var u11=onValue(ref(db,wsPath('calibration')),function(snap){
     calibrationRecords=snap.val()?Object.values(snap.val()):[];
     _wpWeights=null; // invalidate cached weights
+    // P13.31 — re-render Win/Loss dashboard so it picks up the calibration
+    // records on load (and any subsequent recordOutcome writes from
+    // teammates). Without this, opening Win/Loss before the listener
+    // fired stuck on insufficient-data state even when N>=3.
+    if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){}
   });
   // ── LEDGER (Phase 7.5.3 — Posture Layer obligations) ──
   var uLedger=onValue(ref(db,wsPath('ledger')),function(snap){
