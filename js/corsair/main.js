@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.3';
-  window.Corsair.buildBlurb  = 'First-run onboarding tour (5/7) — 5-step welcome walkthrough fires once per (uid,ws) pair on workspace open. Replayable from More menu. (Skipped 4/7 native email send — needs Google Cloud Console config)';
+  window.Corsair.buildTag    = 'P13.4';
+  window.Corsair.buildBlurb  = 'Saved views on Accounts (6/7) — capture current filters+sort as named view, shared across Mike + Bryce via RTDB; manage/delete modal; one-click apply';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

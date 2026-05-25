@@ -8318,7 +8318,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.3</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.4</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9705,6 +9705,10 @@ input[type="url"], textarea, select {
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <input id="accounts-search" type="text" placeholder="Filter by name…" oninput="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;width:240px"/>
+      <select id="accounts-saved-views" onchange="window._accApplySavedView&&window._accApplySavedView(this.value)" style="padding:11px 16px;border:1px solid var(--gold);border-radius:6px;background:rgba(212,130,58,.08);color:var(--gold);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <option value="">★ Saved views</option>
+      </select>
+      <button onclick="window._accSaveCurrentView&&window._accSaveCurrentView()" title="Save current filters + sort as a named view" style="padding:11px 14px;border:1px solid var(--gold);border-radius:6px;background:transparent;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">+ Save</button>
       <select id="accounts-sort" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
         <option value="pipeline">Sort: Pipeline $</option>
         <option value="health">Sort: Health (worst first)</option>
@@ -36400,6 +36404,171 @@ function _accBuildRollup(org){
   };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// P13.4 — Saved Views on Accounts (competitive-parity arc 6/7)
+// Per-workspace storage at workspaces/{wsId}/savedViews/{viewId}.
+// Mike and Bryce see each other's saved views (shared workspace state).
+// ═══════════════════════════════════════════════════════════════
+window._accSavedViews = window._accSavedViews || {};
+
+window._accLoadSavedViews = async function(){
+  if (!currentWsId) return;
+  try {
+    var snap = await get(ref(db, wsPath('savedViews')));
+    var data = snap.val() || {};
+    window._accSavedViews = data;
+    var sel = document.getElementById('accounts-saved-views');
+    if (!sel) return;
+    var current = sel.value;
+    var keys = Object.keys(data).filter(function(k){
+      var v = data[k];
+      return v && v.surface === 'accounts';
+    }).sort(function(a,b){
+      return String(data[a].name||'').localeCompare(String(data[b].name||''));
+    });
+    var opts = ['<option value="">★ Saved views</option>'];
+    keys.forEach(function(k){
+      opts.push('<option value="' + _accEsc(k) + '">' + _accEsc(data[k].name||'(untitled)') + '</option>');
+    });
+    if (keys.length){
+      opts.push('<option disabled>──────────</option>');
+      opts.push('<option value="__manage">⚙ Manage views…</option>');
+    }
+    sel.innerHTML = opts.join('');
+    if (current && data[current]) sel.value = current;
+  } catch(e){
+    console.warn('[savedViews] load failed:', e);
+  }
+};
+
+window._accSaveCurrentView = async function(){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot save views'); return; }
+  var name = prompt('Save current filters + sort as view named:');
+  if (!name || !name.trim()) return;
+  name = name.trim().slice(0, 80);
+  var snapshot = {
+    id: 'v-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    name: name,
+    surface: 'accounts',
+    filters: {
+      search:  (document.getElementById('accounts-search')||{}).value || '',
+      sort:    (document.getElementById('accounts-sort')||{}).value || 'pipeline',
+      status:  (document.getElementById('accounts-status-filter')||{}).value || '',
+      owner:   (document.getElementById('accounts-owner-filter')||{}).value || '',
+      health:  (document.getElementById('accounts-health-filter')||{}).value || '',
+      type:    (document.getElementById('accounts-type-filter')||{}).value || ''
+    },
+    createdBy: (window.currentUser && window.currentUser.uid) || '',
+    createdByName: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || '',
+    created: new Date().toISOString()
+  };
+  try {
+    await fbSet(wsPath('savedViews/' + snapshot.id), snapshot);
+    window._accSavedViews[snapshot.id] = snapshot;
+    await window._accLoadSavedViews();
+    var sel = document.getElementById('accounts-saved-views');
+    if (sel) sel.value = snapshot.id;
+    toast('View "' + name + '" saved');
+  } catch(e){
+    toast('Save failed: ' + (e.message || 'try again'));
+  }
+};
+
+window._accApplySavedView = function(id){
+  if (!id) return;
+  if (id === '__manage'){
+    window._accOpenManageViews();
+    var sel = document.getElementById('accounts-saved-views');
+    if (sel) sel.value = '';
+    return;
+  }
+  var v = window._accSavedViews[id];
+  if (!v || !v.filters) return;
+  var f = v.filters;
+  var set = function(elId, val){ var el = document.getElementById(elId); if (el){ el.value = val == null ? '' : val; } };
+  set('accounts-search',        f.search);
+  set('accounts-sort',          f.sort);
+  set('accounts-status-filter', f.status);
+  set('accounts-owner-filter',  f.owner);
+  set('accounts-health-filter', f.health);
+  set('accounts-type-filter',   f.type);
+  if (window._renderAccountsView) window._renderAccountsView();
+};
+
+window._accDeleteSavedView = async function(id){
+  if (window._canWrite && !window._canWrite()){ toast('Observers cannot delete views'); return; }
+  var v = window._accSavedViews[id];
+  if (!v) return;
+  if (!confirm('Delete saved view "' + (v.name||'') + '"?')) return;
+  try {
+    await fbSet(wsPath('savedViews/' + id), null);
+    delete window._accSavedViews[id];
+    await window._accLoadSavedViews();
+    window._accRenderManageViews();
+    toast('Deleted "' + (v.name||'') + '"');
+  } catch(e){
+    toast('Delete failed: ' + (e.message || 'try again'));
+  }
+};
+
+window._accOpenManageViews = function(){
+  var modal = document.getElementById('manage-views-modal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'manage-views-modal';
+    modal.className = 'overlay';
+    modal.innerHTML = '<div class="modal" style="max-width:560px;padding:0">' +
+      '<div style="padding:22px 28px 14px;border-bottom:1px solid var(--b1)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px">' +
+          '<div>' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.16em;color:var(--gold);text-transform:uppercase;font-weight:700;margin-bottom:4px">Workspace · shared</div>' +
+            '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--text);line-height:1.15">Saved Views</div>' +
+          '</div>' +
+          '<button onclick="closeModal(\'manage-views-modal\')" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="manage-views-body" style="padding:18px 28px 24px;max-height:60vh;overflow-y:auto"></div>' +
+    '</div>';
+    document.body.appendChild(modal);
+  }
+  window._accRenderManageViews();
+  openModal('manage-views-modal');
+};
+
+window._accRenderManageViews = function(){
+  var body = document.getElementById('manage-views-body');
+  if (!body) return;
+  var data = window._accSavedViews || {};
+  var keys = Object.keys(data).filter(function(k){return data[k] && data[k].surface === 'accounts';});
+  if (!keys.length){
+    body.innerHTML = '<div style="color:var(--t3);font-size:var(--text-sm);text-align:center;padding:18px;font-style:italic">No saved views yet. Apply some filters on the Accounts page, then click "+ Save".</div>';
+    return;
+  }
+  keys.sort(function(a,b){ return String(data[a].name||'').localeCompare(String(data[b].name||'')); });
+  body.innerHTML = keys.map(function(k){
+    var v = data[k];
+    var f = v.filters || {};
+    var filterBits = [];
+    if (f.status) filterBits.push('status=' + f.status);
+    if (f.owner)  filterBits.push('owner=' + f.owner);
+    if (f.health) filterBits.push('health=' + f.health);
+    if (f.type)   filterBits.push('type=' + f.type);
+    if (f.search) filterBits.push('search="' + f.search + '"');
+    if (f.sort)   filterBits.push('sort=' + f.sort);
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);margin-bottom:8px">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:var(--text-base);font-weight:600;color:var(--text);margin-bottom:3px">' + _accEsc(v.name||'(untitled)') + '</div>' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.04em;margin-bottom:4px">' + (filterBits.length ? _accEsc(filterBits.join(' · ')) : 'no filters set') + '</div>' +
+        '<div style="font-size:var(--text-xs);color:var(--t3)">By ' + _accEsc(v.createdByName || v.createdBy || 'unknown') + (v.created ? ' · ' + new Date(v.created).toLocaleDateString() : '') + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0">' +
+        '<button onclick="closeModal(\'manage-views-modal\');window._accApplySavedView(\'' + _accEsc(k) + '\');var s=document.getElementById(\'accounts-saved-views\');if(s)s.value=\'' + _accEsc(k) + '\'" class="btn btn-sm" style="color:var(--gold);border-color:rgba(212,130,58,.4)">Apply</button>' +
+        '<button onclick="window._accDeleteSavedView(\'' + _accEsc(k) + '\')" class="btn btn-sm" style="color:var(--red);border-color:rgba(239,68,68,.3)">Delete</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+};
+
 // P12.17 — Incomplete-accounts attention banner (arc 3/4)
 // Sticky-top of Accounts surface; shows org-hygiene totals + filter shortcuts.
 // Auto-hides when all green so it stays out of the way once records are complete.
@@ -36451,6 +36620,9 @@ window._renderAccountsView = function(){
   var healthFilter = (document.getElementById('accounts-health-filter')||{}).value || '';
   var searchQ = ((document.getElementById('accounts-search')||{}).value || '').toLowerCase().trim();
   var sortBy = (document.getElementById('accounts-sort')||{}).value || 'pipeline';
+
+  // P13.4: load saved views (once per render — cheap RTDB read)
+  if (window._accLoadSavedViews) window._accLoadSavedViews();
 
   // P12.16: dynamically populate owner-filter options with workspace members
   var ownerFilterEl = document.getElementById('accounts-owner-filter');
