@@ -8342,7 +8342,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.58</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.59</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12191,6 +12191,16 @@ function connectWorkspace(){
     // top-level `var` does not attach to window, so this explicit assignment
     // is required every time nodes is reassigned.
     window.nodes=nodes;
+    // P13.59 — one-time-per-workspace heal of legacy FLi/FLI branding in
+    // user-facing fields (role / name / org / govOrg / notes / accountNotes /
+    // nextAccountAction). Atlas predates the Corsair rebrand; any user-typed
+    // string left over from the FLi-Network days gets auto-rewritten to
+    // "Corsair" so Bryce never sees "FLI CO-FOUNDER" or similar in a watch
+    // card. Whole-word regex only (no partial matches), localStorage guard
+    // so it runs exactly once per workspace.
+    if (typeof window._fliRebrandHealOnce === 'function') {
+      try { window._fliRebrandHealOnce(); } catch(e){ console.warn('[Corsair] FLi rebrand heal failed:', e); }
+    }
     if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
       try { window.DiscoveryEngine3D.loadGraph(nodes, links || []); } catch(e){ console.warn('[DE3D] live reload failed:', e); }
     }
@@ -12370,6 +12380,53 @@ function connectWorkspace(){
       }
     } catch(e) { console.warn('[Corsair] Demo auto-heal exception:', e); }
   });
+
+  // P13.59 — one-time per-workspace heal of legacy FLi/FLI branding in
+  // user-typed string fields on person/government/company nodes. Atlas
+  // predates the Corsair rebrand and contains records like role="FLI
+  // CO-FOUNDER" that Bryce sees in watch cards. This rewrites whole-word
+  // matches of "FLi", "FLI", "fli", "FLi-Network", "FLi Network" to
+  // "Corsair" across user-facing fields (name, role, org, govOrg, notes,
+  // accountNotes, nextAccountAction). Whole-word regex only — no partial
+  // matches, no email/URL bodies get touched.
+  window._fliRebrandHealOnce = function(){
+    if (!currentWsId || !Array.isArray(window.nodes)) return;
+    var key = 'corsair-fli-heal-' + currentWsId;
+    try { if (localStorage.getItem(key) === '1') return; } catch(e){}
+    function clean(s) {
+      if (typeof s !== 'string' || !s) return s;
+      return s
+        .replace(/\bFLi-Network\b/g, 'Corsair')
+        .replace(/\bFLi Network\b/g, 'Corsair')
+        .replace(/\bFLi\b/g, 'Corsair')
+        .replace(/\bFLI\b/g, 'Corsair')
+        .replace(/\bfli\b/g, 'Corsair');
+    }
+    var changed = 0;
+    window.nodes.forEach(function(n){
+      if (!n) return;
+      var fields = ['name','role','org','govOrg','notes','accountNotes','nextAccountAction'];
+      var anyChange = false;
+      fields.forEach(function(f){
+        var orig = n[f];
+        var next = clean(orig);
+        if (next !== orig) { n[f] = next; anyChange = true; }
+      });
+      if (anyChange) {
+        changed++;
+        try {
+          if (typeof saveNode === 'function') saveNode(n).catch(function(e){
+            console.warn('[Corsair] FLi heal save failed for node ' + n.id + ':', e);
+          });
+        } catch(e) { console.warn('[Corsair] FLi heal save threw:', e); }
+      }
+    });
+    if (changed > 0) {
+      console.log('[Corsair] FLi rebrand heal: rewrote ' + changed + ' nodes in workspace ' + currentWsId);
+    }
+    try { localStorage.setItem(key, '1'); } catch(e){}
+  };
+
   // ── LEDGER (Phase 7.5.3 — Posture Layer obligations) ──
   var uLedger=onValue(ref(db,wsPath('ledger')),function(snap){
     window.ledger = snap.val() ? Object.values(snap.val()) : [];
