@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.65';
-  window.Corsair.buildBlurb  = 'Help drawer content for Rhythm, Posture, and Contract Vehicles — completes the contextual help coverage across all daily-use and More-menu views. Previously these three fell back to the generic Intel Station entry. Now each has purpose / 3 key actions / pro-tip matching the P13.48 pattern. Rhythm explains the agentic loop queue, Posture covers the political ledger + influence-across-pursuits sub-tabs, Vehicles frames IDIQ/OTA/GWAC tracking as access posture.';
+  window.Corsair.buildTag    = 'P13.66';
+  window.Corsair.buildBlurb  = 'openNetPanel recursive-typo fix surfaced during live walkthrough. The function had a bogus self-call at the end of its body: openNetPanel(); — passed no argument, hit nc(undefined.type), threw, and corrupted selectedNode to undefined. Has been latent for many builds because the throw gets swallowed upstream and the panel still visually opens via the visibility/pointer-events resets earlier in the function. Git blame showed commit cabc384 replaced the correct document.getElementById("net-panel").classList.add("open") with openNetPanel() — typo or AI-paste accident. Restored the original line. Side effects: panel-open class now correctly added to net-panel, selectedNode no longer corrupted, no console exception on node click.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
