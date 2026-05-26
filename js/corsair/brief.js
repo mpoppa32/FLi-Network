@@ -385,7 +385,34 @@ window.renderDailyBrief = function() {
            '<span class="brief-item-title">' + pill + c.name + '</span>' +
            '<span class="brief-item-meta">' + c.factors.oppCount + ' opp' + (c.factors.oppCount === 1 ? '' : 's') + '</span></div>';
   });
-  console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length);
+
+  // ─── 6. Aged in Stage: pursuits past their stage aging threshold (Phase 6.7) ─
+  // Wires the column placeholder at FLiIntel.html:8627 that previously had no
+  // renderer. Uses Corsair.pipeline.isStageStuck + daysInStage + ageLimit from
+  // pipeline.js — already loaded as a sibling module.
+  var aged = [];
+  var pipe = (window.Corsair && window.Corsair.pipeline) ? window.Corsair.pipeline : null;
+  if (pipe && typeof pipe.isStageStuck === 'function') {
+    for (var ai = 0; ai < opps_.length; ai++) {
+      var ao = opps_[ai];
+      if (!ao || !ao.stage) continue;
+      var stgL = String(ao.stage).toLowerCase();
+      if (stgL === 'won' || stgL === 'lost') continue;
+      if (!pipe.isStageStuck(ao)) continue;
+      var dis = (typeof pipe.daysInStage === 'function') ? pipe.daysInStage(ao) : 0;
+      var lim = (typeof pipe.ageLimit === 'function') ? pipe.ageLimit(ao.stage) : 0;
+      aged.push({ id: ao.id, name: ao.name || '(unnamed)', stage: ao.stage, days: dis, limit: lim, over: dis - lim });
+    }
+    aged.sort(function(a, b) { return b.over - a.over; }); // most over first
+  }
+  _renderCol('brief-aged-list', 'brief-aged-count', aged, function(a) {
+    var safeName = (a.name || '').replace(/\'/g, '');
+    return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + a.id + '\')">' +
+           '<span class="brief-item-title">' + a.name + '</span>' +
+           '<span class="brief-item-meta">' + a.days + 'd · ' + a.stage + ' (+' + a.over + 'd)</span></div>';
+  });
+
+  console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length + ' aged=' + aged.length);
 };
 
 window.Corsair = window.Corsair || {};

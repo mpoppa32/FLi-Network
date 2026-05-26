@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.36';
-  window.Corsair.buildBlurb  = 'Pre-Bryce auto-heal — old demo workspaces that predate P13.24 calibration seeding (loaded before tonight\'s arc) auto-detect on next load: if isDemo workspace + 0 cal records + seed available, fbSet the 4 calibration records + the 4 closed-deal opps (demo-o-6..9 with captureLead) in one batch. Guarded by per-workspace flag to prevent re-seeding loop. Mike no longer needs to delete + reload his existing Demo Workspace tomorrow morning — Win/Loss dashboard auto-activates on next open';
+  window.Corsair.buildTag    = 'P13.40';
+  window.Corsair.buildBlurb  = 'Email Digest discoverability — Intel Brief subscription button (existing EmailJS-based opt-in + test-send infra at FLiIntel.html:30897/30932) was buried in the RFI Response Engine header where Brief users never saw it. Surfaced on the Brief master-refresh bar next to Refresh All. Partial close of SME-eval gap #2 — opt-in is now discoverable, EmailJS test-send works for one-off delivery, but TRUE scheduled daily-7am delivery still requires a Cloud Function with cron trigger (deferred). Bundled with P13.37 (Aged in Stage) + P13.38 (Send-in-Gmail) + P13.39 (Trends view) in one uncommitted push.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
