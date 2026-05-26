@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.45';
-  window.Corsair.buildBlurb  = 'Guided walkthroughs now discoverable. The chapter tour at line 49279 (window._TOUR_CHAPTERS — walks the actual UI with spotlight callouts, "Core Loop" chapter teaches paste→Process flow) had its nav button at line 8489 set to display:none with no content. Operators couldn\'t reach it. Added a Tools menu entry "Guided walkthroughs" (⚐) right below "Replay welcome" so the rich educational system is one click away. Also renamed the welcome-modal menu entry from "Replay tour" → "Replay welcome" to disambiguate the two systems.';
+  window.Corsair.buildTag    = 'P13.46';
+  window.Corsair.buildBlurb  = 'Chapter tour stale-target fixes — the chapter tour (now reachable via P13.45 menu entry) referenced #mode-graph which doesn\'t exist; nav is now mode-brief/accounts/cop/table/inspector with More menu for graph. Three steps were stuck behind that selector with awaitClick locks: Core Loop Step 1 (the entry point), Core Loop Step 5 (Network reveal), Network Graph Step 1. Plus daily-rhythm Step 1 pointed at retired #daily-strip (display:none). All four updated to current selectors with refreshed copy. Tours now advance end-to-end.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
