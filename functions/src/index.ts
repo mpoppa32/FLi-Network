@@ -139,3 +139,13 @@ export { captureOAuthCallback } from "./http/captureOAuthCallback";
 export { triggerGmailSync } from "./http/triggerGmailSync";
 export { triggerCalendarSync } from "./http/triggerCalendarSync";
 export { captureHourly } from "./jobs/captureHourly";
+
+// Daily Brief Email Digest (P13.42 from 2026-05-25 SME-eval — closes gap #2)
+// Requires:
+//   cd functions && npm install @sendgrid/mail
+//   firebase functions:secrets:set SENDGRID_API_KEY
+//   firebase functions:secrets:set BRIEF_FROM_EMAIL
+//   firebase deploy --only functions:dailyBriefDigest
+// Function gracefully no-ops if secrets are unset (logs "secrets_missing").
+// Schedule: 11:00 UTC daily (~7am ET / 4am PT). Per-user TZ is P14.x.
+export { dailyBriefDigest } from "./jobs/dailyBriefDigest";
