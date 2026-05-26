@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.43';
-  window.Corsair.buildBlurb  = 'CRITICAL FIX: Welcome tour Next button advances now. Two tour systems both wrote window._tourState — the chapter tour at line 49508 was doing `window._tourState = {...}` which clobbered the welcome tour\'s `step` field. Result: clicking Next ran undefined++ → NaN → _TOUR_STEPS[NaN] → silent no-op. Fix: chapter tour now Object.assigns into existing state preserving any prior fields, plus defensive guard in _tourNext/_tourBack that resets step to 0 if non-numeric. Caught by Mike\'s walkthrough — exactly the kind of bug the morning walkthrough was meant to catch.';
+  window.Corsair.buildTag    = 'P13.44';
+  window.Corsair.buildBlurb  = 'CRITICAL FIX #2: Welcome tour buttons actually call welcome-tour logic now. P13.43 fixed the STATE collision but missed the FUNCTION collision — both tours defined window._tourNext/_tourBack, and chapter tour (line 49894, later in file) overwrote welcome tour\'s versions. Welcome modal\'s Next button was calling chapter-tour code looking for _TOUR_CHAPTERS[0] and silently exiting. Renamed welcome tour to _welcomeTourNext/_welcomeTourBack and updated modal buttons. The chapter tour\'s functions are untouched (it has its own internal callers).';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

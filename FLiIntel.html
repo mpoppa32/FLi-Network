@@ -8341,7 +8341,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.43</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.44</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10160,8 +10160,8 @@ input[type="url"], textarea, select {
     <div style="padding:18px 32px 24px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--b1);margin-top:14px">
       <div id="tour-dots" style="display:flex;gap:6px"></div>
       <div style="display:flex;gap:8px">
-        <button id="tour-back-btn" onclick="window._tourBack()" class="btn" style="display:none">← Back</button>
-        <button id="tour-next-btn" onclick="window._tourNext()" class="btn btn-gold">Next →</button>
+        <button id="tour-back-btn" onclick="window._welcomeTourBack()" class="btn" style="display:none">← Back</button>
+        <button id="tour-next-btn" onclick="window._welcomeTourNext()" class="btn btn-gold">Next →</button>
       </div>
     </div>
   </div>
@@ -12838,7 +12838,13 @@ window._tourRender = function(){
     dots.innerHTML = bits.join('');
   }
 };
-window._tourNext = function(){
+// P13.44 — renamed _tourNext/_tourBack to _welcomeTourNext/_welcomeTourBack
+// because the chapter tour at line ~49894 ALSO defines window._tourNext (and
+// _tourBack), and being later in the file, those definitions overwrite these.
+// Result before rename: clicking Next on the welcome modal called the chapter
+// tour's _tourNext, which read _TOUR_CHAPTERS[stepIdx] and silently exited.
+// Modal HTML buttons at lines 10163-10164 now call the renamed versions.
+window._welcomeTourNext = function(){
   var n = _TOUR_STEPS.length;
   // P13.43 — defensive: if step got clobbered (e.g. by a competing state
   // re-init), recover to 0 instead of NaN-ing on the increment.
@@ -12849,7 +12855,7 @@ window._tourNext = function(){
   window._tourState.step++;
   window._tourRender();
 };
-window._tourBack = function(){
+window._welcomeTourBack = function(){
   if (typeof window._tourState.step !== 'number' || isNaN(window._tourState.step)) {
     window._tourState.step = 0;
   }
