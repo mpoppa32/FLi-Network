@@ -371,7 +371,7 @@ window.renderDailyBrief = function() {
     return '<div class="brief-item" onclick="if(window.goIntelById)window.goIntelById(\'' + u.id + '\')">' +
            '<span class="brief-item-title">' + u.title + '</span>' +
            '<span class="brief-item-meta">' + when + '</span></div>';
-  }, 'Nothing in the next 7 days. Upcoming meetings + opp deadlines surface here as you log them.');
+  }, 'No meetings or deadlines logged for the next 7 days. Schedule a meeting or set an opp deadline to populate this column.');
   _renderCol('brief-commit-list', 'brief-commit-count', commitDue, function(c) {
     var when = c.days <= 0 ? 'overdue' : c.days === 1 ? 'tomorrow' : 'in ' + c.days + 'd';
     var ownerStr = c.owner ? ' · ' + String(c.owner).slice(0, 14) : '';

@@ -18,7 +18,7 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.63';
+  window.Corsair.buildTag    = 'P13.64';
   window.Corsair.buildBlurb  = 'Process button "no API key" error message — role-aware. Previously said "Add API key in user settings" regardless of who was clicking. For Bryce as a non-owner Analyst, that was misleading — he can\'t fix it himself. Now branches: if currentUserRole is Owner/Admin, says set it in user menu Settings OR set workspace key. If anything else (Analyst/Observer), says ask your workspace owner. Tiny but high-friction error path for new team members.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
