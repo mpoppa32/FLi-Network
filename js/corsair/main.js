@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.54';
-  window.Corsair.buildBlurb  = 'NEW-USER READINESS Part 2 — actionable empty states for Accounts + Table. Accounts on fresh workspace showed "No orgs in this workspace yet." with no next step. Now renders a centered card with "No accounts yet" headline, explanation of what accounts are (Owner / Status / Tier / POC / Next Action), plus two CTA buttons: "+ Add first organization" (opens add-node modal pre-set to company type) + "⇪ Bulk import from CSV" (opens import-data-modal pre-set to org type). Table empty state was a generic "No pursuits match the current filters" — now branches: if total opps = 0, says "No pursuits in this workspace yet. Add one via the Pipeline tab → + New Opportunity, or paste a CSV via Tools menu → Bulk Import." If filtered to 0, says "Try clearing the search or filter dropdowns above." Bryce on a fresh workspace gets actionable next-steps everywhere instead of dead-ends.';
+  window.Corsair.buildTag    = 'P13.55';
+  window.Corsair.buildBlurb  = 'Mission Briefing vocabulary precision pass — first-action #3 was telling Bryce to click "+ Add Pursuit" and use "Bulk Import" menu item, but the actual UI labels are "+ New" (Pipeline view header) and "Import Data" (Tools menu). Fixed both to match the literal button labels Bryce will see. Reduces friction from "I am following instructions and the button does not exist" — exactly the new-user dead-end Mike flagged.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
