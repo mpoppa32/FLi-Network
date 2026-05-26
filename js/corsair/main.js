@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.40';
-  window.Corsair.buildBlurb  = 'Email Digest discoverability — Intel Brief subscription button (existing EmailJS-based opt-in + test-send infra at FLiIntel.html:30897/30932) was buried in the RFI Response Engine header where Brief users never saw it. Surfaced on the Brief master-refresh bar next to Refresh All. Partial close of SME-eval gap #2 — opt-in is now discoverable, EmailJS test-send works for one-off delivery, but TRUE scheduled daily-7am delivery still requires a Cloud Function with cron trigger (deferred). Bundled with P13.37 (Aged in Stage) + P13.38 (Send-in-Gmail) + P13.39 (Trends view) in one uncommitted push.';
+  window.Corsair.buildTag    = 'P13.41';
+  window.Corsair.buildBlurb  = 'Demo-seed emails added (RFC 2606 .example TLD — reserved, can\'t actually send). Closes the P13.38 Send-in-Gmail demo-beat gap where clicking ✉ Send in Gmail on demo person nodes opened Gmail with empty To: field. Now auto-fills recipient on Demo Workspace contacts (14 demo persons mapped). Safe by construction — .example domains can\'t receive mail per IANA reservation.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
