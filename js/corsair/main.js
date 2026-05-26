@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.47';
-  window.Corsair.buildBlurb  = 'BD Glossary p(win) entry had over-escaped \\\\$ that rendered as literal backslash-dollar in the UI ("pipeline-\\\\$ forecasts"). Fixed to clean "pipeline-$ forecasts". One-line content fix surfaced while auditing learning-path content. Pattern flagged from feedback_js_escape_trap memory — backslashes in JS strings are the silent demo killers.';
+  window.Corsair.buildTag    = 'P13.48';
+  window.Corsair.buildBlurb  = 'Help drawer content gap closed for 5 daily-use views. _HELP_CONTENT was missing entries for accounts, table, inspector, winloss, and trends — operators clicking ? on those views fell back to "Intel Station" content (silently misleading). Added title + purpose + 3 key actions + pro tip per view, matching the existing entries\' shape. Now every daily-use surface has a real help drawer when ? is clicked.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
