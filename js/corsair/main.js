@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.49';
-  window.Corsair.buildBlurb  = 'BD Glossary auto-render race fix. The IIFE at line 12757 wrapped window.openModal so opening the glossary modal would auto-fire _renderGlossary(""). But the inline script is type="module", so the function openModal() declaration at line ~26408 doesn\'t become a window property automatically — that happens via the explicit window.openModal=openModal assignment at line ~26409. The IIFE runs BEFORE line 26409 in execution order, so window.openModal was undefined at IIFE time, the typeof guard tripped false, and the wrapping was silently skipped. Glossary modal opened BLANK until the user typed in search. Fix: wrap the IIFE in setTimeout(0) so it runs after the script finishes executing. By then window.openModal is assigned and wrapping installs cleanly.';
+  window.Corsair.buildTag    = 'P13.50';
+  window.Corsair.buildBlurb  = 'PLATFORM-WIDE DENSITY PASS — Mike: "everything on the brief screen is too packed in, fonts too small, won\'t be accepted as professional." Fix is two-layer. Layer 1: type-scale tokens bumped (--text-2xs 10→12, --text-xs 11→13, --text-sm 12→14, --text-base 14→15, ... --text-3xl 40→44) + line-heights more generous. Layer 2: ~800 hardcoded inline font-size:Xpx values across the file bumped proportionally (8→11, 9→12, 10→13, 11→14) since most inline styles bypass the tokens. Brief CSS specifically: card padding 18→22, brief-cols switched from fixed repeat(5,1fr) to auto-fill minmax(200px,1fr) so 6-column layout adapts cleanly without the awkward 6th-column-wraps state, col padding 12→16, brief-item padding 7→10, brief-item font-size sm→base, brief-empty font fixed-10px → var(--text-xs). Health pill bumped 9→var(--text-2xs). All operator surfaces lift; the platform now reads as Salesforce-tier instead of Spotify-tier.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
