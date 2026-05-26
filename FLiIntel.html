@@ -8341,7 +8341,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.48</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.49</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12753,8 +12753,14 @@ window._renderGlossary = function(query){
   }).join('');
 };
 
-// Auto-render glossary on modal open
-(function(){
+// Auto-render glossary on modal open. P13.49 — wrap in setTimeout(0) so this
+// IIFE runs AFTER the module-script finishes executing. Previously ran inline
+// here at line 12757, but window.openModal isn't assigned until line ~26409
+// (function openModal() is declared earlier but in a module-scope, NOT on
+// window automatically). At inline-IIFE time, window.openModal was undefined,
+// the typeof guard tripped false, and the wrapping was silently skipped —
+// glossary modal opened blank until the user typed in the search box.
+setTimeout(function(){
   var origOpenModal = window.openModal;
   if (typeof origOpenModal === 'function'){
     window.openModal = function(id){
@@ -12763,7 +12769,7 @@ window._renderGlossary = function(query){
       return r;
     };
   }
-})();
+}, 0);
 
 // ═══════════════════════════════════════════════════════════════
 // P13.3 — First-run onboarding tour (competitive-parity arc 5/7)

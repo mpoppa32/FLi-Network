@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.48';
-  window.Corsair.buildBlurb  = 'Help drawer content gap closed for 5 daily-use views. _HELP_CONTENT was missing entries for accounts, table, inspector, winloss, and trends — operators clicking ? on those views fell back to "Intel Station" content (silently misleading). Added title + purpose + 3 key actions + pro tip per view, matching the existing entries\' shape. Now every daily-use surface has a real help drawer when ? is clicked.';
+  window.Corsair.buildTag    = 'P13.49';
+  window.Corsair.buildBlurb  = 'BD Glossary auto-render race fix. The IIFE at line 12757 wrapped window.openModal so opening the glossary modal would auto-fire _renderGlossary(""). But the inline script is type="module", so the function openModal() declaration at line ~26408 doesn\'t become a window property automatically — that happens via the explicit window.openModal=openModal assignment at line ~26409. The IIFE runs BEFORE line 26409 in execution order, so window.openModal was undefined at IIFE time, the typeof guard tripped false, and the wrapping was silently skipped. Glossary modal opened BLANK until the user typed in search. Fix: wrap the IIFE in setTimeout(0) so it runs after the script finishes executing. By then window.openModal is assigned and wrapping installs cleanly.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
