@@ -8342,7 +8342,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.55</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.56</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12887,9 +12887,20 @@ window._tourStart = function(){
 };
 window._tourCheckAndAutoStart = function(){
   try {
+    // P13.56 — don't stack on top of Mission Briefing.
+    // Mission Briefing fires at workspace-load + 1500ms; this tour was set to
+    // fire at +2200ms, so brand-new users would see BOTH modals overlap
+    // (Welcome Tour stacking 700ms after Mission Briefing opened). Now:
+    //   1. If Mission Briefing modal is currently visible, bail out.
+    //   2. If Mission Briefing has never been completed (flintel_onboarding_done
+    //      not set), bail out — Welcome Tour will fire when MB closes (see
+    //      _closeMissionBriefing for the post-close trigger).
+    var mb = document.getElementById('mission-briefing-modal');
+    if (mb && mb.style.display === 'flex') return;
+    if (!localStorage.getItem('flintel_onboarding_done')) return;
     var key = 'corsair-tour-completed-' + (window.currentWsId || 'default') + '-' + ((window.currentUser && window.currentUser.uid) || 'anon');
     if (localStorage.getItem(key) === '1') return;
-    setTimeout(function(){ window._tourStart(); }, 1400);
+    setTimeout(function(){ window._tourStart(); }, 600);
   } catch(e){}
 };
 
@@ -37384,6 +37395,11 @@ window._closeMissionBriefing = function() {
     try { set(ref(db, 'users/' + currentUser.uid + '/onboardingComplete'), true); } catch(e) {}
   }
   try { localStorage.setItem('flintel_onboarding_done', '1'); } catch(e) {}
+  // P13.56 — chain to Welcome Tour for brand-new users (instead of stacking
+  // on top of Mission Briefing as they did before). 700ms breath after MB
+  // close, then check + fire. Welcome Tour's own gate ensures it skips if
+  // already completed for this workspace+user.
+  setTimeout(function(){ if (window._tourCheckAndAutoStart) window._tourCheckAndAutoStart(); }, 700);
 };
 
 window._mbNav = function(dir) {

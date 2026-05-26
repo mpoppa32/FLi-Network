@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.55';
-  window.Corsair.buildBlurb  = 'Mission Briefing vocabulary precision pass — first-action #3 was telling Bryce to click "+ Add Pursuit" and use "Bulk Import" menu item, but the actual UI labels are "+ New" (Pipeline view header) and "Import Data" (Tools menu). Fixed both to match the literal button labels Bryce will see. Reduces friction from "I am following instructions and the button does not exist" — exactly the new-user dead-end Mike flagged.';
+  window.Corsair.buildTag    = 'P13.56';
+  window.Corsair.buildBlurb  = 'Onboarding-modal stacking fix. selectWorkspace fires Mission Briefing at t+1500ms and Welcome Tour at t+2200ms — for brand-new users, both modals had unseen flags so both auto-fired, with Welcome Tour stacking on top of Mission Briefing 700ms after MB opened. Bryce would see chaos. Now: Welcome Tour bails if Mission Briefing is currently visible OR if flintel_onboarding_done is not set. Mission Briefing close hook (_closeMissionBriefing) triggers Welcome Tour 700ms after MB closes, so the two intros happen in clean SEQUENCE instead of overlap. First-time user sees MB → reads + closes → 700ms → Welcome Tour → reads + closes → lands on Brief. No stacking.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
