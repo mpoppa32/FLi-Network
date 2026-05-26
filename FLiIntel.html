@@ -8342,7 +8342,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.60</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.61</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16630,7 +16630,13 @@ function switchView(v){
     } catch(e){}
     if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
     // Resume 3D engine if user previously had it active
-    try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); setTimeout(function(){ if(window.nodes&&window.nodes.length) window.DiscoveryEngine3D.loadGraph(window.nodes, window.links||[]); }, 80); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active'); } }catch(e){}
+    try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); setTimeout(function(){ if(window.nodes&&window.nodes.length) window.DiscoveryEngine3D.loadGraph(window.nodes, window.links||[]); }, 80); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active');
+      // P13.61 — explicit fit-to-cluster after physics has time to settle on
+      // Theater entry. The in-tick auto-fit (line ~52491) handles initial
+      // load, but re-entering the view after navigating away leaves the
+      // camera wherever the user left it. This re-centers on every entry.
+      setTimeout(function(){ try { if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.fitToCluster === 'function') window.DiscoveryEngine3D.fitToCluster(); } catch(e){} }, 1800);
+    } }catch(e){}
   }
   if(v==='intel'&&activeIntelTab==='board')renderBoard();
   if(v==='timeline')renderTimeline();
@@ -52495,7 +52501,11 @@ const DiscoveryEngine3D = (function(){
               state.initialFitDone = true;
             }
             state.framesSinceFit = (state.framesSinceFit || 0) + 1;
-            if (state.framesSinceFit > 60 && state.physicsTickCount < 240 && state.controls && state.camera){
+            // P13.61 — extended refit window from 240 to 900 physics ticks
+            // (~4s → ~15s) so the auto-fit catches Atlas-scale graphs (198
+            // entities) that take longer to settle. Without this the cluster
+            // ends up off-center and Bryce sees the graph in the corner.
+            if (state.framesSinceFit > 60 && state.physicsTickCount < 900 && state.controls && state.camera){
               // P4.5.4c — tighter re-fit (1.6 → 1.3)
               _fitCameraToBounds(state.posBounds, 1.3);
               state.framesSinceFit = 0;
