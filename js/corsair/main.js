@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.56';
-  window.Corsair.buildBlurb  = 'Onboarding-modal stacking fix. selectWorkspace fires Mission Briefing at t+1500ms and Welcome Tour at t+2200ms — for brand-new users, both modals had unseen flags so both auto-fired, with Welcome Tour stacking on top of Mission Briefing 700ms after MB opened. Bryce would see chaos. Now: Welcome Tour bails if Mission Briefing is currently visible OR if flintel_onboarding_done is not set. Mission Briefing close hook (_closeMissionBriefing) triggers Welcome Tour 700ms after MB closes, so the two intros happen in clean SEQUENCE instead of overlap. First-time user sees MB → reads + closes → 700ms → Welcome Tour → reads + closes → lands on Brief. No stacking.';
+  window.Corsair.buildTag    = 'P13.57';
+  window.Corsair.buildBlurb  = 'Demo Workspace load-time copy honesty pass. WS-picker card promised "60 seconds to load" — my earlier audit measured 15-20s on typical connection. Updated to "Loads in 15-20 seconds on typical connection" so Bryce gets accurate expectation. Small honesty matter, but a 3-4x overestimate sets up the wrong tempo for first impression.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
