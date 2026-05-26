@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.57';
-  window.Corsair.buildBlurb  = 'Demo Workspace load-time copy honesty pass. WS-picker card promised "60 seconds to load" — my earlier audit measured 15-20s on typical connection. Updated to "Loads in 15-20 seconds on typical connection" so Bryce gets accurate expectation. Small honesty matter, but a 3-4x overestimate sets up the wrong tempo for first impression.';
+  window.Corsair.buildTag    = 'P13.58';
+  window.Corsair.buildBlurb  = 'Process button "no API key" error message — role-aware. Previously said "Add API key in user settings" regardless of who was clicking. For Bryce as a non-owner Analyst, that was misleading — he can\'t fix it himself. Now branches: if currentUserRole is Owner/Admin, says set it in user menu Settings OR set workspace key. If anything else (Analyst/Observer), says ask your workspace owner. Tiny but high-friction error path for new team members.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
