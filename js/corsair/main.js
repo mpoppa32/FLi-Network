@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.51';
-  window.Corsair.buildBlurb  = 'DENSITY PASS ROUND 2 — universal layout classes lifted. P13.50 hit type-scale + Brief; P13.51 hits the chrome shared across every surface. .card padding 13/15 → 16/18 + margin-bottom 8 → 12; .card-urgent and .card-warn matched. .btn padding 7/15 → 10/18; .btn-sm 4/10 → 6/13. input/select/textarea padding 8/11 → 10/14. .fld margin-bottom 9 → 14; .lbl margin-bottom 3 → 5. .tools-menu-item padding 8/12 → 11/14 with font-size promoted from hardcoded 12px to var(--text-sm). .modal padding 22/24 → 26/28 with .modal-title margin-bottom 14 → 18. Every drawer, dialog, form, and toolbar now breathes proportionally with the lifted type scale.';
+  window.Corsair.buildTag    = 'P13.52';
+  window.Corsair.buildBlurb  = 'DENSITY PASS ROUND 3 — section headers, Pipeline cards, top-nav workspace badge. .cmd-section-title margin 18/0/10 → 24/0/14 + font-size 14 → 15 (more visual separation between sections on the dense Board view). .ctitle (card title) margin-bottom 9 → 12, gap 6 → 8. .cop-card margin 0/8/10 → 0/10/12 + border-radius 2 → 3; .cop-card-body padding 10/12/11 → 13/15/14 (Pipeline Kanban cards breathe). .ws-badge in topnav padding 4/11 → 7/14, font-size hardcoded 12px → var(--text-sm), gap 5 → 7. P13.50 + P13.51 + P13.52 together = three passes that take Corsair from "operator-dense" to "professionally readable" across every surface.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
