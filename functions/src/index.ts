@@ -140,12 +140,15 @@ export { triggerGmailSync } from "./http/triggerGmailSync";
 export { triggerCalendarSync } from "./http/triggerCalendarSync";
 export { captureHourly } from "./jobs/captureHourly";
 
-// Daily Brief Email Digest (P13.42 from 2026-05-25 SME-eval — closes gap #2)
+// Daily Brief Email Digest (closes 2026-05-25 SME-eval gap #2)
 // Requires:
-//   cd functions && npm install @sendgrid/mail
+//   cd functions && npm install
 //   firebase functions:secrets:set SENDGRID_API_KEY
 //   firebase functions:secrets:set BRIEF_FROM_EMAIL
-//   firebase deploy --only functions:dailyBriefDigest
+//   firebase deploy --only functions:dailyBriefDigest,functions:triggerBriefDigestTest
 // Function gracefully no-ops if secrets are unset (logs "secrets_missing").
-// Schedule: 11:00 UTC daily (~7am ET / 4am PT). Per-user TZ is P14.x.
+// Schedule: 11:00 UTC daily (~7am ET / 4am PT). Per-user TZ is a P14.x enhancement.
+// triggerBriefDigestTest is a callable HTTP companion that fires one digest
+// immediately to the caller (or to a `to` override) for SendGrid setup testing.
 export { dailyBriefDigest } from "./jobs/dailyBriefDigest";
+export { triggerBriefDigestTest } from "./http/triggerBriefDigestTest";

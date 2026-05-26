@@ -8341,7 +8341,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.41</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.42</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10270,9 +10270,10 @@ input[type="url"], textarea, select {
       </div>
     </div>
     <div id="brief-send-err" style="display:none;font-size:12px;color:var(--red);margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn" onclick="closeModal('intel-brief-modal')">Cancel</button>
-      <button class="btn btn-sm" onclick="window.sendTestIntelBrief()" style="border-color:var(--blue);color:var(--blue)">Send Test</button>
+      <button class="btn btn-sm" onclick="window.sendTestIntelBrief()" style="border-color:var(--blue);color:var(--blue)" title="Send via EmailJS (browser-side — requires EmailJS keys above)">EmailJS Test</button>
+      <button class="btn btn-sm" onclick="window._briefSendViaCloud()" style="border-color:#34d399;color:#34d399" title="Send via Cloud Function + SendGrid (server-side — requires Cloud Function deploy + SENDGRID_API_KEY secret)">Cloud Test</button>
       <button class="btn btn-gold" onclick="window.saveIntelBriefConfig()">Save &amp; Subscribe</button>
     </div>
   </div>
@@ -30928,6 +30929,40 @@ window.saveIntelBriefConfig = async function() {
     toast('\u2709 Intelligence Brief subscription saved \u2014 ' + freq + ' briefs to ' + email);
     closeModal('intel-brief-modal');
   } catch(e) { if (err) { err.textContent = 'Save error: ' + (e.message || 'Try again'); err.style.display = 'block'; } }
+};
+
+// P13.42 — Send one digest via the dailyBriefDigest Cloud Function's HTTP companion
+// (triggerBriefDigestTest). Server-side SendGrid path. Requires Cloud Function
+// deploy + SENDGRID_API_KEY + BRIEF_FROM_EMAIL secrets. Closes SME-eval gap #2
+// at the operator-UX level — no gcloud CLI needed to verify the deploy.
+window._briefSendViaCloud = async function() {
+  var email = (document.getElementById('brief-email').value || '').trim();
+  var err = document.getElementById('brief-send-err');
+  if (!email) { if (err) { err.textContent = 'Email required (top of modal)'; err.style.display = 'block'; } return; }
+  if (!window._fbFunctions || !window._httpsCallable) { if (err) { err.textContent = 'Firebase Functions SDK not loaded'; err.style.display = 'block'; } return; }
+  if (!currentWsId) { if (err) { err.textContent = 'No workspace selected'; err.style.display = 'block'; } return; }
+  if (err) err.style.display = 'none';
+
+  try {
+    var callable = window._httpsCallable(window._fbFunctions, 'triggerBriefDigestTest');
+    var result = await callable({ workspaceId: currentWsId, to: email });
+    var data = (result && result.data) || {};
+    if (data.ok) {
+      toast('☁️ Cloud digest sent via SendGrid → ' + (data.sentTo || email));
+    } else {
+      throw new Error('Cloud call returned ok:false');
+    }
+  } catch (e) {
+    var msg = 'Cloud send failed: ' + ((e && (e.message || e.details)) || String(e));
+    // Common-cause hints
+    if (msg.indexOf('failed-precondition') >= 0 || msg.indexOf('SENDGRID') >= 0) {
+      msg += ' — set secrets: firebase functions:secrets:set SENDGRID_API_KEY BRIEF_FROM_EMAIL, then redeploy.';
+    } else if (msg.indexOf('not-found') >= 0 || msg.indexOf('triggerBriefDigestTest') >= 0) {
+      msg += ' — deploy the function: cd functions && npm install && firebase deploy --only functions:triggerBriefDigestTest,functions:dailyBriefDigest';
+    }
+    if (err) { err.textContent = msg; err.style.display = 'block'; }
+    toast(msg);
+  }
 };
 
 window.sendTestIntelBrief = async function() {

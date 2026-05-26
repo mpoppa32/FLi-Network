@@ -38,10 +38,10 @@ import { createLogger, generateJobId } from "../framework/logger";
 
 // Lazy-load SendGrid only when send is needed (keeps cold start fast for
 // the no-op case when nothing's due to send).
-const SENDGRID_API_KEY = defineSecret("SENDGRID_API_KEY");
-const BRIEF_FROM_EMAIL = defineSecret("BRIEF_FROM_EMAIL");
+export const SENDGRID_API_KEY = defineSecret("SENDGRID_API_KEY");
+export const BRIEF_FROM_EMAIL = defineSecret("BRIEF_FROM_EMAIL");
 
-interface BriefSubscription {
+export interface BriefSubscription {
   email: string;
   name?: string;
   frequency: "daily" | "weekly" | "pipeline";
@@ -78,7 +78,7 @@ function _isoWeek(d: Date = new Date()): string {
   return d.getUTCFullYear() + "-W" + String(weekNumber).padStart(2, "0");
 }
 
-async function _composeBrief(
+export async function composeBrief(
   workspaceId: string,
   workspaceName: string,
   sub: BriefSubscription,
@@ -215,7 +215,7 @@ async function _composeBrief(
   return { subject, text, html: htmlWrapped };
 }
 
-async function _sendOne(
+export async function sendOne(
   sub: BriefSubscription,
   composed: { subject: string; text: string; html: string },
   fromEmail: string,
@@ -327,8 +327,8 @@ export const dailyBriefDigest = onSchedule(
         }
 
         try {
-          const composed = await _composeBrief(wsId, wsName, sub, db);
-          const ok = await _sendOne(sub, composed, fromEmail, apiKey, wsLog);
+          const composed = await composeBrief(wsId, wsName, sub, db);
+          const ok = await sendOne(sub, composed, fromEmail, apiKey, wsLog);
           if (ok) {
             await db
               .ref(`workspaces/${wsId}/brief_subscriptions/${uid}/lastSent`)

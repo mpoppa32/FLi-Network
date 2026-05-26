@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.41';
-  window.Corsair.buildBlurb  = 'Demo-seed emails added (RFC 2606 .example TLD — reserved, can\'t actually send). Closes the P13.38 Send-in-Gmail demo-beat gap where clicking ✉ Send in Gmail on demo person nodes opened Gmail with empty To: field. Now auto-fills recipient on Demo Workspace contacts (14 demo persons mapped). Safe by construction — .example domains can\'t receive mail per IANA reservation.';
+  window.Corsair.buildTag    = 'P13.42';
+  window.Corsair.buildBlurb  = '"Cloud Test" button on the Brief subscription modal — calls the new triggerBriefDigestTest Cloud Function (companion to dailyBriefDigest scheduled job, b491016) via httpsCallable. Lets operators verify the SendGrid path end-to-end after deploying the function + setting secrets, without dropping to gcloud CLI. Pairs with existing "EmailJS Test" button for the browser-side path. Failure messages include actionable hints (which firebase command to run for which error).';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
