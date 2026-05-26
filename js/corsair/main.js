@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.46';
-  window.Corsair.buildBlurb  = 'Chapter tour stale-target fixes — the chapter tour (now reachable via P13.45 menu entry) referenced #mode-graph which doesn\'t exist; nav is now mode-brief/accounts/cop/table/inspector with More menu for graph. Three steps were stuck behind that selector with awaitClick locks: Core Loop Step 1 (the entry point), Core Loop Step 5 (Network reveal), Network Graph Step 1. Plus daily-rhythm Step 1 pointed at retired #daily-strip (display:none). All four updated to current selectors with refreshed copy. Tours now advance end-to-end.';
+  window.Corsair.buildTag    = 'P13.47';
+  window.Corsair.buildBlurb  = 'BD Glossary p(win) entry had over-escaped \\\\$ that rendered as literal backslash-dollar in the UI ("pipeline-\\\\$ forecasts"). Fixed to clean "pipeline-$ forecasts". One-line content fix surfaced while auditing learning-path content. Pattern flagged from feedback_js_escape_trap memory — backslashes in JS strings are the silent demo killers.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
