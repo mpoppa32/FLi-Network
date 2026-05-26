@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.64';
-  window.Corsair.buildBlurb  = 'Process button "no API key" error message — role-aware. Previously said "Add API key in user settings" regardless of who was clicking. For Bryce as a non-owner Analyst, that was misleading — he can\'t fix it himself. Now branches: if currentUserRole is Owner/Admin, says set it in user menu Settings OR set workspace key. If anything else (Analyst/Observer), says ask your workspace owner. Tiny but high-friction error path for new team members.';
+  window.Corsair.buildTag    = 'P13.65';
+  window.Corsair.buildBlurb  = 'Help drawer content for Rhythm, Posture, and Contract Vehicles — completes the contextual help coverage across all daily-use and More-menu views. Previously these three fell back to the generic Intel Station entry. Now each has purpose / 3 key actions / pro-tip matching the P13.48 pattern. Rhythm explains the agentic loop queue, Posture covers the political ledger + influence-across-pursuits sub-tabs, Vehicles frames IDIQ/OTA/GWAC tracking as access posture.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
