@@ -8342,7 +8342,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.53</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.54</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -38763,7 +38763,19 @@ window._renderAccountsView = function(){
 
   if (label) label.textContent = rollups.length + ' org' + (rollups.length !== 1 ? 's' : '');
   if (empty) empty.style.display = rollups.length ? 'none' : 'block';
-  if (!rollups.length && empty) empty.textContent = searchQ ? 'No orgs match "' + _accEsc(searchQ) + '".' : 'No orgs in this workspace yet.';
+  if (!rollups.length && empty) {
+    if (searchQ) {
+      empty.innerHTML = 'No orgs match "' + _accEsc(searchQ) + '". Try a shorter search.';
+    } else {
+      empty.innerHTML =
+        '<div style="font-family:Antonio,sans-serif;font-size:22px;font-weight:700;color:var(--text);margin-bottom:10px">No accounts yet</div>' +
+        '<div style="font-size:14px;color:var(--t2);line-height:1.65;max-width:480px;margin:0 auto 18px">Accounts are organizations — customers, primes, subs, partners, agencies. Each carries Owner, Status, Tier, POC, and Next Action. Add your first to start building the org-anchored layer.</div>' +
+        '<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' +
+          '<button onclick="window.openAddModal&&window.openAddModal(\'company\')" style="padding:11px 22px;background:linear-gradient(135deg,#d4823a,#a8861e);color:#070d18;border:none;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;letter-spacing:.02em;box-shadow:0 2px 12px rgba(212,130,58,.3)">+ Add first organization</button>' +
+          '<button onclick="window.openModal&&window.openModal(\'import-data-modal\');if(window._impSetType)setTimeout(function(){window._impSetType(\'org\')},60)" style="padding:11px 22px;background:transparent;color:var(--t2);border:1px solid var(--b2);border-radius:6px;font-weight:600;font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif">⇪ Bulk import from CSV</button>' +
+        '</div>';
+    }
+  }
 
   grid.innerHTML = rollups.map(function(r){
     var oppLine = r.openOppCount

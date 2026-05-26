@@ -777,7 +777,11 @@ function _tPostureCell(opp) {
 function _tblRenderRows(opps, pipelineMod) {
   var cols = _tblColumns();
   if (opps.length === 0) {
-    return '<tr><td colspan="' + cols.length + '" class="tbl-empty">No pursuits match the current filters.</td></tr>';
+    var totalOpps = (window.opportunities || []).length;
+    var msg = totalOpps === 0
+      ? 'No pursuits in this workspace yet. Add one via the Pipeline tab → + New Opportunity, or paste a CSV via Tools menu → Bulk Import.'
+      : 'No pursuits match the current filters. Try clearing the search or filter dropdowns above.';
+    return '<tr><td colspan="' + cols.length + '" class="tbl-empty">' + msg + '</td></tr>';
   }
   var html = '';
   opps.forEach(function(o) {

@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.53';
-  window.Corsair.buildBlurb  = 'NEW-USER READINESS — Bryce-as-never-seen-it pass. (1) Brief column empty states upgraded from cryptic "no data" / "— clear —" to per-column helpful messages ("No T1/T2 contacts going cold. People you have not touched in 30+ days surface here.") plus matching initial HTML placeholders. (2) Mission Briefing modal content updated — stale references to "Intel Station", "Network Map", "Agentic Loop", "+ Meeting button", "Opportunities tab" all replaced with current vocabulary (Brief / Pipeline / More → Graph / Brief → Log sidebar / Pipeline → + Add Pursuit). First-5-actions checklist points at REAL navigation paths. (3) New Tools menu item ⬡ Mission Briefing so Bryce can replay it (previously only accessible via JS console). (4) Welcome tour "replay from Settings" misleading copy fixed → points to actual Tools menu path.';
+  window.Corsair.buildTag    = 'P13.54';
+  window.Corsair.buildBlurb  = 'NEW-USER READINESS Part 2 — actionable empty states for Accounts + Table. Accounts on fresh workspace showed "No orgs in this workspace yet." with no next step. Now renders a centered card with "No accounts yet" headline, explanation of what accounts are (Owner / Status / Tier / POC / Next Action), plus two CTA buttons: "+ Add first organization" (opens add-node modal pre-set to company type) + "⇪ Bulk import from CSV" (opens import-data-modal pre-set to org type). Table empty state was a generic "No pursuits match the current filters" — now branches: if total opps = 0, says "No pursuits in this workspace yet. Add one via the Pipeline tab → + New Opportunity, or paste a CSV via Tools menu → Bulk Import." If filtered to 0, says "Try clearing the search or filter dropdowns above." Bryce on a fresh workspace gets actionable next-steps everywhere instead of dead-ends.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
