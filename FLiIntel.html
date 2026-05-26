@@ -8342,7 +8342,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.62</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.63</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9126,6 +9126,7 @@ input[type="url"], textarea, select {
       <div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--t3);letter-spacing:.08em;white-space:nowrap">ENGINE</div>
       <button class="nb net-overlay-btn active" id="de3d-toggle-2d" onclick="window._toggle3DEngine('2d')" style="color:var(--bone);border-color:var(--b2);font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.08em" title="2D force-directed (D3) — production">2D</button>
       <button class="nb net-overlay-btn" id="de3d-toggle-3d" onclick="window._toggle3DEngine('3d')" style="color:var(--gold);border-color:rgba(212,130,58,.4);font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.08em" title="3D Intelligence Theater (Phase 1 preview — placeholder data)">3D ▸</button>
+      <button class="nb net-overlay-btn" id="de3d-fullscreen-btn" onclick="window._toggleTheaterFullscreen()" style="color:var(--bone);border-color:var(--b2);font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.08em" title="Full-screen Theater (Esc to exit)">⛶ FULL</button>
       <div class="ntb-sep"></div>
       <button class="nb" id="layout-btn" onclick="toggleLayoutPanel()" style="color:var(--blue);border-color:rgba(59,130,246,.4)" title="Layout tools">⊡ Layout</button>
       <div class="ntb-sep"></div>
@@ -58304,6 +58305,46 @@ window._toggle3DEngine = function(mode){
     try { localStorage.setItem('corsair-graph-engine', '2d'); } catch(e){}
   }
 };
+
+// P13.63 — Theater full-screen toggle. Uses standard Fullscreen API on
+// the network-view container. Escape exits natively. After fullscreen
+// entry, fitToCluster fires at +400ms so the graph re-centers in the
+// new viewport. Button label toggles between ⛶ FULL and ⛶ EXIT.
+window._toggleTheaterFullscreen = function(){
+  var target = document.getElementById('network-view');
+  if (!target) return;
+  var inFullscreen = !!document.fullscreenElement;
+  try {
+    if (!inFullscreen) {
+      var req = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen;
+      if (req) {
+        req.call(target).then(function(){
+          // Re-fit camera to new viewport once browser settles into FS
+          setTimeout(function(){ try { if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.fitToCluster === 'function') window.DiscoveryEngine3D.fitToCluster(); } catch(e){} }, 400);
+        }).catch(function(e){ console.warn('[Theater] requestFullscreen rejected:', e); });
+      }
+    } else {
+      var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (exit) exit.call(document);
+    }
+  } catch(e){ console.warn('[Theater] fullscreen toggle failed:', e); }
+};
+
+// Wire fullscreenchange event so the button label toggles + cluster re-fits
+// when user exits via Esc (not via the button).
+document.addEventListener('fullscreenchange', function(){
+  var btn = document.getElementById('de3d-fullscreen-btn');
+  if (!btn) return;
+  if (document.fullscreenElement) {
+    btn.innerHTML = '⛶ EXIT';
+    btn.title = 'Exit full-screen (Esc)';
+  } else {
+    btn.innerHTML = '⛶ FULL';
+    btn.title = 'Full-screen Theater (Esc to exit)';
+    // Refit after exit too so graph recenters in the original viewport
+    setTimeout(function(){ try { if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.fitToCluster === 'function') window.DiscoveryEngine3D.fitToCluster(); } catch(e){} }, 300);
+  }
+});
 </script>
 <!-- P9.7: Corsair module scaffold — sibling ES modules load from js/corsair/ -->
 <script type="module" src="./js/corsair/main.js"></script>
