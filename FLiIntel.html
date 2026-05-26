@@ -8342,7 +8342,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.59</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.60</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12209,6 +12209,13 @@ function connectWorkspace(){
     visibleIds=new Set(nodes.map(function(n){return n.id;}));
     renderNetwork();updateFilterTags();updateOrgLegend();updateNodeCount();
     document.getElementById('net-empty').style.display=nodes.length?'none':'block';
+    // P13.60 — re-render Inspector view when nodes update. Same pattern as
+    // the P13.31 race fix in the opps listener: a user who switches to
+    // Inspector BEFORE the nodes listener has fired (race against initial
+    // load) sees "No entities yet" with 0/0/0 counts even though Atlas has
+    // 81 contacts. The listener fires after data lands but never tells
+    // Inspector to redraw — fixed here with a typeof guard + try/catch.
+    if(typeof window._renderInspectorView === 'function') try { window._renderInspectorView(); } catch(e){}
     // P9.6: ripple on newly-added nodes
     try {
       var addedNodes = window._detectRippleDeltas('nodes', incoming);
