@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.42';
-  window.Corsair.buildBlurb  = '"Cloud Test" button on the Brief subscription modal — calls the new triggerBriefDigestTest Cloud Function (companion to dailyBriefDigest scheduled job, b491016) via httpsCallable. Lets operators verify the SendGrid path end-to-end after deploying the function + setting secrets, without dropping to gcloud CLI. Pairs with existing "EmailJS Test" button for the browser-side path. Failure messages include actionable hints (which firebase command to run for which error).';
+  window.Corsair.buildTag    = 'P13.43';
+  window.Corsair.buildBlurb  = 'CRITICAL FIX: Welcome tour Next button advances now. Two tour systems both wrote window._tourState — the chapter tour at line 49508 was doing `window._tourState = {...}` which clobbered the welcome tour\'s `step` field. Result: clicking Next ran undefined++ → NaN → _TOUR_STEPS[NaN] → silent no-op. Fix: chapter tour now Object.assigns into existing state preserving any prior fields, plus defensive guard in _tourNext/_tourBack that resets step to 0 if non-numeric. Caught by Mike\'s walkthrough — exactly the kind of bug the morning walkthrough was meant to catch.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

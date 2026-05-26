@@ -8341,7 +8341,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:11px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.42</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.43</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12840,11 +12840,19 @@ window._tourRender = function(){
 };
 window._tourNext = function(){
   var n = _TOUR_STEPS.length;
+  // P13.43 — defensive: if step got clobbered (e.g. by a competing state
+  // re-init), recover to 0 instead of NaN-ing on the increment.
+  if (typeof window._tourState.step !== 'number' || isNaN(window._tourState.step)) {
+    window._tourState.step = 0;
+  }
   if (window._tourState.step >= n-1){ window._tourFinish(); return; }
   window._tourState.step++;
   window._tourRender();
 };
 window._tourBack = function(){
+  if (typeof window._tourState.step !== 'number' || isNaN(window._tourState.step)) {
+    window._tourState.step = 0;
+  }
   if (window._tourState.step <= 0) return;
   window._tourState.step--;
   window._tourRender();
@@ -49505,7 +49513,12 @@ window._TOUR_CHAPTERS = [
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────
-window._tourState = {
+// P13.43 — MERGE into existing state instead of REPLACING. Earlier in the
+// file (~line 12815) the welcome-tour system also assigns window._tourState
+// with a `step` field; a raw `window._tourState = {...}` here wipes that out
+// and breaks the welcome tour's Next button (step becomes undefined → NaN
+// → _TOUR_STEPS[NaN] is undefined → _tourRender early-returns silently).
+window._tourState = Object.assign(window._tourState || {}, {
   active: false,
   chapterIdx: 0,
   stepIdx: 0,
@@ -49513,7 +49526,7 @@ window._tourState = {
   usingDemo: false,
   awaitClickHandler: null,
   completed: {} // chapter id → completed timestamp
-};
+});
 
 // ── Load completion state from Firebase user profile ─────────────────────
 window._loadTourCompletion = async function() {
