@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.44';
-  window.Corsair.buildBlurb  = 'CRITICAL FIX #2: Welcome tour buttons actually call welcome-tour logic now. P13.43 fixed the STATE collision but missed the FUNCTION collision — both tours defined window._tourNext/_tourBack, and chapter tour (line 49894, later in file) overwrote welcome tour\'s versions. Welcome modal\'s Next button was calling chapter-tour code looking for _TOUR_CHAPTERS[0] and silently exiting. Renamed welcome tour to _welcomeTourNext/_welcomeTourBack and updated modal buttons. The chapter tour\'s functions are untouched (it has its own internal callers).';
+  window.Corsair.buildTag    = 'P13.45';
+  window.Corsair.buildBlurb  = 'Guided walkthroughs now discoverable. The chapter tour at line 49279 (window._TOUR_CHAPTERS — walks the actual UI with spotlight callouts, "Core Loop" chapter teaches paste→Process flow) had its nav button at line 8489 set to display:none with no content. Operators couldn\'t reach it. Added a Tools menu entry "Guided walkthroughs" (⚐) right below "Replay welcome" so the rich educational system is one click away. Also renamed the welcome-modal menu entry from "Replay tour" → "Replay welcome" to disambiguate the two systems.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
