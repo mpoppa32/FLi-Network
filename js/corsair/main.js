@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.52';
-  window.Corsair.buildBlurb  = 'DENSITY PASS ROUND 3 — section headers, Pipeline cards, top-nav workspace badge. .cmd-section-title margin 18/0/10 → 24/0/14 + font-size 14 → 15 (more visual separation between sections on the dense Board view). .ctitle (card title) margin-bottom 9 → 12, gap 6 → 8. .cop-card margin 0/8/10 → 0/10/12 + border-radius 2 → 3; .cop-card-body padding 10/12/11 → 13/15/14 (Pipeline Kanban cards breathe). .ws-badge in topnav padding 4/11 → 7/14, font-size hardcoded 12px → var(--text-sm), gap 5 → 7. P13.50 + P13.51 + P13.52 together = three passes that take Corsair from "operator-dense" to "professionally readable" across every surface.';
+  window.Corsair.buildTag    = 'P13.53';
+  window.Corsair.buildBlurb  = 'NEW-USER READINESS — Bryce-as-never-seen-it pass. (1) Brief column empty states upgraded from cryptic "no data" / "— clear —" to per-column helpful messages ("No T1/T2 contacts going cold. People you have not touched in 30+ days surface here.") plus matching initial HTML placeholders. (2) Mission Briefing modal content updated — stale references to "Intel Station", "Network Map", "Agentic Loop", "+ Meeting button", "Opportunities tab" all replaced with current vocabulary (Brief / Pipeline / More → Graph / Brief → Log sidebar / Pipeline → + Add Pursuit). First-5-actions checklist points at REAL navigation paths. (3) New Tools menu item ⬡ Mission Briefing so Bryce can replay it (previously only accessible via JS console). (4) Welcome tour "replay from Settings" misleading copy fixed → points to actual Tools menu path.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

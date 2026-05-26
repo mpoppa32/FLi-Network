@@ -306,14 +306,16 @@ window.renderDailyBrief = function() {
     agendaEl.innerHTML = cells.join('');
   })();
 
-  // Render helpers
-  function _renderCol(listId, countId, items, formatter) {
+  // Render helpers (P13.53 — added emptyText param so each column gets a
+  // helpful "what this column is for" message instead of cryptic "no data".
+  // First-time users now understand each surface even when empty.)
+  function _renderCol(listId, countId, items, formatter, emptyText) {
     var listEl  = document.getElementById(listId);
     var countEl = document.getElementById(countId);
     if (countEl) countEl.textContent = items.length;
     if (!listEl) return;
     if (!items.length) {
-      listEl.innerHTML = '<div class="brief-empty">— clear —</div>';
+      listEl.innerHTML = '<div class="brief-empty">' + (emptyText || '— clear —') + '</div>';
       return;
     }
     listEl.innerHTML = items.slice(0, 3).map(formatter).join('');
@@ -329,7 +331,7 @@ window.renderDailyBrief = function() {
            '<span class="brief-item-title">' + (d.name || '(unnamed)') + orgStr + '</span>' +
            '<span class="brief-item-meta">' + d.days + 'd</span>' +
            outreachBtn + '</div>';
-  });
+  }, 'No T1/T2 contacts going cold. People you have not touched in 30+ days surface here.');
   _renderCol('brief-stale-list', 'brief-stale-count', stale, function(s) {
     var h = s.health || { score: 0, status: 'unknown' };
     var pillTxt = h.status === 'unknown' ? '—' : String(h.score);
@@ -363,20 +365,20 @@ window.renderDailyBrief = function() {
              '</div>';
     }
     return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' + headRow + '</div>';
-  });
+  }, 'No active pursuits stalling. Opps with no meeting in 14+ days appear here.');
   _renderCol('brief-upcoming-list', 'brief-upcoming-count', upcoming, function(u) {
     var when = u.when === 0 ? 'today' : u.when === 1 ? 'tomorrow' : '+' + u.when + 'd';
     return '<div class="brief-item" onclick="if(window.goIntelById)window.goIntelById(\'' + u.id + '\')">' +
            '<span class="brief-item-title">' + u.title + '</span>' +
            '<span class="brief-item-meta">' + when + '</span></div>';
-  });
+  }, 'Nothing in the next 7 days. Upcoming meetings + opp deadlines surface here as you log them.');
   _renderCol('brief-commit-list', 'brief-commit-count', commitDue, function(c) {
     var when = c.days <= 0 ? 'overdue' : c.days === 1 ? 'tomorrow' : 'in ' + c.days + 'd';
     var ownerStr = c.owner ? ' · ' + String(c.owner).slice(0, 14) : '';
     return '<div class="brief-item">' +
            '<span class="brief-item-title">' + c.title.slice(0, 60) + ownerStr + '</span>' +
            '<span class="brief-item-meta">' + when + '</span></div>';
-  });
+  }, 'No commitments coming due. Open commits with deadlines surface here.');
   _renderCol('brief-coverage-list', 'brief-coverage-count', coverage, function(c) {
     var pillKlass = c.status === 'dark' ? 'health-cold' : c.status === 'sparse' ? 'health-cold' : 'health-warm';
     var pillTxt = c.status === 'dark' ? 'DARK' : String(c.score);
@@ -384,7 +386,7 @@ window.renderDailyBrief = function() {
     return '<div class="brief-item">' +
            '<span class="brief-item-title">' + pill + c.name + '</span>' +
            '<span class="brief-item-meta">' + c.factors.oppCount + ' opp' + (c.factors.oppCount === 1 ? '' : 's') + '</span></div>';
-  });
+  }, 'All pursued accounts have adequate contact coverage. Orgs with too few engaged contacts surface here.');
 
   // ─── 6. Aged in Stage: pursuits past their stage aging threshold (Phase 6.7) ─
   // Wires the column placeholder at FLiIntel.html:8627 that previously had no
@@ -410,7 +412,7 @@ window.renderDailyBrief = function() {
     return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + a.id + '\')">' +
            '<span class="brief-item-title">' + a.name + '</span>' +
            '<span class="brief-item-meta">' + a.days + 'd · ' + a.stage + ' (+' + a.over + 'd)</span></div>';
-  });
+  }, 'No pursuits stuck past their stage aging threshold. Stalled opps will surface here so you can unstick them.');
 
   console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length + ' aged=' + aged.length);
 };
