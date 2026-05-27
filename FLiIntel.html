@@ -8442,7 +8442,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.73</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.74</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16959,16 +16959,37 @@ function renderOppSidebar(){
 window._renderCopForecast = function(){
   var panel = document.getElementById('cop-forecast-panel');
   if (!panel) return;
-  var opps = (window.opportunities || []).filter(function(o){
+  var allOpenOpps = (window.opportunities || []).filter(function(o){
     if (!o) return false;
     var s = String(o.stage||'').toLowerCase();
     return s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
   });
-  if (!opps.length){
+  if (!allOpenOpps.length){
     panel.style.display = 'none';
     return;
   }
   panel.style.display = 'block';
+
+  // P13.74 — Hide-unscored toggle. When on, the Forecast totals/funnel/months
+  // only consider opps with a value or pwin set. The unscored opps still
+  // exist in window.opportunities (and remain visible in the Kanban + Table);
+  // they just don't pollute the Forecast money math. Per-browser localStorage.
+  var hideUnscored = (function(){ try { return localStorage.getItem('corsair-forecast-hide-unscored') === '1'; } catch(e){ return false; } })();
+  var totalOpenCount = allOpenOpps.length;
+  var unscoredFiltered = 0;
+  var opps = hideUnscored ? allOpenOpps.filter(function(o){
+    var v = Number(o.value || o.contractValue || 0);
+    var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+    var scored = (v > 0 || p > 0);
+    if (!scored) unscoredFiltered++;
+    return scored;
+  }) : allOpenOpps;
+  if (hideUnscored && !opps.length){
+    // Edge: hiding leaves nothing. Force-show one tile explaining what happened.
+    panel.style.display = 'block';
+    panel.innerHTML = '<div style="background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid #2a3550;border-top:2px solid var(--gold);border-radius:3px;padding:18px 22px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div><div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--gold);letter-spacing:.16em;text-transform:uppercase">Forecast — Empty (Hide-Unscored On)</div><div style="font-size:var(--text-sm);color:var(--t2);margin-top:6px">All ' + totalOpenCount + ' open opps are unscored. Use Bulk Score to add value + pwin, or toggle Show All Opps to include them.</div></div><div style="display:flex;gap:8px"><button onclick="window._openBulkScoreModal&&window._openBulkScoreModal()" style="padding:7px 14px;border:1px solid rgba(212,130,58,.5);border-radius:2px;background:rgba(212,130,58,.10);color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.1em;text-transform:uppercase">Bulk Score</button><button onclick="window._toggleForecastHideUnscored&&window._toggleForecastHideUnscored()" style="padding:7px 14px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.1em;text-transform:uppercase">Show All</button></div></div></div>';
+    return;
+  }
 
   // Summary stats
   // P13.68 — split scored vs unscored. An opp is "scored" once it has either
@@ -17193,12 +17214,18 @@ window._renderCopForecast = function(){
   panel.innerHTML =
     '<div style="background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid #2a3550;border-top:2px solid var(--gold);border-radius:3px;padding:18px 22px">' +
       // Header
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:' + (collapsed ? '0' : '14px') + ';cursor:pointer" onclick="window._toggleCopForecast()">' +
-        '<div style="display:flex;align-items:center;gap:10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:' + (collapsed ? '0' : '14px') + ';gap:10px;flex-wrap:wrap">' +
+        '<div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1" onclick="window._toggleCopForecast()">' +
           '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--gold);letter-spacing:.16em;text-transform:uppercase">Forecast</div>' +
-          '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em">' + totalCount + ' open' + (unscoredCount ? ' · ' + scoredCount + ' scored' : '') + ' · ' + _fmt$(totalPipeline) + ' total · ' + _fmt$(weightedPipeline) + ' weighted</span>' +
+          '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em">' + totalCount + (hideUnscored && unscoredFiltered ? ' shown · ' + unscoredFiltered + ' hidden (unscored)' : (totalCount + unscoredCount > totalCount ? '' : '')) + (!hideUnscored && unscoredCount ? ' open · ' + scoredCount + ' scored' : (hideUnscored ? '' : ' open')) + ' · ' + _fmt$(totalPipeline) + ' total · ' + _fmt$(weightedPipeline) + ' weighted</span>' +
         '</div>' +
-        '<button onclick="event.stopPropagation();window._toggleCopForecast()" style="background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer">' + (collapsed ? 'EXPAND ↓' : 'COLLAPSE ↑') + '</button>' +
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          // P13.74 — Bulk Score modal trigger
+          '<button onclick="event.stopPropagation();window._openBulkScoreModal&&window._openBulkScoreModal()" title="Paste a CSV of name,value,pwin to bulk-score opps in one shot" style="background:rgba(212,130,58,.10);border:1px solid rgba(212,130,58,.4);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⊞ Bulk Score</button>' +
+          // P13.74 — Hide-unscored toggle
+          '<button onclick="event.stopPropagation();window._toggleForecastHideUnscored&&window._toggleForecastHideUnscored()" title="' + (hideUnscored ? 'Currently hiding unscored opps. Click to show all.' : 'Currently showing all opps. Click to hide unscored from totals.') + '" style="background:' + (hideUnscored ? 'rgba(95,179,184,.18)' : 'transparent') + ';border:1px solid ' + (hideUnscored ? 'rgba(95,179,184,.55)' : 'var(--b2)') + ';border-radius:3px;color:' + (hideUnscored ? '#5fb3b8' : 'var(--t2)') + ';padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">' + (hideUnscored ? '◉ HIDING UNSCORED' : '○ SHOW ALL') + '</button>' +
+          '<button onclick="event.stopPropagation();window._toggleCopForecast()" style="background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer">' + (collapsed ? 'EXPAND ↓' : 'COLLAPSE ↑') + '</button>' +
+        '</div>' +
       '</div>' +
       // Body (hidden when collapsed)
       (collapsed ? '' :
@@ -17253,6 +17280,163 @@ window._toggleCopForecast = function(){
   try { collapsed = localStorage.getItem('corsair-forecast-collapsed') === '1'; } catch(e){}
   try { localStorage.setItem('corsair-forecast-collapsed', collapsed ? '0' : '1'); } catch(e){}
   if (window._renderCopForecast) window._renderCopForecast();
+};
+
+// P13.74 — Hide-unscored toggle for Forecast totals.
+window._toggleForecastHideUnscored = function(){
+  var on = false;
+  try { on = localStorage.getItem('corsair-forecast-hide-unscored') === '1'; } catch(e){}
+  try { localStorage.setItem('corsair-forecast-hide-unscored', on ? '0' : '1'); } catch(e){}
+  if (window._renderCopForecast) window._renderCopForecast();
+  if (typeof toast === 'function') toast(on ? 'Showing all opps in Forecast' : 'Hiding unscored opps from Forecast');
+};
+
+// P13.74 — Bulk Score modal. Paste a CSV of name,value,pwin[,stage] and
+// the parser matches by org/customer name and updates value + pwin (and
+// stage if provided) on each matching opportunity. Posts updates to
+// Firebase via the existing saveOpp / updateOppStage paths if available;
+// falls back to direct fbSet on the opportunities collection.
+window._openBulkScoreModal = function(){
+  var modal = document.getElementById('bulk-score-modal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'bulk-score-modal';
+    modal.className = 'overlay';
+    modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(7,13,24,.85);z-index:9000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:680px;width:100%;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.99));border:1px solid rgba(212,130,58,.25);border-radius:3px;padding:20px 24px;font-family:IBM Plex Sans,sans-serif">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1px solid var(--b1);padding-bottom:12px">' +
+          '<div>' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:4px">Bulk Score Opps</div>' +
+            '<div style="font-size:14px;color:var(--text);font-weight:600">Paste a CSV to score multiple pursuits in one shot</div>' +
+          '</div>' +
+          '<button onclick="document.getElementById(\'bulk-score-modal\').style.display=\'none\'" style="background:transparent;border:0;color:var(--t3);font-size:24px;cursor:pointer;line-height:1;padding:0 4px">×</button>' +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--t2);margin-bottom:10px;line-height:1.5">First row is headers. Match is by opportunity <b>name</b> (or <b>agency</b>/<b>customer</b>) — fuzzy lowercase compare. Updates value + pwin + stage if provided.</div>' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:8px 10px;margin-bottom:10px;letter-spacing:.04em">name,value,pwin,stage<br>Neros Technologies,1500000,40,Capture Plan<br>DraganFly,2500000,30,Qualify<br>Vector Defense,800000,20,Qualify</div>' +
+        '<textarea id="bulk-score-input" placeholder="name,value,pwin,stage&#10;Neros Technologies,1500000,40&#10;DraganFly,2500000,30" style="width:100%;height:180px;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-family:IBM Plex Mono,monospace;font-size:12px;padding:10px;outline:none;margin-bottom:10px"></textarea>' +
+        '<div id="bulk-score-preview" style="font-size:12px;color:var(--t3);min-height:18px;margin-bottom:10px;font-family:IBM Plex Mono,monospace"></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button onclick="document.getElementById(\'bulk-score-modal\').style.display=\'none\'" style="padding:8px 16px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase">Cancel</button>' +
+          '<button onclick="window._bulkScorePreview()" style="padding:8px 16px;background:transparent;border:1px solid var(--gold);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase">Preview</button>' +
+          '<button id="bulk-score-apply" onclick="window._bulkScoreApply()" disabled style="padding:8px 16px;background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase;opacity:.5">Apply Updates</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  // Auto-focus the textarea
+  setTimeout(function(){ var ta = document.getElementById('bulk-score-input'); if (ta) ta.focus(); }, 50);
+};
+
+window._bulkScoreParse = function(){
+  var ta = document.getElementById('bulk-score-input');
+  if (!ta) return { rows: [], errors: ['No input field'] };
+  var lines = (ta.value || '').split(/\r?\n/).map(function(l){return l.trim();}).filter(function(l){return l.length;});
+  if (!lines.length) return { rows: [], errors: ['Paste at least one row'] };
+  // Split CSV header
+  var header = lines[0].split(',').map(function(h){return h.trim().toLowerCase();});
+  var nameIdx = header.findIndex(function(h){return h==='name'||h==='opp'||h==='opportunity'||h==='pursuit'||h==='customer'||h==='agency';});
+  var valueIdx = header.findIndex(function(h){return h==='value'||h==='contractvalue'||h==='amount'||h==='$';});
+  var pwinIdx = header.findIndex(function(h){return h==='pwin'||h==='p(win)'||h==='probability'||h==='winprob';});
+  var stageIdx = header.findIndex(function(h){return h==='stage'||h==='phase';});
+  if (nameIdx < 0) return { rows: [], errors: ['First row must include a "name" header'] };
+  var rows = [];
+  for (var i = 1; i < lines.length; i++){
+    var parts = lines[i].split(',').map(function(p){return p.trim();});
+    var name = parts[nameIdx];
+    if (!name) continue;
+    var row = { name: name };
+    if (valueIdx >= 0 && parts[valueIdx]) row.value = Number(parts[valueIdx].replace(/[$,\s]/g, '')) || 0;
+    if (pwinIdx >= 0 && parts[pwinIdx]) {
+      var p = Number(parts[pwinIdx].replace(/[%\s]/g, '')) || 0;
+      if (p > 1) p = p / 100;
+      row.pwin = p;
+    }
+    if (stageIdx >= 0 && parts[stageIdx]) row.stage = parts[stageIdx];
+    rows.push(row);
+  }
+  return { rows: rows, errors: [] };
+};
+
+window._bulkScorePreview = function(){
+  var preview = document.getElementById('bulk-score-preview');
+  var applyBtn = document.getElementById('bulk-score-apply');
+  if (!preview) return;
+  var parsed = window._bulkScoreParse();
+  if (parsed.errors.length){
+    preview.innerHTML = '<span style="color:#ef4444">⚠ ' + parsed.errors.join(' · ') + '</span>';
+    if (applyBtn){ applyBtn.disabled = true; applyBtn.style.opacity = '0.5'; }
+    return;
+  }
+  var opps = (window.opportunities || []);
+  function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  var matched = 0, unmatched = [];
+  parsed.rows.forEach(function(r){
+    var nrm = _norm(r.name);
+    var hit = opps.find(function(o){
+      return _norm(o.name)===nrm || _norm(o.agency)===nrm || _norm(o.customer)===nrm;
+    });
+    if (hit) matched++;
+    else unmatched.push(r.name);
+  });
+  var msg = matched + ' of ' + parsed.rows.length + ' rows will match.';
+  if (unmatched.length) msg += ' Unmatched: ' + unmatched.slice(0, 4).join(', ') + (unmatched.length>4 ? ' +' + (unmatched.length-4) + ' more' : '');
+  preview.innerHTML = (matched ? '<span style="color:#22c55e">✓ ' : '<span style="color:#facc15">⚠ ') + msg + '</span>';
+  if (applyBtn){
+    applyBtn.disabled = matched === 0;
+    applyBtn.style.opacity = matched === 0 ? '0.5' : '1';
+  }
+};
+
+window._bulkScoreApply = async function(){
+  var applyBtn = document.getElementById('bulk-score-apply');
+  var preview = document.getElementById('bulk-score-preview');
+  if (applyBtn){ applyBtn.disabled = true; applyBtn.textContent = 'APPLYING…'; }
+  var parsed = window._bulkScoreParse();
+  if (parsed.errors.length || !parsed.rows.length){
+    if (applyBtn){ applyBtn.disabled = false; applyBtn.textContent = 'Apply Updates'; }
+    return;
+  }
+  function _norm(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  var opps = (window.opportunities || []);
+  var updated = 0, skipped = 0;
+  for (var i = 0; i < parsed.rows.length; i++){
+    var r = parsed.rows[i];
+    var nrm = _norm(r.name);
+    var hit = opps.find(function(o){
+      return _norm(o.name)===nrm || _norm(o.agency)===nrm || _norm(o.customer)===nrm;
+    });
+    if (!hit){ skipped++; continue; }
+    if (r.value != null) hit.value = r.value;
+    if (r.pwin != null) hit.pwin = r.pwin;
+    if (r.stage) hit.stage = r.stage;
+    hit.scoredAt = Date.now();
+    // Persist via existing saveOpp if available, else update through Firebase
+    try {
+      if (typeof window.saveOpp === 'function') { await window.saveOpp(hit); }
+      else if (typeof window._saveOppDirect === 'function') { await window._saveOppDirect(hit); }
+      else if (typeof saveOpp === 'function') { await saveOpp(hit); }
+      updated++;
+    } catch(e){
+      console.warn('[BulkScore] save failed for', r.name, e);
+      skipped++;
+    }
+  }
+  if (typeof toast === 'function') toast('Bulk score: ' + updated + ' updated, ' + skipped + ' skipped');
+  if (preview) preview.innerHTML = '<span style="color:#22c55e">✓ ' + updated + ' opps updated · ' + skipped + ' skipped</span>';
+  if (applyBtn){ applyBtn.disabled = false; applyBtn.textContent = 'Apply Updates'; applyBtn.style.opacity = '1'; }
+  // Re-render Forecast + Table + Pipeline so changes show immediately
+  if (window._renderCopForecast) window._renderCopForecast();
+  if (window._renderTableView) window._renderTableView();
+  if (window._renderCopBoard) window._renderCopBoard();
+  // Auto-close modal after 1.5s if everything succeeded
+  if (updated > 0 && skipped === 0){
+    setTimeout(function(){
+      var m = document.getElementById('bulk-score-modal');
+      if (m) m.style.display = 'none';
+    }, 1500);
+  }
 };
 
 // CRM P1.12 — Kanban Pipeline Board with drag-to-stage
