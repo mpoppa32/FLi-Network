@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.80';
-  window.Corsair.buildBlurb  = 'EMERGENCY FIX: restore corsair ES module loading. P13.77/P13.78/P13.79 each appended a long buildBlurb without replacing the previous one, leaving main.js with three concatenated string literals separated by stray semicolons + bare identifiers — a fatal parse error that prevented main.js (and therefore util/pipeline/state/posture/inspector/cop/rhythm/brief/theater/table) from loading. window.Corsair was undefined; window.oppStageConfig/OPP_STAGES/bdg/etc were all undefined; the visible page only worked because the inline FLiIntel.html script does not depend on those modules at first paint. Restored to a single short blurb. Future blurbs: one sentence max.';
+  window.Corsair.buildTag    = 'P13.81';
+  window.Corsair.buildBlurb  = 'Cache-bust main.js via ?v=buildtag in the script tag, so a broken module stuck in browser cache cannot persist across deploys.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
