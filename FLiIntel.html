@@ -389,7 +389,8 @@ html,body{
   font-size:var(--text-sm);font-weight:500;
   text-align:left;letter-spacing:.01em;
   border-radius:5px;transition:background .12s;
-  white-space:nowrap
+  white-space:nowrap;
+  min-width:0
 }
 .tools-menu-item:hover{background:rgba(212,130,58,.08)}
 .tools-menu-item .tm-meta{
@@ -397,7 +398,17 @@ html,body{
   font-family:IBM Plex Mono,monospace;
   font-size:12px;color:var(--t3);
   letter-spacing:.06em;text-transform:uppercase;
-  font-weight:400
+  font-weight:400;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:320px;
+  flex-shrink:1
+}
+/* P13.67 — keep the dropdown inside the viewport at narrow widths.
+   Previously right:0 + wide content (e.g. Trends & Leaderboard meta) pushed
+   the left edge of the dropdown off-screen at <1300px. */
+#tools-menu-dropdown{
+  max-width:calc(100vw - 32px)
 }
 
 /* Daily Strip — persistent "what to do today" */
@@ -1091,7 +1102,7 @@ textarea::placeholder,input::placeholder{color:var(--t3)}
 .intel-view{display:flex;flex:1;overflow:hidden}
 
 .intel-sidebar{
-  width:224px;
+  width:280px;
   background:linear-gradient(180deg,rgba(10,18,30,.98),rgba(7,13,24,.99));
   border-right:1px solid rgba(26,34,54,.5);
   display:flex;flex-direction:column;flex-shrink:0;
@@ -6926,9 +6937,11 @@ input[type="url"], textarea, select {
 .brief-cols{
   /* P13.50 — auto-fill responsive instead of fixed 5-col (HTML actually has 6
      columns now; 5-fixed wrapped the 6th awkwardly). minmax(200px,1fr) keeps
-     columns readable; gap 18 (was 14) breathes. */
+     columns readable; gap 18 (was 14) breathes.
+     P13.67 — bumped min 200→220 to keep readable proportions at 1280-1440px
+     viewports where the 6-col grid was wrapping into too-narrow columns. */
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
   gap:18px;
 }
 .brief-col{
@@ -8251,9 +8264,10 @@ input[type="url"], textarea, select {
   .topnav { gap: 8px !important; }
 }
 
-/* Below 1280px: mode rail labels collapse to icon-only.
-   Tooltips on the buttons keep the labels discoverable on hover. */
-@media (max-width: 1280px) {
+/* P13.67 — was 1280px which fired at 1288px viewports due to scrollbar
+   eating 15-17px. Dropped to 1080px so labels stay visible on standard
+   1280-1440px monitors. Below 1080px we go icon-only. */
+@media (max-width: 1080px) {
   .topnav .mode-btn .mode-lbl { display: none !important; }
   .topnav .mode-btn { padding: 8px 10px !important; min-width: 0 !important; }
 }
@@ -8342,7 +8356,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.66</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.67</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 

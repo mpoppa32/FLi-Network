@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.66';
-  window.Corsair.buildBlurb  = 'openNetPanel recursive-typo fix surfaced during live walkthrough. The function had a bogus self-call at the end of its body: openNetPanel(); — passed no argument, hit nc(undefined.type), threw, and corrupted selectedNode to undefined. Has been latent for many builds because the throw gets swallowed upstream and the panel still visually opens via the visibility/pointer-events resets earlier in the function. Git blame showed commit cabc384 replaced the correct document.getElementById("net-panel").classList.add("open") with openNetPanel() — typo or AI-paste accident. Restored the original line. Side effects: panel-open class now correctly added to net-panel, selectedNode no longer corrupted, no console exception on node click.';
+  window.Corsair.buildTag    = 'P13.67';
+  window.Corsair.buildBlurb  = 'Top-4 visual polish pass for Bryce rollout. (1) More menu dropdown was overflowing off-screen at <1300px viewports — wide meta text on items like Trends & Leaderboard pushed the dropdown left past the viewport edge, hiding the labels entirely. Capped max-width to calc(100vw - 32px) and added text-overflow:ellipsis on the .tm-meta column. (2) Top nav mode-button labels (Brief/Accounts/Pipeline/Table/Inspector) were collapsing to icon-only at 1280px because viewport-with-scrollbar measures ~1271 on 1288px monitors — dropped the breakpoint to 1080px so labels survive on standard widescreen monitors. (3) Brief sidebar width 224→280px so meeting titles like "Moe x Tom introduction with Bry…" stop truncating. (4) Brief operator grid min-column 200→220px so the 6-column auto-fill grid wraps to comfortable proportions at 1280-1440px viewports instead of cramped narrow columns.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
