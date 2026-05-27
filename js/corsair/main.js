@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.71';
-  window.Corsair.buildBlurb  = 'Robust nodeMap lookup fixes the watch-card UX gap. Root cause of the P13.70 guard firing: nodeMap keys retain whatever type n.id was at insert time. Old Atlas nodes have numeric ids (1776732156285); CSV-imported nodes have string ids (1779839272678-xquzd-0). The rhythm engine generates onclick="nodeMap.get(\'<id>\')" with the id always quoted as a string, so JS Map strict-equality misses every numeric key. Fix: added window._lookupNode(id) helper that tries the raw id, String(id), and Number(id) in order. Updated the rhythm watch-card onclick template to call _lookupNode instead of nodeMap.get directly. Now clicking the Neros/Carlo/Firestorm/Me (note-taker) watch cards on Atlas opens the entity dossier correctly instead of dropping the user on Theater with no panel.';
+  window.Corsair.buildTag    = 'P13.72';
+  window.Corsair.buildBlurb  = 'Slack webhook notifications (gap A from the 10-20 person rollout roadmap). Zero-OAuth integration: paste an Incoming Webhook URL in Settings → Slack Notifications, hit Test, and post directly to your channel from inside Corsair. Per-user/per-browser localStorage so each operator can pipe to their own DM or all share one #atlas-bd webhook. Two manual fire surfaces shipped: "# Slack" button on the Morning Briefing watch row (posts the 5-card watch list with Block Kit formatting) and "# Slack" button on the Brief Surface bar (posts the 6 column counts as a one-line digest). Foundation for v2 auto-fires (cooling threshold, dedupe queue, capture-lead assignment, daily 7am brief) — those need cron + Cloud Function deploy, not the manual path. window._slackNotify(text, blocks) helper is general-purpose for any future call site. Slack-purple #4a154b + Slack-yellow #ecb22e theming for instant recognizability.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
