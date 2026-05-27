@@ -4555,6 +4555,26 @@ input[type="url"], textarea, select {
   font-feature-settings: 'tnum' on, 'lnum' on;
   line-height: 1.05;
 }
+/* P13.86 — editable metrics get an amber-on-hover affordance so it's clear
+   they are click targets. Used on VALUE + PWIN tiles in the opp card. */
+.cop-metric-editable {
+  transition: background 140ms, box-shadow 140ms;
+  position: relative;
+}
+.cop-metric-editable:hover {
+  background: rgba(212,130,58,0.10);
+  box-shadow: inset 0 0 0 1px rgba(212,130,58,0.45);
+}
+.cop-metric-editable:hover::after {
+  content: '✎';
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  font-size: 9px;
+  color: var(--gold);
+  opacity: 0.7;
+  pointer-events: none;
+}
 .cop-val { color: var(--gold); }
 .cop-pw-ok   { color: #6ed094; }
 .cop-pw-warn { color: #f0a560; }
@@ -8506,7 +8526,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.85</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.86</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17183,7 +17203,7 @@ window._renderCopForecast = function(){
   // setup". Surfacing the unscored count under the tile so the empty state
   // reads as actionable, not failed.
   var totalCount = opps.length;
-  var totalPipeline = 0, weightedPipeline = 0, scoredCount = 0;
+  var totalPipeline = 0, weightedPipeline = 0, scoredCount = 0, unassignedCount = 0;
   opps.forEach(function(o){
     var v = Number(o.value || o.contractValue || 0);
     var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
@@ -17191,6 +17211,8 @@ window._renderCopForecast = function(){
     totalPipeline += v;
     weightedPipeline += v * p;
     if (v > 0 || p > 0) scoredCount++;
+    // P13.86 — unassigned = no captureLead / lead trimmed empty
+    if (!((o.captureLead || o.lead) || '').trim()) unassignedCount++;
   });
   var unscoredCount = totalCount - scoredCount;
   var avgDeal = scoredCount ? (totalPipeline / scoredCount) : 0;
@@ -17331,7 +17353,11 @@ window._renderCopForecast = function(){
     if (v >= 1e3) return '$' + (v/1e3).toFixed(0) + 'K';
     return v ? '$' + v.toFixed(0) : '$0';
   }
-  var collapsed = (function(){ try { return localStorage.getItem('corsair-forecast-collapsed') === '1'; } catch(e){ return false; } })();
+  // P13.86 — Forecast default-EXPANDED on every fresh load. Uses v2 key so any
+  // pre-existing v1 collapsed state from before P13.86 is ignored — Bryce sees
+  // the funnel + tiles + monthly bars on first land. Toggle still persists via
+  // the new key after the user explicitly chooses.
+  var collapsed = (function(){ try { return localStorage.getItem('corsair-forecast-collapsed-v2') === '1'; } catch(e){ return false; } })();
 
   // Max for bar widths
   var maxMonthly = Math.max.apply(null, months.map(function(m){return m.pipe;}).concat([1]));
@@ -17404,11 +17430,13 @@ window._renderCopForecast = function(){
           '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--gold);letter-spacing:.16em;text-transform:uppercase">Forecast</div>' +
           '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em">' + totalCount + (hideUnscored && unscoredFiltered ? ' shown · ' + unscoredFiltered + ' hidden (unscored)' : (totalCount + unscoredCount > totalCount ? '' : '')) + (!hideUnscored && unscoredCount ? ' open · ' + scoredCount + ' scored' : (hideUnscored ? '' : ' open')) + ' · ' + _fmt$(totalPipeline) + ' total · ' + _fmt$(weightedPipeline) + ' weighted</span>' +
         '</div>' +
-        '<div style="display:flex;gap:6px;align-items:center">' +
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
           // P13.75 — Generate Opps from BD-target orgs (turns imported orgs into trackable opps)
           '<button onclick="event.stopPropagation();window._openGenBdOppsModal&&window._openGenBdOppsModal()" title="Auto-create one opp per imported BD-target org, with stage parsed from notes" style="background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.4);border-radius:3px;color:#22c55e;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">🌱 Gen BD Opps</button>' +
           // P13.74 — Bulk Score modal trigger
           '<button onclick="event.stopPropagation();window._openBulkScoreModal&&window._openBulkScoreModal()" title="Paste a CSV of name,value,pwin to bulk-score opps in one shot" style="background:rgba(212,130,58,.10);border:1px solid rgba(212,130,58,.4);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⊞ Bulk Score</button>' +
+          // P13.86 — Bulk-assign captureLead to every unassigned active opp (defaults to you).
+          ((unassignedCount > 0) ? '<button onclick="event.stopPropagation();window._bulkAssignUnassignedToMe&&window._bulkAssignUnassignedToMe()" title="Assign capture lead = you on every unassigned active pursuit" style="background:rgba(56,189,248,.10);border:1px solid rgba(56,189,248,.4);border-radius:3px;color:#38bdf8;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⇒ Assign ' + unassignedCount + ' to Me</button>' : '') +
           // P13.74 — Hide-unscored toggle
           '<button onclick="event.stopPropagation();window._toggleForecastHideUnscored&&window._toggleForecastHideUnscored()" title="' + (hideUnscored ? 'Currently hiding unscored opps. Click to show all.' : 'Currently showing all opps. Click to hide unscored from totals.') + '" style="background:' + (hideUnscored ? 'rgba(95,179,184,.18)' : 'transparent') + ';border:1px solid ' + (hideUnscored ? 'rgba(95,179,184,.55)' : 'var(--b2)') + ';border-radius:3px;color:' + (hideUnscored ? '#5fb3b8' : 'var(--t2)') + ';padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">' + (hideUnscored ? '◉ HIDING UNSCORED' : '○ SHOW ALL') + '</button>' +
           '<button onclick="event.stopPropagation();window._toggleCopForecast()" style="background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer">' + (collapsed ? 'EXPAND ↓' : 'COLLAPSE ↑') + '</button>' +
@@ -17476,10 +17504,101 @@ window._renderCopForecast = function(){
 };
 
 window._toggleCopForecast = function(){
+  // P13.86 — migrated to v2 key so old collapsed state from before P13.86
+  // doesn't override the new default-expanded behavior.
   var collapsed = false;
-  try { collapsed = localStorage.getItem('corsair-forecast-collapsed') === '1'; } catch(e){}
-  try { localStorage.setItem('corsair-forecast-collapsed', collapsed ? '0' : '1'); } catch(e){}
+  try { collapsed = localStorage.getItem('corsair-forecast-collapsed-v2') === '1'; } catch(e){}
+  try { localStorage.setItem('corsair-forecast-collapsed-v2', collapsed ? '0' : '1'); } catch(e){}
   if (window._renderCopForecast) window._renderCopForecast();
+};
+
+// P13.86 — Bulk-assign captureLead = current user to every unassigned active opp.
+// Surfaced from the Pipeline Forecast header when unassignedCount > 0. Replaces
+// the previous workflow of "click each opp, change captureLead field, save" ×
+// 122 times.
+window._bulkAssignUnassignedToMe = async function(){
+  var me = (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'Me';
+  var ops = (window.opportunities || []).filter(function(o){
+    if (!o || o.stage === 'won' || o.stage === 'lost') return false;
+    return !((o.captureLead || o.lead) || '').trim();
+  });
+  if (!ops.length) {
+    if (typeof toast === 'function') toast('No unassigned active pursuits');
+    return;
+  }
+  if (!confirm('Assign capture lead = ' + me + ' on ' + ops.length + ' unassigned active pursuit' + (ops.length === 1 ? '' : 's') + '?\n\nYou can change individual assignments afterward.')) return;
+  var ok = 0, fail = 0;
+  for (var i = 0; i < ops.length; i++) {
+    var o = ops[i];
+    try {
+      o.captureLead = me;
+      if (typeof window.saveOpp === 'function') {
+        await window.saveOpp(o);
+      }
+      ok++;
+    } catch(e){
+      console.warn('[P13.86 bulkAssign] failed for', o.id, e);
+      fail++;
+    }
+  }
+  if (typeof toast === 'function') toast('Assigned ' + ok + ' pursuit' + (ok === 1 ? '' : 's') + ' to you' + (fail ? ' (' + fail + ' failed)' : ''));
+  if (typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){}
+  if (typeof window._corsairRefreshRhythm === 'function') try { window._corsairRefreshRhythm(); } catch(e){}
+};
+
+// P13.86 — Inline edit for VALUE or PWIN on opp cards. Click the metric tile,
+// edit in place, blur or Enter to save. Removes the "leave Corsair, build a
+// CSV, paste back via Bulk Score" friction for individual edits while keeping
+// Bulk Score as the bulk-load path.
+window._editOppMetricInline = function(oppId, field, metricDiv){
+  var op = (window.opportunities || []).find(function(x){ return String(x.id) === String(oppId); });
+  if (!op || !metricDiv) return;
+  var valDiv = metricDiv.querySelector('.cop-metric-val');
+  if (!valDiv || valDiv.querySelector('input')) return;
+  var origHtml = valDiv.innerHTML;
+  var currentVal = field === 'value' ? (op.value || '') : (op.pwin != null ? op.pwin : '');
+  var input = document.createElement('input');
+  input.type = field === 'pwin' ? 'number' : 'text';
+  if (field === 'pwin') { input.min = 0; input.max = 100; input.step = 1; }
+  input.value = field === 'value' ? String(currentVal).replace(/^\$/, '') : currentVal;
+  input.placeholder = field === 'value' ? '1500000 / 1.5M / 750K' : '0-100';
+  input.style.cssText = 'width:100%;background:var(--ink-3);border:1px solid var(--gold);color:var(--bone);padding:3px 5px;font-family:IBM Plex Mono,monospace;font-size:13px;border-radius:2px;text-align:center;outline:none;box-sizing:border-box';
+  valDiv.innerHTML = '';
+  valDiv.appendChild(input);
+  setTimeout(function(){ input.focus(); input.select(); }, 0);
+  var commit = async function(){
+    var raw = (input.value || '').trim();
+    var newVal;
+    if (field === 'value') {
+      var s = raw.replace(/[\$\s,]/g, '');
+      var mult = 1;
+      if (/[Mm]$/.test(s)) { mult = 1e6; s = s.slice(0, -1); }
+      else if (/[Kk]$/.test(s)) { mult = 1e3; s = s.slice(0, -1); }
+      else if (/[Bb]$/.test(s)) { mult = 1e9; s = s.slice(0, -1); }
+      var n = parseFloat(s);
+      newVal = (raw === '' ? null : (isNaN(n) ? null : Math.round(n * mult)));
+    } else {
+      var p = parseFloat(raw);
+      newVal = (raw === '' ? null : (isNaN(p) ? null : Math.max(0, Math.min(100, p))));
+    }
+    var prev = (field === 'value') ? (op.value || null) : (op.pwin != null ? op.pwin : null);
+    if (newVal === prev) {
+      valDiv.innerHTML = origHtml;
+      return;
+    }
+    op[field] = newVal;
+    if (typeof window.saveOpp === 'function') {
+      try { await window.saveOpp(op); } catch(e){ console.warn('[P13.86 inline edit] save failed:', e); }
+    }
+    if (typeof toast === 'function') toast(field === 'value' ? 'Value saved' : 'PWin saved');
+    if (typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){}
+    if (typeof renderOppSidebar === 'function') try { renderOppSidebar(); } catch(e){}
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', function(ev){
+    if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); input.value = currentVal === '' ? '' : String(currentVal); valDiv.innerHTML = origHtml; }
+  });
 };
 
 // P13.74 — Hide-unscored toggle for Forecast totals.
@@ -18805,8 +18924,8 @@ function _renderOppList(q){
         + '<div class="cop-card-name">' + escH(o.name) + '</div>'
         + '<div class="cop-card-agency">' + (o.agency ? escH(o.agency) : '<span class="cop-dim">— AGENCY UNKNOWN</span>') + (o.vehicle ? ' &nbsp;·&nbsp; ' + escH(o.vehicle) : '') + '</div>'
         + '<div class="cop-card-metrics">'
-          + '<div class="cop-metric"><div class="cop-metric-lbl">VALUE</div><div class="cop-metric-val cop-val">' + escH(vTxt) + '</div></div>'
-          + '<div class="cop-metric"><div class="cop-metric-lbl">PWIN</div><div class="cop-metric-val cop-pw-' + pwCol + '">' + pw + '%</div></div>'
+          + '<div class="cop-metric cop-metric-editable" onclick="event.stopPropagation();window._editOppMetricInline&&window._editOppMetricInline(\'' + String(o.id).replace(/'/g,"\\'") + '\',\'value\',this)" title="Click to edit value (accepts 1500000, $1.5M, 750K)" style="cursor:pointer"><div class="cop-metric-lbl">VALUE</div><div class="cop-metric-val cop-val">' + escH(vTxt) + '</div></div>'
+          + '<div class="cop-metric cop-metric-editable" onclick="event.stopPropagation();window._editOppMetricInline&&window._editOppMetricInline(\'' + String(o.id).replace(/'/g,"\\'") + '\',\'pwin\',this)" title="Click to edit pwin (0-100)" style="cursor:pointer"><div class="cop-metric-lbl">PWIN</div><div class="cop-metric-val cop-pw-' + pwCol + '">' + pw + '%</div></div>'
           + '<div class="cop-metric"><div class="cop-metric-lbl">MTGS</div><div class="cop-metric-val">' + mtgCount + '</div></div>'
           + '<div class="cop-metric"><div class="cop-metric-lbl">LAST</div><div class="cop-metric-val">' + (lastTs ? (daysSince === 0 ? 'TDY' : daysSince + 'D') : '—') + '</div></div>'
           + (function(){
@@ -59278,6 +59397,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.85"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.86"></script>
 </body>
 </html>

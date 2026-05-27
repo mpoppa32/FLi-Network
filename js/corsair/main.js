@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.85';
-  window.Corsair.buildBlurb  = 'P13.84 banner fix: move the unscored-pipeline guidance OUT of the collapsed-forecast ternary so it always shows when relevant (Forecast is collapsed by default, so the banner was invisible on first land — defeating the point of guidance).';
+  window.Corsair.buildTag    = 'P13.86';
+  window.Corsair.buildBlurb  = 'Atlas Day 1: Forecast default-EXPANDED (v2 key migration) + bulk-assign captureLead button + inline VALUE/PWIN edit on opp cards. Removes the BD-target → scored → assigned wall that blocked the sales-data axis.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
