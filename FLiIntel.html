@@ -7480,11 +7480,14 @@ input[type="url"], textarea, select {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .rhythm-panel {
-  margin: 0 14px 12px;
+  /* P13.68 — bottom margin 12→24 + extended drop-shadow softens the seam
+     between the dark watch row and the light operator brief below. */
+  margin: 0 14px 24px;
   background: linear-gradient(160deg, rgba(13,20,38,0.96), rgba(7,13,24,0.99));
   border: 1px solid var(--rule-2);
   border-left: 2px solid var(--gold);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(212,130,58,0.06);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(212,130,58,0.06),
+              0 28px 40px -20px rgba(7,13,24,0.85);
   border-radius: 1px;
   display: none;
   /* P13.32 — cap height to ~40vh so a workspace with many critical items
@@ -8369,7 +8372,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.67</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.68</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16855,16 +16858,23 @@ window._renderCopForecast = function(){
   panel.style.display = 'block';
 
   // Summary stats
+  // P13.68 — split scored vs unscored. An opp is "scored" once it has either
+  // a value or a pwin set; the empty 122 stuck-in-Qualify imports were making
+  // the headline read "122 · $0 · $0" which looks broken instead of "needs
+  // setup". Surfacing the unscored count under the tile so the empty state
+  // reads as actionable, not failed.
   var totalCount = opps.length;
-  var totalPipeline = 0, weightedPipeline = 0;
+  var totalPipeline = 0, weightedPipeline = 0, scoredCount = 0;
   opps.forEach(function(o){
     var v = Number(o.value || o.contractValue || 0);
     var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
     if (p > 1) p = p / 100;
     totalPipeline += v;
     weightedPipeline += v * p;
+    if (v > 0 || p > 0) scoredCount++;
   });
-  var avgDeal = totalCount ? (totalPipeline / totalCount) : 0;
+  var unscoredCount = totalCount - scoredCount;
+  var avgDeal = scoredCount ? (totalPipeline / scoredCount) : 0;
 
   // Monthly forecast bins (next 6 months from current month)
   function _monthKey(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
@@ -17073,17 +17083,17 @@ window._renderCopForecast = function(){
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:' + (collapsed ? '0' : '14px') + ';cursor:pointer" onclick="window._toggleCopForecast()">' +
         '<div style="display:flex;align-items:center;gap:10px">' +
           '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--gold);letter-spacing:.16em;text-transform:uppercase">Forecast</div>' +
-          '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em">' + totalCount + ' open · ' + _fmt$(totalPipeline) + ' total · ' + _fmt$(weightedPipeline) + ' weighted</span>' +
+          '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em">' + totalCount + ' open' + (unscoredCount ? ' · ' + scoredCount + ' scored' : '') + ' · ' + _fmt$(totalPipeline) + ' total · ' + _fmt$(weightedPipeline) + ' weighted</span>' +
         '</div>' +
         '<button onclick="event.stopPropagation();window._toggleCopForecast()" style="background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer">' + (collapsed ? 'EXPAND ↓' : 'COLLAPSE ↑') + '</button>' +
       '</div>' +
       // Body (hidden when collapsed)
       (collapsed ? '' :
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px">' +
-          tile('OPEN OPPS', String(totalCount)) +
-          tile('PIPELINE $', _fmt$(totalPipeline)) +
+          tile('OPEN OPPS', String(totalCount), unscoredCount ? scoredCount + ' scored · ' + unscoredCount + ' need setup' : null) +
+          tile('PIPELINE $', _fmt$(totalPipeline), unscoredCount && !totalPipeline ? 'add value + pwin to score' : null) +
           tile('WEIGHTED $', _fmt$(weightedPipeline), 'value × p(win)') +
-          tile('AVG DEAL', _fmt$(avgDeal)) +
+          tile('AVG DEAL', _fmt$(avgDeal), scoredCount ? 'across ' + scoredCount + ' scored' : null) +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">' +
           '<div>' +
