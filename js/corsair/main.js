@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.81';
-  window.Corsair.buildBlurb  = 'Cache-bust main.js via ?v=buildtag in the script tag, so a broken module stuck in browser cache cannot persist across deploys.';
+  window.Corsair.buildTag    = 'P13.82';
+  window.Corsair.buildBlurb  = 'Atlas-ready blockers fixed: topnav responsive (hides 6 secondary icon buttons at <1500px so primary actions stay visible on laptop) + !important on overflow-y:auto for 19 view containers (defeats inline overflow:hidden that silently broke P13.78). Hidden topnav items are mirrored in MORE menu DATA & HELP section.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

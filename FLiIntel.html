@@ -7534,13 +7534,34 @@ input[type="url"], textarea, select {
 /* P13.78 — make most view containers scrollable so any content longer
    than the visible viewport can be reached without the user having to
    collapse other surfaces. Skipped: #network-view (canvas needs precise
-   sizing), #today-view (its inner #today-rhythm-host already scrolls). */
+   sizing), #today-view (its inner #today-rhythm-host already scrolls).
+   P13.82 — !important is REQUIRED here. Each view container has an
+   inline `style="overflow:hidden"` in its HTML, which beats a normal
+   CSS selector and silently broke this rule for 17 of 19 views. */
 #opps-view, #accounts-view, #table-view, #intel-view, #posture-view,
 #rhythm-view, #winloss-view, #trends-view, #bdperf-view, #team-view,
 #pulse-view, #sbir-view, #rfi-view, #library-view, #capture-view,
 #comp-view, #teaming-view, #vehicles-view, #inspector-view {
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* P13.82 — TOPNAV RESPONSIVE FIX.
+   On a 1280px laptop the topnav had 19 items spanning 1941px, so the
+   primary action buttons (LOG MEETING / CONTACT / FOLLOW-UP) and 8
+   secondary nav buttons all clipped off-screen. Hide the secondary
+   icon-only buttons at <1500px so the primary actions stay visible.
+   Hidden buttons remain accessible: search via Cmd+K, glossary/help/
+   activity/recents/re-engage via the MORE menu. */
+@media (max-width: 1500px) {
+  #help-nav-btn,
+  #nav-search-btn,
+  #nav-help-btn,
+  #nav-recents-btn,
+  #nav-activity-btn,
+  #nav-reeng-btn {
+    display: none !important;
+  }
 }
 
 .rhythm-header {
@@ -8483,7 +8504,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.81</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.82</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8594,7 +8615,14 @@ input[type="url"], textarea, select {
           <button class="tools-menu-item" data-view="team" onclick="window._toolsMenuSelect('team')"><span style="color:#38bdf8;width:18px;display:inline-block">👥</span><span>Team</span><span class="tm-meta">workspace activity</span></button>
           <div style="height:1px;background:rgba(26,34,54,.5);margin:7px 4px"></div>
           <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Data &amp; Help</div>
-          <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">Import · export · learn</div>
+          <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">Import · export · learn · find</div>
+          <!-- P13.82 — these 5 items mirror the topnav icon-only buttons that get hidden at <1500px viewport so the primary action buttons stay visible. Same handlers, same behavior, just discoverable here too. -->
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.openFieldGuide&&window.openFieldGuide()"><span style="color:var(--gold);width:18px;display:inline-block">📖</span><span>Field Guide</span><span class="tm-meta">operator's manual</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();openModal('glossary-modal');setTimeout(function(){var s=document.getElementById('glossary-search');if(s)s.focus();},80)"><span style="color:#5fb3b8;width:18px;display:inline-block">🔤</span><span>BD Glossary</span><span class="tm-meta">terms · acronyms · what each field means</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._openCmdK&&window._openCmdK()"><span style="color:var(--gold);width:18px;display:inline-block">🔎</span><span>Search</span><span class="tm-meta">Cmd/Ctrl + K · universal search</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._toggleRecentsDropdown&&window._toggleRecentsDropdown()"><span style="color:#a78bfa;width:18px;display:inline-block">🕐</span><span>Recently viewed</span><span class="tm-meta">last 10 opps / contacts / accounts</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._toggleActivityDropdown&&window._toggleActivityDropdown()"><span style="color:#38bdf8;width:18px;display:inline-block">📋</span><span>Activity Log</span><span class="tm-meta">workspace change feed</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.openReengagementPanel&&window.openReengagementPanel()"><span style="color:#fb923c;width:18px;display:inline-block">◎</span><span>Re-engage contacts</span><span class="tm-meta">cooling people to wake up</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();openModal('import-data-modal');setTimeout(function(){if(window._impSetType)window._impSetType('person')},60)"><span style="color:var(--gold);width:18px;display:inline-block">⬆</span><span>Import Data</span><span class="tm-meta">CSV / paste bulk-add</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('json')"><span style="color:#22c55e;width:18px;display:inline-block">⬇</span><span>Backup JSON</span><span class="tm-meta">full workspace, lossless</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('csv')"><span style="color:#5b8fc4;width:18px;display:inline-block">⬇</span><span>Export CSVs</span><span class="tm-meta">4 files · meetings/contacts/opps/commits</span></button>
@@ -59229,6 +59257,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.81"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.82"></script>
 </body>
 </html>
