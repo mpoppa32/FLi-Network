@@ -8483,7 +8483,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.78</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.79</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13663,7 +13663,7 @@ function _showOppPickerModal(m,activeOpps,currentTagged){
     inner+='<div style="font-size:12px;color:var(--t2);margin-bottom:14px;font-style:italic">'+title+'</div>';
     activeOpps.forEach(function(o){
       var isTagged=currentTagged&&currentTagged.id===o.id;
-      var sc=oppStageConfig(o.stage);
+      var sc=window.oppStageConfig(o.stage);
       inner+='<div data-opp-id="'+o.id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid '+(isTagged?'var(--green)':'var(--b2)')+';border-radius:var(--rsm);margin-bottom:6px;cursor:pointer;background:'+(isTagged?'rgba(34,197,94,.06)':'transparent')+'" '+
         'onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\''+( isTagged?'var(--green)':'var(--b2)')+'\'">'+
         '<div style="flex:1;min-width:0">'+
@@ -16033,7 +16033,7 @@ window._tagSignalToOpp = async function(signalJson) {
       inner += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-bottom:4px">📌 Tag Signal to Deal</div>';
       inner += '<div style="font-size:14px;color:var(--t2);margin-bottom:14px;font-style:italic;line-height:1.4">"' + headline + '"</div>';
       activeOpps.slice(0, 12).forEach(function(o) {
-        var sc = typeof oppStageConfig === 'function' ? oppStageConfig(o.stage) : { color: 'var(--t3)', label: o.stage };
+        var sc = typeof window.oppStageConfig === 'function' ? window.oppStageConfig(o.stage) : { color: 'var(--t3)', label: o.stage };
         inner += '<div data-oid="' + o.id + '" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--b2);border-radius:var(--rsm);margin-bottom:6px;cursor:pointer;transition:border-color .1s" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b2)\'">'
           + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + o.name + '</div>'
           + '<div style="font-size:13px;color:' + sc.color + ';margin-top:2px">' + sc.label + (o.agency ? ' · ' + o.agency : '') + '</div></div>'
@@ -18734,7 +18734,7 @@ function _renderOppList(q){
 
   function cardHTML(o){
     var isActive = currentOpp && currentOpp.id === o.id;
-    var s = oppStageConfig(o.stage) || OPP_STAGES[0];
+    var s = window.oppStageConfig(o.stage) || window.OPP_STAGES[0];
     var v = typeof _parseVal === 'function' ? _parseVal(o.value) : 0;
     var vTxt = (v > 0 && typeof _fmtVal === 'function') ? '$' + _fmtVal(v) : (o.value || '—');
     var mtgCount = (o.meetings||[]).length;
@@ -19375,9 +19375,9 @@ function renderOppDetail(opp){
   if(emptyEl)emptyEl.style.display='none';
   if(detailEl)detailEl.style.display='block';
 
-  var sc=oppStageConfig(opp.stage);
-  var si=oppStageIndex(opp.stage);
-  var active=OPP_STAGES.filter(function(s){return s.key!=='lost';});
+  var sc=window.oppStageConfig(opp.stage);
+  var si=window.oppStageIndex(opp.stage);
+  var active=window.OPP_STAGES.filter(function(s){return s.key!=='lost';});
 
   // ── PIPELINE STAGE BAR — visual Kanban with clickable progression ──
   // \u2500\u2500 Pipeline progression bar \u2014 10 stages, click to set, current glows \u2500\u2500
@@ -28378,7 +28378,7 @@ function _corsairBuildRhythm(){
           items.push({
             sev: 'critical',
             kind: 'SLIPPED RFP',
-            meta: Math.abs(days) + 'd past · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+            meta: Math.abs(days) + 'd past · ' + (window.oppStageConfig(o.stage)||{label:'?'}).label,
             subject: o.name,
             actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
             click: 'window.selectOpp(\'' + o.id + '\')',
@@ -28392,7 +28392,7 @@ function _corsairBuildRhythm(){
         items.push({
           sev: 'critical',
           kind: label + ' IMMINENT',
-          meta: (days === 0 ? 'today' : days + 'd out') + ' · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+          meta: (days === 0 ? 'today' : days + 'd out') + ' · ' + (window.oppStageConfig(o.stage)||{label:'?'}).label,
           subject: o.name,
           actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
           click: 'window.selectOpp(\'' + o.id + '\')',
@@ -28403,7 +28403,7 @@ function _corsairBuildRhythm(){
         items.push({
           sev: 'warn',
           kind: label + ' SOON',
-          meta: days + 'd out · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+          meta: days + 'd out · ' + (window.oppStageConfig(o.stage)||{label:'?'}).label,
           subject: o.name,
           actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
           click: 'window.selectOpp(\'' + o.id + '\')',
@@ -28478,7 +28478,7 @@ function _corsairBuildRhythm(){
     items.push({
       sev: quietDays >= 60 ? 'critical' : 'warn',
       kind: 'STALLED',
-      meta: quietDays + 'd quiet · ' + (oppStageConfig(o.stage)||{label:'?'}).label,
+      meta: quietDays + 'd quiet · ' + (window.oppStageConfig(o.stage)||{label:'?'}).label,
       subject: o.name,
       actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
       click: 'window.selectOpp(\'' + o.id + '\')',
