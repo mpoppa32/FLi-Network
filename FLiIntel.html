@@ -8442,7 +8442,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.75</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.75.1</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17433,13 +17433,17 @@ window._bulkScorePreview = function(){
 };
 
 // P13.75 — scan imported BD-target orgs and propose opps to generate.
-// An org qualifies if its notes carry the "Atlas Master Pipeline Intel"
-// marker (set by the P13.65 CSV import path) AND no opp currently has
-// _bdGenFromOrg === orgId pointing at it.
+// An org qualifies if EITHER it has an `importedAt` field (set by the
+// P13.65 CSV import) OR its notes carry the "Atlas Master Pipeline Intel"
+// marker (which exists on orgs whose new-side notes were merged into an
+// existing dupe). AND no opp currently has _bdGenFromOrg === orgId
+// pointing at it.
 window._genBdOppsScan = function(){
   var orgs = (window.nodes || []).filter(function(n){
-    return n && n.type === 'company' && typeof n.notes === 'string' &&
-           n.notes.indexOf('Atlas Master Pipeline Intel') !== -1;
+    if (!n || n.type !== 'company') return false;
+    if (n.importedAt) return true;
+    if (typeof n.notes === 'string' && n.notes.indexOf('Atlas Master Pipeline Intel') !== -1) return true;
+    return false;
   });
   var opps = (window.opportunities || []);
   var alreadyGenIds = new Set();
