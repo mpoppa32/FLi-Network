@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.82';
-  window.Corsair.buildBlurb  = 'Atlas-ready blockers fixed: topnav responsive (hides 6 secondary icon buttons at <1500px so primary actions stay visible on laptop) + !important on overflow-y:auto for 19 view containers (defeats inline overflow:hidden that silently broke P13.78). Hidden topnav items are mirrored in MORE menu DATA & HELP section.';
+  window.Corsair.buildTag    = 'P13.83';
+  window.Corsair.buildBlurb  = 'Topnav compression v2: raised the existing chrome-collapse breakpoint from 1200px to 1500px so typical laptop screens (1280-1440px) actually trigger it. Drops the DEFENSE CAPTURE OS tagline, SWITCH hint, SALES/BD role pill, and mobile hamburger on laptops, freeing ~250px so LOG MEETING / CONTACT / FOLLOW-UP all stay visible. Combined with the P13.82 hides of 6 secondary icon buttons and the overflow !important fix.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
