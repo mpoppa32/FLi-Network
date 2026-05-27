@@ -8526,7 +8526,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.89</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.90</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -19840,6 +19840,98 @@ function renderOppDetail(opp){
     }
     h += '</div>';
   } catch(e){ console.warn('[P13.89 meeting history] failed:', e); }
+
+  // ── P13.90 (Day 3d) — Signals + Posture for this opp ──
+  // Surfaces recent OSINT signals tagged to the opp's agency/org + posture
+  // commitments involving people at the org. Renders ONLY when there's
+  // something to show — keeps the drill clean for sparse-data opps. The
+  // 16-source OSINT moat finally becomes visible where buying-signal context
+  // matters most.
+  try {
+    var _matchTerms = [];
+    if (opp.agency) _matchTerms.push(String(opp.agency).toLowerCase());
+    if (typeof _oppOrgName === 'string' && _oppOrgName) _matchTerms.push(String(_oppOrgName).toLowerCase());
+    else if (opp.name) _matchTerms.push(String(opp.name).toLowerCase());
+    if (opp.vehicle) _matchTerms.push(String(opp.vehicle).toLowerCase());
+    // Recent OSINT signals from _dailyFeedData
+    var _signals = [];
+    if (Array.isArray(window._dailyFeedData) && _matchTerms.length) {
+      _signals = window._dailyFeedData.filter(function(s){
+        if (!s) return false;
+        var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
+        return _matchTerms.some(function(t){ return t && t.length > 2 && blob.indexOf(t) >= 0; });
+      }).slice(0, 4);
+    }
+    // Posture commitments involving people at this org (those whose org matches)
+    var _orgPeopleNames = new Set();
+    if (typeof _oppOrgName === 'string' && _oppOrgName) {
+      var _idx2 = window.CorsairIndex || {};
+      var _op = (_idx2.peopleByOrg && _idx2.peopleByOrg.get) ? (_idx2.peopleByOrg.get(String(_oppOrgName).toLowerCase().trim()) || []) : [];
+      _op.forEach(function(p){ if (p && p.name) _orgPeopleNames.add(p.name.toLowerCase()); });
+    }
+    var _orgCommits = [];
+    if (_orgPeopleNames.size && Array.isArray(window.commitments)) {
+      _orgCommits = window.commitments.filter(function(c){
+        if (!c || c.status === 'completed' || c.status === 'fulfilled' || c.status === 'broken' || c.closedAt) return false;
+        var hits = [c.owner, c.with, c.counterparty, c.task].filter(Boolean).map(function(x){return String(x).toLowerCase();});
+        return hits.some(function(h){
+          for (var nm of _orgPeopleNames) { if (h.indexOf(nm) >= 0) return true; }
+          return false;
+        });
+      }).slice(0, 3);
+    }
+    if (_signals.length || _orgCommits.length) {
+      var _scopeLabel = opp.agency || _oppOrgName || opp.name || 'this pursuit';
+      var _safeScope = String(_scopeLabel).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+      h += '<div class="cop-detail-signals" style="margin:14px 18px 0;padding:14px 16px;background:linear-gradient(160deg,rgba(13,20,38,.92),rgba(7,13,24,.96));border:1px solid var(--rule-2);border-left:3px solid #6ed094;border-radius:3px">';
+      h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
+      h +=   '<div style="display:flex;align-items:baseline;gap:10px">';
+      h +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#6ed094;text-transform:uppercase">Signals &amp; Posture</div>';
+      h +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.08em">for ' + _safeScope + (_signals.length ? ' · ' + _signals.length + ' recent signal' + (_signals.length === 1 ? '' : 's') : '') + (_orgCommits.length ? ' · ' + _orgCommits.length + ' open commitment' + (_orgCommits.length === 1 ? '' : 's') : '') + '</div>';
+      h +=   '</div>';
+      h += '</div>';
+      // OSINT signals
+      if (_signals.length) {
+        h += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:' + (_orgCommits.length ? '12px' : '0') + '">';
+        _signals.forEach(function(s){
+          var _sev = s.severity || 'info';
+          var _sevCol = _sev === 'high' ? '#ef4444' : _sev === 'med' ? '#f0a560' : _sev === 'low' ? '#6ed094' : '#5fb3b8';
+          var _hl = String(s.headline || '').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}).slice(0, 110);
+          var _cat = s.category ? String(s.category).toUpperCase().slice(0, 22) : '';
+          var _date = s.date ? String(s.date).slice(0, 10) : '';
+          var _url = s.url ? String(s.url) : '';
+          var _click = _url ? 'event.stopPropagation();window.open(\'' + _url.replace(/'/g, "\\'") + '\',\'_blank\',\'noopener\')' : 'event.stopPropagation();switchView(\'pulse\')';
+          h += '<div style="padding:8px 11px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:2px solid ' + _sevCol + ';border-radius:2px;cursor:pointer" onclick="' + _click + '">';
+          h +=   '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:3px">';
+          if (_cat) h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + _sevCol + ';text-transform:uppercase">' + _cat + '</span>';
+          if (_date) h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2)">' + _date + '</span>';
+          h +=   '</div>';
+          h +=   '<div style="font-family:IBM Plex Sans,sans-serif;font-size:12.5px;color:var(--bone);line-height:1.35">' + _hl + (_url ? ' <span style="color:' + _sevCol + ';font-family:IBM Plex Mono,monospace;font-size:10px">↗</span>' : '') + '</div>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+      // Posture commitments
+      if (_orgCommits.length) {
+        h += '<div style="display:flex;flex-direction:column;gap:6px">';
+        _orgCommits.forEach(function(c){
+          var _task = String(c.task || c.title || '(open commitment)').replace(/[<>&]/g,function(c2){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c2];}).slice(0, 100);
+          var _owner = c.owner || c.with || '—';
+          var _safeOwner = String(_owner).replace(/[<>&]/g,function(c2){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c2];});
+          var _dl = c.deadline ? String(c.deadline).slice(0, 10) : null;
+          h += '<div style="padding:8px 11px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:2px solid #f0a560;border-radius:2px;cursor:pointer" onclick="event.stopPropagation();switchView(\'intel\');setTimeout(function(){if(typeof switchIntelTab===\'function\')switchIntelTab(\'board\')},250)">';
+          h +=   '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:3px">';
+          h +=     '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:#f0a560;text-transform:uppercase">Posture · open</span>';
+          if (_dl) h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2)">due ' + _dl + '</span>';
+          h +=   '</div>';
+          h +=   '<div style="font-family:IBM Plex Sans,sans-serif;font-size:12.5px;color:var(--bone);line-height:1.35">' + _task + ' <span style="color:var(--paper-2);font-family:IBM Plex Mono,monospace;font-size:10px">· ' + _safeOwner + '</span></div>';
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+  } catch(e){ console.warn('[P13.90 signals+posture] failed:', e); }
 
   // ── WIN PROBABILITY ─────────────────────────────────────────
   // ── Win-probability gauge — cinematic card with factor pills + gap callouts ──
@@ -59580,6 +59672,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.89"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.90"></script>
 </body>
 </html>

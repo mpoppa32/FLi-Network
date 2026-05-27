@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.89';
-  window.Corsair.buildBlurb  = 'Atlas Day 3c: Meeting History panel on every opp drill. Recent 5 meetings tagged to the pursuit with extracted-intel counts (people / actions / risks / commitments) per row. Click drills to the meeting record. Empty state surfaces + Log Meeting CTA. Closes the loop log-meeting -> opp drill.';
+  window.Corsair.buildTag    = 'P13.90';
+  window.Corsair.buildBlurb  = 'Atlas Day 3d: Signals + Posture panel on opp drill. Surfaces recent OSINT feed items tagged to the opp agency/org/vehicle plus open posture commitments involving people at the org. Renders only when there is something to show — keeps sparse-data opps clean. Makes the 16-source OSINT moat visible exactly where buying-signal context matters.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
