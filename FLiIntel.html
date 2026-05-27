@@ -8526,7 +8526,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.90</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.91</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -20286,15 +20286,21 @@ window.updateOppStage=async function(id){
   if(!sel)return;
   var prevStage=opp.stage;
   var newStage=sel.value;
-  opp.stage=newStage;
-  opp.updatedAt=new Date().toISOString();
-  await saveOpp(opp);
-  // Record calibration outcome when deal closes
-  if((newStage==='won'||newStage==='lost')&&prevStage!==newStage){
-    await recordOutcome(opp,newStage);
-  }
-  renderOppSidebar();
-  toast('Stage updated');
+  if (prevStage === newStage) return;
+  // P13.91 (Day 4) — doctrine confirm gate before commit
+  window._confirmStageAdvance(opp, prevStage, newStage, async function(){
+    opp.stage=newStage;
+    opp.updatedAt=new Date().toISOString();
+    await saveOpp(opp);
+    if((newStage==='won'||newStage==='lost')&&prevStage!==newStage){
+      await recordOutcome(opp,newStage);
+    }
+    renderOppSidebar();
+    toast('Stage updated');
+  }, function(){
+    // user cancelled — revert the select
+    sel.value = prevStage;
+  });
 };
 
 // CRM P0.4 — operator-set Next Action + target date on opp records
@@ -39178,24 +39184,111 @@ window._setOppStage = async function(oppId, newStage) {
   if (!opp) return;
   if (opp.stage === newStage) return;
   var prevStage = opp.stage;
-  opp.stage = newStage;
-  try {
-    await fbSet(wsPath('opportunities/' + oppId + '/stage'), newStage);
-    if (typeof toast === 'function') {
-      var sc = OPP_STAGES.find(function(s) { return s.key === newStage; });
-      toast('Stage: ' + prevStage + ' → ' + (sc ? sc.label : newStage));
+  // P13.91 (Day 4) — doctrine confirm gate before commit
+  window._confirmStageAdvance(opp, prevStage, newStage, async function(){
+    opp.stage = newStage;
+    try {
+      await fbSet(wsPath('opportunities/' + oppId + '/stage'), newStage);
+      if (typeof toast === 'function') {
+        var sc = OPP_STAGES.find(function(s) { return s.key === newStage; });
+        toast('Stage: ' + prevStage + ' → ' + (sc ? sc.label : newStage));
+      }
+      if (typeof renderOppDetail === 'function') renderOppDetail(opp);
+      if (typeof renderOppSidebar === 'function') renderOppSidebar();
+      if ((newStage === 'won' || newStage === 'lost') && typeof recordOutcome === 'function') {
+        recordOutcome(opp, newStage);
+      }
+    } catch(e) {
+      opp.stage = prevStage;
+      if (typeof toast === 'function') toast('Failed to update stage');
     }
-    // Re-render
-    if (typeof renderOppDetail === 'function') renderOppDetail(opp);
-    if (typeof renderOppSidebar === 'function') renderOppSidebar();
-    // If moved to won/lost, record outcome for calibration
-    if ((newStage === 'won' || newStage === 'lost') && typeof recordOutcome === 'function') {
-      recordOutcome(opp, newStage);
+  });
+  // No-op on cancel — opp.stage was never touched.
+};
+
+// P13.91 (Day 4) — Stage-advance doctrine modal.
+// Shows the operator the STAGE_SPEC gates/artifacts/nextAction for the
+// destination stage BEFORE committing. Defense BD platforms compete on
+// stage discipline — this is the surface where Corsair shows it knows
+// what "capture planning" or "pink team complete" actually mean.
+// Backed out if user cancels (third arg is optional onCancel).
+window._confirmStageAdvance = function(opp, fromStage, toStage, onConfirm, onCancel){
+  // Skip doctrine modal for won/lost (terminal stages — no gates apply)
+  // but still confirm the close since it's destructive to the active funnel.
+  var spec = (window.Corsair && window.Corsair.pipeline && window.Corsair.pipeline.spec) ? window.Corsair.pipeline.spec[toStage] : null;
+  var fromCfg = window.oppStageConfig ? window.oppStageConfig(fromStage) : { label: fromStage };
+  var toCfg   = window.oppStageConfig ? window.oppStageConfig(toStage)   : { label: toStage };
+  var isClose = (toStage === 'won' || toStage === 'lost');
+  // Build modal
+  var existing = document.getElementById('stage-advance-modal');
+  if (existing) existing.remove();
+  var oppNameSafe = String(opp.name || '(unnamed)').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+  var modal = document.createElement('div');
+  modal.id = 'stage-advance-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(7,13,24,.78);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+  var html = '<div style="background:linear-gradient(180deg,var(--ink-2),var(--ink-3));border:1px solid var(--rule-2);border-left:3px solid ' + (toCfg.color || 'var(--gold)') + ';border-radius:4px;max-width:560px;width:calc(100% - 40px);max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.7)">';
+  html += '<div style="padding:18px 22px 12px;border-bottom:1px solid var(--rule)">';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:' + (toCfg.color || 'var(--gold)') + ';text-transform:uppercase;margin-bottom:6px">' + (isClose ? 'Close pursuit' : 'Advance stage') + '</div>';
+  html += '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--bone);line-height:1.15;letter-spacing:.01em">' + oppNameSafe + '</div>';
+  html += '<div style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:11.5px;color:var(--paper);letter-spacing:.06em"><span style="color:var(--paper-2)">' + (fromCfg.label || fromStage) + '</span> <span style="color:var(--gold);margin:0 6px">→</span> <span style="color:' + (toCfg.color || 'var(--gold)') + ';font-weight:600">' + (toCfg.label || toStage) + '</span></div>';
+  html += '</div>';
+  // Body — doctrine gates + artifacts + nextAction, or close-confirmation copy
+  html += '<div style="padding:16px 22px">';
+  if (isClose) {
+    html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--bone);line-height:1.55;margin-bottom:10px">Closing this pursuit as <b style="color:' + (toCfg.color || 'var(--gold)') + '">' + (toCfg.label || toStage) + '</b> moves it out of your active funnel and records the outcome for win/loss calibration.</div>';
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.06em">You can reopen by setting the stage back to an active value later.</div>';
+  } else if (spec) {
+    if (spec.gates && spec.gates.length) {
+      html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:8px">Doctrine gates for this stage</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">';
+      spec.gates.forEach(function(g, i){
+        var gSafe = String(g).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+        html += '<label style="display:flex;align-items:flex-start;gap:9px;font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);cursor:pointer;padding:6px 9px;border-radius:2px;border:1px solid var(--rule);background:rgba(7,13,24,.4)">';
+        html += '<input type="checkbox" id="sa-gate-' + i + '" style="margin-top:2px;cursor:pointer;accent-color:var(--gold);flex-shrink:0">';
+        html += '<span>' + gSafe + '</span>';
+        html += '</label>';
+      });
+      html += '</div>';
     }
-  } catch(e) {
-    opp.stage = prevStage;
-    if (typeof toast === 'function') toast('Failed to update stage');
+    if (spec.artifacts && spec.artifacts.length) {
+      html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:6px">Artifacts you should have</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px">';
+      spec.artifacts.forEach(function(a){
+        var aSafe = String(a).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+        html += '<span style="font-family:IBM Plex Mono,monospace;font-size:10.5px;color:var(--paper);background:rgba(212,130,58,.08);border:1px solid rgba(212,130,58,.3);padding:3px 8px;border-radius:2px;letter-spacing:.04em">' + aSafe + '</span>';
+      });
+      html += '</div>';
+    }
+    if (spec.nextAction) {
+      var naSafe = String(spec.nextAction).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+      html += '<div style="padding:10px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-left:2px solid #22c55e;border-radius:2px">';
+      html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9.5px;font-weight:700;letter-spacing:.14em;color:#22c55e;text-transform:uppercase;margin-bottom:3px">Default next action</div>';
+      html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4">' + naSafe + '</div>';
+      html += '</div>';
+    }
+    html += '<div style="margin-top:12px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.04em;line-height:1.5">Gates are informational — Corsair will not block stage moves, but stuck pursuits will surface on Rhythm.</div>';
+  } else {
+    html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);line-height:1.5">No doctrine spec defined for this stage.</div>';
   }
+  html += '</div>';
+  // Footer
+  html += '<div style="padding:12px 22px 16px;border-top:1px solid var(--rule);display:flex;gap:10px;justify-content:flex-end">';
+  html += '<button id="sa-cancel-btn" style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--paper);background:transparent;border:1px solid var(--rule-2);padding:9px 18px;border-radius:3px;cursor:pointer;text-transform:uppercase">Cancel</button>';
+  html += '<button id="sa-confirm-btn" style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.12em;color:#0b0d11;background:' + (toCfg.color || 'var(--gold)') + ';border:1px solid ' + (toCfg.color || 'var(--gold)') + ';padding:9px 18px;border-radius:3px;cursor:pointer;text-transform:uppercase">' + (isClose ? 'Close pursuit →' : 'Advance stage →') + '</button>';
+  html += '</div>';
+  html += '</div>';
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+  var cleanup = function(){ try { modal.remove(); } catch(e){} };
+  var doConfirm = function(){ cleanup(); if (typeof onConfirm === 'function') onConfirm(); };
+  var doCancel  = function(){ cleanup(); if (typeof onCancel  === 'function') onCancel();  };
+  document.getElementById('sa-confirm-btn').onclick = doConfirm;
+  document.getElementById('sa-cancel-btn').onclick = doCancel;
+  // Background click cancels (don't trap)
+  modal.addEventListener('click', function(ev){ if (ev.target === modal) doCancel(); });
+  // Esc cancels
+  var escHandler = function(ev){ if (ev.key === 'Escape'){ document.removeEventListener('keydown', escHandler); doCancel(); } };
+  document.addEventListener('keydown', escHandler);
 };
 
 window._setNetOverlay = function(mode) {
@@ -59672,6 +59765,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.90"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.91"></script>
 </body>
 </html>

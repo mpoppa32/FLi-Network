@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.90';
-  window.Corsair.buildBlurb  = 'Atlas Day 3d: Signals + Posture panel on opp drill. Surfaces recent OSINT feed items tagged to the opp agency/org/vehicle plus open posture commitments involving people at the org. Renders only when there is something to show — keeps sparse-data opps clean. Makes the 16-source OSINT moat visible exactly where buying-signal context matters.';
+  window.Corsair.buildTag    = 'P13.91';
+  window.Corsair.buildBlurb  = 'Atlas Day 4: Stage-advance doctrine modal. Both stage-change paths (drill dropdown + pipeline-bar buttons) now route through _confirmStageAdvance which pops a modal showing STAGE_SPEC gates, artifacts, and default next action for the destination stage before commit. Won/lost shows a softer close-confirmation. Gates are informational not blocking. Defense BD platforms compete on stage discipline — this is where Corsair shows it knows what "capture planning" or "pink team complete" actually mean.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
