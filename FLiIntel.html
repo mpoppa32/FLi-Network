@@ -8526,7 +8526,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.88</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.89</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -19784,6 +19784,62 @@ function renderOppDetail(opp){
     });
     h += '</div>';
   }
+
+  // ── P13.89 (Day 3c) — Meeting History on this opp ──
+  // Shows recent meetings tagged to this pursuit with extracted-intel counts
+  // (people / commitments / risks / actions). Closes the loop from log-meeting
+  // → opp drill: the reason Bryce logged meetings becomes visible at the
+  // opportunity surface. Empty state surfaces + Log Meeting CTA.
+  try {
+    var _safeOidH = String(opp.id).replace(/'/g, "\\'");
+    h += '<div class="cop-detail-meeting-history" style="margin:14px 18px 0;padding:14px 16px;background:linear-gradient(160deg,rgba(13,20,38,.92),rgba(7,13,24,.96));border:1px solid var(--rule-2);border-left:3px solid #a78bfa;border-radius:3px">';
+    h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:' + (taggedMtgs.length ? '12px' : '8px') + ';flex-wrap:wrap">';
+    h +=   '<div style="display:flex;align-items:baseline;gap:10px">';
+    h +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#a78bfa;text-transform:uppercase">Meeting History</div>';
+    h +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.08em">' + taggedMtgs.length + ' meeting' + (taggedMtgs.length === 1 ? '' : 's') + ' on this pursuit' + (taggedMtgs.length ? ' · ' + allActions.length + ' actions · ' + allRisks.length + ' risks' : '') + '</div>';
+    h +=   '</div>';
+    h +=   '<button onclick="event.stopPropagation();switchView(\'intel\');setTimeout(function(){if(typeof switchIntelTab===\'function\')switchIntelTab(\'log\');var t=document.getElementById(\'m-title\');if(t)t.focus();},220)" style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:var(--gold);background:transparent;border:1px solid rgba(212,130,58,.42);padding:6px 10px;border-radius:3px;cursor:pointer;text-transform:uppercase">+ Log Meeting</button>';
+    h += '</div>';
+    if (taggedMtgs.length) {
+      h += '<div style="display:flex;flex-direction:column;gap:8px">';
+      taggedMtgs.slice(0, 5).forEach(function(m){
+        var _safeMid = String(m.id).replace(/'/g, "\\'");
+        var _date = m.meta && m.meta.date ? m.meta.date : '—';
+        var _daysAgo = '';
+        if (m.meta && m.meta.date) {
+          var _d = new Date(m.meta.date).getTime();
+          var _da = Math.floor((Date.now() - _d) / 86400000);
+          _daysAgo = _da === 0 ? 'today' : _da === 1 ? '1d ago' : (_da < 0 ? 'in ' + Math.abs(_da) + 'd' : _da + 'd ago');
+        }
+        var _title = (m.meta && m.meta.title || '(untitled meeting)').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+        var _type = m.meta && m.meta.type ? String(m.meta.type).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) : null;
+        var _peopleN = (m.intel && m.intel.keyPeople || []).length;
+        var _commitN = (m.intel && m.intel.commitments || []).length;
+        var _riskN = (m.intel && m.intel.risks || []).length;
+        var _actionN = (m.intel && m.intel.actionItems || []).length;
+        h += '<div style="padding:9px 11px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-radius:2px;cursor:pointer;transition:border-color 140ms" onmouseover="this.style.borderColor=\'#a78bfa\'" onmouseout="this.style.borderColor=\'var(--rule)\'" onclick="event.stopPropagation();switchView(\'intel\');setTimeout(function(){if(typeof goIntelById===\'function\')goIntelById(\'' + _safeMid + '\');},250)">';
+        h +=   '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px">';
+        h +=     '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;font-weight:600;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + _title + '</div>';
+        h +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.06em;flex-shrink:0">' + _daysAgo + '</div>';
+        h +=   '</div>';
+        h +=   '<div style="display:flex;gap:8px;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.06em;color:var(--paper);flex-wrap:wrap">';
+        if (_type) h += '<span style="color:#a78bfa">' + _type + '</span>';
+        if (_peopleN)  h += '<span title="Key people extracted">👥 ' + _peopleN + '</span>';
+        if (_commitN)  h += '<span title="Commitments" style="color:#22c55e">✓ ' + _commitN + '</span>';
+        if (_actionN)  h += '<span title="Action items" style="color:var(--gold)">→ ' + _actionN + '</span>';
+        if (_riskN)    h += '<span title="Risks" style="color:#ef4444">⚠ ' + _riskN + '</span>';
+        h +=   '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+      if (taggedMtgs.length > 5) {
+        h += '<div style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.06em">+' + (taggedMtgs.length - 5) + ' older meeting' + (taggedMtgs.length - 5 === 1 ? '' : 's') + ' · click any above to see full intel</div>';
+      }
+    } else {
+      h += '<div style="padding:10px 12px;background:rgba(7,13,24,.45);border-left:2px solid var(--paper-2);border-radius:2px;font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);line-height:1.4">No meetings logged for this pursuit yet. Click <b>+ Log Meeting</b> above to paste notes — Corsair extracts people, stances, commitments, action items, and risks automatically.</div>';
+    }
+    h += '</div>';
+  } catch(e){ console.warn('[P13.89 meeting history] failed:', e); }
 
   // ── WIN PROBABILITY ─────────────────────────────────────────
   // ── Win-probability gauge — cinematic card with factor pills + gap callouts ──
@@ -59524,6 +59580,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.88"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.89"></script>
 </body>
 </html>

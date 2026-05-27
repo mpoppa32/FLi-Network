@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.88';
-  window.Corsair.buildBlurb  = 'Atlas Day 3b: People-at-Org panel on every opp drill. Shows contacts at the opp customer org who have NOT yet appeared in tagged meetings — surfaces dormant relationships Bryce can activate. Uses CorsairIndex.peopleByOrg with cascade match (customerOrgId -> customerOrg -> opp.name). Empty state teaches operator how to add the first contact.';
+  window.Corsair.buildTag    = 'P13.89';
+  window.Corsair.buildBlurb  = 'Atlas Day 3c: Meeting History panel on every opp drill. Recent 5 meetings tagged to the pursuit with extracted-intel counts (people / actions / risks / commitments) per row. Click drills to the meeting record. Empty state surfaces + Log Meeting CTA. Closes the loop log-meeting -> opp drill.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
