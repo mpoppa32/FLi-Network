@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.87';
-  window.Corsair.buildBlurb  = 'Atlas Day 3a: Intel Score panel on every opp drill. Big score number + 4 factor bars (Stage / Win prob / Touch recency / Stage freshness) + top operator-grade suggestion. Replaces the buried-in-a-chip-modal scoring surface with a first-position panel below the pipeline bar.';
+  window.Corsair.buildTag    = 'P13.88';
+  window.Corsair.buildBlurb  = 'Atlas Day 3b: People-at-Org panel on every opp drill. Shows contacts at the opp customer org who have NOT yet appeared in tagged meetings — surfaces dormant relationships Bryce can activate. Uses CorsairIndex.peopleByOrg with cascade match (customerOrgId -> customerOrg -> opp.name). Empty state teaches operator how to add the first contact.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

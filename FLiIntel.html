@@ -8526,7 +8526,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.87</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.88</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -19657,6 +19657,84 @@ function renderOppDetail(opp){
       }
     } catch(e){ console.warn('[P13.87 intel score panel] failed:', e); }
   }
+
+  // ── P13.88 (Day 3b) — People-at-Org panel ──
+  // Shows the operator's known contacts at the opp's customer org who have NOT
+  // shown up in meetings tagged to this opp. Surfaces relationships Bryce
+  // has at the account that he hasn't yet activated for this specific pursuit.
+  // Empty state teaches "you have no contacts at this account — add one."
+  try {
+    var _idx = window.CorsairIndex || {};
+    // Determine the org name for this opp (cascade: customerOrgId -> customerOrg -> opp.name)
+    var _oppOrgName = null;
+    if (opp.customerOrgId) {
+      var _orgNode = nodes.find(function(n){ return String(n.id) === String(opp.customerOrgId) && n.type === 'company'; });
+      if (_orgNode) _oppOrgName = _orgNode.name;
+    }
+    if (!_oppOrgName && opp.customerOrg) _oppOrgName = opp.customerOrg;
+    if (!_oppOrgName && opp.name) {
+      // Fall back: opp name often == org name for BD-target generated opps
+      var _matchNode = nodes.find(function(n){ return n.type === 'company' && n.name && (n.name === opp.name || (typeof nameSimilarity === 'function' && nameSimilarity(n.name, opp.name) >= 0.85)); });
+      if (_matchNode) _oppOrgName = _matchNode.name;
+    }
+    if (_oppOrgName) {
+      var _orgKey = String(_oppOrgName).toLowerCase().trim();
+      var _orgPeople = (_idx.peopleByOrg && _idx.peopleByOrg.get) ? (_idx.peopleByOrg.get(_orgKey) || []) : [];
+      // Subtract people already in "Key Contacts on This Pursuit" (those in tagged meetings)
+      var _existingNames = new Set(Object.keys(allPeople).map(function(n){return n.toLowerCase();}));
+      var _newAtOrg = _orgPeople.filter(function(p){
+        return p && p.name && !_existingNames.has(p.name.toLowerCase());
+      });
+      var _safeOrgName = String(_oppOrgName).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+      h += '<div class="cop-detail-people-at-org" style="margin:14px 18px 0;padding:14px 16px;background:linear-gradient(160deg,rgba(13,20,38,.92),rgba(7,13,24,.96));border:1px solid var(--rule-2);border-left:3px solid #5fb3b8;border-radius:3px">';
+      h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:' + (_newAtOrg.length ? '12px' : '8px') + ';flex-wrap:wrap">';
+      h +=   '<div style="display:flex;align-items:baseline;gap:10px">';
+      h +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase">People at ' + _safeOrgName + '</div>';
+      h +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.08em">' + _newAtOrg.length + ' in your network' + (_orgPeople.length > _newAtOrg.length ? ' · ' + (_orgPeople.length - _newAtOrg.length) + ' already on this pursuit' : '') + '</div>';
+      h +=   '</div>';
+      h +=   '<button onclick="event.stopPropagation();if(window.openAddModal)window.openAddModal(\'person\')" style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:var(--gold);background:transparent;border:1px solid rgba(212,130,58,.42);padding:6px 10px;border-radius:3px;cursor:pointer;text-transform:uppercase">+ Add Contact</button>';
+      h += '</div>';
+      if (_newAtOrg.length) {
+        h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">';
+        _newAtOrg.slice(0, 8).forEach(function(p){
+          // Resolve tier (T1/T2/T3) and last touch from meetings
+          var _tier = p.priority || p.tier || null;
+          var _tierBadge = _tier ? '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + (_tier === 1 ? '#f0a560' : _tier === 2 ? '#5fb3b8' : '#7d7669') + ';border:1px solid currentColor;padding:1px 4px;border-radius:2px;flex-shrink:0">T' + _tier + '</span>' : '';
+          // Last touch — any meeting they appeared in
+          var _lastTs = 0;
+          (window.meetings || []).forEach(function(m){
+            if (!m || !m.meta || !m.meta.date) return;
+            var hadThem = (m.intel && (m.intel.keyPeople || []).some(function(kp){
+              return kp.name && typeof nameSimilarity === 'function' && nameSimilarity(kp.name, p.name) >= 0.75;
+            }));
+            if (hadThem) {
+              var t = new Date(m.meta.date).getTime();
+              if (t > _lastTs) _lastTs = t;
+            }
+          });
+          var _lastTouchTxt = _lastTs ? Math.floor((Date.now() - _lastTs) / 86400000) + 'd ago' : 'no touches';
+          var _lastCol = !_lastTs ? '#7d7669' : ((Date.now() - _lastTs) / 86400000 > 60 ? '#ff6464' : (Date.now() - _lastTs) / 86400000 > 30 ? '#f0a560' : '#6ed094');
+          var _safeName = String(p.name).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+          var _safeRole = String(p.role || '').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+          var _safeId = String(p.id).replace(/'/g, "\\'");
+          h += '<div style="padding:9px 11px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-radius:2px;cursor:pointer;transition:border-color 140ms" onmouseover="this.style.borderColor=\'#5fb3b8\'" onmouseout="this.style.borderColor=\'var(--rule)\'" onclick="event.stopPropagation();if(window.switchView)window.switchView(\'network\');setTimeout(function(){if(window.openNetPanel&&window._lookupNode)window.openNetPanel(window._lookupNode(\'' + _safeId + '\'));},250)">';
+          h +=   '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:3px">';
+          h +=     '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;font-weight:600;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _safeName + '</div>';
+          h +=     _tierBadge;
+          h +=   '</div>';
+          if (_safeRole) {
+            h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:11.5px;color:var(--paper);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:4px">' + _safeRole + '</div>';
+          }
+          h += '<div style="font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.06em;color:' + _lastCol + '">Last touch · ' + _lastTouchTxt + '</div>';
+          h += '</div>';
+        });
+        h += '</div>';
+      } else {
+        h += '<div style="padding:10px 12px;background:rgba(7,13,24,.45);border-left:2px solid var(--paper-2);border-radius:2px;font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);line-height:1.4">No contacts in your network at <b>' + _safeOrgName + '</b> yet. Click <b>+ Add Contact</b> above to log your first one, or log a meeting where someone from ' + _safeOrgName + ' attended and Corsair will auto-create them.</div>';
+      }
+      h += '</div>';
+    }
+  } catch(e){ console.warn('[P13.88 people-at-org] failed:', e); }
 
   // ── Contact health strip — operator-grade person cards in an ink grid ──
   var stripPeople = Object.values(allPeople).slice(0, 6);
@@ -59446,6 +59524,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.87"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.88"></script>
 </body>
 </html>
