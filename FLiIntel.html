@@ -8372,7 +8372,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.68</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.69</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12222,6 +12222,9 @@ function connectWorkspace(){
     // top-level `var` does not attach to window, so this explicit assignment
     // is required every time nodes is reassigned.
     window.nodes=nodes;
+    // P13.69 — refresh top-nav contacts ticker. Same race as the opps
+    // listener — was only updated when meetings re-rendered.
+    if(typeof _updateTicker==='function')try{_updateTicker();}catch(e){}
     // P13.59 — one-time-per-workspace heal of legacy FLi/FLI branding in
     // user-facing fields (role / name / org / govOrg / notes / accountNotes /
     // nextAccountAction). Atlas predates the Corsair rebrand; any user-typed
@@ -12329,6 +12332,11 @@ function connectWorkspace(){
     // Mirror to window so DiscoveryEngine3D (3.11+) can read opportunities.
     window.opportunities = opportunities;
     if(window._invalidateEntityGraph)window._invalidateEntityGraph();
+    // P13.69 — refresh top-nav ticker count. Previously only the meetings
+    // listener called _updateTicker, so "0 active opps" stuck after first
+    // paint until a meeting fired the rebuild. Atlas with 122 opps but a
+    // stale ticker said "0 active opps" all day.
+    if(typeof _updateTicker==='function')try{_updateTicker();}catch(e){}
     renderOppSidebar();
     updateOppSelectors();
     // P13.31 — re-render Table view + Pipeline Forecast + Win/Loss dashboard

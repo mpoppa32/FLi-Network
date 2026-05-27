@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.68';
-  window.Corsair.buildBlurb  = 'Visual polish round 2 — push the rating from 8.4 toward 9+. (5) Table column widths: Weighted 90→110px and Next 80→96px so the uppercase + letter-spacing-14% headers stop ellipsizing to "WEIGHTE…" and "NE…". (6) Forecast top tiles now split scored vs unscored opps. Previously Atlas showed "122 OPEN OPPS / $0 PIPELINE / $0 WEIGHTED" — looked broken because the 122 stale-Qualify imports had no value/pwin set. Now each tile gets a subtext: "OPEN OPPS / 122 · 0 scored · 122 need setup" / "PIPELINE $ / $0 · add value + pwin to score" / "AVG DEAL / $0 · across 0 scored". The empty-state reads as actionable instead of broken. Avg-deal denominator also switched from total to scored — otherwise it always returns $0 for unscored workspaces. (7) Brief dark/light seam softened: rhythm-panel bottom margin 12→24px + extended drop-shadow (0 28px 40px -20px) so the abrupt cut between the dark watch row and the light operator brief feels intentional, not jarring.';
+  window.Corsair.buildTag    = 'P13.69';
+  window.Corsair.buildBlurb  = 'Top-nav ticker counter race fix. Pre-existing bug surfaced during the visual rating pass: nav showed "0 active opps" on Atlas despite 122 opportunities in the workspace (verified via Pipeline view + window.opportunities.length). Root cause: _updateTicker() was only being called from the meetings Firebase listener — neither the opportunities listener nor the nodes listener triggered a ticker refresh. So whichever listener fired last determined the counts, and on fresh page loads the meetings listener typically fires before opps/nodes are populated, locking the ticker at 0/initial values. Added _updateTicker() calls to both the opportunities listener (line 12330) and the nodes listener (line 12224). Now all three counts (meetings / active opps / contacts) stay in sync with the underlying Firebase data on every change.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
