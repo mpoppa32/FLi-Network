@@ -8506,7 +8506,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.84</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.85</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17414,20 +17414,21 @@ window._renderCopForecast = function(){
           '<button onclick="event.stopPropagation();window._toggleCopForecast()" style="background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer">' + (collapsed ? 'EXPAND ↓' : 'COLLAPSE ↑') + '</button>' +
         '</div>' +
       '</div>' +
+      // P13.84 — guidance banner OUTSIDE the collapsed ternary so it always
+      // shows when relevant. Forecast is collapsed by default; previously the
+      // banner only fired after the user explicitly expanded — defeating the
+      // point of guidance.
+      (totalCount > 0 && scoredCount === 0 ?
+        '<div style="margin-top:12px;padding:12px 14px;background:linear-gradient(180deg,rgba(212,130,58,.10),rgba(212,130,58,.04));border:1px solid rgba(212,130,58,.35);border-left:3px solid var(--gold);border-radius:3px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:240px">' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Next step: score your pipeline</div>' +
+            '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4">You have <b>' + totalCount + '</b> open ' + (totalCount === 1 ? 'pursuit' : 'pursuits') + ' but none have a value or pwin yet. Click <b>⊞ Bulk Score Now</b> to paste a CSV (name,value,pwin) and populate the forecast in seconds.</div>' +
+          '</div>' +
+          '<button onclick="window._openBulkScoreModal&&window._openBulkScoreModal()" style="background:var(--gold);border:1px solid var(--gold);color:#0b0d11;padding:9px 16px;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;flex-shrink:0">⊞ Bulk Score Now</button>' +
+        '</div>'
+      : '') +
       // Body (hidden when collapsed)
       (collapsed ? '' :
-        // P13.84 — guidance banner when the pipeline has opps but none scored.
-        // Tells the operator the next step (BULK SCORE) instead of leaving them
-        // staring at a $— forecast wondering if the system is broken.
-        (totalCount > 0 && scoredCount === 0 ?
-          '<div style="margin-bottom:14px;padding:12px 14px;background:linear-gradient(180deg,rgba(212,130,58,.10),rgba(212,130,58,.04));border:1px solid rgba(212,130,58,.35);border-left:3px solid var(--gold);border-radius:3px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
-            '<div style="flex:1;min-width:240px">' +
-              '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Next step: score your pipeline</div>' +
-              '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4">You have <b>' + totalCount + '</b> open ' + (totalCount === 1 ? 'pursuit' : 'pursuits') + ' but none have a value or pwin yet. Click <b>⊞ BULK SCORE</b> above to paste a quick CSV (name,value,pwin) and populate the forecast in seconds.</div>' +
-            '</div>' +
-            '<button onclick="window._openBulkScoreModal&&window._openBulkScoreModal()" style="background:var(--gold);border:1px solid var(--gold);color:#0b0d11;padding:9px 16px;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;flex-shrink:0">⊞ Bulk Score Now</button>' +
-          '</div>'
-        : '') +
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px">' +
           tile('OPEN OPPS', String(totalCount), unscoredCount ? scoredCount + ' scored · ' + unscoredCount + ' need setup' : null) +
           tile('PIPELINE $', _fmt$(totalPipeline), unscoredCount && !totalPipeline ? 'add value + pwin to score' : null) +
@@ -59277,6 +59278,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.84"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.85"></script>
 </body>
 </html>

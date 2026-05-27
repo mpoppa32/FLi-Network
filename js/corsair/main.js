@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.84';
-  window.Corsair.buildBlurb  = 'HIGH-severity polish pass: Pipeline shows a guidance banner when opps are unscored (CTA: BULK SCORE), Rhythm filters out placeholder person nodes like "Me (note-taker)", chrome copy softened (Mission Control//Operations Theater → Choose a workspace; Account Intelligence Rollup → All Accounts; Today · Operator Brief → Today\\u2019s Brief).';
+  window.Corsair.buildTag    = 'P13.85';
+  window.Corsair.buildBlurb  = 'P13.84 banner fix: move the unscored-pipeline guidance OUT of the collapsed-forecast ternary so it always shows when relevant (Forecast is collapsed by default, so the banner was invisible on first land — defeating the point of guidance).';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
