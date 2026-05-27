@@ -7501,6 +7501,21 @@ input[type="url"], textarea, select {
 }
 .rhythm-panel.visible { display: block; }
 .rhythm-panel.collapsed .rhythm-body { display: none; }
+/* P13.77 — when embedded inside #today-view, the panel should fill the host
+   instead of capping at 42vh. Margin is also dropped since today-view has
+   its own padding. */
+.rhythm-panel.today-embedded {
+  margin: 0;
+  max-height: none;
+  border-left: none;
+  border-radius: 0;
+  border-top: none;
+  box-shadow: none;
+  background: transparent;
+}
+.rhythm-panel.today-embedded .rhythm-header {
+  background: linear-gradient(180deg, rgba(13,20,38,0.85), rgba(7,13,24,0.55));
+}
 
 .rhythm-header {
   display: flex;
@@ -8442,7 +8457,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.76</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.77</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8499,9 +8514,9 @@ input[type="url"], textarea, select {
       <span style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--gold);letter-spacing:.1em;opacity:.7;margin-left:4px">SWITCH</span>
     </div>
     <div class="mode-rail" role="tablist" aria-label="Corsair operating modes">
-      <button class="mode-btn active" id="mode-brief" onclick="switchView('intel')" role="tab" aria-selected="true" title="Daily Brief — today's actions, decay alerts, stale pursuits, upcoming">
+      <button class="mode-btn active" id="mode-brief" onclick="switchView('today')" role="tab" aria-selected="true" title="Today — primary actions + the morning watch queue. Your home base.">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="5" y1="5" x2="7" y2="7"/><line x1="17" y1="17" x2="19" y2="19"/><line x1="5" y1="19" x2="7" y2="17"/><line x1="17" y1="7" x2="19" y2="5"/></svg>
-        <span class="mode-lbl">Brief</span>
+        <span class="mode-lbl">Today</span>
       </button>
       <button class="mode-btn" id="mode-accounts" onclick="switchView('accounts')" role="tab" aria-selected="false" title="Accounts — org rollup · Owner / Status / POC / Comms / Next Action per company">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="13" rx="1"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><line x1="4" y1="12" x2="20" y2="12"/></svg>
@@ -8524,17 +8539,36 @@ input[type="url"], textarea, select {
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
           <span class="mode-lbl">More</span>
         </button>
-        <div id="tools-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:260px;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.98));border:1px solid rgba(26,34,54,.6);border-radius:3px;padding:6px;z-index:120;box-shadow:0 16px 48px rgba(0,0,0,.6)">
-          <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Views</div>
+        <div id="tools-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:300px;max-height:80vh;overflow-y:auto;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.98));border:1px solid rgba(26,34,54,.6);border-radius:3px;padding:6px;z-index:120;box-shadow:0 16px 48px rgba(0,0,0,.6)">
+          <!-- P13.77 — restructured from 5 loose groups to 4 cleanly-named buckets: NETWORK (who) / CAPTURE (act) / INSIGHTS (see) / DATA & HELP (manage). Items are unchanged. -->
+          <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Network</div>
+          <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">Who you know · where they sit</div>
           <button class="tools-menu-item" data-view="graph" onclick="window._toolsMenuSelect('graph')"><span style="color:#5fb3b8;width:18px;display:inline-block">◯</span><span>Graph</span><span class="tm-meta">entity network · relationships</span></button>
           <button class="tools-menu-item" data-view="posture" onclick="window._toolsMenuSelect('posture')"><span style="color:#a78bfa;width:18px;display:inline-block">◐</span><span>Posture</span><span class="tm-meta">political terrain · ledger</span></button>
-          <button class="tools-menu-item" data-view="rhythm" onclick="window._toolsMenuSelect('rhythm')"><span style="color:#fb923c;width:18px;display:inline-block">∿</span><span>Rhythm</span><span class="tm-meta">agentic loop · next moves</span></button>
-          <button class="tools-menu-item" data-view="askfli" onclick="window._toolsMenuSelect('askfli')"><span style="color:var(--gold);width:18px;display:inline-block">⚡</span><span>Ask Corsair</span><span class="tm-meta">natural-language query</span></button>
-          <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
-          <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Workflows</div>
+          <button class="tools-menu-item" data-view="askfli" onclick="window._toolsMenuSelect('askfli')"><span style="color:var(--gold);width:18px;display:inline-block">⚡</span><span>Ask Corsair</span><span class="tm-meta">natural-language query across everything</span></button>
+          <div style="height:1px;background:rgba(26,34,54,.5);margin:7px 4px"></div>
+          <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Capture</div>
+          <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">Act on opportunities · respond · team up</div>
           <button class="tools-menu-item" data-view="intel" onclick="window._toolsMenuSelect('intel')"><span style="color:var(--gold);width:18px;display:inline-block">✎</span><span>Log Meeting</span><span class="tm-meta">capture &amp; transcribe</span></button>
-          <button class="tools-menu-item" data-view="timeline" onclick="window._toolsMenuSelect('timeline')"><span style="color:#38bdf8;width:18px;display:inline-block">⏱</span><span>Timeline</span><span class="tm-meta">commitments over time</span></button>
           <button class="tools-menu-item" data-view="capture" onclick="window._toolsMenuSelect('capture')"><span style="color:#f59e0b;width:18px;display:inline-block;position:relative">⚡<span id="tools-capture-badge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;background:var(--red);color:#fff;border-radius:7px;font-size:11px;font-weight:700;line-height:14px;text-align:center;padding:0 3px"></span></span><span>Auto-Capture</span><span class="tm-meta">pending review</span></button>
+          <button class="tools-menu-item" data-view="pulse" onclick="window._toolsMenuSelect('pulse')"><span style="color:var(--green);width:18px;display:inline-block">📡</span><span>Intel Center</span><span class="tm-meta">live web intel · daily signals</span></button>
+          <button class="tools-menu-item" data-view="sbir" onclick="window._toolsMenuSelect('sbir')"><span style="color:#a78bfa;width:18px;display:inline-block">🚀</span><span>SBIR Tracker</span><span class="tm-meta">SAM.gov solicitations</span></button>
+          <button class="tools-menu-item" data-view="rfi" onclick="window._toolsMenuSelect('rfi')"><span style="color:#34d399;width:18px;display:inline-block">📝</span><span>RFI Engine</span><span class="tm-meta">auto-response drafts</span></button>
+          <button class="tools-menu-item" data-view="library" onclick="window._toolsMenuSelect('library')"><span style="color:#d4823a;width:18px;display:inline-block">📚</span><span>Proposal Library</span><span class="tm-meta">reusable sections</span></button>
+          <button class="tools-menu-item" data-view="comp" onclick="window._toolsMenuSelect('comp')"><span style="color:#ef4444;width:18px;display:inline-block">⚔</span><span>Competitive</span><span class="tm-meta">competitor profiles</span></button>
+          <button class="tools-menu-item" data-view="teaming" onclick="window._toolsMenuSelect('teaming')"><span style="color:#22c55e;width:18px;display:inline-block">🤝</span><span>Teaming</span><span class="tm-meta">partner finder</span></button>
+          <div style="height:1px;background:rgba(26,34,54,.5);margin:7px 4px"></div>
+          <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Insights</div>
+          <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">See patterns · measure progress</div>
+          <button class="tools-menu-item" data-view="timeline" onclick="window._toolsMenuSelect('timeline')"><span style="color:#38bdf8;width:18px;display:inline-block">⏱</span><span>Timeline</span><span class="tm-meta">commitments over time</span></button>
+          <button class="tools-menu-item" data-view="rhythm" onclick="window._toolsMenuSelect('rhythm')"><span style="color:#fb923c;width:18px;display:inline-block">∿</span><span>Rhythm (full)</span><span class="tm-meta">agentic loop · expanded view</span></button>
+          <button class="tools-menu-item" data-view="bdperf" onclick="window._toolsMenuSelect('bdperf')"><span style="color:#fb923c;width:18px;display:inline-block">📊</span><span>BD Stats</span><span class="tm-meta">pipeline analytics</span></button>
+          <button class="tools-menu-item" data-view="winloss" onclick="window._toolsMenuSelect('winloss')"><span style="color:var(--gold);width:18px;display:inline-block">🏆</span><span>Win/Loss Analysis</span><span class="tm-meta">closed deals · model calibration</span></button>
+          <button class="tools-menu-item" data-view="trends" onclick="window._toolsMenuSelect('trends')"><span style="color:#5fb3b8;width:18px;display:inline-block">📈</span><span>Trends &amp; Leaderboard</span><span class="tm-meta">win-rate · capture-lead · velocity</span></button>
+          <button class="tools-menu-item" data-view="team" onclick="window._toolsMenuSelect('team')"><span style="color:#38bdf8;width:18px;display:inline-block">👥</span><span>Team</span><span class="tm-meta">workspace activity</span></button>
+          <div style="height:1px;background:rgba(26,34,54,.5);margin:7px 4px"></div>
+          <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Data &amp; Help</div>
+          <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">Import · export · learn</div>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();openModal('import-data-modal');setTimeout(function(){if(window._impSetType)window._impSetType('person')},60)"><span style="color:var(--gold);width:18px;display:inline-block">⬆</span><span>Import Data</span><span class="tm-meta">CSV / paste bulk-add</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('json')"><span style="color:#22c55e;width:18px;display:inline-block">⬇</span><span>Backup JSON</span><span class="tm-meta">full workspace, lossless</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('csv')"><span style="color:#5b8fc4;width:18px;display:inline-block">⬇</span><span>Export CSVs</span><span class="tm-meta">4 files · meetings/contacts/opps/commits</span></button>
@@ -8542,22 +8576,6 @@ input[type="url"], textarea, select {
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._showMissionBriefing&&window._showMissionBriefing()"><span style="color:var(--gold);width:18px;display:inline-block">⬡</span><span>Mission Briefing</span><span class="tm-meta">4-slide platform overview</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._tourStart&&window._tourStart()"><span style="color:#a78bfa;width:18px;display:inline-block">★</span><span>Replay welcome tour</span><span class="tm-meta">5-slide intro modal</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.openTourSelector&&window.openTourSelector()"><span style="color:#fb923c;width:18px;display:inline-block">⚐</span><span>Guided walkthroughs</span><span class="tm-meta">callout-driven tours of each surface</span></button>
-          <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
-          <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Analytics</div>
-          <button class="tools-menu-item" data-view="pulse" onclick="window._toolsMenuSelect('pulse')"><span style="color:var(--green);width:18px;display:inline-block">📡</span><span>Intel Center</span><span class="tm-meta">live web intel</span></button>
-          <button class="tools-menu-item" data-view="bdperf" onclick="window._toolsMenuSelect('bdperf')"><span style="color:#fb923c;width:18px;display:inline-block">📊</span><span>BD Stats</span><span class="tm-meta">pipeline analytics</span></button>
-          <button class="tools-menu-item" data-view="winloss" onclick="window._toolsMenuSelect('winloss')"><span style="color:var(--gold);width:18px;display:inline-block">🏆</span><span>Win/Loss Analysis</span><span class="tm-meta">closed deals · model calibration</span></button>
-          <button class="tools-menu-item" data-view="trends" onclick="window._toolsMenuSelect('trends')"><span style="color:#5fb3b8;width:18px;display:inline-block">📈</span><span>Trends &amp; Leaderboard</span><span class="tm-meta">win-rate trend · capture-lead leaderboard · stage velocity</span></button>
-          <button class="tools-menu-item" data-view="team" onclick="window._toolsMenuSelect('team')"><span style="color:#38bdf8;width:18px;display:inline-block">👥</span><span>Team</span><span class="tm-meta">workspace activity</span></button>
-          <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
-          <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Procurement</div>
-          <button class="tools-menu-item" data-view="sbir" onclick="window._toolsMenuSelect('sbir')"><span style="color:#a78bfa;width:18px;display:inline-block">🚀</span><span>SBIR Tracker</span><span class="tm-meta">SAM.gov solicitations</span></button>
-          <button class="tools-menu-item" data-view="rfi" onclick="window._toolsMenuSelect('rfi')"><span style="color:#34d399;width:18px;display:inline-block">📝</span><span>RFI Engine</span><span class="tm-meta">auto-response</span></button>
-          <button class="tools-menu-item" data-view="library" onclick="window._toolsMenuSelect('library')"><span style="color:#d4823a;width:18px;display:inline-block">📚</span><span>Proposal Library</span><span class="tm-meta">reusable sections</span></button>
-          <div style="height:1px;background:rgba(26,34,54,.5);margin:5px 4px"></div>
-          <div style="padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--t3);text-transform:uppercase">Intelligence</div>
-          <button class="tools-menu-item" data-view="comp" onclick="window._toolsMenuSelect('comp')"><span style="color:#ef4444;width:18px;display:inline-block">⚔</span><span>Competitive</span><span class="tm-meta">competitor profiles</span></button>
-          <button class="tools-menu-item" data-view="teaming" onclick="window._toolsMenuSelect('teaming')"><span style="color:#22c55e;width:18px;display:inline-block">🤝</span><span>Teaming</span><span class="tm-meta">partner finder</span></button>
         </div>
       </div>
     </div>
@@ -8662,6 +8680,51 @@ input[type="url"], textarea, select {
 
   <!-- Daily Strip retired — functionality merged into Morning Briefing -->
   <div id="daily-strip" style="display:none"></div>
+
+  <!-- P13.77 — TODAY view: dedicated landing surface. Sales-loop subheader,
+       3 primary actions, watch cards. The sibling #corsair-rhythm panel is
+       hidden when this view is active and its content is rendered inline
+       below. On exit, the sibling panel restores. -->
+  <div class="today-view" id="today-view" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg)">
+    <div style="padding:22px 32px 14px;border-bottom:1px solid var(--rule);background:linear-gradient(180deg,rgba(212,130,58,.04),transparent)">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;flex-wrap:wrap">
+        <div>
+          <div style="font-family:Anton,sans-serif;font-size:28px;letter-spacing:.08em;text-transform:uppercase;color:var(--bone);line-height:1">Today</div>
+          <div id="today-loop-stepper" style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.14em;color:var(--paper);text-transform:uppercase">
+            <span style="color:var(--gold);font-weight:700">1. Today</span>
+            <span style="color:var(--paper-2);margin:0 6px">&rsaquo;</span>
+            <span style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(181,173,159,.3);text-underline-offset:3px" onclick="switchView('cop')">2. Pipeline</span>
+            <span style="color:var(--paper-2);margin:0 6px">&rsaquo;</span>
+            <span style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(181,173,159,.3);text-underline-offset:3px" onclick="switchView('network')">3. Network</span>
+            <span style="color:var(--paper-2);margin:0 6px">&rsaquo;</span>
+            <span style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(181,173,159,.3);text-underline-offset:3px" onclick="switchView('intel')">4. Activity</span>
+          </div>
+        </div>
+        <div id="today-meta" style="font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.10em;color:var(--paper-2);text-transform:uppercase"></div>
+      </div>
+      <div style="margin-top:18px;display:flex;gap:12px;flex-wrap:wrap">
+        <button onclick="switchView('intel');setTimeout(function(){if(typeof switchIntelTab==='function')switchIntelTab('log');var t=document.getElementById('m-title');if(t)t.focus();},220)" style="display:flex;align-items:center;gap:9px;padding:13px 22px;background:linear-gradient(180deg,rgba(212,130,58,.22),rgba(212,130,58,.10));border:1px solid var(--gold);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;box-shadow:0 0 20px rgba(212,130,58,.16),inset 0 1px 0 rgba(212,130,58,.24);transition:all .15s">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>Log Meeting</span>
+        </button>
+        <button onclick="if(window.openAddModal)window.openAddModal('person')" style="display:flex;align-items:center;gap:8px;padding:13px 22px;background:transparent;border:1px solid rgba(212,130,58,.42);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s" onmouseover="this.style.background='rgba(212,130,58,.10)';this.style.borderColor='var(--gold)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(212,130,58,.42)'">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New Contact</span>
+        </button>
+        <button onclick="switchView('opps');setTimeout(function(){if(window.openNewOppModal)window.openNewOppModal();},120)" style="display:flex;align-items:center;gap:8px;padding:13px 22px;background:transparent;border:1px solid rgba(212,130,58,.42);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s" onmouseover="this.style.background='rgba(212,130,58,.10)';this.style.borderColor='var(--gold)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(212,130,58,.42)'">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New Pursuit</span>
+        </button>
+        <button onclick="if(window.openAddCommitmentModal)window.openAddCommitmentModal()" style="display:flex;align-items:center;gap:8px;padding:13px 22px;background:transparent;border:1px solid rgba(212,130,58,.42);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s" onmouseover="this.style.background='rgba(212,130,58,.10)';this.style.borderColor='var(--gold)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(212,130,58,.42)'">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New Follow-up</span>
+        </button>
+      </div>
+    </div>
+    <div id="today-rhythm-host" style="flex:1;overflow:auto;padding:0;background:var(--bg)">
+      <!-- The sibling #corsair-rhythm panel is moved here by renderTodayView() and back on exit -->
+    </div>
+  </div>
 
   <!-- INTEL VIEW -->
   <div class="intel-view" id="intel-view" style="display:none">
@@ -12146,12 +12209,12 @@ function _relocateViewsIntoMainApp(){
   // very same new-view-checklist bug that bit P12.8 (Accounts). They
   // rendered far below the viewport and switching to them showed a blank
   // screen. Adding them to the relocator now.
-  ['team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view','winloss-view','trends-view','table-view','pulse-view'].forEach(function(id){
+  ['today-view','team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view','winloss-view','trends-view','table-view','pulse-view'].forEach(function(id){
     var el = document.getElementById(id);
     if(el && el.parentElement !== mainApp){ mainApp.appendChild(el); }
   });
 }
-async function selectWorkspace(wsId){try{currentWsId=wsId;_relocateViewsIntoMainApp();var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;window.currentWs=ws;window.currentWsId=wsId;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);if(window._tourCheckAndAutoStart)setTimeout(window._tourCheckAndAutoStart,2200);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView!=='function')return;var savedView=null;try{savedView=localStorage.getItem('corsair-default-view');}catch(e){}var validLanding={network:1,graph:1,table:1,inspector:1,opps:1,cop:1,rhythm:1,posture:1};if(savedView&&validLanding[savedView]){switchView(savedView);}else{switchView('intel');if(typeof switchIntelTab==='function')switchIntelTab('log');}},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
+async function selectWorkspace(wsId){try{currentWsId=wsId;_relocateViewsIntoMainApp();var ws=userWorkspaces.find(function(w){return w.id===wsId;})||{};currentWs=ws;window.currentWs=ws;window.currentWsId=wsId;document.body.classList.add('app-active');var as=document.getElementById('auth-screen');if(as)as.style.display='none';var wss=document.getElementById('ws-screen');if(wss)wss.style.display='none';var ma=document.getElementById('main-app');if(ma)ma.style.display='flex';var wnd=document.getElementById('ws-name-display');if(wnd)wnd.textContent=ws.name||'Workspace';var wcd=document.getElementById('ws-color-dot');if(wcd)wcd.style.background=ws.color||'var(--gold)';var uci=document.getElementById('user-chip-img');if(currentUser&&currentUser.photoURL&&uci)uci.src=currentUser.photoURL;connectWorkspace();if(!window._listenersWired){wireListeners();window._listenersWired=true;}setTimeout(window._checkOnboarding,1500);if(window._tourCheckAndAutoStart)setTimeout(window._tourCheckAndAutoStart,2200);initNetwork();initCalendar();setTimeout(function(){if(typeof switchView!=='function')return;var savedView=null;try{savedView=localStorage.getItem('corsair-default-view');}catch(e){}/* P13.77 — migrate legacy 'brief' (mapped to intel) to 'today'. */if(savedView==='brief'||savedView==='intel'){savedView='today';try{localStorage.setItem('corsair-default-view','today');}catch(e){}}var validLanding={today:1,network:1,graph:1,table:1,inspector:1,opps:1,cop:1,rhythm:1,posture:1,accounts:1};if(savedView&&validLanding[savedView]){switchView(savedView);}else{switchView('today');}},80);var md=document.getElementById('m-date');if(md)md.value=new Date().toISOString().split('T')[0];initMobile();_checkNewMemberBrief(wsId);setTimeout(_initAlerts,5000);setTimeout(function(){if(typeof _mondayLoadKey==='function')_mondayLoadKey();},6000);}catch(e){console.error('selectWorkspace error:',e);toast('Failed to open workspace: '+(e.message||'Try again'));}}
 
 
 // ── NEW MEMBER BRIEF PROMPT ──────────────────────────────
@@ -16749,13 +16812,14 @@ async function wireListeners(){
 }
 
 // ── VIEW REGISTRY — all switchable view container IDs (suffix '-view') ──
-var _CORSAIR_VIEWS=['intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts','winloss','trends'];
+var _CORSAIR_VIEWS=['today','intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts','winloss','trends'];
 
 // Map mode aliases → underlying view IDs
-var _CORSAIR_MODE_ALIAS={'graph':'network','cop':'opps'};
+var _CORSAIR_MODE_ALIAS={'graph':'network','cop':'opps','brief':'today'};
 
 // Map view ID → mode-rail button key (returns null if view is not a sacred mode)
 function _modeKeyForView(v){
+  if(v==='today')return 'brief';
   if(v==='intel')return 'brief';
   if(v==='accounts')return 'accounts';
   if(v==='opps')return 'cop';
@@ -16782,8 +16846,15 @@ function _showOnlyView(v){
 }
 
 function switchView(v){
-  // Normalize sacred-mode aliases (graph→network, cop→opps)
+  // Normalize sacred-mode aliases (graph→network, cop→opps, brief→today)
   if(_CORSAIR_MODE_ALIAS[v])v=_CORSAIR_MODE_ALIAS[v];
+
+  // P13.77 — restore embedded rhythm panel back to its sibling slot
+  // BEFORE we switch views (so other views don't end up with the rhythm
+  // panel still parented inside today-view).
+  if (activeView === 'today' && v !== 'today' && typeof window._exitTodayView === 'function') {
+    try { window._exitTodayView(); } catch(e){}
+  }
 
   // 7.1: render Daily Brief Card when entering Intel view
   if(v==='intel' && typeof renderDailyBrief==='function'){ try { renderDailyBrief(); } catch(e){} }
@@ -16823,6 +16894,7 @@ function switchView(v){
       setTimeout(function(){ try { if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.fitToCluster === 'function') window.DiscoveryEngine3D.fitToCluster(); } catch(e){} }, 1800);
     } }catch(e){}
   }
+  if(v==='today'&&typeof window.renderTodayView==='function')window.renderTodayView();
   if(v==='intel'&&activeIntelTab==='board')renderBoard();
   if(v==='timeline')renderTimeline();
   if(v==='opps')renderOppSidebar();
@@ -28529,6 +28601,49 @@ window._corsairToggleRhythm = function(){
   if (panel) panel.classList.toggle('collapsed', _corsairRhythmCollapsed);
   var lbl = document.getElementById('rhythm-toggle-lbl');
   if (lbl) lbl.textContent = _corsairRhythmCollapsed ? 'Expand' : 'Collapse';
+};
+
+// P13.77 — TODAY view: relocate the existing #corsair-rhythm panel INTO
+// the today-view host. Reuses the same element (and all its event wiring,
+// snooze handlers, Slack buttons) — no duplicate render. On exit, the
+// panel is moved back to its sibling slot in #main-app.
+window.renderTodayView = function(){
+  var host = document.getElementById('today-rhythm-host');
+  var panel = document.getElementById('corsair-rhythm');
+  if (host && panel && panel.parentElement !== host) {
+    host.appendChild(panel);
+    panel.classList.add('today-embedded');
+    // Force-expanded when embedded — collapsing makes no sense here
+    panel.classList.remove('collapsed');
+    _corsairRhythmCollapsed = false;
+    var lbl = document.getElementById('rhythm-toggle-lbl');
+    if (lbl) lbl.textContent = 'Collapse';
+  }
+  // Refresh meta line
+  var meta = document.getElementById('today-meta');
+  if (meta) {
+    meta.textContent = new Date().toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  }
+  // Refresh rhythm content (in case data changed while user was on another view)
+  if (typeof _corsairRenderRhythm === 'function') {
+    try { _corsairRenderRhythm(); } catch(e){}
+  }
+};
+
+window._exitTodayView = function(){
+  var panel = document.getElementById('corsair-rhythm');
+  var mainApp = document.getElementById('main-app');
+  if (!panel || !mainApp) return;
+  // Restore panel to its original sibling slot in #main-app, right after #intel-ticker
+  var ticker = document.getElementById('intel-ticker');
+  if (panel.parentElement !== mainApp) {
+    if (ticker && ticker.parentElement === mainApp && ticker.nextSibling) {
+      mainApp.insertBefore(panel, ticker.nextSibling);
+    } else {
+      mainApp.appendChild(panel);
+    }
+    panel.classList.remove('today-embedded');
+  }
 };
 
 // CRM P0.3 — Daily Brief Card collapse + persist
@@ -50172,9 +50287,9 @@ window._TOUR_CHAPTERS = [
         target: '#mode-brief',
         position: 'bottom',
         eyebrow: 'Step 1',
-        title: 'Start at the Brief.',
-        body: 'This is where Corsair begins every day. The Brief surface hosts the Log — where you process meeting notes — and surfaces what\'s urgent across decay, stale, commitments, and aged-in-stage.',
-        hint: 'Click Brief to continue.',
+        title: 'Start at Today.',
+        body: 'This is your home base. Primary actions on top — Log Meeting, New Contact, New Pursuit. Below them is your morning watch queue: cooling contacts, stalled pursuits, RFP deadlines, anything that needs a decision today.',
+        hint: 'Click Today to continue.',
         awaitClick: '#mode-brief'
       },
       {
@@ -50231,10 +50346,10 @@ window._TOUR_CHAPTERS = [
         position: 'bottom',
         eyebrow: 'Step 1',
         title: 'Start your morning here.',
-        body: 'The Brief surface surfaces what\'s urgent — overdue commitments, cooling T1 contacts, stalled pursuits, aged-in-stage opps. Six columns of triage. No hunting across tabs. (Note: the old Daily Strip was retired into Brief.)',
-        hint: 'The Brief tab is your morning landing.',
+        body: 'Today surfaces what is urgent — overdue commitments, cooling T1 contacts, stalled pursuits, aged-in-stage opps. Triage in under a minute with the inline DONE / DROP buttons. No hunting across tabs.',
+        hint: 'Today is your morning landing.',
         beforeShow: function() {
-          if (typeof switchView === 'function') switchView('intel');
+          if (typeof switchView === 'function') switchView('today');
         }
       },
       {
