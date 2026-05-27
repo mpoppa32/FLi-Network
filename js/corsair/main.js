@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.91';
-  window.Corsair.buildBlurb  = 'Atlas Day 4: Stage-advance doctrine modal. Both stage-change paths (drill dropdown + pipeline-bar buttons) now route through _confirmStageAdvance which pops a modal showing STAGE_SPEC gates, artifacts, and default next action for the destination stage before commit. Won/lost shows a softer close-confirmation. Gates are informational not blocking. Defense BD platforms compete on stage discipline — this is where Corsair shows it knows what "capture planning" or "pink team complete" actually mean.';
+  window.Corsair.buildTag    = 'P13.92';
+  window.Corsair.buildBlurb  = 'Atlas Day 5: Quick Start callout on TODAY for first-time users. 4-step grid (Log meeting / Add contact / Open pursuit / Clear queue) plus an Atlas-specific Bulk Score nudge when unscored opps > 5. Per-workspace dismiss via × button (localStorage). Replaces a tour-overlay approach with an inline-on-the-page guide that does not interrupt.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

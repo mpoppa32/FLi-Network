@@ -8526,7 +8526,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.91</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.92</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -29115,6 +29115,63 @@ window.renderTodayView = function(){
   if (meta) {
     meta.textContent = new Date().toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
   }
+  // P13.92 (Day 5) — Quick Start callout for first-time users on this
+  // workspace. Renders ONCE (until dismissed) above the rhythm host.
+  // Explains the 4 primary actions + points at Pipeline for the unscored
+  // pursuits workflow. Bryce sees this on his first Atlas land; one × dismiss
+  // means he never sees it again.
+  try {
+    var wsKey = 'corsair-quickstart-dismissed-' + (window.currentWsId || 'default');
+    var dismissed = false;
+    try { dismissed = localStorage.getItem(wsKey) === '1'; } catch(e){}
+    var hostP = document.getElementById('today-rhythm-host');
+    // Remove any existing callout (re-render hygiene)
+    var existing = document.getElementById('today-quickstart-callout');
+    if (existing) existing.remove();
+    if (!dismissed && hostP && hostP.parentElement) {
+      var ops = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
+      var unscored = ops.filter(function(o){
+        var v = Number(o.value || o.contractValue || 0);
+        var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+        return v <= 0 && p <= 0;
+      }).length;
+      var callout = document.createElement('div');
+      callout.id = 'today-quickstart-callout';
+      callout.style.cssText = 'margin:0 22px 14px;padding:16px 18px;background:linear-gradient(135deg,rgba(212,130,58,.10),rgba(95,179,184,.06));border:1px solid rgba(212,130,58,.32);border-left:3px solid var(--gold);border-radius:3px;position:relative';
+      var h = '';
+      h += '<button onclick="(function(){try{localStorage.setItem(\'' + wsKey + '\',\'1\');}catch(e){}var c=document.getElementById(\'today-quickstart-callout\');if(c)c.remove();})()" title="Dismiss · won\'t show again" style="position:absolute;top:8px;right:10px;background:transparent;border:0;color:var(--paper-2);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px">×</button>';
+      h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase;margin-bottom:8px">Quick Start &nbsp;·&nbsp; 5 min to wired-in</div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:' + (unscored > 0 ? '12px' : '0') + '">';
+      // 4 actions
+      var steps = [
+        { num: '1', icon: '✎', label: 'Log a meeting', detail: 'Paste any meeting notes — Corsair extracts people, stances, commitments, risks automatically.' },
+        { num: '2', icon: '＋', label: 'Add a contact', detail: 'Name, role, org, tier. The Entity Graph builds itself from here.' },
+        { num: '3', icon: '◆', label: 'Open a pursuit', detail: 'Click any opp card in Pipeline — see Intel Score, People at Org, Meeting History, Signals.' },
+        { num: '4', icon: '✓', label: 'Clear today\'s queue', detail: 'Watch cards below. Click ✓ DONE or ✗ DROP to triage in seconds.' }
+      ];
+      steps.forEach(function(s){
+        h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;background:rgba(7,13,24,.45);border:1px solid var(--rule);border-radius:2px">';
+        h +=   '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;color:var(--gold);background:rgba(212,130,58,.15);border:1px solid rgba(212,130,58,.4);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + s.num + '</div>';
+        h +=   '<div style="min-width:0">';
+        h +=     '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;font-weight:600;color:var(--bone);margin-bottom:2px">' + s.label + '</div>';
+        h +=     '<div style="font-family:IBM Plex Sans,sans-serif;font-size:11.5px;color:var(--paper);line-height:1.35">' + s.detail + '</div>';
+        h +=   '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+      // Atlas-specific nudge if many unscored opps
+      if (unscored > 5) {
+        h += '<div style="padding:9px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-left:2px solid #22c55e;border-radius:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+        h +=   '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:#22c55e;text-transform:uppercase">Highest leverage right now</span>';
+        h +=   '<span style="font-family:IBM Plex Sans,sans-serif;font-size:12.5px;color:var(--bone);flex:1;min-width:160px;line-height:1.3">You have <b>' + unscored + ' unscored pursuits</b>. Open <b>Pipeline</b> and click <b>⊞ Bulk Score</b> to populate values + pwins in one paste — your forecast lights up immediately.</span>';
+        h +=   '<button onclick="switchView(\'cop\');setTimeout(function(){window._openBulkScoreModal&&window._openBulkScoreModal();},300)" style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:#0b0d11;background:#22c55e;border:1px solid #22c55e;padding:7px 12px;border-radius:3px;cursor:pointer;text-transform:uppercase;flex-shrink:0">Bulk Score →</button>';
+        h += '</div>';
+      }
+      callout.innerHTML = h;
+      // Insert BEFORE the rhythm host so it's the first thing below the action bar
+      hostP.parentElement.insertBefore(callout, hostP);
+    }
+  } catch(e){ console.warn('[P13.92 quickstart callout] failed:', e); }
   // Refresh rhythm content (in case data changed while user was on another view)
   if (typeof _corsairRenderRhythm === 'function') {
     try { _corsairRenderRhythm(); } catch(e){}
@@ -59765,6 +59822,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.91"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.92"></script>
 </body>
 </html>
