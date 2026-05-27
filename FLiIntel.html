@@ -8442,7 +8442,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.75.1</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.76</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -28151,6 +28151,41 @@ function _runAlertCheck(){
 
 var _corsairRhythmCollapsed = false;
 
+// P13.76 — per-item snooze map (localStorage, per-browser).
+// Non-commitment watch cards (COOLING, RFP/AWARD dates, STALLED,
+// STAGE ACTION, PIPELINE GAP) can be cleared from the morning queue
+// without touching the underlying record. Commitment items continue
+// to use _rhythmDismiss which mutates real status/closedAt — those
+// are doctrine state changes, not view suppression.
+var _RHYTHM_SNOOZE_KEY = 'corsair-rhythm-snooze';
+function _rhythmSnoozeRead(){
+  try { return JSON.parse(localStorage.getItem(_RHYTHM_SNOOZE_KEY) || '{}') || {}; }
+  catch(e){ return {}; }
+}
+function _rhythmSnoozeWrite(map){
+  try { localStorage.setItem(_RHYTHM_SNOOZE_KEY, JSON.stringify(map)); } catch(e){}
+}
+function _rhythmIsSnoozed(key){
+  if (!key) return false;
+  var map = _rhythmSnoozeRead();
+  var until = map[key];
+  if (!until) return false;
+  if (Date.now() < until) return true;
+  delete map[key]; _rhythmSnoozeWrite(map);
+  return false;
+}
+window._rhythmSnoozeItem = function(key, days){
+  if (!key) return;
+  var d = Math.max(1, Number(days) || 7);
+  var map = _rhythmSnoozeRead();
+  map[key] = Date.now() + d * 86400000;
+  _rhythmSnoozeWrite(map);
+  if (typeof toast === 'function') {
+    toast(d === 1 ? 'Hidden for 1 day' : 'Hidden for ' + d + ' days');
+  }
+  if (typeof _corsairRefreshRhythm === 'function') _corsairRefreshRhythm();
+};
+
 function _corsairBuildRhythm(){
   var now = new Date();
   var todayMs = now.getTime();
@@ -28233,7 +28268,8 @@ function _corsairBuildRhythm(){
             subject: o.name,
             actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
             click: 'window.selectOpp(\'' + o.id + '\')',
-            rank: 50 + days
+            rank: 50 + days,
+            _key: 'slip:' + o.id
           });
         }
         return;
@@ -28246,7 +28282,8 @@ function _corsairBuildRhythm(){
           subject: o.name,
           actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
           click: 'window.selectOpp(\'' + o.id + '\')',
-          rank: 200 + days
+          rank: 200 + days,
+          _key: label.toLowerCase() + ':' + o.id
         });
       } else if (days <= warnThresh) {
         items.push({
@@ -28256,7 +28293,8 @@ function _corsairBuildRhythm(){
           subject: o.name,
           actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
           click: 'window.selectOpp(\'' + o.id + '\')',
-          rank: 300 + days
+          rank: 300 + days,
+          _key: label.toLowerCase() + ':' + o.id
         });
       }
     }
@@ -28280,7 +28318,8 @@ function _corsairBuildRhythm(){
       subject: n.name,
       actor: n.role || '',
       click: 'switchView(\'network\');setTimeout(function(){window.openNetPanel&&window.openNetPanel(window._lookupNode&&window._lookupNode(\'' + n.id + '\'))},250)',
-      rank: 400 + (200 - Math.min(days, 200))  // longer-silent ranks earlier within COOLING group
+      rank: 400 + (200 - Math.min(days, 200)),  // longer-silent ranks earlier within COOLING group
+      _key: 'cool:' + n.id
     });
   });
 
@@ -28302,7 +28341,8 @@ function _corsairBuildRhythm(){
       subject: 'Capture lead unassigned',
       actor: 'Assign ownership to activate full tracking',
       click: 'switchView(\'opps\');setTimeout(function(){window._copToggleUnassignedOnly&&window._copToggleUnassignedOnly()},150)',
-      rank: 800
+      rank: 800,
+      _key: 'pipgap'
     });
   }
 
@@ -28328,7 +28368,8 @@ function _corsairBuildRhythm(){
       subject: o.name,
       actor: o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
       click: 'window.selectOpp(\'' + o.id + '\')',
-      rank: 900 + (300 - Math.min(quietDays, 300))
+      rank: 900 + (300 - Math.min(quietDays, 300)),
+      _key: 'stall:' + o.id
     });
   });
 
@@ -28355,7 +28396,8 @@ function _corsairBuildRhythm(){
         subject: (o.name || 'Pursuit') + ' — ' + nextAction,
         actor:   o.captureLead ? 'Lead · ' + o.captureLead : 'Unassigned',
         click:   'window.openEntityInspector(\'' + safeOppId + '\')',
-        rank:    200 + days
+        rank:    200 + days,
+        _key:    'stage:' + o.id
       });
     });
   }
@@ -28366,6 +28408,11 @@ function _corsairBuildRhythm(){
     if (sevOrder[a.sev] !== sevOrder[b.sev]) return sevOrder[a.sev] - sevOrder[b.sev];
     return a.rank - b.rank;
   });
+
+  // P13.76 — drop snoozed items before counts so section header reflects what's visible.
+  // Only items with _key are snoozable (non-commitment cards); commitment items rely
+  // on _rhythmDismiss writing real status/closedAt and never carry _key.
+  items = items.filter(function(it){ return !_rhythmIsSnoozed(it._key); });
 
   var critCount = items.filter(function(x){return x.sev==='critical';}).length;
   var warnCount = items.filter(function(x){return x.sev==='warn';}).length;
@@ -28449,6 +28496,14 @@ function _corsairRenderRhythm(){
         h += '<div style="display:flex;gap:6px;margin-top:8px">';
         h += '<button onclick="event.stopPropagation();_rhythmDismiss(\'' + escH(it._cid) + '\',\'' + escH(it._src) + '\',\'done\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--green);border-radius:2px;background:transparent;color:var(--green);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✓ DONE</button>';
         h += '<button onclick="event.stopPropagation();_rhythmDismiss(\'' + escH(it._cid) + '\',\'' + escH(it._src) + '\',\'broken\')" style="font-size:11px;padding:3px 8px;border:1px solid var(--red);border-radius:2px;background:transparent;color:var(--red);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✗ DROP</button>';
+        h += '</div>';
+      } else if (it._key) {
+        // P13.76 — snooze buttons for non-commitment cards. DONE hides 7d, DROP hides 30d.
+        // Per-browser localStorage; underlying record is not mutated. Card resurfaces
+        // if the condition still applies after snooze expires.
+        h += '<div style="display:flex;gap:6px;margin-top:8px">';
+        h += '<button onclick="event.stopPropagation();_rhythmSnoozeItem(\'' + escH(it._key) + '\',7)" title="Hide this card for 7 days. The underlying record is unchanged — the card reappears if the condition still applies." style="font-size:11px;padding:3px 8px;border:1px solid var(--green);border-radius:2px;background:transparent;color:var(--green);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✓ DONE</button>';
+        h += '<button onclick="event.stopPropagation();_rhythmSnoozeItem(\'' + escH(it._key) + '\',30)" title="Hide this card for 30 days. Use for items you do not want to act on this month." style="font-size:11px;padding:3px 8px;border:1px solid var(--red);border-radius:2px;background:transparent;color:var(--red);cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.08em;text-transform:uppercase">✗ DROP</button>';
         h += '</div>';
       }
       h +=   '</div>';
