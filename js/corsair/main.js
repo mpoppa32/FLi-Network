@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.83';
-  window.Corsair.buildBlurb  = 'Topnav compression v2: raised the existing chrome-collapse breakpoint from 1200px to 1500px so typical laptop screens (1280-1440px) actually trigger it. Drops the DEFENSE CAPTURE OS tagline, SWITCH hint, SALES/BD role pill, and mobile hamburger on laptops, freeing ~250px so LOG MEETING / CONTACT / FOLLOW-UP all stay visible. Combined with the P13.82 hides of 6 secondary icon buttons and the overflow !important fix.';
+  window.Corsair.buildTag    = 'P13.84';
+  window.Corsair.buildBlurb  = 'HIGH-severity polish pass: Pipeline shows a guidance banner when opps are unscored (CTA: BULK SCORE), Rhythm filters out placeholder person nodes like "Me (note-taker)", chrome copy softened (Mission Control//Operations Theater → Choose a workspace; Account Intelligence Rollup → All Accounts; Today · Operator Brief → Today\\u2019s Brief).';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
