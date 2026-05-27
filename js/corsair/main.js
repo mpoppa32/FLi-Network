@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.72';
-  window.Corsair.buildBlurb  = 'Slack webhook notifications (gap A from the 10-20 person rollout roadmap). Zero-OAuth integration: paste an Incoming Webhook URL in Settings → Slack Notifications, hit Test, and post directly to your channel from inside Corsair. Per-user/per-browser localStorage so each operator can pipe to their own DM or all share one #atlas-bd webhook. Two manual fire surfaces shipped: "# Slack" button on the Morning Briefing watch row (posts the 5-card watch list with Block Kit formatting) and "# Slack" button on the Brief Surface bar (posts the 6 column counts as a one-line digest). Foundation for v2 auto-fires (cooling threshold, dedupe queue, capture-lead assignment, daily 7am brief) — those need cron + Cloud Function deploy, not the manual path. window._slackNotify(text, blocks) helper is general-purpose for any future call site. Slack-purple #4a154b + Slack-yellow #ecb22e theming for instant recognizability.';
+  window.Corsair.buildTag    = 'P13.73';
+  window.Corsair.buildBlurb  = 'Mobile-responsive Brief (gap B from roadmap). Brief view now usable on phone widths — defense BD happens on the floor at AUSA, in airport lounges, in hotel parking lots before customer site visits. Strategy: hide the 280px sidebar on <768px viewports (Log/Intel/Brief/History/Actions tabs + meeting list reachable via Log Meeting workflow + Inspector); stack rhythm watch row + brief grid vertically; auto-fill grid already drops to 1-col below 470px so no extra work there. Phone-specific (<480px): watch cards become column-flex with no arrow chevron, top nav drops to icon-only with tight padding, ticker hides workspace + meetings (keeps active opps + contacts). User modal and account drawer go full-screen on phone (max-width:100vw). Touch targets bumped where needed via existing P-targeted rules.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
