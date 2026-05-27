@@ -7517,6 +7517,32 @@ input[type="url"], textarea, select {
   background: linear-gradient(180deg, rgba(13,20,38,0.85), rgba(7,13,24,0.55));
 }
 
+/* P13.78 — when collapsed on a non-Today view, the rhythm-header IS the
+   panel. Make it look like a clickable strip, not a static label: subtle
+   amber tint, larger hover state, prominent expand arrow. */
+.rhythm-panel.collapsed:not(.today-embedded) {
+  margin: 0 14px 12px;
+}
+.rhythm-panel.collapsed:not(.today-embedded) .rhythm-header {
+  padding: 11px 16px;
+  background: linear-gradient(180deg, rgba(212,130,58,0.05), rgba(212,130,58,0.015));
+}
+.rhythm-panel.collapsed:not(.today-embedded) .rhythm-header:hover {
+  background: linear-gradient(180deg, rgba(212,130,58,0.14), rgba(212,130,58,0.05));
+}
+
+/* P13.78 — make most view containers scrollable so any content longer
+   than the visible viewport can be reached without the user having to
+   collapse other surfaces. Skipped: #network-view (canvas needs precise
+   sizing), #today-view (its inner #today-rhythm-host already scrolls). */
+#opps-view, #accounts-view, #table-view, #intel-view, #posture-view,
+#rhythm-view, #winloss-view, #trends-view, #bdperf-view, #team-view,
+#pulse-view, #sbir-view, #rfi-view, #library-view, #capture-view,
+#comp-view, #teaming-view, #vehicles-view, #inspector-view {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .rhythm-header {
   display: flex;
   align-items: center;
@@ -8457,7 +8483,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.77</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.78</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16854,6 +16880,22 @@ function switchView(v){
   // panel still parented inside today-view).
   if (activeView === 'today' && v !== 'today' && typeof window._exitTodayView === 'function') {
     try { window._exitTodayView(); } catch(e){}
+  }
+
+  // P13.78 — auto-collapse the sibling Rhythm panel on every non-Today view
+  // so the active view body gets the full vertical space. Today is the
+  // dedicated home for the full watch queue; on other views the panel is
+  // a slim 1-line header strip ("▸ 5 WATCH · click to expand"). User can
+  // still expand by clicking the header — auto-collapse only fires on
+  // view switch, not on user gesture.
+  if (v !== 'today') {
+    var _rPanel = document.getElementById('corsair-rhythm');
+    if (_rPanel && !_rPanel.classList.contains('collapsed')) {
+      _rPanel.classList.add('collapsed');
+      _corsairRhythmCollapsed = true;
+      var _rLbl = document.getElementById('rhythm-toggle-lbl');
+      if (_rLbl) _rLbl.textContent = 'Expand';
+    }
   }
 
   // 7.1: render Daily Brief Card when entering Intel view
