@@ -8442,7 +8442,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.74</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.75</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -11964,6 +11964,47 @@ async function saveOpp(opp){
   }
   await fbSet(wsPath('opportunities/'+opp.id),opp);
 }
+// P13.74 — expose for cross-module callers (bulk-score apply path,
+// P13.75 BD-org → opp generator). Many call sites already guard with
+// typeof window.saveOpp === 'function' but the assignment was missing.
+window.saveOpp = saveOpp;
+
+// P13.75 — bulk-create opps from BD-target orgs imported from a master
+// pipeline sheet (e.g., Atlas's Pipeline tab). Caller provides specs
+// with orgId / orgName / stage / notes — we mint one opp per org with
+// the right shape and Firebase write through the module-scoped fbSet.
+window._genBdOppsCreate = async function(specs){
+  if (!Array.isArray(specs) || !specs.length) return { created: 0, failed: 0 };
+  var created = 0, failed = 0;
+  for (var i = 0; i < specs.length; i++){
+    var s = specs[i];
+    if (!s || !s.orgId) { failed++; continue; }
+    var id = 'opp_bdgen_' + String(s.orgId).replace(/[^a-z0-9]/gi,'') + '_' + Date.now().toString(36) + '_' + i;
+    var opp = {
+      id: id,
+      name: (s.orgName || 'BD pursuit') + ' — Motor supply',
+      agency: s.orgName || '',
+      stage: s.stage || 'awareness',
+      stageEnteredAt: Date.now(),
+      value: 0,
+      pwin: 0,
+      customerOrgId: String(s.orgId),
+      notes: s.notes || '',
+      _bdGenFromOrg: String(s.orgId),
+      _bdGenAt: Date.now(),
+      meetings: [],
+      source: {
+        system: 'corsair_bd_gen',
+        externalId: String(s.orgId),
+        fetchedAt: Date.now()
+      },
+      updatedAt: new Date().toISOString()
+    };
+    try { await fbSet(wsPath('opportunities/' + id), opp); created++; }
+    catch(e){ console.warn('[P13.75 GenBdOpps] save failed:', e); failed++; }
+  }
+  return { created: created, failed: failed };
+};
 async function deleteOpp(id){setSS('saving');await remove(ref(db,wsPath('opportunities/'+id)));setSS('live');}
 async function saveCommitment(c){await fbSet(wsPath('commitments/'+c.id),c);}
 async function deleteCommitment(id){setSS('saving');await remove(ref(db,wsPath('commitments/'+id)));setSS('live');}
@@ -17220,6 +17261,8 @@ window._renderCopForecast = function(){
           '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em">' + totalCount + (hideUnscored && unscoredFiltered ? ' shown · ' + unscoredFiltered + ' hidden (unscored)' : (totalCount + unscoredCount > totalCount ? '' : '')) + (!hideUnscored && unscoredCount ? ' open · ' + scoredCount + ' scored' : (hideUnscored ? '' : ' open')) + ' · ' + _fmt$(totalPipeline) + ' total · ' + _fmt$(weightedPipeline) + ' weighted</span>' +
         '</div>' +
         '<div style="display:flex;gap:6px;align-items:center">' +
+          // P13.75 — Generate Opps from BD-target orgs (turns imported orgs into trackable opps)
+          '<button onclick="event.stopPropagation();window._openGenBdOppsModal&&window._openGenBdOppsModal()" title="Auto-create one opp per imported BD-target org, with stage parsed from notes" style="background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.4);border-radius:3px;color:#22c55e;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">🌱 Gen BD Opps</button>' +
           // P13.74 — Bulk Score modal trigger
           '<button onclick="event.stopPropagation();window._openBulkScoreModal&&window._openBulkScoreModal()" title="Paste a CSV of name,value,pwin to bulk-score opps in one shot" style="background:rgba(212,130,58,.10);border:1px solid rgba(212,130,58,.4);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⊞ Bulk Score</button>' +
           // P13.74 — Hide-unscored toggle
@@ -17386,6 +17429,110 @@ window._bulkScorePreview = function(){
   if (applyBtn){
     applyBtn.disabled = matched === 0;
     applyBtn.style.opacity = matched === 0 ? '0.5' : '1';
+  }
+};
+
+// P13.75 — scan imported BD-target orgs and propose opps to generate.
+// An org qualifies if its notes carry the "Atlas Master Pipeline Intel"
+// marker (set by the P13.65 CSV import path) AND no opp currently has
+// _bdGenFromOrg === orgId pointing at it.
+window._genBdOppsScan = function(){
+  var orgs = (window.nodes || []).filter(function(n){
+    return n && n.type === 'company' && typeof n.notes === 'string' &&
+           n.notes.indexOf('Atlas Master Pipeline Intel') !== -1;
+  });
+  var opps = (window.opportunities || []);
+  var alreadyGenIds = new Set();
+  opps.forEach(function(o){ if (o && o._bdGenFromOrg) alreadyGenIds.add(String(o._bdGenFromOrg)); });
+  function _parseStage(notes){
+    var m = /Stage:\s*([A-Za-z]+)/.exec(notes || '');
+    if (!m) return 'awareness';
+    var s = m[1].toLowerCase();
+    if (s.indexOf('cold') === 0) return 'awareness';
+    if (s.indexOf('contact') === 0) return 'tracking';
+    if (s.indexOf('warm') === 0) return 'tracking';
+    if (s.indexOf('valid') === 0) return 'engaged';
+    if (s.indexOf('negotia') === 0) return 'negotiation';
+    if (s.indexOf('propos') === 0) return 'proposal';
+    return 'awareness';
+  }
+  var specs = orgs.filter(function(o){ return !alreadyGenIds.has(String(o.id)); }).map(function(o){
+    var stage = _parseStage(o.notes);
+    var notesShort = (o.notes || '').slice(0, 280);
+    return { orgId: o.id, orgName: o.name, stage: stage, notes: 'Generated from BD master pipeline.\n\n' + notesShort };
+  });
+  return { totalBdOrgs: orgs.length, alreadyHave: orgs.length - specs.length, specs: specs };
+};
+
+window._openGenBdOppsModal = function(){
+  var scan = window._genBdOppsScan();
+  var modal = document.getElementById('gen-bd-opps-modal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'gen-bd-opps-modal';
+    modal.className = 'overlay';
+    modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(7,13,24,.85);z-index:9000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto';
+    document.body.appendChild(modal);
+  }
+  // Group by stage for the preview
+  var byStage = {};
+  scan.specs.forEach(function(s){ (byStage[s.stage] = byStage[s.stage] || []).push(s); });
+  var stageOrder = ['awareness','tracking','engaged','rfp','proposal','negotiation'];
+  var stageLabels = { awareness:'Opp ID (Cold)', tracking:'Qualify (Contacted/Warm)', engaged:'Capture Planning (Validation)', rfp:'Bid Decision', proposal:'Proposal', negotiation:'Final Proposal Rev. (Negotiation)' };
+  var stageBlocks = stageOrder.map(function(k){
+    var arr = byStage[k] || [];
+    if (!arr.length) return '';
+    return '<div style="margin-bottom:10px"><div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:4px">' + stageLabels[k] + ' · ' + arr.length + '</div><div style="font-size:12px;color:var(--t2);line-height:1.5">' + arr.slice(0,8).map(function(s){return s.orgName;}).join(' · ') + (arr.length>8 ? ' · +' + (arr.length-8) + ' more' : '') + '</div></div>';
+  }).join('');
+  var canGen = scan.specs.length > 0;
+  modal.innerHTML =
+    '<div class="modal" style="max-width:720px;width:100%;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.99));border:1px solid rgba(212,130,58,.25);border-radius:3px;padding:20px 24px;font-family:IBM Plex Sans,sans-serif">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1px solid var(--b1);padding-bottom:12px">' +
+        '<div>' +
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:4px">Generate Opps from BD Targets</div>' +
+          '<div style="font-size:14px;color:var(--text);font-weight:600">Turn imported BD-target orgs into trackable pursuits</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'gen-bd-opps-modal\').style.display=\'none\'" style="background:transparent;border:0;color:var(--t3);font-size:24px;cursor:pointer;line-height:1;padding:0 4px">×</button>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--t2);margin-bottom:14px;line-height:1.6">Found <b style="color:var(--text)">' + scan.totalBdOrgs + '</b> imported BD-target orgs.' +
+      (scan.alreadyHave ? ' <b style="color:var(--gold)">' + scan.alreadyHave + '</b> already have a generated opp.' : '') +
+      ' Will create <b style="color:#22c55e">' + scan.specs.length + '</b> new opps with stage parsed from imported notes. Each opp links to its org via customerOrgId.</div>' +
+      (scan.specs.length ? '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:2px;padding:12px 14px;margin-bottom:14px;max-height:280px;overflow-y:auto">' + stageBlocks + '</div>' : '<div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.25);border-radius:2px;padding:14px;margin-bottom:14px;font-size:13px;color:#22c55e">✓ All BD-target orgs already have generated opps. Nothing to do.</div>') +
+      '<div id="gen-bd-opps-status" style="font-size:12px;color:var(--t3);min-height:16px;margin-bottom:10px;font-family:IBM Plex Mono,monospace"></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button onclick="document.getElementById(\'gen-bd-opps-modal\').style.display=\'none\'" style="padding:8px 16px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase">Cancel</button>' +
+        '<button id="gen-bd-opps-apply" onclick="window._genBdOppsApply()" ' + (canGen ? '' : 'disabled') + ' style="padding:8px 16px;background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:' + (canGen ? 'pointer' : 'not-allowed') + ';letter-spacing:.08em;text-transform:uppercase;opacity:' + (canGen ? '1' : '.5') + '">Generate ' + scan.specs.length + ' Opps</button>' +
+      '</div>' +
+    '</div>';
+  modal.style.display = 'flex';
+};
+
+window._genBdOppsApply = async function(){
+  var btn = document.getElementById('gen-bd-opps-apply');
+  var st = document.getElementById('gen-bd-opps-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'GENERATING…'; btn.style.opacity = '.6'; }
+  if (st) st.textContent = 'Creating opps…';
+  var scan = window._genBdOppsScan();
+  if (!scan.specs.length){
+    if (st) st.innerHTML = '<span style="color:#22c55e">✓ Nothing to do</span>';
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate 0 Opps'; }
+    return;
+  }
+  var res = await window._genBdOppsCreate(scan.specs);
+  if (st) st.innerHTML = '<span style="color:#22c55e">✓ ' + res.created + ' opps created · ' + res.failed + ' failed</span>';
+  if (typeof toast === 'function') toast('Generated ' + res.created + ' opps from BD targets');
+  // Re-render so the new opps appear
+  if (window._renderCopForecast) window._renderCopForecast();
+  if (window._renderTableView) window._renderTableView();
+  if (window._renderCopBoard) window._renderCopBoard();
+  // Auto-close on clean run
+  if (res.failed === 0){
+    setTimeout(function(){
+      var m = document.getElementById('gen-bd-opps-modal');
+      if (m) m.style.display = 'none';
+    }, 1800);
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; btn.style.opacity = '1'; }
   }
 };
 

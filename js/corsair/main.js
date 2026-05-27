@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.74';
-  window.Corsair.buildBlurb  = 'Pipeline hide-unscored toggle + Bulk Score modal (roadmap gaps C+D). Closes the "122 ghost opps" eyesore Bryce sees on Atlas: every imported opp has stage=Qualify but no value/pwin, so the Forecast headline reads "122 · $0 · $0". Two complementary fixes shipped together. (C) Hide-Unscored toggle in Forecast header — when on, totals/funnel/months only consider opps with value or pwin set. Per-browser localStorage. Header now reads "5 shown · 117 hidden (unscored)" instead of cluttered $0 math. (D) Bulk Score modal — opens from a new "⊞ BULK SCORE" header button, takes a CSV paste (name,value,pwin,stage), matches by normalized name/agency/customer, previews matches before applying, then writes value+pwin+stage+scoredAt to each matched opp via saveOpp. Auto-rerenders Forecast/Table/Kanban after apply. Mike can score 122 opps in ~5 minutes instead of clicking each row.';
+  window.Corsair.buildTag    = 'P13.75';
+  window.Corsair.buildBlurb  = 'Generate Opps from BD-target orgs (roadmap gap H). Atlas has 160 orgs (113 imported from Tom\'s Pipeline tab via P13.65) but the 122 existing opps were a separate Monday.com sync — there\'s no link between the imported BD targets and any trackable opp. This ships a "🌱 GEN BD OPPS" button in Forecast header that scans for orgs with the "Atlas Master Pipeline Intel" marker in notes, parses the Stage line (Cold→awareness, Contacted/Warm→tracking, Validation→engaged, Negotiation→negotiation), and bulk-creates one opp per org with customerOrgId linked + a _bdGenFromOrg marker so re-runs are idempotent. Modal previews the create list grouped by stage before commit. Also exposed window.saveOpp = saveOpp (was missing — the P13.74 bulk-score save path silently no-op\'d before). Combined with P13.74 Bulk Score, Atlas\'s pipeline can go from 122 ghost opps to ~235 trackable + scored opps in two operator clicks.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
