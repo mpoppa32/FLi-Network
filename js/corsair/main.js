@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.69';
-  window.Corsair.buildBlurb  = 'Top-nav ticker counter race fix. Pre-existing bug surfaced during the visual rating pass: nav showed "0 active opps" on Atlas despite 122 opportunities in the workspace (verified via Pipeline view + window.opportunities.length). Root cause: _updateTicker() was only being called from the meetings Firebase listener — neither the opportunities listener nor the nodes listener triggered a ticker refresh. So whichever listener fired last determined the counts, and on fresh page loads the meetings listener typically fires before opps/nodes are populated, locking the ticker at 0/initial values. Added _updateTicker() calls to both the opportunities listener (line 12330) and the nodes listener (line 12224). Now all three counts (meetings / active opps / contacts) stay in sync with the underlying Firebase data on every change.';
+  window.Corsair.buildTag    = 'P13.70';
+  window.Corsair.buildBlurb  = 'Defensive guard on openNetPanel(d). The internal recursive-typo bug was fixed in P13.66, but external callers (watch card clicks, generated onclick handlers wrapping nodeMap.get()) can still pass undefined when the looked-up node id no longer exists in nodeMap — happens routinely after dedupe merges where the fold-side id is deleted but stale UI references still point at it. Caught during the final pre-rollout audit: clicking the Neros watch card threw TypeError: Cannot read properties of undefined at nc(d.type). Now openNetPanel guards: if !d or typeof d !== "object", logs a console.warn with the argument value (helps trace the bad caller) and returns cleanly — no broken UI, no thrown exception, no selectedNode corruption.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
