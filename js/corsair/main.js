@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.70';
-  window.Corsair.buildBlurb  = 'Defensive guard on openNetPanel(d). The internal recursive-typo bug was fixed in P13.66, but external callers (watch card clicks, generated onclick handlers wrapping nodeMap.get()) can still pass undefined when the looked-up node id no longer exists in nodeMap — happens routinely after dedupe merges where the fold-side id is deleted but stale UI references still point at it. Caught during the final pre-rollout audit: clicking the Neros watch card threw TypeError: Cannot read properties of undefined at nc(d.type). Now openNetPanel guards: if !d or typeof d !== "object", logs a console.warn with the argument value (helps trace the bad caller) and returns cleanly — no broken UI, no thrown exception, no selectedNode corruption.';
+  window.Corsair.buildTag    = 'P13.71';
+  window.Corsair.buildBlurb  = 'Robust nodeMap lookup fixes the watch-card UX gap. Root cause of the P13.70 guard firing: nodeMap keys retain whatever type n.id was at insert time. Old Atlas nodes have numeric ids (1776732156285); CSV-imported nodes have string ids (1779839272678-xquzd-0). The rhythm engine generates onclick="nodeMap.get(\'<id>\')" with the id always quoted as a string, so JS Map strict-equality misses every numeric key. Fix: added window._lookupNode(id) helper that tries the raw id, String(id), and Number(id) in order. Updated the rhythm watch-card onclick template to call _lookupNode instead of nodeMap.get directly. Now clicking the Neros/Carlo/Firestorm/Me (note-taker) watch cards on Atlas opens the entity dossier correctly instead of dropping the user on Theater with no panel.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

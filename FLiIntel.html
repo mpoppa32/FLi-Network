@@ -8372,7 +8372,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.70</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.71</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -11589,6 +11589,23 @@ var _tvView={active:false,orgId:null,pickerOpen:false};
 // O(1) lookup maps — always kept in sync with their array counterparts
 var meetingMap=new Map();    // id → meeting object
 var nodeMap=new Map();       // id → node object
+// P13.71 — robust nodeMap lookup. nodeMap keys are whatever type n.id is —
+// old Atlas nodes have numeric ids (1776732156285), CSV imports have string
+// ids ('1779839272678-xquzd-0'). Generated onclick handlers (rhythm watch
+// cards, etc.) always pass the id as a quoted string, which misses numeric
+// keys via strict equality. This helper tries both representations so
+// callers don't have to care which side their id lives on.
+window._lookupNode = function(id){
+  if (id == null) return null;
+  if (!nodeMap) return null;
+  var hit = nodeMap.get(id);
+  if (hit) return hit;
+  hit = nodeMap.get(String(id));
+  if (hit) return hit;
+  var asNum = Number(id);
+  if (!Number.isNaN(asNum)) hit = nodeMap.get(asNum);
+  return hit || null;
+};
 var linkMap=new Map();       // id → link object
 var companyByName=new Map(); // company name.lower → node
 // entityGraph: name.lower → Set of meeting IDs that mention this entity
@@ -27839,7 +27856,7 @@ function _corsairBuildRhythm(){
       meta: days + 'd silent · ' + (n.org || n.role || ''),
       subject: n.name,
       actor: n.role || '',
-      click: 'switchView(\'network\');setTimeout(function(){window.openNetPanel&&window.openNetPanel(window.nodeMap.get(\'' + n.id + '\'))},250)',
+      click: 'switchView(\'network\');setTimeout(function(){window.openNetPanel&&window.openNetPanel(window._lookupNode&&window._lookupNode(\'' + n.id + '\'))},250)',
       rank: 400 + (200 - Math.min(days, 200))  // longer-silent ranks earlier within COOLING group
     });
   });
