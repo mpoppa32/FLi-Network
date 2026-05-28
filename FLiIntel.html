@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.107</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.108</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12640,6 +12640,54 @@ async function saveEntity(e){var c=Object.assign({},e);delete c.fx;delete c.fy;d
 
 function showAuthError(msg){var el=document.getElementById('auth-error');if(el){el.textContent=msg;el.style.display='block';}}
 
+// P13.108 (audit Finding 3.4) — clear sensitive localStorage + in-memory
+// tokens on every sign-out. Previously sign-out cleared window.currentUser
+// but left fli-apikey-{uid} (Anthropic), fli-dgkey-{uid} (Deepgram),
+// flintel_mcp_token, flintel_samgov_key, corsair-slack-config in
+// localStorage. Shared-device leak: user A signs out, user B opens
+// DevTools, reads user A's API keys with one console line.
+//
+// Strategy: wipe everything that matches fli-/flintel_/corsair- EXCEPT a
+// whitelisted set of UI preferences. New credential-class keys added in
+// future will be wiped automatically by the deny-by-default pattern.
+// Also nulls in-memory tokens (window.apiKey, _gAccessToken, etc).
+window._corsairSignOutCleanup = function() {
+  try {
+    var keepPatterns = [
+      /^corsair-default-view$/,
+      /^corsair-forecast-/,
+      /^corsair-kanban-on$/,
+      /^corsair-brief-collapsed$/,
+      /^corsair-quickstart-dismissed-/,
+      /^corsair-tour-/
+    ];
+    var allKeys = [];
+    for (var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if (k) allKeys.push(k);
+    }
+    var nuked = 0;
+    allKeys.forEach(function(key){
+      if (!/^(fli-|flintel_|corsair-)/.test(key)) return;
+      var preserve = keepPatterns.some(function(rx){ return rx.test(key); });
+      if (preserve) return;
+      try { localStorage.removeItem(key); nuked++; } catch(e){}
+    });
+    // Clear in-memory credential + token surfaces. Each in its own try
+    // because some of these may not exist depending on which flows the user
+    // exercised this session.
+    try { window.apiKey = ''; } catch(e){}
+    try { window.deepgramKey = ''; } catch(e){}
+    try { window.wsApiKey = ''; } catch(e){}
+    try { window._gAccessToken = null; } catch(e){}
+    try { window._gAccessToken_send = null; } catch(e){}
+    try { window._msAccessToken_send = null; } catch(e){}
+    console.log('[P13.108 signout] cleared', nuked, 'localStorage keys + in-memory tokens');
+  } catch(err) {
+    console.error('[P13.108 signout cleanup]', err);
+  }
+};
+
 var _authResolved=false;
 onAuthStateChanged(auth,function(user){
   if(user){
@@ -12713,7 +12761,12 @@ function showWsPicker(user){
   // Wire sign-out button every time ws-screen is shown
   var soBtn=document.getElementById('ws-signout-btn');
   if(soBtn){
-    soBtn.onclick=function(){signOut(auth).then(function(){currentUser=null;_authResolved=false;document.body.classList.remove('app-active');document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';});};
+    soBtn.onclick=function(){
+      // P13.108 — wipe credentials BEFORE Firebase signOut so even if signOut
+      // races against a pending listener fire, the local keys are already gone.
+      if (window._corsairSignOutCleanup) window._corsairSignOutCleanup();
+      signOut(auth).then(function(){currentUser=null;_authResolved=false;document.body.classList.remove('app-active');document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';});
+    };
   }
   renderWsList();
 }
@@ -17465,10 +17518,10 @@ async function wireListeners(){
     if(!await showConfirm('All team members will need personal keys to use AI features.',{title:'Remove Workspace API Key?',confirmLabel:'Remove Key',danger:true}))return;
     await saveWsApiKey('');updateApiKeyUI();
   });
-  document.getElementById('signout-btn').addEventListener('click',async function(){if(!await showConfirm('Sign out of Corsair?',{confirmLabel:'Sign Out'}))return;signOut(auth);closeModal('user-modal');});
+  document.getElementById('signout-btn').addEventListener('click',async function(){if(!await showConfirm('Sign out of Corsair?',{confirmLabel:'Sign Out'}))return;if(window._corsairSignOutCleanup)window._corsairSignOutCleanup();signOut(auth);closeModal('user-modal');});
   // Sign out from workspace picker screen
   var wsSO=document.getElementById('ws-signout-btn');
-  if(wsSO)wsSO.addEventListener('click',function(){signOut(auth);});
+  if(wsSO)wsSO.addEventListener('click',function(){if(window._corsairSignOutCleanup)window._corsairSignOutCleanup();signOut(auth);});
   // Calendar Client ID save
   document.getElementById('save-gcal-cid-btn').addEventListener('click',function(){
     var cid=document.getElementById('gcal-cid-setting').value.trim();
@@ -62032,6 +62085,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.107"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.108"></script>
 </body>
 </html>
