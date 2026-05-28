@@ -8803,12 +8803,13 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       </button>
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
-      <!-- P13.104 — Watch the cinematic (no login required). Plays a 2-3 minute
-           self-running tour against real Atlas data so an evaluator or first-
-           time visitor can understand Corsair before signing in. -->
-      <button class="cinema-watch-btn" onclick="window.CorsairCinema&&window.CorsairCinema.start()" title="Watch a 2-3 minute cinematic tour on real Atlas data"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; 2 min</button>
+      <!-- P13.104→P13.105 — Watch the self-running tour. Requires sign-in so
+           it can spotlight real workspace UI; we surface a helper toast if
+           the engine isn't ready yet (e.g., user clicks before main-app has
+           initialized). -->
+      <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.104</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.105</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9082,10 +9083,12 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>New Follow-up</span>
         </button>
-        <!-- P13.104 — Tour entry on TODAY (discreet, doctrine-compliant: not
-             intrusive for daily users, but available for onboarding a new hire
-             or showing an evaluator the live workspace cinematic). -->
-        <button onclick="window.CorsairCinema&&window.CorsairCinema.start()" title="Play the 2-3 minute cinematic tour on this workspace's live data" style="display:flex;align-items:center;gap:8px;padding:13px 18px;background:transparent;border:1px dashed rgba(212,130,58,.32);border-radius:3px;color:var(--paper);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s;margin-left:auto" onmouseover="this.style.color='var(--gold)';this.style.borderColor='var(--gold)';this.style.borderStyle='solid'" onmouseout="this.style.color='var(--paper)';this.style.borderColor='rgba(212,130,58,.32)';this.style.borderStyle='dashed'">
+        <!-- P13.105 — Tour entry on TODAY. Self-running spotlight + callout
+             tour over the real workspace UI. Uses the existing _TOUR_CHAPTERS
+             engine with autoAdvance timing so each callout pops up for ~8-12s
+             with arrows pointing at real elements (Brief card, Pipeline, graph,
+             Posture surface, etc.), no clicks required. -->
+        <button onclick="window._startAtlasDemoTour&&window._startAtlasDemoTour()" title="Play the ~90-second self-running tour with spotlights + callouts on this workspace's live UI" style="display:flex;align-items:center;gap:8px;padding:13px 18px;background:transparent;border:1px dashed rgba(212,130,58,.32);border-radius:3px;color:var(--paper);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s;margin-left:auto" onmouseover="this.style.color='var(--gold)';this.style.borderColor='var(--gold)';this.style.borderStyle='solid'" onmouseout="this.style.color='var(--paper)';this.style.borderColor='rgba(212,130,58,.32)';this.style.borderStyle='dashed'">
           <span style="width:7px;height:9px;background:currentColor;clip-path:polygon(0 0, 0 100%, 100% 50%);flex-shrink:0"></span>
           <span>Watch Tour</span>
         </button>
@@ -52680,6 +52683,147 @@ window._TOUR_CHAPTERS = [
         hint: 'Tour complete. The dedupe loop is closed-loop end-to-end.'
       }
     ]
+  },
+  // P13.105 — "Watch Corsair" auto-play chapter. Self-running 9-step tour
+  // mapped to the Monaco locked narration (6 chapter arc) with autoAdvance
+  // timers so it walks the real Atlas UI on a timer with spotlights +
+  // callouts + arrows — no clicks required. Launched by the Watch buttons
+  // on auth screen + TODAY view via window._startAtlasDemoTour().
+  {
+    id: 'watch-corsair',
+    title: 'Watch Corsair · Self-Running Tour',
+    duration: '~90 sec · auto-plays',
+    desc: 'A self-running cinematic walk through the live workspace with spotlight callouts on real UI. Defense BD pain → morning surface → relationship terrain → posture layer → ranked pipeline → defense-native depth → the line Corsair will not cross. Locked narration, operator-approved voice.',
+    steps: [
+      // ─── Chapter 1 — The Pain ────────────────────────────────────
+      {
+        target: '#mode-brief',
+        targetFallback: '#today-view',
+        position: 'bottom',
+        eyebrow: 'Chapter 1 — The Pain',
+        title: "It has always lived in a dozen places at once.",
+        body: "Defense business development has always lived in a dozen places at once. A spreadsheet you can’t show anyone. A calendar that forgets. Notes nobody updates. The pursuit is in your head — and only your head.",
+        hint: '',
+        beforeShow: function() {
+          if (typeof window.switchView === 'function') {
+            try { window.switchView('today'); } catch(e) {}
+          }
+        },
+        autoAdvance: 11000
+      },
+      // ─── Chapter 2 — The Day ─────────────────────────────────────
+      {
+        target: '#brief-card',
+        targetFallback: '#today-rhythm-host',
+        position: 'top',
+        eyebrow: 'Chapter 2 — The Day',
+        title: "Corsair starts your morning already knowing.",
+        body: "What’s gone cold. What’s owed. What moves today. One surface. The whole picture. Before your first cup of coffee.",
+        hint: '',
+        beforeShow: function() {
+          if (typeof window.switchView === 'function') {
+            try { window.switchView('today'); } catch(e) {}
+          }
+        },
+        autoAdvance: 9000
+      },
+      // ─── Chapter 3 — The Terrain (graph reveal) ──────────────────
+      {
+        target: '#net-canvas',
+        targetFallback: '#network-view',
+        position: 'right',
+        eyebrow: 'Chapter 3 — The Terrain',
+        title: "Every relationship you’ve ever logged — alive, and connected.",
+        body: "But the network is only the surface.",
+        hint: '',
+        beforeShow: function() {
+          if (typeof window.switchView === 'function') {
+            try { window.switchView('network'); } catch(e) {}
+          }
+        },
+        autoAdvance: 8500
+      },
+      // ─── Chapter 3 — Descent into Posture ────────────────────────
+      {
+        target: '#posture-view-body',
+        targetFallback: '#posture-view',
+        position: 'bottom',
+        eyebrow: 'Chapter 3 — The Terrain',
+        title: "Underneath it runs the terrain that decides everything.",
+        body: "Who holds the leverage. Who’s rising. Who’s quietly falling. Who owes you, and what you owe them.",
+        hint: '',
+        beforeShow: function() {
+          if (typeof window.switchView === 'function') {
+            try { window.switchView('posture'); } catch(e) {}
+          }
+        },
+        autoAdvance: 11000
+      },
+      // ─── Chapter 3 — Sovereign moment ────────────────────────────
+      {
+        target: '.posture-brief-btn-secondary',
+        targetFallback: '#posture-subtab-ledger',
+        position: 'left',
+        eyebrow: 'Chapter 3 — The Terrain',
+        title: "Most operators feel this and never see it.",
+        body: "Corsair shows it to you plainly. The game was always being played. Now your eyes are open.",
+        hint: '',
+        autoAdvance: 9500
+      },
+      // ─── Chapter 4 — Pipeline ────────────────────────────────────
+      {
+        target: '#opp-stage-list',
+        targetFallback: '#opps-view',
+        position: 'left',
+        eyebrow: 'Chapter 4 — The Pipeline',
+        title: "One hundred and twenty-two pursuits.",
+        body: "Ranked the moment they arrived. Every one of them carrying its reason. You don’t decide where to start. You already know.",
+        hint: '',
+        beforeShow: function() {
+          if (typeof window.switchView === 'function') {
+            try { window.switchView('cop'); } catch(e) {}
+          }
+        },
+        autoAdvance: 11000
+      },
+      // ─── Chapter 5 — Depth ───────────────────────────────────────
+      {
+        target: '.tbl-filters',
+        targetFallback: '#table-view',
+        position: 'bottom',
+        eyebrow: 'Chapter 5 — Depth & Line',
+        title: "Vehicles, postures, signals.",
+        body: "Program managers. Contracting officers. Corsair speaks defense capture as a first language — because it was built for it, not adapted to it.",
+        hint: '',
+        beforeShow: function() {
+          if (typeof window.switchView === 'function') {
+            try { window.switchView('table'); } catch(e) {}
+          }
+        },
+        autoAdvance: 11000
+      },
+      // ─── Chapter 5 — The Line ────────────────────────────────────
+      {
+        target: '#tbl-count',
+        targetFallback: '.tbl-filters',
+        position: 'top',
+        eyebrow: 'Chapter 5 — Depth & Line',
+        title: "And it has a line it will not cross.",
+        body: "It surfaces the terrain. It never plays the game for you. It will not manipulate, automate your judgment, or pretend to be you. The reads are yours. The decisions are yours. The conscience is yours.",
+        hint: '',
+        autoAdvance: 14000
+      },
+      // ─── Chapter 6 — The Close (centered, no spotlight) ─────────
+      {
+        target: '#cinema-no-target-centered',  // intentional no-match so engine centers the callout
+        position: 'bottom',
+        eyebrow: 'Chapter 6 — The Close',
+        title: "The power is yours.",
+        body: "Corsair doesn’t make you more powerful. It makes you clear-eyed.",
+        hint: '',
+        autoAdvance: 8500
+      }
+    ]
   }
 ];
 
@@ -52921,6 +53065,11 @@ window._positionTourStep = function(step) {
     document.removeEventListener('click', window._tourState.awaitClickHandler, true);
     window._tourState.awaitClickHandler = null;
   }
+  // P13.105 — clear any pending auto-advance from the previous step
+  if (window._tourState.autoAdvanceTimer) {
+    clearTimeout(window._tourState.autoAdvanceTimer);
+    window._tourState.autoAdvanceTimer = null;
+  }
   if (step.awaitClick) {
     var handler = function(e) {
       var awaitTarget = document.querySelector(step.awaitClick);
@@ -52935,6 +53084,14 @@ window._positionTourStep = function(step) {
     };
     document.addEventListener('click', handler, true);
     window._tourState.awaitClickHandler = handler;
+  } else if (typeof step.autoAdvance === 'number' && step.autoAdvance > 0) {
+    // P13.105 — auto-play mode: after rendering the spotlight + callout,
+    // wait `autoAdvance` ms then advance to the next step. The operator
+    // can still hit Next to skip ahead or use the Skip Tour control.
+    window._tourState.autoAdvanceTimer = setTimeout(function() {
+      window._tourState.autoAdvanceTimer = null;
+      if (window._tourState.active) window._tourNext();
+    }, step.autoAdvance);
   }
 };
 
@@ -53112,9 +53269,55 @@ window._completeTourChapter = async function() {
 };
 
 window._exitTour = function() {
+  // P13.105 — cancel any pending auto-advance timer on exit
+  if (window._tourState.autoAdvanceTimer) {
+    clearTimeout(window._tourState.autoAdvanceTimer);
+    window._tourState.autoAdvanceTimer = null;
+  }
   window._teardownTourChrome();
   window._tourState.active = false;
   window._exitTourAndRestore();
+};
+
+// P13.105 — Launch the auto-play Atlas demo tour on the CURRENT workspace
+// (no demo workspace switch — the spec requires the tour to run on real
+// Atlas data). Locates the 'watch-corsair' chapter by id in _TOUR_CHAPTERS,
+// sets state, builds chrome, runs first step. Each step has autoAdvance set
+// so it self-advances on a timer with spotlight + callout + arrow on real
+// UI elements. Used by the auth-screen Watch button and the TODAY view
+// Watch Tour button.
+window._startAtlasDemoTour = function() {
+  if (!Array.isArray(window._TOUR_CHAPTERS)) {
+    if (typeof toast === 'function') toast('Tour engine not ready');
+    return;
+  }
+  var idx = -1;
+  for (var i = 0; i < window._TOUR_CHAPTERS.length; i++) {
+    if (window._TOUR_CHAPTERS[i].id === 'watch-corsair') { idx = i; break; }
+  }
+  if (idx < 0) {
+    if (typeof toast === 'function') toast('Atlas demo tour chapter missing');
+    return;
+  }
+  // Don't switch workspace — run on whatever the operator has loaded
+  window._tourState.active = true;
+  window._tourState.chapterIdx = idx;
+  window._tourState.stepIdx = 0;
+  window._tourState.usingDemo = false;
+  window._tourState.prevWorkspaceId = null;
+  window._setupTourChrome();
+  // Make the body get a clean class so dev HUDs hide for a clean recording
+  document.body.classList.add('corsair-clean');
+  // Patch the teardown to also remove the clean class on exit
+  if (!window._tourState._cleanWired) {
+    var origTeardown = window._teardownTourChrome;
+    window._teardownTourChrome = function() {
+      try { document.body.classList.remove('corsair-clean'); } catch(e){}
+      return origTeardown();
+    };
+    window._tourState._cleanWired = true;
+  }
+  setTimeout(function() { window._runTourStep(); }, 300);
 };
 
 window._exitTourAndRestore = async function() {
@@ -61749,6 +61952,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.104"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.105"></script>
 </body>
 </html>
