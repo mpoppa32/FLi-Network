@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.95';
-  window.Corsair.buildBlurb  = 'ATLAS tab MVP (new internal-company surface with Updates feed + TODAY widget) + Daily Brief email preview button (client-side, no SendGrid deploy required). Plus Accounts grid click-to-fill placeholders from the spawned task.';
+  window.Corsair.buildTag    = 'P13.96';
+  window.Corsair.buildBlurb  = 'ATLAS promoted to top nav (between TODAY and ACCOUNTS) + visible transcript-file drop zone above Log notes (Otter.ai/Zoom/Teams .txt/.srt/.vtt). MORE menu cleaned up to avoid duplication.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
