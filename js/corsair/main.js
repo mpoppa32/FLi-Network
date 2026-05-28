@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.94';
-  window.Corsair.buildBlurb  = 'Accounts grid: SET STATUS / UNOWNED / NO POC SET placeholders are now click-to-fill via invisible overlay pickers — one click, save, re-render, no drawer round-trip.';
+  window.Corsair.buildTag    = 'P13.95';
+  window.Corsair.buildBlurb  = 'ATLAS tab MVP (new internal-company surface with Updates feed + TODAY widget) + Daily Brief email preview button (client-side, no SendGrid deploy required). Plus Accounts grid click-to-fill placeholders from the spawned task.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
