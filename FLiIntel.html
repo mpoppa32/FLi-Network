@@ -8542,7 +8542,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.97</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.98</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10523,7 +10523,8 @@ input[type="url"], textarea, select {
       <button onclick="window._openLogForContact&&window._openLogForContact(document.getElementById('outreach-contact-name').textContent);closeModal('outreach-draft-modal')" style="padding:9px 14px;border:1px solid var(--b2);border-radius:4px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">Log meeting instead</button>
       <button onclick="window._outreachCopy()" id="outreach-copy-btn" style="padding:9px 14px;border:1px solid var(--b2);border-radius:4px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">⎘ Copy</button>
       <button onclick="window._outreachOpenInMail()" id="outreach-mailto-btn" style="padding:9px 14px;border:1px solid var(--b2);border-radius:4px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer" title="Open in default mail client (Outlook, Apple Mail, etc)">📧 Mail app</button>
-      <button onclick="window._outreachOpenInGmail()" id="outreach-gmail-btn" style="padding:9px 18px;border:1px solid var(--gold);border-radius:4px;background:rgba(212,130,58,.12);color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer" title="Open in Gmail with subject + body prefilled">✉ Send in Gmail</button>
+      <button onclick="window._outreachOpenInGmail()" id="outreach-gmail-btn" style="padding:9px 14px;border:1px solid rgba(212,130,58,.45);border-radius:4px;background:transparent;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer" title="Open in Gmail tab — review and click Send there">✉ Open in Gmail</button>
+      <button onclick="window._gmailDirectSend()" id="outreach-gmail-direct-btn" style="padding:9px 18px;border:1px solid var(--gold);border-radius:4px;background:linear-gradient(180deg,rgba(212,130,58,.22),rgba(212,130,58,.10));color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;box-shadow:0 0 14px rgba(212,130,58,.15)" title="Send directly via Gmail API — first send prompts to grant permission, subsequent sends fire silently. Logs a touchpoint after success."><span style="font-size:14px">✉</span>&nbsp;Send Now</button>
     </div>
   </div>
 </div>
@@ -13041,6 +13042,113 @@ window._outreachOpenInGmail = function(){
   window.open(url, '_blank', 'noopener');
   closeModal('outreach-draft-modal');
   toast(to ? 'Opened in Gmail — review and send' : 'Opened in Gmail — add recipient and send');
+};
+
+// P13.98 — Gmail two-way DIRECT SEND (no tab-bounce). Uses Firebase Auth's
+// GoogleAuthProvider with gmail.send scope. First click prompts the user
+// to grant send permission; subsequent sends fire silently. After
+// successful send, auto-logs a touchpoint for the contact so the
+// relationship-health surfaces stay current.
+window._gmailEnsureSendToken = async function(){
+  if (window._gAccessToken_send) return window._gAccessToken_send;
+  var provider = new GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/gmail.send');
+  var result = await signInWithPopup(auth, provider);
+  var cred = GoogleAuthProvider.credentialFromResult(result);
+  if (!cred || !cred.accessToken) throw new Error('No access token returned from Google.');
+  window._gAccessToken_send = cred.accessToken;
+  return cred.accessToken;
+};
+window._gmailDirectSend = async function(){
+  var subject = (document.getElementById('outreach-subject')||{}).value || '';
+  var body    = (document.getElementById('outreach-body')||{}).value || '';
+  if (!body.trim() && !subject.trim()){ toast('Nothing to send'); return; }
+  var name = ((document.getElementById('outreach-contact-name')||{}).textContent || '').trim();
+  var to = '';
+  var contactNode = null;
+  if (name && window.nodes){
+    var lc = name.toLowerCase();
+    for (var i = 0; i < window.nodes.length; i++){
+      var n = window.nodes[i];
+      if (n && n.type === 'person' && String(n.name||'').toLowerCase().trim() === lc){
+        contactNode = n;
+        to = n.email || n.emailAddress || '';
+        break;
+      }
+    }
+  }
+  if (!to){
+    to = prompt('Recipient email (no address found on the person record):');
+    if (!to || !to.trim()) { toast('Cancelled — no recipient'); return; }
+    to = to.trim();
+  }
+  var btn = document.getElementById('outreach-gmail-direct-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+  try {
+    var token = await window._gmailEnsureSendToken();
+    // Build RFC 2822 message
+    var fromEmail = (window.currentUser && window.currentUser.email) || '';
+    var fromName  = (window.currentUser && window.currentUser.displayName) || fromEmail;
+    var msg = [
+      'From: ' + (fromName ? '"' + fromName.replace(/"/g, '') + '" <' + fromEmail + '>' : fromEmail),
+      'To: ' + to,
+      'Subject: ' + subject,
+      'Content-Type: text/plain; charset=utf-8',
+      'MIME-Version: 1.0',
+      '',
+      body
+    ].join('\r\n');
+    // Base64URL encode (UTF-8 safe via TextEncoder + btoa over binary string)
+    var bytes = new TextEncoder().encode(msg);
+    var binStr = '';
+    for (var b = 0; b < bytes.length; b++) binStr += String.fromCharCode(bytes[b]);
+    var encoded = btoa(binStr).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    var resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw: encoded })
+    });
+    if (!resp.ok) {
+      var errTxt = await resp.text();
+      throw new Error('Gmail API ' + resp.status + ': ' + errTxt.slice(0, 200));
+    }
+    var data = await resp.json();
+    closeModal('outreach-draft-modal');
+    toast('Sent via Gmail ✓ to ' + to);
+    // Auto-log a touchpoint: minimal meeting record so relationship-health
+    // and Brief synthesis pick up the outbound contact event.
+    if (contactNode && typeof saveMeeting === 'function') {
+      try {
+        var nowIso = new Date().toISOString().slice(0, 10);
+        var mtg = {
+          id: 'outreach-' + Date.now(),
+          meta: {
+            title: 'Outbound email · ' + (subject || '(no subject)'),
+            date: nowIso,
+            type: 'outbound-email',
+            att: name + ' <' + to + '>'
+          },
+          intel: {
+            summary: 'Sent via Corsair Gmail direct send.',
+            keyPeople: [{ name: name, role: contactNode.role || '', org: contactNode.org || '' }],
+            commitments: [],
+            risks: [],
+            actionItems: [],
+            openQuestions: []
+          }
+        };
+        if (window.currentWsId) await saveMeeting(mtg);
+      } catch(logErr){ console.warn('[P13.98] post-send log failed:', logErr); }
+    }
+  } catch (err) {
+    console.error('[P13.98 gmail send] failed:', err);
+    var em = (err && err.message) || String(err);
+    if (/popup|cancel|closed/i.test(em)) toast('Gmail send cancelled');
+    else if (/auth|token|scope/i.test(em)) toast('Gmail permission needed — click Send Now and grant access');
+    else toast('Gmail send failed: ' + em.slice(0, 80));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span style="font-size:14px">✉</span>&nbsp;Send Now'; }
+  }
 };
 
 // P13.38 — mailto: fallback for non-Gmail users (Outlook, Apple Mail).
@@ -60539,6 +60647,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.97"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.98"></script>
 </body>
 </html>
