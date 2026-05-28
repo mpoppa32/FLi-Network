@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.115</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.116</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -15940,10 +15940,26 @@ window._gqOpenContact=function(nodeId){
 // Also converts bare https://... URLs to clickable links.
 function _linkifyIntel(text){
   if(!text)return text;
+  // P13.116 (audit Finding 3.3) — escape HTML entities FIRST so a hostile
+  // OSINT signal headline containing <img onerror=...> or <script> renders
+  // as literal text instead of executing when innerHTML consumes the
+  // output. Previously this function ONLY regex-replaced URL patterns and
+  // ignored everything else in the text, so any HTML in the surrounding
+  // prose passed straight through to innerHTML. Now: escape angle brackets
+  // + quotes + ampersands, then linkify URLs. The URL regex still matches
+  // since real URL chars (https://, /, ?, =, .) survive escaping; URLs
+  // containing & get the & escaped to &amp; which is still a valid href.
+  text = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
   // Pattern: text (Source: URL) → text [↗](URL)
   text=text.replace(/\(Source:\s*(https?:\/\/[^\s)]+)\)/g,
     '<a href="$1" target="_blank" rel="noopener" style="font-size:12px;color:var(--blue);text-decoration:none;margin-left:4px;white-space:nowrap" title="Verify source">↗ Source</a>');
-  // Pattern: bare https://... → clickable
+  // Pattern: bare https://... → clickable. Negative lookbehind avoids
+  // re-linkifying URLs already inside an anchor's href= attribute.
   text=text.replace(/(?<!href=")(https?:\/\/[^\s<>"]+)/g,
     '<a href="$1" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:underline;font-size:13px;word-break:break-all">$1</a>');
   return text;
@@ -62263,6 +62279,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.115"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.116"></script>
 </body>
 </html>
