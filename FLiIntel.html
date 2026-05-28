@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.136</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.137</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10289,6 +10289,11 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       <button onclick="window._approveAllCapture()" style="padding:9px 16px;border:1px solid rgba(52,211,153,.4);border-radius:6px;background:rgba(52,211,153,.12);color:var(--green);font-size:14px;font-weight:700;cursor:pointer;font-family:IBM Plex Sans,sans-serif;letter-spacing:.06em;text-transform:uppercase">✓ Approve All</button>
       <button onclick="window._discardAllCapture()" style="padding:9px 16px;border:1px solid rgba(239,68,68,.3);border-radius:6px;background:transparent;color:var(--red);font-size:14px;font-weight:700;cursor:pointer;font-family:IBM Plex Sans,sans-serif;letter-spacing:.06em;text-transform:uppercase">✗ Discard All</button>
       <button onclick="window._showAutoCaptureSetup&&window._showAutoCaptureSetup()" style="padding:9px 16px;border:1px solid rgba(245,158,11,.4);border-radius:6px;background:rgba(245,158,11,.08);color:#f59e0b;font-size:14px;font-weight:700;cursor:pointer;font-family:IBM Plex Sans,sans-serif;letter-spacing:.06em;text-transform:uppercase">⚙ Setup</button>
+      <!-- P13.137 — Phase 1A backfill button. Re-runs the server-side
+           matcher across every existing pendingCapture entry so the
+           "from before P13.137" ones get their matchedNodeId / oppId /
+           direction populated. Idempotent + cheap. -->
+      <button id="capture-rematch-btn" onclick="window._runCaptureMatcherBackfill&amp;&amp;window._runCaptureMatcherBackfill(this)" title="Re-run the email-to-account matcher across existing items. Pulls sender/attendee emails through workspace nodes + opps. Idempotent." style="padding:9px 16px;border:1px solid rgba(139,92,246,.4);border-radius:6px;background:rgba(139,92,246,.08);color:var(--purple);font-size:14px;font-weight:700;cursor:pointer;font-family:IBM Plex Sans,sans-serif;letter-spacing:.06em;text-transform:uppercase">⌖ Re-match</button>
     </div>
   </div>
   <div id="capture-main-area" style="flex:1;overflow-y:auto;padding:20px 24px 40px">
@@ -42675,6 +42680,42 @@ window._discardAllCapture = async function() {
   toast('All captures discarded');
 };
 
+// P13.137 — Phase 1A backfill trigger. Calls the backfillCaptureMatches
+// Firebase Function to re-run the matcher across every existing
+// pendingCapture entry. Used after the matcher first deploys so the 68+
+// Atlas entries that landed pre-P13.137 get their matchedNodeId/oppId/
+// direction populated without waiting for them to age out. Idempotent —
+// safe to click multiple times.
+window._runCaptureMatcherBackfill = async function(btn) {
+  if (!window._fbFunctions || !window._httpsCallable) {
+    toast('Firebase Functions SDK not loaded');
+    return;
+  }
+  if (!window.currentWsId) {
+    toast('No workspace selected');
+    return;
+  }
+  var origLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⌖ Matching…'; }
+  try {
+    var call = window._httpsCallable(window._fbFunctions, 'backfillCaptureMatches');
+    var resp = await call({ workspaceId: window.currentWsId });
+    var d = (resp && resp.data) || {};
+    var matched  = Number(d.matched || 0);
+    var processed = Number(d.processed || 0);
+    var inbound  = (d.byDirection && Number(d.byDirection.inbound))  || 0;
+    var outbound = (d.byDirection && Number(d.byDirection.outbound)) || 0;
+    var line = matched + ' / ' + processed + ' captures matched · ' + inbound + ' inbound · ' + outbound + ' outbound';
+    toast('✓ Backfill complete — ' + line, 7000);
+    console.log('[P13.137 backfill]', d);
+  } catch (e) {
+    console.error('[P13.137 backfill] failed', e);
+    toast('Backfill failed: ' + ((e && e.message) || 'unknown'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origLabel || '⌖ Re-match'; }
+  }
+};
+
 window._saveSamGovKey = function() {
   var key = (document.getElementById('samgov-key-input').value||'').trim();
   if (!key) { document.getElementById('samgov-save-status').textContent='Enter your key'; return; }
@@ -62501,6 +62542,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.136"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.137"></script>
 </body>
 </html>

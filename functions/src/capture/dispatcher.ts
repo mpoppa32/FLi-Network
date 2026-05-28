@@ -12,7 +12,8 @@ import { db, wsPath } from "../framework/rtdb";
 import { refreshAccessToken } from "./oauth";
 import { fetchGmailMessages } from "./gmailClient";
 import { fetchCalendarEvents } from "./calendarClient";
-import { gmailToPendingCapture, calendarEventToPendingCapture } from "./normalizer";
+import { gmailToPendingCapture, calendarEventToPendingCapture, PendingCaptureEntry } from "./normalizer";
+import { loadMatchContext, matchEntry, MatchContext } from "./matcher";
 import { createLogger } from "../framework/logger";
 
 interface StoredAuth {
@@ -50,6 +51,34 @@ export interface SyncResult {
 async function loadAuth(uid: string): Promise<StoredAuth | null> {
   const snap = await db.ref(`users/${uid}/captureAuth/google`).get();
   return snap.exists() ? (snap.val() as StoredAuth) : null;
+}
+
+/**
+ * P13.137 — apply matcher results to a pendingCapture entry in place.
+ * Pulls the sender + attendee facts off the entry, runs matchEntry against
+ * the pre-loaded workspace context, then writes matchedNodeId / oppId /
+ * oppName / matchSource / direction back onto the entry. Pure side-effect;
+ * called once per entry inside the dispatcher loops above.
+ */
+function _applyMatch(entry: PendingCaptureEntry, ctx: MatchContext): void {
+  const attendeeEmails = (entry.meta?.attendees || [])
+    .map((a) => (a?.email || "").toLowerCase().trim())
+    .filter(Boolean);
+  const m = matchEntry(
+    {
+      senderEmail: entry.fromEmail || "",
+      attendeeEmails,
+      threadId: entry.threadId || null,
+      messageId: entry.messageId || null,
+      inReplyTo: entry.inReplyTo || null,
+    },
+    ctx
+  );
+  entry.matchedNodeId = m.matchedNodeId;
+  entry.matchSource = m.matchSource;
+  entry.oppId = m.oppId;
+  entry.oppName = m.oppName;
+  entry.direction = m.direction;
 }
 
 async function ensureFreshAccessToken(
@@ -107,9 +136,14 @@ export async function syncGmail(uid: string, workspaceId: string): Promise<SyncR
     });
     result.fetched = messages.length;
     let latestTs = state.lastMessageDate ? Date.parse(state.lastMessageDate) : 0;
+    // P13.137 — load workspace match context ONCE per sync run so the
+    // matcher is O(messages) instead of O(messages × nodes). Phase 0
+    // audit found 0% match rate; this closes the gap.
+    const matchCtx = await loadMatchContext(workspaceId);
     const updates: Record<string, unknown> = {};
     for (const msg of messages) {
       const entry = gmailToPendingCapture(msg);
+      _applyMatch(entry, matchCtx);
       updates[wsPath(workspaceId, "pendingCapture", entry.id)] = entry;
       if (entry.ts > latestTs) latestTs = entry.ts;
     }
@@ -163,9 +197,14 @@ export async function syncCalendar(
     const events = await fetchCalendarEvents(accessToken, { sinceIso });
     result.fetched = events.length;
     let latestEnd = state.lastEventEnd ? Date.parse(state.lastEventEnd) : 0;
+    // P13.137 — same match-context pattern as Gmail. Calendar invites have
+    // attendee emails too; running the matcher gives us account linkage
+    // for "next meeting with this org" surfaces.
+    const matchCtx = await loadMatchContext(workspaceId);
     const updates: Record<string, unknown> = {};
     for (const ev of events) {
       const entry = calendarEventToPendingCapture(ev);
+      _applyMatch(entry, matchCtx);
       updates[wsPath(workspaceId, "pendingCapture", entry.id)] = entry;
       const endIso = ev.raw.end?.dateTime ?? ev.raw.end?.date;
       if (endIso) {

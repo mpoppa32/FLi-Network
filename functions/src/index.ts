@@ -146,6 +146,9 @@ export { captureOAuthCallback } from "./http/captureOAuthCallback";
 export { triggerGmailSync } from "./http/triggerGmailSync";
 export { triggerCalendarSync } from "./http/triggerCalendarSync";
 export { captureHourly } from "./jobs/captureHourly";
+// P13.137 — one-shot backfill so existing pendingCapture entries get the
+// matcher applied without waiting for them to age out and re-capture.
+export { backfillCaptureMatches } from "./http/backfillCaptureMatches";
 
 // Daily Brief Email Digest (closes 2026-05-25 SME-eval gap #2)
 // Requires:

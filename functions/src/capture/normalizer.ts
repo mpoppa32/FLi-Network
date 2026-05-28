@@ -26,6 +26,8 @@ export interface PendingCaptureEntry {
   source: "gmail-auto" | "gcal-auto";
   ts: number;
   fromName: string;
+  // P13.137 — sender email at top level for matcher + Phase 1B nudge engine
+  fromEmail?: string;
   meta: {
     title: string;
     date: string; // YYYY-MM-DD
@@ -44,6 +46,16 @@ export interface PendingCaptureEntry {
   matchedNodeId: string | null;
   oppId: string | null;
   oppName: string | null;
+  // P13.137 — match transparency + Phase 1B foundation. matchSource lets
+  // the UI label confidence honestly ("matched via sender email" vs
+  // "matched via sender domain"). direction is the inbound/outbound flag
+  // the nudge engine uses to detect "you haven't replied" state.
+  // Thread headers enable reply-chain grouping in Phase 1B.
+  matchSource?: "sender-email" | "attendee-email" | "sender-domain" | null;
+  direction?: "inbound" | "outbound" | "unknown";
+  threadId?: string | null;
+  messageId?: string | null;
+  inReplyTo?: string | null;
 }
 
 const EMAIL_NAME_RE = /^\s*"?([^"<]+?)"?\s*<([^>]+)>\s*$/;
@@ -78,6 +90,9 @@ export function gmailToPendingCapture(msg: FetchedGmailMessage): PendingCaptureE
   const to = msg.headers["To"] ?? "";
   const cc = msg.headers["Cc"] ?? "";
   const dateHdr = msg.headers["Date"] ?? "";
+  // P13.137 — capture thread + reply chain headers for Phase 1B nudge engine
+  const messageIdRaw = msg.headers["Message-ID"] ?? msg.headers["Message-Id"] ?? "";
+  const inReplyToRaw = msg.headers["In-Reply-To"] ?? "";
   const ts = dateHdr ? Date.parse(dateHdr) : Date.now();
   const fromAddr = from ? parseAddress(from) : { name: "", email: "" };
   const attendees = [
@@ -98,6 +113,7 @@ export function gmailToPendingCapture(msg: FetchedGmailMessage): PendingCaptureE
     source: "gmail-auto",
     ts,
     fromName: fromAddr.name,
+    fromEmail: fromAddr.email,
     meta: {
       title: subject || "(no subject)",
       date: isoDateYMD(ts),
@@ -115,6 +131,11 @@ export function gmailToPendingCapture(msg: FetchedGmailMessage): PendingCaptureE
     matchedNodeId: null,
     oppId: null,
     oppName: null,
+    matchSource: null,
+    direction: "unknown",
+    threadId: msg.threadId || null,
+    messageId: messageIdRaw.replace(/^<|>$/g, "") || null,
+    inReplyTo: inReplyToRaw.replace(/^<|>$/g, "") || null,
   };
 }
 
@@ -135,11 +156,15 @@ export function calendarEventToPendingCapture(
     email: (a.email ?? "").toLowerCase(),
   }));
   const organizer = e.organizer?.displayName || e.organizer?.email || "";
+  // P13.137 — organizer email also exposed at fromEmail so the matcher
+  // and Phase 1B can treat calendar invites symmetrically with email.
+  const organizerEmail = (e.organizer?.email || "").toLowerCase().trim();
   return {
     id: "gcal-auto-" + ev.id,
     source: "gcal-auto",
     ts,
     fromName: organizer,
+    fromEmail: organizerEmail,
     meta: {
       title: e.summary ?? "(no title)",
       date: isoDateYMD(ts),
@@ -158,5 +183,12 @@ export function calendarEventToPendingCapture(
     matchedNodeId: null,
     oppId: null,
     oppName: null,
+    matchSource: null,
+    // Calendar events don't have a meaningful inbound/outbound direction
+    // in the email sense, but the field is present for schema consistency.
+    direction: "unknown",
+    threadId: null,
+    messageId: null,
+    inReplyTo: null,
   };
 }
