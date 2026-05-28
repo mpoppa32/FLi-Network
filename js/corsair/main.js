@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.113';
-  window.Corsair.buildBlurb  = 'Audit Finding 7.2 — when the active workspace was deleted in Firebase Console (or the user was removed from it) mid-session, the opportunities listener fired snap.val()=null, opportunities=[], UI silently emptied to "0 pursuits" with no error. Operator concluded "the platform broke." Now: connectWorkspace subscribes to users/{uid}/workspaces/{wsId} — a shallow access record that exists for any member-accessible workspace. When it transitions from non-null to null mid-session (initial null suppressed), surfaces a full-screen modal: "This workspace is no longer available — deleted or your access was revoked. Return to workspace picker." Button takes the operator back to ws-screen and re-renders the workspace list. Subscription pushed into netListeners so the next workspace switch cleans it up. Demo-safe: a buyer asking "what if my workspace is deleted" gets a graceful answer. Critical Findings closed total: 10.';
+  window.Corsair.buildTag    = 'P13.114';
+  window.Corsair.buildBlurb  = 'Audit Finding 2.4 — renderDailyBrief decay scan was O(people × meetings × attendees × stringSim) = 99,500 iters on Atlas, projected 9.95M at 10x scale (1990 nodes × 5000 meetings). Brief re-renders on every meeting save, view switch, opp save → noticeable hang at scale. Now O(meetings × attendees) for the index pass + O(people) for the emit pass. Exact-match fast path covers ~80% of names cleanly; fuzzy simFn fallback only fires for attendee names that did not exact-match. Also fixed the stale-pursuits scan in same render — was O(opps × meetings) = 61,000 iters, now uses CorsairIndex.meetingsByOppId for O(1) per-opp lookup with linear fallback if index is cold. Expected first-render perceived improvement: small at 122 opps (already fast), order-of-magnitude at 10x. Critical Findings closed total: 11.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

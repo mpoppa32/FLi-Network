@@ -54,46 +54,107 @@ window.renderDailyBrief = function() {
   }
 
   // ─── 1. Decay alerts: people not touched in 30+ days ─────────────────
+  // P13.114 (audit Finding 2.4): was O(people × meetings × attendees × simFn)
+  // — 99,500 iterations on Atlas (199 nodes × 500 meetings), projected
+  // 9.95M at 10x scale (1990 × 5000). Now O(meetings × attendees) for the
+  // index pass, then O(people) for the lookup. Exact-match fast path
+  // dominates when names are normalized; fuzzy fallback only fires for
+  // names that didn't exact-match.
   var decay = [];
   if (simFn) {
     var people = nodes_.filter(function(n) { return n && n.type === 'person'; });
-    people.forEach(function(p) {
-      var lastTs = null;
-      for (var i = 0; i < mtgs_.length; i++) {
-        var m = mtgs_[i];
-        var ts = _mtgTime(m);
-        if (ts == null) continue;
-        var names = _attendeeNamesOf(m);
-        for (var k = 0; k < names.length; k++) {
-          try { if (simFn(names[k], p.name) >= 0.72) { if (lastTs == null || ts > lastTs) lastTs = ts; break; } } catch (e) {}
-        }
-      }
-      if (lastTs != null) {
-        var daysSince = Math.floor((nowMs - lastTs) / DAY);
-        if (daysSince >= 30) decay.push({ id: p.id, name: p.name, org: p.org || p.govOrg || '', days: daysSince });
+    // Build exact-name lookup: lowercase trimmed name → person node
+    var personByExactName = new Map();
+    people.forEach(function(p){
+      if (p && p.name) {
+        var key = String(p.name).toLowerCase().trim();
+        if (key) personByExactName.set(key, p);
       }
     });
+    // Walk meetings once. For each attendee name, exact-match first
+    // (O(1)); fuzzy fallback only on misses. Record latest ts per person.
+    var lastTsByPersonId = new Map();
+    for (var dmi = 0; dmi < mtgs_.length; dmi++) {
+      var dm = mtgs_[dmi];
+      var dts = _mtgTime(dm);
+      if (dts == null) continue;
+      var dnames = _attendeeNamesOf(dm);
+      if (!dnames.length) continue;
+      var seenPersons = {};
+      for (var dni = 0; dni < dnames.length; dni++) {
+        var dname = dnames[dni];
+        if (!dname) continue;
+        var dexact = personByExactName.get(String(dname).toLowerCase().trim());
+        if (dexact) {
+          if (!seenPersons[dexact.id]) {
+            seenPersons[dexact.id] = true;
+            var prevExact = lastTsByPersonId.get(dexact.id);
+            if (prevExact == null || dts > prevExact) lastTsByPersonId.set(dexact.id, dts);
+          }
+        } else {
+          // Fuzzy fallback — only fires when no exact match exists
+          for (var dpi = 0; dpi < people.length; dpi++) {
+            var dp = people[dpi];
+            if (!dp || !dp.name || seenPersons[dp.id]) continue;
+            try {
+              if (simFn(dname, dp.name) >= 0.72) {
+                seenPersons[dp.id] = true;
+                var prevFz = lastTsByPersonId.get(dp.id);
+                if (prevFz == null || dts > prevFz) lastTsByPersonId.set(dp.id, dts);
+                break;
+              }
+            } catch(e){}
+          }
+        }
+      }
+    }
+    // Now O(people) emit
+    for (var dpix = 0; dpix < people.length; dpix++){
+      var dpx = people[dpix];
+      var dlastTs = lastTsByPersonId.get(dpx.id);
+      if (dlastTs != null) {
+        var daysSince = Math.floor((nowMs - dlastTs) / DAY);
+        if (daysSince >= 30) decay.push({ id: dpx.id, name: dpx.name, org: dpx.org || dpx.govOrg || '', days: daysSince });
+      }
+    }
     decay.sort(function(a, b) { return b.days - a.days; });
   }
 
   // ─── 2. Stale pursuits: active-stage opps without recent meetings ───
+  // P13.114 (audit Finding 2.4): was O(opps × meetings) — 61,000 iters on
+  // Atlas, projected 6.1M at 10x. Now uses CorsairIndex.meetingsByOppId
+  // (already pre-built by the index rebuild) for O(1) lookup per opp.
+  // Falls back to the legacy linear scan if the index is unavailable
+  // (cold load before first rebuild, or if the workspace just switched).
   var STAGE_ACTIVE = { proposal: 1, negotiation: 1, submitted: 1, award: 1, engaged: 1, rfp: 1 };
   var stale = [];
+  var _idx = window.CorsairIndex;
+  var _hasIdx = !!(_idx && _idx.meetingsByOppId && typeof _idx.meetingsByOppId.get === 'function');
   for (var oi = 0; oi < opps_.length; oi++) {
     var o = opps_[oi];
     if (!o) continue;
-    var stg = String(o.stage || '').toLowerCase();
+    var stg = String(o.stage || '').toLowerCase().trim();
     if (!STAGE_ACTIVE[stg]) continue;
     var oid = String(o.id);
     var latest = null;
-    for (var mi = 0; mi < mtgs_.length; mi++) {
-      var mm = mtgs_[mi];
-      if (!mm) continue;
-      var tagged = (mm.oppId != null && String(mm.oppId) === oid)
-                || (Array.isArray(o.meetings) && o.meetings.indexOf(mm.id) !== -1);
-      if (!tagged) continue;
-      var ts2 = _mtgTime(mm);
-      if (ts2 != null && (latest == null || ts2 > latest)) latest = ts2;
+    if (_hasIdx) {
+      var oppMtgs = _idx.meetingsByOppId.get(oid) || [];
+      for (var omi = 0; omi < oppMtgs.length; omi++) {
+        var oMtg = oppMtgs[omi];
+        var ots = _mtgTime(oMtg);
+        if (ots != null && (latest == null || ots > latest)) latest = ots;
+      }
+    } else {
+      // Fallback: original linear scan
+      for (var mi = 0; mi < mtgs_.length; mi++) {
+        var mm = mtgs_[mi];
+        if (!mm) continue;
+        var tagged = (mm.oppId != null && String(mm.oppId) === oid)
+                  || (Array.isArray(o.meetings) && o.meetings.indexOf(mm.id) !== -1);
+        if (!tagged) continue;
+        var ts2 = _mtgTime(mm);
+        if (ts2 != null && (latest == null || ts2 > latest)) latest = ts2;
+      }
     }
     var days2 = latest == null ? 9999 : Math.floor((nowMs - latest) / DAY);
     if (days2 >= 14) {
