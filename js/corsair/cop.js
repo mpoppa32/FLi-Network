@@ -107,6 +107,41 @@ window._buildCopData = function() {
     list.sort(function(a, b) { return Number(b.value || 0) - Number(a.value || 0); });
   });
 
+  // P13.133 Day 6 (reconciliation audit, Pipeline Surface #7) — closed-deal
+  // visibility. Won and lost opps were previously skipped from the Kanban
+  // entirely (cop.js:265-267 active-board filter) so the operator had no
+  // place to see win/loss tally, recent closures, or pull up the lost-stage
+  // "capture lessons" action surface. Compute count + total value + most-
+  // recent N for each closure column. Closure date is opp.stageEnteredAt
+  // (the timestamp the opp moved to its current — won or lost — stage,
+  // set by saveOpp Phase 6.1 transition tracking).
+  var wonOpps = [], lostOpps = [];
+  (window.opportunities || []).forEach(function(o) {
+    if (!o) return;
+    var stg = String(o.stage || '').toLowerCase().trim();
+    if (stg === 'won') wonOpps.push(o);
+    else if (stg === 'lost') lostOpps.push(o);
+  });
+  function _sortClosed(a, b) {
+    var ta = Number(a.stageEnteredAt || 0);
+    var tb = Number(b.stageEnteredAt || 0);
+    return tb - ta;
+  }
+  wonOpps.sort(_sortClosed);
+  lostOpps.sort(_sortClosed);
+  var closedRollup = {
+    won: {
+      count: wonOpps.length,
+      value: wonOpps.reduce(function(s, o) { return s + Number(o.value || 0); }, 0),
+      recent: wonOpps.slice(0, 5)
+    },
+    lost: {
+      count: lostOpps.length,
+      value: lostOpps.reduce(function(s, o) { return s + Number(o.value || 0); }, 0),
+      recent: lostOpps.slice(0, 5)
+    }
+  };
+
   return {
     recentMtgsCount: recentMtgs.length,
     recentMtgs: recentMtgs.slice(0, 6),
@@ -119,7 +154,8 @@ window._buildCopData = function() {
     activeOppsCount: activeOpps.length,
     oppByStage: oppByStage,
     pursuitsByStage: pursuitsByStage,
-    stageRollups: stageRollups
+    stageRollups: stageRollups,
+    closedRollup: closedRollup
   };
 };
 
@@ -310,6 +346,85 @@ window.renderCopSection = function() {
     });
     h += '</div>';
     h += '</div>';
+  }
+
+  // ── CLOSED DEALS (P13.133 Day 6 — closed-deal tray) ──────────────────
+  // Two-column rollup: Won and Lost. Each shows count + total value +
+  // up to 5 most-recent closures sorted by stageEnteredAt desc. Card
+  // click opens the dossier — for lost opps the Phase 6.4 stage panel
+  // surfaces the "Capture lessons in pass-down note" next action that
+  // was previously unreachable because the Kanban filtered closed
+  // stages out. Reevo parity: closed deals are first-class with debrief
+  // surface.
+  var closed = d.closedRollup;
+  if (closed && (closed.won.count > 0 || closed.lost.count > 0)) {
+    h += '<div style="margin-top:24px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--rule)">';
+    h += '<div style="display:flex;align-items:center;gap:12px">';
+    h += '<span style="width:5px;height:22px;background:var(--t2);border-radius:1px"></span>';
+    h += '<div><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:var(--text-lg);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Closed Deals</div>';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-xs);letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:2px">' + closed.won.count + ' won · ' + closed.lost.count + ' lost · click card → debrief in dossier</div></div>';
+    h += '</div>';
+    h += '</div>';
+
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+
+    // Won column
+    h += '<div style="background:var(--surface);border:1px solid rgba(58,138,92,.35);border-left:3px solid #3a8a5c;border-radius:8px;padding:18px 20px">';
+    h += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--rule)">';
+    h += '<div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:32px;font-weight:800;color:#3a8a5c;line-height:1;letter-spacing:-0.02em">' + closed.won.count + '</span><span style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-xs);letter-spacing:0.14em;color:var(--t3);text-transform:uppercase">won</span></div>';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-sm);color:#3a8a5c;letter-spacing:0.06em">$' + _formatVal(closed.won.value) + ' total</div>';
+    h += '</div>';
+    if (closed.won.recent.length === 0) {
+      h += '<div style="font-size:var(--text-sm);color:var(--t3);font-style:italic;padding:8px 0">No wins on record. Yet.</div>';
+    } else {
+      closed.won.recent.forEach(function(o, i) {
+        var safeIdW = String(o.id).replace(/'/g, '&#39;');
+        var dateStr = o.stageEnteredAt
+          ? new Date(Number(o.stageEnteredAt)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        var valStr = o.value ? '$' + _formatVal(o.value) : '';
+        var border = i < closed.won.recent.length - 1 ? 'border-bottom:1px solid var(--rule);' : '';
+        h += '<div onclick="window.openEntityInspector&amp;&amp;window.openEntityInspector(\'' + safeIdW + '\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;cursor:pointer;' + border + 'transition:transform .15s" onmouseover="this.style.transform=\'translateX(2px)\'" onmouseout="this.style.transform=\'translateX(0)\'">';
+        h += '<div style="flex:1;min-width:0">';
+        h += '<div style="font-size:var(--text-base);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _copEsc(o.name || '(unnamed)') + '</div>';
+        h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-xs);letter-spacing:0.06em;color:var(--t3);margin-top:2px">' + (dateStr || '—') + (valStr ? ' · ' + valStr : '') + '</div>';
+        h += '</div>';
+        h += '<span style="color:#3a8a5c;font-size:14px;flex-shrink:0">→</span>';
+        h += '</div>';
+      });
+    }
+    h += '</div>';
+
+    // Lost column
+    h += '<div style="background:var(--surface);border:1px solid rgba(179,64,64,.30);border-left:3px solid #b34040;border-radius:8px;padding:18px 20px">';
+    h += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--rule)">';
+    h += '<div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:32px;font-weight:800;color:#b34040;line-height:1;letter-spacing:-0.02em">' + closed.lost.count + '</span><span style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-xs);letter-spacing:0.14em;color:var(--t3);text-transform:uppercase">lost / no-bid</span></div>';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-sm);color:#b34040;letter-spacing:0.06em">$' + _formatVal(closed.lost.value) + ' total</div>';
+    h += '</div>';
+    if (closed.lost.recent.length === 0) {
+      h += '<div style="font-size:var(--text-sm);color:var(--t3);font-style:italic;padding:8px 0">No closed-lost on record.</div>';
+    } else {
+      closed.lost.recent.forEach(function(o, i) {
+        var safeIdL = String(o.id).replace(/'/g, '&#39;');
+        var dateStrL = o.stageEnteredAt
+          ? new Date(Number(o.stageEnteredAt)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : '';
+        var valStrL = o.value ? '$' + _formatVal(o.value) : '';
+        var borderL = i < closed.lost.recent.length - 1 ? 'border-bottom:1px solid var(--rule);' : '';
+        h += '<div onclick="window.openEntityInspector&amp;&amp;window.openEntityInspector(\'' + safeIdL + '\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;cursor:pointer;' + borderL + 'transition:transform .15s" onmouseover="this.style.transform=\'translateX(2px)\'" onmouseout="this.style.transform=\'translateX(0)\'">';
+        h += '<div style="flex:1;min-width:0">';
+        h += '<div style="font-size:var(--text-base);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _copEsc(o.name || '(unnamed)') + '</div>';
+        h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-xs);letter-spacing:0.06em;color:var(--t3);margin-top:2px">' + (dateStrL || '—') + (valStrL ? ' · ' + valStrL : '') + '</div>';
+        h += '</div>';
+        h += '<span style="color:#b34040;font-size:14px;flex-shrink:0">→</span>';
+        h += '</div>';
+      });
+    }
+    h += '</div>';
+
+    h += '</div>'; // close 2-col grid
+    h += '</div>'; // close closed-deals section
   }
 
   h += '</div>'; // close data-surface="light" wrapper
