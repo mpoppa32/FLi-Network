@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.116</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.117</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12772,6 +12772,19 @@ async function saveEntity(e){var c=Object.assign({},e);delete c.fx;delete c.fy;d
 
 function showAuthError(msg){var el=document.getElementById('auth-error');if(el){el.textContent=msg;el.style.display='block';}}
 
+// P13.117 (audit Finding 3.3) — canonical HTML escape helper exposed on
+// window so every XSS-prone innerHTML callsite can wrap interpolations
+// without scope-hunting for a local _esc / escH / _copEsc. Defined ONCE
+// here near saveOpp + sign-out so it loads before any render path.
+// Escapes the standard five OWASP characters. Returns '' for null/undefined
+// to avoid "undefined" leaking into the DOM as visible text.
+window._escHTML = function(s){
+  if (s == null) return '';
+  return String(s).replace(/[<>&"']/g, function(c){
+    return ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;', "'":'&#39;' })[c];
+  });
+};
+
 // P13.108 (audit Finding 3.4) — clear sensitive localStorage + in-memory
 // tokens on every sign-out. Previously sign-out cleared window.currentUser
 // but left fli-apikey-{uid} (Anthropic), fli-dgkey-{uid} (Deepgram),
@@ -13034,7 +13047,7 @@ function connectWorkspace(){
   var tk=document.getElementById('intel-ticker');
   if(tk){tk.style.display='flex';
     var tw=document.getElementById('ticker-workspace');
-    if(tw&&currentWs)tw.innerHTML='<span>'+currentWs.name+'</span>';
+    if(tw&&currentWs)tw.innerHTML='<span>'+window._escHTML(currentWs.name)+'</span>';
   }
   meetings=[];meetingMap.clear();nodes=[];nodeMap.clear();links=[];linkMap.clear();
   entities=[];calEntries=[];tlCommitments=[];calibrationRecords=[];entityGraph.clear();companyByName.clear();
@@ -14761,12 +14774,12 @@ window.generatePersonBrief=async function(d){
   switchNetTab('dossier',dossierTab);
 
   var dc=document.getElementById('dossier-content');
-  if(dc)dc.innerHTML='<div style="padding:40px 0;text-align:center">'    +'<div style="display:inline-flex;gap:8px;align-items:center;color:var(--purple);font-size:12px">'    +'<span class="proc-dots"><span></span><span></span><span></span></span>'    +'<span id="pb-loading-txt">Scanning meeting history for '+d.name+'...</span>'    +'</div></div>';
+  if(dc)dc.innerHTML='<div style="padding:40px 0;text-align:center">'    +'<div style="display:inline-flex;gap:8px;align-items:center;color:var(--purple);font-size:12px">'    +'<span class="proc-dots"><span></span><span></span><span></span></span>'    +'<span id="pb-loading-txt">Scanning meeting history for '+window._escHTML(d.name)+'...</span>'    +'</div></div>';
 
   try{
     var ctx=_buildPersonBriefContext(d);
     var loadTxt=document.getElementById('pb-loading-txt');
-    if(loadTxt)loadTxt.textContent='Synthesizing intelligence on '+d.name+'...';
+    if(loadTxt)loadTxt.textContent='Synthesizing intelligence on '+d.name+'...'; /* textContent is safe; not innerHTML */
     var text=await _callPersonBriefClaude(d,ctx);
     // F3: Fetch org intel in parallel (non-blocking)
     if(loadTxt)loadTxt.textContent='Pulling external signals for '+(d.org||d.govOrg||d.name)+'...';
@@ -14965,7 +14978,7 @@ function _renderPersonBrief(d,text,ctx,container,orgIntelText){
   h+='</div>';
   // Meta
   h+='<div style="flex:1">';
-  h+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+d.name+'</div>';
+  h+='<div style="font-size:13px;font-weight:700;margin-bottom:2px">'+window._escHTML(d.name)+'</div>';
   if(d.role||d.org)h+='<div style="font-size:14px;color:var(--t2)">'+(d.role||'')+(d.org?' @ '+d.org:'')+'</div>';
   h+='<div style="display:flex;gap:8px;margin-top:5px;flex-wrap:wrap">';
   h+='<span style="font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace">'+ctx.mtgCount+' meetings</span>';
@@ -15864,7 +15877,7 @@ function _renderCoolingResult(result){
     var ini=a.node.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
     h+='<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid rgba(26,34,54,.3)">';
     h+='<div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;background:var(--s2);border:1.5px solid '+sevColor+';display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--gold)">'+ini+'</div>';
-    h+='<div style="flex:1"><div style="font-size:12px;font-weight:600">'+a.node.name+'</div><div style="font-size:13px;color:var(--t3)">'+(a.node.role||'')+'</div></div>';
+    h+='<div style="flex:1"><div style="font-size:12px;font-weight:600">'+window._escHTML(a.node.name)+'</div><div style="font-size:13px;color:var(--t3)">'+window._escHTML(a.node.role||'')+'</div></div>';
     h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:700;color:'+sevColor+'">'+a.daysAgo+'<span style="font-size:11px">d</span></div><div style="font-size:11px;color:var(--t3)">'+a.tier+'</div></div>';
     h+='</div>';
   });
@@ -24959,7 +24972,7 @@ function _dossierExportHTML(d){
   body+='<div class="card" style="display:flex;gap:16px;align-items:flex-start;margin-bottom:20px">';
   body+='<div class="avatar" style="width:48px;height:48px;font-size:14px">'+ini+'</div>';
   body+='<div style="flex:1">';
-  body+='<div style="font-size:17px;font-weight:700;margin-bottom:2px">'+d.name+'</div>';
+  body+='<div style="font-size:17px;font-weight:700;margin-bottom:2px">'+window._escHTML(d.name)+'</div>';
   if(d.role)body+='<div style="font-size:13px;color:#475569">'+d.role+(d.org?' · '+d.org:'')+'</div>';
   body+='<div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;font-size:14px;color:#64748b">';
   body+='<span>'+nm.length+' meetings</span>';
@@ -27142,7 +27155,7 @@ function dragEnd(ev,d){
   var undoToast=document.createElement('div');
   undoToast.id='node-undo-toast';
   undoToast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--s1);border:1px solid var(--b2);border-radius:var(--rsm);padding:7px 14px;font-size:12px;color:var(--text);z-index:9000;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4)';
-  undoToast.innerHTML='Moved '+d.name+'<button onclick="undoNodeMove()" style="padding:2px 8px;background:var(--gold);color:#000;border:none;border-radius:3px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;font-size:14px;font-weight:700">Undo</button>';
+  undoToast.innerHTML='Moved '+window._escHTML(d.name)+'<button onclick="undoNodeMove()" style="padding:2px 8px;background:var(--gold);color:#000;border:none;border-radius:3px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;font-size:14px;font-weight:700">Undo</button>';
   var old=document.getElementById('node-undo-toast');if(old)old.remove();
   document.body.appendChild(undoToast);
   _nodeUndoTimer=setTimeout(function(){var t=document.getElementById('node-undo-toast');if(t)t.remove();_nodePositionUndo=null;},12000);
@@ -27568,7 +27581,7 @@ function renderDossier(d){
   // ── ENTITY HEADER ───────────────────────────────────────────
   h+='<div class="ins-entity-hdr">';
   h+='<div style="flex:1;min-width:0">';
-  h+='<div class="ins-entity-name" style="color:'+c+'">'+d.name+'</div>';
+  h+='<div class="ins-entity-name" style="color:'+c+'">'+window._escHTML(d.name)+'</div>';
   if(d.role||d.org)h+='<div class="ins-entity-role">'+(d.role||'')+(d.org?' / '+d.org:'')+'</div>';
   h+='<div class="ins-entity-tags">';
   h+='<span class="ins-tag ins-tag--type">'+d.type.toUpperCase()+'</span>';
@@ -27712,7 +27725,7 @@ function renderTimeline360(d){
   var sorted=nm.slice().sort(function(a,b){return a.meta.date.localeCompare(b.meta.date);});
 
   if(!sorted.length){
-    document.getElementById('timeline360-content').innerHTML='<div class="ins-empty">No meetings linked to '+d.name+' yet.<div class="ins-empty-hint">Process meetings where this entity appears and the arc builds itself.</div></div>';
+    document.getElementById('timeline360-content').innerHTML='<div class="ins-empty">No meetings linked to '+window._escHTML(d.name)+' yet.<div class="ins-empty-hint">Process meetings where this entity appears and the arc builds itself.</div></div>';
     return;
   }
 
@@ -27739,7 +27752,7 @@ function renderTimeline360(d){
 
   // ── Arc summary card ──
   h+='<div class="ins-arc-card ins-arc-card--amber">';
-  h+='<div class="ins-arc-name" style="color:'+c+'">'+d.name+'</div>';
+  h+='<div class="ins-arc-name" style="color:'+c+'">'+window._escHTML(d.name)+'</div>';
   h+='<div class="ins-arc-meta">FIRST CONTACT '+firstMtg.meta.date+' / '+sorted.length+' MEETINGS OVER '+(totalDays>0?totalDays+'D':'SAME DAY')+'</div>';
   h+='<div style="margin-top:8px;display:flex;align-items:center;gap:8px">';
   h+='<div style="flex:1"><div class="ins-bar-track"><div class="ins-bar-fill" style="width:'+health*10+'%;background:'+healthColor(health)+'"></div></div></div>';
@@ -28005,7 +28018,7 @@ function updateFilterTags(){var cont=document.getElementById('filter-tags');if(!
     cont.appendChild(b);
   });
 }
-function updateOrgLegend(){var cos=nodes.filter(function(n){return n.type==='company';});var legend=document.getElementById('org-legend');if(!legend)return;if(!cos.length){legend.style.display='none';return;}legend.style.display='block';document.getElementById('org-legend-items').innerHTML=cos.map(function(c){return '<div class="ol-item"><div class="ol-dot" style="background:'+(c.color||'#555')+'"></div><span>'+c.name+'</span></div>';}).join('');}
+function updateOrgLegend(){var cos=nodes.filter(function(n){return n.type==='company';});var legend=document.getElementById('org-legend');if(!legend)return;if(!cos.length){legend.style.display='none';return;}legend.style.display='block';document.getElementById('org-legend-items').innerHTML=cos.map(function(c){return '<div class="ol-item"><div class="ol-dot" style="background:'+(c.color||'#555')+'"></div><span>'+window._escHTML(c.name)+'</span></div>';}).join('');}
 function buildEdgeLegend(){var rows=[['Hierarchy','#3b82f6',false],['Investment','#d4823a',false],['Partnership','#22c55e',false],['Advisory','#8b5cf6',true],['Competitive','#ef4444',true],['General','#64748b',false]];document.getElementById('edge-legend-items').innerHTML=rows.map(function(r){var line=r[2]?'<div style="height:2px;width:16px;background:repeating-linear-gradient(90deg,'+r[1]+' 0,'+r[1]+' 4px,transparent 4px,transparent 7px);flex-shrink:0"></div>':'<div class="el-solid" style="background:'+r[1]+'"></div>';return '<div class="el-item">'+line+'<span style="color:'+r[1]+'">'+r[0]+'</span></div>';}).join('');}
 
 function onNetSearch(){var q=document.getElementById('net-search').value.toLowerCase().trim();var res=document.getElementById('net-search-results');if(!q){hideNetSearch();return;}var hits=nodes.filter(function(n){return n.name.toLowerCase().indexOf(q)!==-1||(n.role&&n.role.toLowerCase().indexOf(q)!==-1)||(n.notes&&n.notes.toLowerCase().indexOf(q)!==-1);}).slice(0,8);if(!hits.length){res.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--t3)">No results</div>';res.style.display='block';return;}res.innerHTML=hits.map(function(n){return '<div class="sr-item" onclick="selectNetSearch(\''+n.id+'\')"><div style="width:26px;height:26px;border-radius:50%;background:'+ha(nc(n),.2)+';border:1.5px solid '+nc(n)+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:'+nc(n)+';flex-shrink:0">'+n.name.slice(0,2).toUpperCase()+'</div><div><div style="font-size:12px;font-weight:500">'+n.name+'</div><div style="font-size:13px;color:var(--t2)">'+n.type+(n.role?' -- '+n.role:'')+'</div></div></div>';}).join('');res.style.display='block';}
@@ -62279,6 +62292,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.116"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.117"></script>
 </body>
 </html>
