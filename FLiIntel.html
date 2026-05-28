@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.128</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.129</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13005,9 +13005,9 @@ async function loadUserWorkspaces(user){document.body.classList.add('app-active'
 function showWsPicker(user){
   document.getElementById('ws-screen').style.display='flex';
   document.getElementById('ws-user-row').innerHTML=
-    '<img src="'+user.photoURL+'" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--b2)">'
-    +'<div style="flex:1"><div style="font-size:13px;font-weight:500">'+user.displayName+'</div>'
-    +'<div style="font-size:14px;color:var(--t3)">'+user.email+'</div></div>';
+    '<img src="'+window._escHTML(user.photoURL||'')+'" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--b2)">'
+    +'<div style="flex:1"><div style="font-size:13px;font-weight:500">'+window._escHTML(user.displayName||'')+'</div>'
+    +'<div style="font-size:14px;color:var(--t3)">'+window._escHTML(user.email||'')+'</div></div>';
   // Wire sign-out button every time ws-screen is shown
   var soBtn=document.getElementById('ws-signout-btn');
   if(soBtn){
@@ -13021,7 +13021,7 @@ function showWsPicker(user){
   renderWsList();
 }
 
-function renderWsList(){var list=document.getElementById('ws-list');if(!userWorkspaces.length){list.innerHTML='<div class="empty" style="padding:1rem 0">No workspaces yet. Create your first one.</div>';return;}var html='';userWorkspaces.forEach(function(ws){var color=ws.color||'#d4823a';html+='<div class="ws-item" data-wsid="'+ws.id+'" style="position:relative"><div class="ws-avatar" style="background:'+color+'22;color:'+color+'">'+ws.name.charAt(0).toUpperCase()+'</div><div style="flex:1"><div class="ws-name">'+ws.name+'</div><div class="ws-role">'+(ws.role||'Member')+'</div></div><button class="ws-delete-btn" data-wsid="'+ws.id+'" data-wsname="'+ws.name.replace(/"/g,'&quot;')+'" title="Delete workspace" style="background:transparent;border:1px solid rgba(239,68,68,.3);color:rgba(239,68,68,.7);width:24px;height:24px;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;opacity:0;transition:opacity .15s" onmouseover="this.style.opacity=1;this.style.borderColor=\'#ef4444\';this.style.color=\'#ef4444\'" onmouseout="this.style.borderColor=\'rgba(239,68,68,.3)\';this.style.color=\'rgba(239,68,68,.7)\'">✕</button></div>';});list.innerHTML=html;list.querySelectorAll('.ws-item').forEach(function(el){el.addEventListener('click',function(e){if(e.target.classList.contains('ws-delete-btn'))return;var wsId=this.getAttribute('data-wsid');if(wsId)selectWorkspace(wsId);});});list.querySelectorAll('.ws-delete-btn').forEach(function(btn){btn.addEventListener('click',async function(e){e.stopPropagation();var wsId=this.getAttribute('data-wsid');var wsName=this.getAttribute('data-wsname');/* P13.94 — type-the-name confirm. Browser confirm() one-click was too easy; this requires the user to type the workspace name verbatim before delete fires. */ var typed = prompt('Delete workspace "'+wsName+'" from your list?\n\nThis removes the workspace from your view (underlying data stays in Firebase). Cannot be undone from this side.\n\nType the workspace name to confirm:'); if (typed !== wsName) { toast(typed == null ? 'Cancelled' : 'Name did not match — cancelled'); return; }this.disabled=true;this.textContent='\u2026';try{await remove(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId));userWorkspaces=userWorkspaces.filter(function(w){return w.id!==wsId;});renderWsList();toast('Workspace removed from your list');}catch(err){console.error('Delete workspace error:',err);toast('Could not delete: '+(err.message||'unknown'));this.disabled=false;this.textContent='\u2715';}});});}
+function renderWsList(){var list=document.getElementById('ws-list');if(!userWorkspaces.length){list.innerHTML='<div class="empty" style="padding:1rem 0">No workspaces yet. Create your first one.</div>';return;}var html='';userWorkspaces.forEach(function(ws){var color=ws.color||'#d4823a';html+='<div class="ws-item" data-wsid="'+ws.id+'" style="position:relative"><div class="ws-avatar" style="background:'+color+'22;color:'+color+'">'+window._escHTML(ws.name.charAt(0).toUpperCase())+'</div><div style="flex:1"><div class="ws-name">'+window._escHTML(ws.name)+'</div><div class="ws-role">'+window._escHTML(ws.role||'Member')+'</div></div><button class="ws-delete-btn" data-wsid="'+ws.id+'" data-wsname="'+window._escHTML(ws.name)+'" title="Delete workspace" style="background:transparent;border:1px solid rgba(239,68,68,.3);color:rgba(239,68,68,.7);width:24px;height:24px;border-radius:4px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;opacity:0;transition:opacity .15s" onmouseover="this.style.opacity=1;this.style.borderColor=\'#ef4444\';this.style.color=\'#ef4444\'" onmouseout="this.style.borderColor=\'rgba(239,68,68,.3)\';this.style.color=\'rgba(239,68,68,.7)\'">✕</button></div>';});list.innerHTML=html;list.querySelectorAll('.ws-item').forEach(function(el){el.addEventListener('click',function(e){if(e.target.classList.contains('ws-delete-btn'))return;var wsId=this.getAttribute('data-wsid');if(wsId)selectWorkspace(wsId);});});list.querySelectorAll('.ws-delete-btn').forEach(function(btn){btn.addEventListener('click',async function(e){e.stopPropagation();var wsId=this.getAttribute('data-wsid');var wsName=this.getAttribute('data-wsname');/* P13.94 — type-the-name confirm. Browser confirm() one-click was too easy; this requires the user to type the workspace name verbatim before delete fires. */ var typed = prompt('Delete workspace "'+wsName+'" from your list?\n\nThis removes the workspace from your view (underlying data stays in Firebase). Cannot be undone from this side.\n\nType the workspace name to confirm:'); if (typed !== wsName) { toast(typed == null ? 'Cancelled' : 'Name did not match — cancelled'); return; }this.disabled=true;this.textContent='\u2026';try{await remove(ref(db,'users/'+currentUser.uid+'/workspaces/'+wsId));userWorkspaces=userWorkspaces.filter(function(w){return w.id!==wsId;});renderWsList();toast('Workspace removed from your list');}catch(err){console.error('Delete workspace error:',err);toast('Could not delete: '+(err.message||'unknown'));this.disabled=false;this.textContent='\u2715';}});});}
 
 document.getElementById('ws-new-btn').addEventListener('click',function(){document.getElementById('create-ws-modal').style.display='flex';document.getElementById('ws-screen').style.display='none';});
 document.getElementById('ws-cancel-btn').addEventListener('click',function(){closeModal('create-ws-modal');document.getElementById('ws-screen').style.display='flex';});
@@ -13083,7 +13083,7 @@ function _showNewMemberBanner(){
   ].join(';');
   b.innerHTML='<span style="font-size:22px;flex-shrink:0;margin-top:1px">⚡</span>'
     +'<div style="flex:1">'
-    +'<div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:4px">Welcome to '+currentWs.name+'</div>'
+    +'<div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:4px">Welcome to '+window._escHTML(currentWs.name)+'</div>'
     +'<div style="font-size:12px;color:var(--t2);line-height:1.6">This workspace has <strong style="color:var(--text)">'+meetings.length+' meetings</strong> of relationship intelligence logged. Generate your onboarding brief to get up to speed on every key person, open deal, and outstanding commitment — before your first conversation.</div>'
     +'<div style="display:flex;gap:8px;margin-top:10px">'
     +'<button onclick="document.getElementById(\'fli-nmb\').remove();openOnboardingBrief()" style="padding:7px 16px;background:var(--gold);border:none;border-radius:var(--rsm);color:#070d18;font-size:12px;font-weight:700;cursor:pointer;font-family:IBM Plex Sans,sans-serif">⚡ Generate My Brief</button>'
@@ -62391,6 +62391,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.128"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.129"></script>
 </body>
 </html>

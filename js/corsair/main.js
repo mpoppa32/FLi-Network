@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.128';
-  window.Corsair.buildBlurb  = 'Audit Finding 3.1 follow-up — P13.124 routed AI calls through the proxy but did not update the 14 UI-side `if(!apiKey)` guards scattered across Ask Corsair / Brief synthesis / RFI / Intel Center / Process extraction / RFP analysis / Industry Intel / Memory Search / Deep mode / Defense Pulse. With the workspace apiKey field deleted (post-3.1 rotation), those guards saw empty string and toasted "Add API key in Settings" — blocking every AI feature even though the user was fully authorized to use the proxy. Fix: refreshApiKey now sets apiKey to sentinel "proxy-routed-server-side" instead of resolving from Firebase/localStorage. Guards pass, _apiFetch ignores the passed-in key (per P13.124), proxy uses the server-side Secret Manager value. Self-documenting: DevTools console.log(window.apiKey) now prints the sentinel so a future debugger sees exactly what is happening. All AI surfaces should work end-to-end after deploy. 17 of 17 Critical findings + 3.1 deploy verification gate now closed in production.';
+  window.Corsair.buildTag    = 'P13.129';
+  window.Corsair.buildBlurb  = 'Audit Finding 3.3 regression close. The P13.116-P13.119 XSS sweep escaped daily-workflow innerHTML surfaces but missed the workspace-picker callsites: user.displayName + user.email in showWsPicker (post-sign-in user-row), ws.name + ws.role in renderWsList (each ws-item card), and currentWs.name in _showNewMemberBanner (onboarding welcome). All five interpolations went into innerHTML raw, giving cross-user XSS once a teammate joins — Google account display name is attacker-controllable in their own scope, workspace name is attacker-controllable by whoever created it. Reconciliation audit (post-P13.128) caught it during ground-truth verification of claimed-closed Criticals. Three wraps in _escHTML close it. Pre-Bryce-demo hardening.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
