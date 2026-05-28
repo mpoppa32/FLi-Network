@@ -523,6 +523,14 @@ window.renderDailyBrief = function() {
            '<span class="brief-item-meta">' + a.days + 'd · ' + a.stage + ' (+' + a.over + 'd)</span></div>';
   }, 'No pursuits stuck past their stage aging threshold. Stalled opps will surface here so you can unstick them.');
 
+  // P13.138 — Follow-Up Nudge column. Renders after the rest of the
+  // brief so its dismissal-state cache is wired before paint. Module
+  // is loaded as a sibling import in main.js.
+  if (typeof window._renderNudgeColumn === 'function') {
+    try { window._renderNudgeColumn(); }
+    catch (e) { console.warn('[Brief] nudge column render failed', e); }
+  }
+
   console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length + ' aged=' + aged.length);
 };
 

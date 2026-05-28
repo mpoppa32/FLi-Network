@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.137</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.138</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9203,6 +9203,17 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
             <div class="brief-col" data-bucket="aged">
               <div class="brief-col-hdr"><span>AGED IN STAGE</span><span class="brief-count" id="brief-aged-count">0</span></div>
               <div class="brief-col-list" id="brief-aged-list"><div class="brief-empty">Loading stage velocity check…</div></div>
+            </div>
+            <!-- P13.138 — Nudge Engine Phase 1B. Surfaces accounts/contacts
+                 where an inbound email is waiting on an operator reply,
+                 plus going-cold and no-recent-contact bands. Reads matched
+                 pendingCapture entries (Phase 1A matcher must have run).
+                 Doctrine: surface + route only — operator writes every
+                 reply. Each item shows reasoning so the operator trusts
+                 it; dismiss controls keep the queue under operator control. -->
+            <div class="brief-col" data-bucket="nudge">
+              <div class="brief-col-hdr"><span>AWAITING REPLY</span><span class="brief-count" id="brief-nudge-count">0</span></div>
+              <div class="brief-col-list" id="brief-nudge-list"><div class="brief-empty">Loading follow-up nudges…</div></div>
             </div>
           </div>
         </div>
@@ -12012,6 +12023,10 @@ var fbFunctions = getFunctions(fbApp, 'us-central1');
 // Expose to non-module scripts (Phase 8.5 OSINT migration panel uses these)
 window._fbFunctions = fbFunctions;
 window._httpsCallable = httpsCallable;
+// P13.138 — expose the database handle so sibling modules (nudge.js, etc.)
+// can persist per-user state (dismissals, snoozes) without re-initializing
+// Firebase. Read/write helpers come from the same CDN URL inside the modules.
+window.db = db;
 
 // ── GOOGLE FEDCM/ONE-TAP KILLER ──────────────────────────────
 // Repeatedly cancels Chrome's injected sign-in prompt.
@@ -13418,7 +13433,15 @@ function connectWorkspace(){
   // ── PENDING CAPTURE: auto-captured meetings awaiting review ──
   var uPC=onValue(ref(db,wsPath('pendingCapture')),function(snap){
     pendingCapture=snap.val()?Object.values(snap.val()):[];
+    // P13.138 — Nudge Engine reads pendingCapture from sibling module
+    window.pendingCapture = pendingCapture;
     _updateCaptureBadge();
+    // Re-render nudge column when new matched captures land. Brief's own
+    // render flow handles the full surface; this keeps the awaiting-reply
+    // column fresh between full-brief paints.
+    if (typeof window._renderNudgeColumn === 'function') {
+      try { window._renderNudgeColumn(); } catch(e) { console.warn('[Nudge] re-render on pendingCapture change failed', e); }
+    }
   });
   netListeners.push(uPC);
 
@@ -62542,6 +62565,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.137"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.138"></script>
 </body>
 </html>
