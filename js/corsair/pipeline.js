@@ -169,6 +169,53 @@ function nextDefaultAction(opp) {
   return oppStageNextAction(opp.stage);
 }
 
+// P13.131 (reconciliation audit, Day 1 — Sales Motion #1) — enforce the
+// exit-criteria gates that already exist in STAGE_SPEC + Inspector
+// dossier (Phase 6.4). Until now, gates rendered as checkboxes but the
+// advance click went through regardless. Policy:
+//   - Same-stage save → ok
+//   - Backward move → ok (regression is operator's call)
+//   - Forward to 'lost' → ok (no-bid is always allowed)
+//   - Forward from 'awareness' → require ALL gates (qualification is binary;
+//     this is the intake gate the audit asked for — every opp must satisfy
+//     customer/budget/problem before entering pipeline)
+//   - All other forward moves → require ≥ opts.ratio of gates (default 0.5)
+// Returns { ok: true } or { ok: false, reason, missingGates, checkedCount,
+// total, required, isIntakeGate }.
+function validateStageAdvance(opp, fromStage, toStage, opts) {
+  opts = opts || {};
+  var ratio = (opts.ratio != null) ? opts.ratio : 0.5;
+  if (!fromStage || !toStage || fromStage === toStage) return { ok: true };
+  // Drop to 'lost' is always allowed from anywhere
+  if (toStage === 'lost') return { ok: true };
+  var fromIdx = oppStageIndex(fromStage);
+  var toIdx = oppStageIndex(toStage);
+  // Backward move
+  if (fromIdx >= 0 && toIdx >= 0 && toIdx <= fromIdx) return { ok: true };
+  var gates = oppStageGates(fromStage);
+  if (!gates.length) return { ok: true };
+  var checks = (opp && opp.exitCriteriaChecks && opp.exitCriteriaChecks[fromStage]) || {};
+  var checkedCount = gates.reduce(function(n, g) { return n + (checks[g] === true ? 1 : 0); }, 0);
+  var missing = gates.filter(function(g) { return checks[g] !== true; });
+  var isIntakeGate = (fromStage === 'awareness');
+  var required = isIntakeGate ? gates.length : Math.ceil(gates.length * ratio);
+  if (checkedCount >= required) return { ok: true };
+  var fromLabel = (oppStageConfig(fromStage).label || fromStage);
+  var toLabel = (oppStageConfig(toStage).label || toStage);
+  var reason = isIntakeGate
+    ? 'Cannot promote to ' + toLabel + ': all ' + gates.length + ' qualification gates required (' + checkedCount + '/' + gates.length + ' checked). Open the dossier to qualify.'
+    : 'Cannot advance from ' + fromLabel + ' to ' + toLabel + ': at least ' + required + '/' + gates.length + ' exit criteria required (' + checkedCount + ' checked). Open the dossier to fill gates.';
+  return {
+    ok: false,
+    reason: reason,
+    missingGates: missing,
+    checkedCount: checkedCount,
+    total: gates.length,
+    required: required,
+    isIntakeGate: isIntakeGate
+  };
+}
+
 // Phase 6.2 — composite stage health for an opportunity.
 // Composes with the existing _computePursuitHealth (which scores
 // aging/coverage/momentum). This one is stage-specific:
@@ -213,10 +260,12 @@ if (typeof window !== 'undefined') {
     daysInStage: daysInStage,
     isStageStuck: isStageStuck,
     nextDefaultAction: nextDefaultAction,
-    computeStageHealth: _computeStageHealth
+    computeStageHealth: _computeStageHealth,
+    validateAdvance: validateStageAdvance
   };
   // Bare global for back-compat with FLiIntel.html callers that look it up by name
   window._computeStageHealth = _computeStageHealth;
+  window._validateStageAdvance = validateStageAdvance;
 }
 
 export {
@@ -231,5 +280,6 @@ export {
   daysInStage,
   isStageStuck,
   nextDefaultAction,
-  _computeStageHealth
+  _computeStageHealth,
+  validateStageAdvance
 };

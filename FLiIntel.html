@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.130</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.131</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -37472,12 +37472,29 @@ window._advancePursuitStage = async function(oppId) {
   if (currentIdx < 0 || currentIdx >= pipelineMod.stages.length - 1) return;
   var nextStage = pipelineMod.stages[currentIdx + 1];
   var currentLabel = pipelineMod.config(opp.stage).label || opp.stage;
+  var prevStage = opp.stage;
+  // P13.131 (reconciliation audit, Day 1) — enforce gate completion before
+  // advancing. Phase 6.4 styled the button "psp-advance-ready" when all
+  // gates were checked but the click went through either way; now blocked.
+  if (typeof pipelineMod.validateAdvance === 'function') {
+    var v = pipelineMod.validateAdvance(opp, prevStage, nextStage.key);
+    if (!v.ok) {
+      if (typeof toast === 'function') toast(v.reason);
+      // Operator stays in the dossier — they can see the unchecked gates
+      // directly below the disabled-feeling advance button.
+      return;
+    }
+  }
   if (!window.confirm('Advance "' + (opp.name || 'pursuit') + '" from ' + currentLabel + ' to ' + nextStage.label + '?')) return;
   opp.stage = nextStage.key;
   // saveOpp will auto-set stageEnteredAt + push prior segment to stageHistory
   try {
     if (typeof window.saveOpp === 'function') await window.saveOpp(opp);
-  } catch (e) { console.warn('[Phase 6.4] advance failed:', e); }
+  } catch (e) {
+    // Revert local mutation on save failure
+    opp.stage = prevStage;
+    console.warn('[Phase 6.4] advance failed:', e);
+  }
   if (typeof window.openEntityInspector === 'function') {
     window.openEntityInspector(oppId);
   }
@@ -62390,6 +62407,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.130"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.131"></script>
 </body>
 </html>

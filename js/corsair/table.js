@@ -239,10 +239,30 @@ window._tblCommitStage = async function(oppId, newStage) {
   var opp = _tblFindOpp(oppId);
   if (!opp) return;
   if (opp.stage === newStage) { _tblRerenderRows(); return; }
+  var prevStage = opp.stage;
+  // P13.131 (reconciliation audit, Day 1) — enforce STAGE_SPEC.gates before
+  // any mutation. Inline-stage-edit was the audit-flagged bypass path: gates
+  // exist in Inspector dossier (Phase 6.4) but operator could change stage
+  // from the table dropdown without ever seeing them.
+  var pipelineMod = window.Corsair && window.Corsair.pipeline;
+  if (pipelineMod && typeof pipelineMod.validateAdvance === 'function') {
+    var v = pipelineMod.validateAdvance(opp, prevStage, newStage);
+    if (!v.ok) {
+      if (typeof window.toast === 'function') window.toast(v.reason);
+      // Open dossier so operator can fill the missing gates
+      if (typeof window.openEntityInspector === 'function') window.openEntityInspector(oppId);
+      _tblRerenderRows();
+      return;
+    }
+  }
   opp.stage = newStage;
   // saveOpp handles stage history + stageEnteredAt automatically (Phase 6.1)
   try { if (typeof window.saveOpp === 'function') await window.saveOpp(opp); }
-  catch (e) { console.warn('[Table] commit stage failed:', e); }
+  catch (e) {
+    // Revert local mutation on save failure so UI doesn't lie
+    opp.stage = prevStage;
+    console.warn('[Table] commit stage failed:', e);
+  }
   _tblRerenderRows();
 };
 
