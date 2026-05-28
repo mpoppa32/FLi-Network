@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.120';
-  window.Corsair.buildBlurb  = 'Audit Finding 3.5 — Content-Security-Policy meta tag added. Defense-in-depth pair with the P13.116-P13.119 XSS-escape work: if any innerHTML callsite slipped through and a hostile name/headline fires script, connect-src restricts the destinations the script can fetch to. A stolen Anthropic key cannot POST to attacker.com because connect-src only allows Firebase / Google APIs / Anthropic / Graph / EmailJS / Deepgram / Cloud Functions. Script-src whitelists known CDNs (jsdelivr, unpkg, cdnjs, gstatic, accounts.google) + self + unsafe-inline (unavoidable until inline JS is split out, audit Finding 2.3 territory). frame-ancestors self to discourage framing where browsers honor it. Critical Findings closed total: 15.';
+  window.Corsair.buildTag    = 'P13.121';
+  window.Corsair.buildBlurb  = 'P13.120 CSP missed hooks.slack.com. _slackNotify (Brief → Slack digest button at P13.72) POSTs to hooks.slack.com which connect-src was blocking. Patched. MCP endpoint remains operator-configured-at-runtime so it cannot be statically whitelisted — power-user feature accepts the trade-off (operator must add their MCP host to CSP if they wire one). Critical Findings closed total: 15 (P13.120 still counted as 3.5 close; this is a regression-fix patch).';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
