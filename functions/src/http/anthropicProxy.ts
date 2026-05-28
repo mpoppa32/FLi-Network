@@ -133,30 +133,32 @@ export const anthropicProxy = onCall(
       const now = new Date();
       const hourKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}`;
       const counterRef = db.ref(`workspaces/${workspaceId}/quotas/anthropic/current`);
+      // P13.152 — abort the transaction when we'd cross the limit so the
+      // counter doesn't accumulate past the cap on repeated rejected
+      // attempts (operator hammering the AI button after rate-limit was
+      // showing "31/30", "32/30", ...). Aborted transactions don't
+      // commit — committed === false signals over-limit cleanly.
       const txResult = await counterRef.transaction((curr: { hourKey?: string; count?: number } | null) => {
-        if (!curr || curr.hourKey !== hourKey) {
-          return { hourKey, count: 1, lastAt: Date.now() };
-        }
-        return { hourKey, count: Number(curr.count || 0) + 1, lastAt: Date.now() };
+        const isNewHour = !curr || curr.hourKey !== hourKey;
+        const currentCount = isNewHour ? 0 : Number(curr.count || 0);
+        if (currentCount >= limit) return undefined; // abort
+        return { hourKey, count: currentCount + 1, lastAt: Date.now() };
       });
-      const updated = txResult.snapshot.val() as { hourKey?: string; count?: number };
-      const count = Number(updated?.count || 0);
-      if (count > limit) {
-        // Compute time-until-reset (top of next hour) so the toast can
-        // tell the operator when to retry.
+      if (!txResult.committed) {
         const minutesLeft = 60 - now.getUTCMinutes();
         log.warn("quota_exceeded", {
           workspaceId,
           userId: auth.uid,
-          count,
           limit,
           hourKey,
         });
         throw new HttpsError(
           "resource-exhausted",
-          `Workspace AI quota: ${count - 1}/${limit} requests this hour. Try again in ~${minutesLeft} min.`
+          `Workspace AI quota: ${limit}/${limit} requests this hour. Try again in ~${minutesLeft} min.`
         );
       }
+      const updated = txResult.snapshot.val() as { hourKey?: string; count?: number };
+      const count = Number(updated?.count || 0);
       log.info("quota_check", { workspaceId, count, limit });
     } catch (err) {
       if (err instanceof HttpsError) throw err;
