@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.138</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.139</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12266,8 +12266,12 @@ var colorIdx=0,activeFilter='all',visibleIds=new Set(),selectedNode=null,edgeMod
 function setSS(s){var dot=document.getElementById('sync-dot'),lbl=document.getElementById('sync-lbl'),pill=dot?dot.closest('.sync-pill'):null;if(!dot||!lbl)return;if(s==='live'){dot.className='sync-dot live';lbl.textContent='live';lbl.style.color='var(--green)';if(pill){pill.classList.remove('offline','saving-active');}}else if(s==='saving'){dot.className='sync-dot saving';lbl.textContent='saving...';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');}}else if(s==='offline'){dot.className='sync-dot';dot.style.background='var(--red)';lbl.textContent='offline';lbl.style.color='var(--red)';if(pill){pill.classList.add('offline');pill.classList.remove('saving-active');}}else{dot.className='sync-dot';dot.style.background='';lbl.textContent=s;lbl.style.color='var(--t3)';if(pill)pill.classList.remove('offline','saving-active');}}
 
 async function fbSet(path,data){setSS('saving');try{await set(ref(db,path),data);setSS('live');}catch(e){setSS('error');throw e;}}
+// P13.139 — expose for POC promote + future sibling modules that need
+// to write workspace-scoped data without re-implementing the path helper.
+window.fbSet = fbSet;
 async function fbRemove(path){setSS('saving');try{await remove(ref(db,path));setSS('live');}catch(e){setSS('error');throw e;}}
 function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
+window.wsPath = wsPath;
 
 // ── API KEY RESOLUTION ───────────────────────────────────────
 // P13.127 (audit Finding 3.1 cont.) — historically apiKey was the
@@ -42626,8 +42630,10 @@ window._openAccountDetail = function(orgId){
       _accSnapshotSection(r) +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Open Pursuits</div>' +
       oppRows +
-      '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px;display:flex;align-items:center;gap:10px">People (' + r.peopleCount + ')' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">People (' + r.peopleCount + ')' +
         (r.peopleCount ? '<button onclick="window._drwPeopleBulkSelectAllVisible()" style="background:transparent;border:1px solid var(--b2);color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:2px;cursor:pointer">Select all</button>' : '') +
+        '<!-- P13.139 — Phase 2A POC Finder. Composes workspace person nodes affiliated with this org + Claude web-search candidates from public sources. Doctrine: surfaces candidates with source + confidence; operator confirms each one. Never auto-injects. -->' +
+        '<button onclick="window.openPOCFinder&amp;&amp;window.openPOCFinder(\'' + _accEsc(r.org.id) + '\')" title="Find decision-makers — composes workspace data + Claude web search across public sources (.gov leadership pages, company About, press releases, LinkedIn)" style="background:rgba(139,92,246,.10);border:1px solid rgba(139,92,246,.45);color:var(--purple);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 10px;border-radius:2px;cursor:pointer">⌖ Find POCs</button>' +
       '</div>' +
       peopleRows +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">Recent Meetings</div>' +
@@ -42701,6 +42707,164 @@ window._discardAllCapture = async function() {
     await fbRemove(wsPath('pendingCapture/' + pendingCapture[i].id));
   }
   toast('All captures discarded');
+};
+
+// P13.139 — Phase 2A POC Finder.
+// Opens a modal listing decision-maker candidates for a given org.
+// Section 1: existing workspace person nodes affiliated with the org
+//   (read directly from window.nodes + window.links — fast, no network).
+// Section 2: on-demand candidates from public web sources, fetched via
+//   the Anthropic proxy with Claude's web_search tool. Doctrine: every
+//   candidate carries source + confidence labels; no candidate is
+//   auto-injected — operator clicks "+ Add as contact" to promote.
+window.openPOCFinder = function(orgId) {
+  if (!orgId) return;
+  if (!window.Corsair || !window.Corsair.poc) {
+    if (typeof toast === 'function') toast('POC Finder module not loaded');
+    return;
+  }
+  var allNodes = window.nodes || [];
+  var org = null;
+  for (var i = 0; i < allNodes.length; i++) {
+    if (allNodes[i] && String(allNodes[i].id) === String(orgId)) { org = allNodes[i]; break; }
+  }
+  if (!org) { if (typeof toast === 'function') toast('Org not found'); return; }
+
+  // Clean up any prior modal so re-opens don't stack.
+  var prior = document.getElementById('poc-finder-modal');
+  if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
+
+  var modal = document.createElement('div');
+  modal.id = 'poc-finder-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(7,13,24,.78);z-index:300;backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px';
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+  var safeOrgName = window._escHTML ? window._escHTML(org.name || '(unnamed)') : String(org.name || '');
+  var safeOrgId = String(org.id).replace(/'/g,'&#39;');
+  var orgTypeLabel = (org.type === 'government') ? 'Agency' : 'Company';
+
+  modal.innerHTML =
+    '<div style="background:linear-gradient(180deg,#111b30,#0a1020);border:1px solid var(--b2);border-top:3px solid var(--purple);border-radius:6px;width:min(820px,96vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 56px rgba(0,0,0,.6)">' +
+      '<div style="padding:18px 22px;border-bottom:1px solid var(--b1);display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.16em;color:var(--purple);text-transform:uppercase;margin-bottom:4px">POC Finder · ' + orgTypeLabel + '</div>' +
+          '<div style="font-family:Antonio,sans-serif;font-size:22px;font-weight:700;color:var(--text);line-height:1.1">' + safeOrgName + '</div>' +
+          '<div style="font-size:12px;color:var(--t3);margin-top:4px;line-height:1.5">Decision-maker candidates surfaced from your workspace and public sources. Operator confirms each one — nothing is auto-added.</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'poc-finder-modal\').remove()" style="background:transparent;border:1px solid var(--b2);color:var(--t3);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px;line-height:1">×</button>' +
+      '</div>' +
+      '<div id="poc-finder-body" style="flex:1;overflow-y:auto;padding:18px 22px"></div>' +
+    '</div>';
+  document.body.appendChild(modal);
+
+  // Render existing-workspace section
+  _renderPOCSection(safeOrgId, org);
+};
+
+function _renderPOCSection(orgIdRaw, org) {
+  var body = document.getElementById('poc-finder-body');
+  if (!body) return;
+  var existing = window.Corsair.poc.findExisting(orgIdRaw.replace(/&#39;/g, "'"));
+  var hdr = '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span>In your workspace · ' + existing.length + '</span><span style="color:var(--t3);font-size:10px">Sorted by role weight + affiliation match</span></div>';
+  body.innerHTML = hdr +
+    (existing.length === 0
+      ? '<div style="padding:14px;background:var(--s1);border:1px dashed var(--b2);border-radius:3px;color:var(--t3);font-size:12px;margin-bottom:18px">No person nodes in this workspace match this org by affiliation. Run a web search below to surface candidates from public sources.</div>'
+      : '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">' + existing.map(_renderPOCCandidate).join('') + '</div>') +
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--purple);text-transform:uppercase;margin-bottom:10px">From public sources</div>' +
+    '<button id="poc-search-btn" onclick="window._runPOCSearch(\'' + orgIdRaw + '\')" style="width:100%;padding:11px;background:rgba(139,92,246,.10);border:1px solid rgba(139,92,246,.5);border-radius:3px;color:var(--purple);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">⌖ Search open sources (Claude · web_search)</button>' +
+    '<div id="poc-search-results" style="margin-top:14px"></div>' +
+    '<div style="margin-top:18px;padding:10px 12px;background:rgba(139,92,246,.06);border-left:2px solid var(--purple);font-size:11px;color:var(--t3);line-height:1.6;font-family:IBM Plex Sans,sans-serif">' +
+      '<strong style="color:var(--text);font-weight:600">Doctrine:</strong> Public professional information only. .gov leadership pages, company About pages, press releases, SEC filings, LinkedIn public profiles. No login-required sources, no breach data, no covert gathering. Every candidate shows its source URL so you can verify before adding.' +
+    '</div>';
+}
+
+function _renderPOCCandidate(c) {
+  if (!c) return '';
+  var safeName = window._escHTML ? window._escHTML(c.name || '(unnamed)') : String(c.name || '');
+  var safeRole = window._escHTML ? window._escHTML(c.role || '') : String(c.role || '');
+  var safeSource = window._escHTML ? window._escHTML(c.source || '') : String(c.source || '');
+  var confCol = c.confidence === 'high' ? 'var(--green)'
+             : c.confidence === 'medium' ? '#facc15'
+             : '#fb923c';
+  var confLbl = '<span title="Confidence level — verify any candidate before adding" style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:' + confCol + ';border:1px solid ' + confCol + '70;background:rgba(0,0,0,.22);padding:1px 6px;border-radius:2px;text-transform:uppercase">' + (c.confidence || 'low') + '</span>';
+  var sourceUrlLink = c.sourceUrl
+    ? ' · <a href="' + (window._escHTML ? window._escHTML(c.sourceUrl) : c.sourceUrl) + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:var(--purple);text-decoration:underline">verify source</a>'
+    : '';
+  var openExistingBtn = (c.kind === 'existing' && c.personId)
+    ? '<button onclick="event.stopPropagation();document.getElementById(\'poc-finder-modal\').remove();window.openEntityInspector&amp;&amp;window.openEntityInspector(\'' + String(c.personId).replace(/'/g,'&#39;') + '\')" style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gold);background:transparent;border:1px solid rgba(212,130,58,.4);border-radius:2px;padding:3px 8px;cursor:pointer">Open dossier →</button>'
+    : '';
+  var addBtn = (c.kind === 'search')
+    ? '<button onclick="event.stopPropagation();window._promotePOCCandidate(' + JSON.stringify(JSON.stringify(c)).replace(/&/g,'&amp;') + ')" style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--green);background:rgba(52,211,153,.10);border:1px solid rgba(52,211,153,.5);border-radius:2px;padding:3px 8px;cursor:pointer">+ Add as contact</button>'
+    : '';
+  return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:3px;padding:11px 13px;display:flex;align-items:flex-start;gap:10px">' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap">' + confLbl + '<span style="font-size:13px;font-weight:600;color:var(--text)">' + safeName + '</span></div>' +
+      (safeRole ? '<div style="font-size:12px;color:var(--t2)">' + safeRole + '</div>' : '') +
+      '<div style="font-size:11px;color:var(--t3);margin-top:3px;font-family:IBM Plex Mono,monospace;letter-spacing:.04em">' + safeSource + sourceUrlLink + '</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">' + openExistingBtn + addBtn + '</div>' +
+    '</div>';
+}
+
+window._runPOCSearch = async function(orgIdRaw) {
+  var btn = document.getElementById('poc-search-btn');
+  var resultsEl = document.getElementById('poc-search-results');
+  if (!btn || !resultsEl) return;
+  var allNodes = window.nodes || [];
+  var orgId = orgIdRaw.replace(/&#39;/g, "'");
+  var org = null;
+  for (var i = 0; i < allNodes.length; i++) {
+    if (allNodes[i] && String(allNodes[i].id) === String(orgId)) { org = allNodes[i]; break; }
+  }
+  if (!org) return;
+  btn.disabled = true;
+  btn.textContent = '⌖ Searching public sources…';
+  resultsEl.innerHTML = '<div style="padding:12px;color:var(--t3);font-size:12px;font-family:IBM Plex Mono,monospace">Claude is searching .gov leadership pages, company About, press releases, and public LinkedIn profiles…</div>';
+  try {
+    var found = await window.Corsair.poc.searchOpenSources(org.name, org.type);
+    if (!found || !found.length) {
+      resultsEl.innerHTML = '<div style="padding:12px;background:var(--s1);border:1px dashed var(--b2);border-radius:3px;color:var(--t3);font-size:12px">No solid candidates from public sources. Try a more specific org name or check the .gov leadership page directly.</div>';
+    } else {
+      resultsEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px">' + found.map(_renderPOCCandidate).join('') + '</div>';
+    }
+  } catch (e) {
+    console.error('[POC search] failed', e);
+    resultsEl.innerHTML = '<div style="padding:12px;color:var(--red);font-size:12px">Search failed: ' + (window._escHTML ? window._escHTML((e && e.message) || 'unknown') : String((e && e.message) || 'unknown')) + '</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⌖ Search open sources (Claude · web_search)';
+  }
+};
+
+window._promotePOCCandidate = async function(candidateJSON) {
+  var c;
+  try { c = JSON.parse(candidateJSON); } catch (e) { console.warn('[POC promote] bad JSON', e); return; }
+  if (!c || !c.name) return;
+  if (!confirm('Add "' + c.name + '" (' + (c.role || 'role unknown') + ') as a contact on ' + (c.org || 'this org') + '?\n\nSource: ' + (c.source || 'unknown') + '\nConfidence: ' + (c.confidence || 'low') + '\n\nYou can edit the contact details after adding.')) return;
+  var shape = window.Corsair.poc.shapeCandidateForWorkspace(c, c.org || '');
+  if (!shape) return;
+  shape.id = 'pers-poc-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  shape.added = new Date().toISOString();
+  shape.addedBy = (window.currentUser && (window.currentUser.email || window.currentUser.uid)) || 'unknown';
+  // Persist to workspace nodes. Uses the existing fbSet helper.
+  try {
+    if (typeof window.fbSet === 'function' && typeof window.wsPath === 'function') {
+      await window.fbSet(window.wsPath('nodes/' + shape.id), shape);
+      if (typeof toast === 'function') toast('✓ Added ' + shape.name + ' to workspace');
+      // Refresh POC finder so the new contact appears in "In your workspace"
+      var existingOrgId = (window._accountsState && window._accountsState.selectedOrgId) || '';
+      if (existingOrgId) {
+        var safe = String(existingOrgId).replace(/'/g,'&#39;');
+        var orgObj = (window.nodes || []).find(function(n){return String(n.id) === String(existingOrgId);});
+        if (orgObj) _renderPOCSection(safe, orgObj);
+      }
+    } else {
+      if (typeof toast === 'function') toast('Add-contact helper not loaded');
+    }
+  } catch (e) {
+    console.error('[POC promote] failed', e);
+    if (typeof toast === 'function') toast('Add failed: ' + ((e && e.message) || 'unknown'));
+  }
 };
 
 // P13.137 — Phase 1A backfill trigger. Calls the backfillCaptureMatches
@@ -62565,6 +62729,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.138"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.139"></script>
 </body>
 </html>
