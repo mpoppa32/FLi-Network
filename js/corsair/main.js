@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.101';
-  window.Corsair.buildBlurb  = 'Outlook / M365 two-way direct send — closes the #1 month-6 retention move per the operator pass-down. New ✉ Send via Outlook button in the outreach modal sits next to ✉ Send via Gmail. First click prompts a Microsoft account picker + consent screen (Mail.Send + User.Read scopes via Firebase Auth OAuthProvider("microsoft.com")), subsequent sends fire silently via raw POST to graph.microsoft.com/v1.0/me/sendMail. Auto-logs the same outbound-email touchpoint shape Gmail uses so relationship-health and Brief synthesis stay current regardless of provider. One-time op setup: register an Azure AD SPA + enable the Microsoft provider in Firebase Console (paste app ID + secret). Defense BD teams running on Microsoft 365 are now first-class.';
+  window.Corsair.buildTag    = 'P13.102';
+  window.Corsair.buildBlurb  = 'Auto-score & rank pipeline on ingest — flips the Atlas worst-optic (122 opps · 0 scored · unordered list) into a pre-triaged stack-ranked priority feed. _dealScoreBreakdown extended with a 5th Static Profile factor (value/vehicle/source/agency) so freshly imported opps with zero engagement still rank meaningfully, plus tier (A/B/C) and confidence (high/partial/sparse) so thin-data scores are visibly honest. saveOpp hook persists score+tier+confidence+factors to every opp on every write — ingest, edit, stage change all rescore automatically and idempotently. New _bulkAutoScorePipeline() one-shot rescores the existing fleet; wired to the empty-state banner CTA (was CSV-paste). Table view default sorts by score desc with a new Score column showing tier badge + numeric; sparse-confidence opps render dashed-border + dim. Click any badge → existing factor-breakdown modal. Doctrine: system ranks, operator decides; every number shows its reasoning, no black-box.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

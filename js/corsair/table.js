@@ -138,7 +138,7 @@ function _tNextAction(opp) {
 // across re-renders within a session. localStorage / Firebase persistence
 // (Phase 5c saved views) lands in subsequent commits.
 var _tblState = {
-  sortKey: 'default',          // column key or 'default' for stage+days desc
+  sortKey: 'score',            // P13.102: default to auto-score desc (was 'default' = stage+days)
   sortDir: 'asc',              // 'asc' | 'desc'
   filterStage: '',             // stage key or '' for all
   filterHealth: '',            // 'hot' | 'warm' | 'cold' or '' for all
@@ -670,12 +670,28 @@ function _tblProcessOpps(allOpps, pipelineMod, stages) {
   });
 
   // Sort
+  // P13.102: 'score' default sort uses desc unless caller flips. Initialize
+  // sortDir to 'desc' so a fresh load lands highest-tier-first without extra
+  // user gesture.
+  if (_tblState.sortKey === 'score' && _tblState.sortDir !== 'asc' && _tblState.sortDir !== 'desc') {
+    _tblState.sortDir = 'desc';
+  }
   var dir = _tblState.sortDir === 'desc' ? -1 : 1;
   function cmp(a, b, val) { return val < 0 ? -dir : val > 0 ? dir : 0; }
   function nameOf(o) { return (o.name || '').toLowerCase(); }
   function valueOf(o) { return Number(o.value || 0); }
   function pwinOf(o) { return Number(o.pwin || 0); }
   function weightedOf(o) { return Number(o.value || 0) * Number(o.pwin || 0); }
+  // P13.102 — score lookup. Prefer persisted opp.score (set by saveOpp hook),
+  // fall back to live recompute via _computeOppScore so any opp that hasn't
+  // yet been written to Firebase (or pre-P13.102 record) still ranks correctly.
+  function scoreOf(o) {
+    if (typeof o.score === 'number') return o.score;
+    if (typeof window._computeOppScore === 'function') {
+      try { var s = window._computeOppScore(o); return (s && typeof s.score === 'number') ? s.score : 0; } catch(e){ return 0; }
+    }
+    return 0;
+  }
   function daysOf(o) {
     return (pipelineMod && typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(o) : 0;
   }
@@ -686,7 +702,18 @@ function _tblProcessOpps(allOpps, pipelineMod, stages) {
     return d ? new Date(d).getTime() : 9e15;
   }
 
-  if (_tblState.sortKey === 'default') {
+  if (_tblState.sortKey === 'score') {
+    // P13.102 — primary: auto-score desc. Tiebreak: stage order (earlier stages
+    // below — late-stage tied scores rank higher). Final tiebreak: pursuit name.
+    opps.sort(function(a, b) {
+      var sa = scoreOf(a), sb = scoreOf(b);
+      if (sa !== sb) return cmp(a, b, sa - sb);
+      var sta = stageOrder[a.stage] != null ? stageOrder[a.stage] : 999;
+      var stb = stageOrder[b.stage] != null ? stageOrder[b.stage] : 999;
+      if (sta !== stb) return sta - stb;
+      return nameOf(a) < nameOf(b) ? -1 : nameOf(a) > nameOf(b) ? 1 : 0;
+    });
+  } else if (_tblState.sortKey === 'default') {
     opps.sort(function(a, b) {
       var sa = stageOrder[a.stage] != null ? stageOrder[a.stage] : 999;
       var sb = stageOrder[b.stage] != null ? stageOrder[b.stage] : 999;
@@ -723,6 +750,10 @@ function _tblProcessOpps(allOpps, pipelineMod, stages) {
 var TBL_COLS_BASE = [
   { key: 'select',   label: '',            align: 'center', w: '32px',  sortable: false },
   { key: 'status',   label: '',            align: 'center', w: '24px',  sortable: false },
+  // P13.102 — Score column: tier badge (A/B/C) + numeric score. Click any
+  // cell → factor-breakdown modal (existing _openDealScoreDetail). Sortable.
+  // Default sort key in _tblState. Sparse-confidence opps render dashed.
+  { key: 'score',    label: 'Score',       align: 'center', w: '78px',  sortable: true },
   { key: 'name',     label: 'Pursuit',     align: 'left',   w: '260px', sticky: true, sortable: true },
   { key: 'customer', label: 'Customer',    align: 'left',   w: '180px', sortable: true },
   { key: 'stage',    label: 'Stage',       align: 'left',   w: '140px', sortable: true },
@@ -799,6 +830,27 @@ function _tblRenderRows(opps, pipelineMod) {
     html += '<tr class="tbl-row' + (aged ? ' tbl-row-aged' : '') + (isSelected ? ' tbl-row-selected' : '') + '" data-opp-id="' + safeId + '">';
     html += '<td class="tbl-cell tbl-cell-center"><input type="checkbox" class="tbl-row-cb" onclick="event.stopPropagation();window._tblToggleRowPublic(\'' + safeId + '\')"' + (isSelected ? ' checked' : '') + '></td>';
     html += '<td class="tbl-cell tbl-cell-center"><span class="tbl-dot" style="background:' + dotColor + '" title="' + (aged ? 'aged in stage' : (health.status || 'unknown')) + '"></span></td>';
+    // P13.102 — Score cell: tier badge (A/B/C with color) + numeric score.
+    // Sparse-confidence opps render with dashed border + dim opacity so the
+    // operator can visually distinguish thin-data scores from earned ones.
+    // Click → existing _openDealScoreDetail modal for full factor breakdown.
+    var _scoreObj = null;
+    if (typeof o.score === 'number' && o.tier) {
+      _scoreObj = { score: o.score, tier: o.tier, confidence: o.scoreConfidence || 'sparse' };
+    } else if (typeof window._computeOppScore === 'function') {
+      try { _scoreObj = window._computeOppScore(o); } catch(e){ _scoreObj = null; }
+    }
+    if (_scoreObj && _scoreObj.score != null) {
+      var _tcol = _scoreObj.tier === 'A' ? '#22c55e' : _scoreObj.tier === 'B' ? '#facc15' : '#ef4444';
+      var _confLabel = _scoreObj.confidence === 'sparse' ? 'sparse' : _scoreObj.confidence === 'partial' ? 'partial' : 'high';
+      var _confMark = _scoreObj.confidence === 'sparse' ? ' °' : '';
+      var _border = _scoreObj.confidence === 'sparse' ? 'dashed' : 'solid';
+      var _opacity = _scoreObj.confidence === 'sparse' ? '.78' : '1';
+      var _tip = 'Tier ' + _scoreObj.tier + ' · ' + _scoreObj.score + '/100 · ' + _confLabel + ' confidence (' + (_scoreObj.confidence === 'sparse' ? 'thin data: ranking from static profile only — log a meeting or set value/pwin to earn confidence' : _scoreObj.confidence === 'partial' ? 'partial engagement signal' : 'full engagement signal') + ') · click for factor breakdown';
+      html += '<td class="tbl-cell tbl-cell-center" style="padding:4px 6px"><span onclick="event.stopPropagation();window._openDealScoreDetail&&window._openDealScoreDetail(\'' + safeId + '\')" title="' + _tip + '" style="display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px ' + _border + ' ' + _tcol + '70;border-radius:3px;background:rgba(0,0,0,.22);color:' + _tcol + ';font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;opacity:' + _opacity + '"><span style="font-size:10px;letter-spacing:.10em">' + _scoreObj.tier + '</span><span>' + _scoreObj.score + _confMark + '</span></span></td>';
+    } else {
+      html += '<td class="tbl-cell tbl-cell-center"><span class="tbl-cell-meta">&mdash;</span></td>';
+    }
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-sticky">';
     html +=   '<span class="tbl-name" onclick="window.openEntityInspector(\'' + safeId + '\')">' + _tEsc(o.name || '(unnamed)') + '</span>';
     html +=   '<button class="tbl-brief-me" onclick="event.stopPropagation();window._openPursuitBriefModal(\'' + safeId + '\')" title="Brief me on this pursuit">brief</button>';

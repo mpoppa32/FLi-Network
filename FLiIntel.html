@@ -8542,7 +8542,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.101</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.102</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12142,8 +12142,61 @@ async function saveOpp(opp){
       opp.stageEnteredAt = Date.now();
     }
   }
+  // P13.102 — auto-score on every write. Persists score/tier/confidence to
+  // the opp record so renderers can sort + badge without recomputing per row,
+  // and so a freshly imported opp gets its tier the moment it lands. Closed
+  // pursuits (won/lost) skip — their rank is no longer interesting. Idempotent:
+  // running this twice on the same opp produces the same result.
+  if (opp && opp.stage && opp.stage !== 'won' && opp.stage !== 'lost') {
+    if (typeof window._computeOppScore === 'function') {
+      try {
+        var _s = window._computeOppScore(opp);
+        if (_s) {
+          opp.score            = _s.score;
+          opp.tier             = _s.tier;
+          opp.scoreConfidence  = _s.confidence;
+          opp.scoreFactors     = _s.factors;
+          opp.scoreComputedAt  = _s.computedAt;
+        }
+      } catch(scoreErr){ console.warn('[P13.102 auto-score on save] failed:', scoreErr); }
+    }
+  } else if (opp && (opp.stage === 'won' || opp.stage === 'lost')) {
+    // Closed pursuit — clear ranking fields so they don't pollute live sort
+    delete opp.score; delete opp.tier; delete opp.scoreConfidence;
+    delete opp.scoreFactors; delete opp.scoreComputedAt;
+  }
   await fbSet(wsPath('opportunities/'+opp.id),opp);
 }
+
+// P13.102 — one-shot auto-score across all open opps. Idempotent. Used by
+// the empty-state "Score Pipeline" CTA + the Tools menu to flip a 122/0
+// "0 scored" workspace into 122/122 stack-ranked. Awaits each saveOpp so
+// scoreFactors land in Firebase, then forces re-renders.
+window._bulkAutoScorePipeline = async function(){
+  var opps = (window.opportunities || []).slice();
+  if (!opps.length){
+    if (typeof toast === 'function') toast('No opps to score');
+    return { scored: 0, skipped: 0, failed: 0 };
+  }
+  var scored = 0, skipped = 0, failed = 0;
+  if (typeof toast === 'function') toast('Scoring ' + opps.length + ' pursuits…');
+  for (var i = 0; i < opps.length; i++){
+    var o = opps[i];
+    if (!o) { skipped++; continue; }
+    if (o.stage === 'won' || o.stage === 'lost') { skipped++; continue; }
+    try { await saveOpp(o); scored++; }
+    catch(e){ console.warn('[P13.102 bulk auto-score] failed for', o && o.id, e); failed++; }
+  }
+  if (typeof toast === 'function') {
+    toast('Scored ' + scored + ' pursuit' + (scored === 1 ? '' : 's') + (failed ? ' · ' + failed + ' failed' : '') + (skipped ? ' · ' + skipped + ' skipped (closed)' : ''));
+  }
+  // Re-render surfaces so badges + sort reflect the new ranks
+  try { if (typeof renderOppSidebar === 'function') renderOppSidebar(); } catch(e){}
+  try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); } catch(e){}
+  try { if (typeof window._renderTableView === 'function') window._renderTableView(); } catch(e){}
+  try { if (typeof window._renderCopBoard === 'function') window._renderCopBoard(); } catch(e){}
+  return { scored: scored, skipped: skipped, failed: failed };
+};
 // P13.74 — expose for cross-module callers (bulk-score apply path,
 // P13.75 BD-org → opp generator). Many call sites already guard with
 // typeof window.saveOpp === 'function' but the assignment was missing.
@@ -17465,6 +17518,12 @@ window._renderCopForecast = function(){
   // reads as actionable, not failed.
   var totalCount = opps.length;
   var totalPipeline = 0, weightedPipeline = 0, scoredCount = 0, unassignedCount = 0;
+  // P13.102 — parallel count: opps with an auto-computed score (opp.score
+  // populated by saveOpp's hook). Distinguishes operator-validated scoring
+  // (value/pwin set) from algorithm output so the status string is honest
+  // about which is which.
+  var autoScoredCount = 0;
+  var tierA = 0, tierB = 0, tierC = 0;
   opps.forEach(function(o){
     var v = Number(o.value || o.contractValue || 0);
     var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
@@ -17474,6 +17533,13 @@ window._renderCopForecast = function(){
     if (v > 0 || p > 0) scoredCount++;
     // P13.86 — unassigned = no captureLead / lead trimmed empty
     if (!((o.captureLead || o.lead) || '').trim()) unassignedCount++;
+    // P13.102 — auto-score tally
+    if (typeof o.score === 'number') {
+      autoScoredCount++;
+      if (o.tier === 'A') tierA++;
+      else if (o.tier === 'B') tierB++;
+      else tierC++;
+    }
   });
   var unscoredCount = totalCount - scoredCount;
   var avgDeal = scoredCount ? (totalPipeline / scoredCount) : 0;
@@ -17707,19 +17773,24 @@ window._renderCopForecast = function(){
       // shows when relevant. Forecast is collapsed by default; previously the
       // banner only fired after the user explicitly expanded — defeating the
       // point of guidance.
-      (totalCount > 0 && scoredCount === 0 ?
+      (totalCount > 0 && autoScoredCount < totalCount ?
         '<div style="margin-top:12px;padding:12px 14px;background:linear-gradient(180deg,rgba(212,130,58,.10),rgba(212,130,58,.04));border:1px solid rgba(212,130,58,.35);border-left:3px solid var(--gold);border-radius:3px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">' +
           '<div style="flex:1;min-width:240px">' +
-            '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:4px">Next step: score your pipeline</div>' +
-            '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4">You have <b>' + totalCount + '</b> open ' + (totalCount === 1 ? 'pursuit' : 'pursuits') + ' but none have a value or pwin yet. Click <b>⊞ Bulk Score Now</b> to paste a CSV (name,value,pwin) and populate the forecast in seconds.</div>' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:4px">' + (autoScoredCount === 0 ? 'Next step: rank your pipeline' : 'Bring the rest up to date') + '</div>' +
+            '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4">' +
+              (autoScoredCount === 0
+                ? 'You have <b>' + totalCount + '</b> open ' + (totalCount === 1 ? 'pursuit' : 'pursuits') + ' with no auto-score yet. Click <b>⚡ Score Pipeline Now</b> &mdash; every opp gets a tier (A/B/C) + factor breakdown in seconds, sorted highest-priority first. No data entry required.'
+                : '<b>' + (totalCount - autoScoredCount) + '</b> ' + (totalCount - autoScoredCount === 1 ? 'pursuit lacks' : 'pursuits lack') + ' an auto-score. Re-run to bring every opp current.') +
+            '</div>' +
           '</div>' +
-          '<button onclick="window._openBulkScoreModal&&window._openBulkScoreModal()" style="background:var(--gold);border:1px solid var(--gold);color:#0b0d11;padding:9px 16px;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;flex-shrink:0">⊞ Bulk Score Now</button>' +
+          '<button onclick="window._bulkAutoScorePipeline&&window._bulkAutoScorePipeline()" style="background:var(--gold);border:1px solid var(--gold);color:#0b0d11;padding:9px 16px;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;flex-shrink:0" title="Score every open pursuit in this workspace using the 5-factor model (Stage / Pwin / Touch / Freshness / Static profile). Idempotent.">⚡ Score Pipeline Now</button>' +
+          '<button onclick="window._openBulkScoreModal&&window._openBulkScoreModal()" style="background:transparent;border:1px solid rgba(212,130,58,.45);color:var(--gold);padding:9px 14px;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;flex-shrink:0" title="Paste a CSV of name,value,pwin to manually set value + pwin on opps in one go. Auto-score will reflect the new manual data on the next pass.">⊞ Bulk Score CSV</button>' +
         '</div>'
       : '') +
       // Body (hidden when collapsed)
       (collapsed ? '' :
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px">' +
-          tile('OPEN OPPS', String(totalCount), unscoredCount ? scoredCount + ' scored · ' + unscoredCount + ' need setup' : null) +
+          tile('OPEN OPPS', String(totalCount), (autoScoredCount ? autoScoredCount + ' auto-scored · A:' + tierA + ' B:' + tierB + ' C:' + tierC : null) || (unscoredCount ? scoredCount + ' validated · ' + unscoredCount + ' need value/pwin' : null)) +
           tile('PIPELINE $', _fmt$(totalPipeline), unscoredCount && !totalPipeline ? 'add value + pwin to score' : null) +
           tile('WEIGHTED $', _fmt$(weightedPipeline), 'value × p(win)') +
           tile('AVG DEAL', _fmt$(avgDeal), scoredCount ? 'across ' + scoredCount + ' scored' : null) +
@@ -18677,51 +18748,15 @@ window._oppRenderBulkBar = function(){
 // 0-100 weighted score so the operator can answer 'which 10 deals
 // should I obsess over today?' Surfaces on every Kanban card.
 // ═══════════════════════════════════════════════════════════════
+// P13.102 — single source of truth: delegate to _dealScoreBreakdown so the
+// chip number and the panel total can never drift. Returns 0 for closed
+// pursuits, matching pre-P13.102 behavior.
 window._dealScore = function(o){
   if (!o) return 0;
   var stage = String(o.stage||'').toLowerCase();
-  // Stage base (0-35)
-  var stageBase = 0;
-  if      (stage.indexOf('opp id')>=0)         stageBase = 6;
-  else if (stage.indexOf('qualify')>=0)        stageBase = 12;
-  else if (stage.indexOf('capture')>=0)        stageBase = 18;
-  else if (stage.indexOf('bid decision')>=0)   stageBase = 23;
-  else if (stage.indexOf('proposal')>=0)       stageBase = 26;
-  else if (stage.indexOf('final')>=0)          stageBase = 30;
-  else if (stage.indexOf('submitted')>=0)      stageBase = 33;
-  else if (stage.indexOf('eval')>=0 || stage.indexOf('award')>=0) stageBase = 35;
-  else if (stage.indexOf('won')>=0 || stage.indexOf('lost')>=0)   return 0;
-  else stageBase = 5;
-  // Win-prob (0-30)
-  var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
-  if (p > 1) p = p/100;
-  if (p > 1) p = 1;
-  var winScore = Math.round(p * 30);
-  // Touch recency from last meeting on this opp (0-20)
-  var touchScore = 0;
-  var idx = window.CorsairIndex || {};
-  var mtgs = (idx.meetingsByOppId && idx.meetingsByOppId.get && idx.meetingsByOppId.get(String(o.id))) || [];
-  if (mtgs.length){
-    var lastTs = mtgs.reduce(function(m,x){return Math.max(m, Number(x.ts||0));}, 0);
-    var days = lastTs ? Math.floor((Date.now() - lastTs) / 86400000) : 9999;
-    if      (days <= 7)  touchScore = 20;
-    else if (days <= 30) touchScore = 14;
-    else if (days <= 60) touchScore = 8;
-    else if (days <= 90) touchScore = 3;
-    else                 touchScore = 0;
-  }
-  // Stage freshness (0-15) — newer in stage = fresher
-  var freshScore = 0;
-  if (o.stageEnteredAt){
-    var stageDays = Math.floor((Date.now() - Number(o.stageEnteredAt)) / 86400000);
-    if      (stageDays <= 14) freshScore = 15;
-    else if (stageDays <= 30) freshScore = 10;
-    else if (stageDays <= 60) freshScore = 5;
-    else                      freshScore = 0;
-  } else {
-    freshScore = 8; // neutral if no history
-  }
-  return Math.min(100, stageBase + winScore + touchScore + freshScore);
+  if (stage.indexOf('won')>=0 || stage.indexOf('lost')>=0) return 0;
+  var b = window._dealScoreBreakdown(o);
+  return b ? b.total : 0;
 };
 
 window._dealScoreColor = function(score){
@@ -18741,18 +18776,25 @@ window._dealScoreChip = function(o, opts){
 // P13.7 — Deal Score Breakdown (coaching panel)
 // Computes factor-by-factor contributions + actionable suggestions.
 // Same formula as _dealScore so totals match across surfaces.
+//
+// P13.102 extensions — adds Static Profile (0-10) factor so freshly imported
+// opps with known vehicle/agency/value rise above pure-zero peers; adds
+// tier (A/B/C) and confidence (high/partial/sparse) so the spec's
+// auto-score-and-rank rollup is honest about engagement depth, not just
+// raw points. Total still capped at 100 — five factors sum to max 110 then
+// Math.min(100, ...) so existing rendering surfaces don't break.
 window._dealScoreBreakdown = function(o){
   if (!o) return null;
   var stage = String(o.stage||'').toLowerCase();
   var stageBase = 0;
-  if      (stage.indexOf('opp id')>=0)         stageBase = 6;
-  else if (stage.indexOf('qualify')>=0)        stageBase = 12;
-  else if (stage.indexOf('capture')>=0)        stageBase = 18;
-  else if (stage.indexOf('bid decision')>=0)   stageBase = 23;
-  else if (stage.indexOf('proposal')>=0)       stageBase = 26;
-  else if (stage.indexOf('final')>=0)          stageBase = 30;
-  else if (stage.indexOf('submitted')>=0)      stageBase = 33;
-  else if (stage.indexOf('eval')>=0 || stage.indexOf('award')>=0) stageBase = 35;
+  if      (stage.indexOf('opp id')>=0 || stage === 'awareness')   stageBase = 6;
+  else if (stage.indexOf('qualify')>=0 || stage === 'tracking')   stageBase = 12;
+  else if (stage.indexOf('capture')>=0 || stage === 'engaged')    stageBase = 18;
+  else if (stage.indexOf('bid decision')>=0 || stage === 'rfp')   stageBase = 23;
+  else if (stage.indexOf('proposal')>=0 || stage === 'proposal')  stageBase = 26;
+  else if (stage.indexOf('final')>=0 || stage === 'negotiation')  stageBase = 30;
+  else if (stage.indexOf('submitted')>=0 || stage === 'submitted') stageBase = 33;
+  else if (stage.indexOf('eval')>=0 || stage.indexOf('award')>=0 || stage === 'award') stageBase = 35;
   else stageBase = 5;
 
   var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
@@ -18788,7 +18830,43 @@ window._dealScoreBreakdown = function(o){
     freshScore = 8;
   }
 
-  var total = Math.min(100, stageBase + winScore + touchScore + freshScore);
+  // P13.102 — Static profile factor (0-10): degrades gracefully on freshly
+  // imported opps with zero engagement. Inputs are ALL present at master-
+  // pipeline ingest time, so even a never-touched opp gets meaningful lift
+  // when it has a known vehicle, recognizable agency, or imported value.
+  var staticScore = 0;
+  var staticBits = [];
+  // (a) Imported value > 0 → +3
+  var rawVal = Number(o.value || 0);
+  if (typeof rawVal !== 'number' || isNaN(rawVal)) rawVal = 0;
+  if (rawVal > 0) { staticScore += 3; staticBits.push('value set'); }
+  // (b) Known contract vehicle → +3 (matches common DoD/fed vehicles)
+  var veh = String(o.vehicle || '').toLowerCase();
+  var vehHit = !!(veh && /sbir|sttr|otaiopu?|other transaction|ota\b|idiq|gsa|seaport|oasis|alliant|cio-?sp|tradewinds|sofwerx|afwerx|navwar|broad agency|baa|csa|c5isr|mac\b/.test(veh));
+  if (vehHit) { staticScore += 3; staticBits.push('vehicle ' + (o.vehicle||'').slice(0,18)); }
+  // (c) Source freshness — fetched within last 30 days → +2
+  var fetchedAt = (o.source && Number(o.source.fetchedAt)) || 0;
+  if (fetchedAt && (Date.now() - fetchedAt) <= 30 * 86400000) { staticScore += 2; staticBits.push('source fresh'); }
+  // (d) Recognized agency (string non-empty and not 'agency unknown') → +2
+  var ag = String(o.agency || '').toLowerCase().trim();
+  if (ag && ag !== 'agency unknown' && ag !== 'unknown' && ag.length >= 2) { staticScore += 2; staticBits.push('agency known'); }
+  var staticDetail = staticBits.length ? staticBits.join(' · ') : 'no static signal';
+
+  // Raw 5-factor sum (max 110), capped to 100 so the public 0-100 scale holds.
+  var raw = stageBase + winScore + touchScore + freshScore + staticScore;
+  var total = Math.min(100, raw);
+
+  // P13.102 — confidence: honesty about what the score is built on
+  var mtgCount = mtgs.length;
+  var stageHistLen = Array.isArray(o.stageHistory) ? o.stageHistory.length : 0;
+  var manualSet = (rawVal > 0) || (Number(o.pwin || o.winProb || 0) > 0);
+  var confidence;
+  if (mtgCount >= 3 || stageHistLen >= 2 || (mtgCount >= 1 && manualSet)) confidence = 'high';
+  else if (mtgCount >= 1 || manualSet || stageHistLen >= 1)               confidence = 'partial';
+  else                                                                     confidence = 'sparse';
+
+  // P13.102 — tier: discrete rank band for the badge surface
+  var tier = total >= 65 ? 'A' : total >= 35 ? 'B' : 'C';
 
   // Suggestions — rank weakest factors and emit operator-grade prompts
   var suggestions = [];
@@ -18815,14 +18893,41 @@ window._dealScoreBreakdown = function(o){
 
   return {
     total: total,
+    tier: tier,
+    confidence: confidence,
     color: window._dealScoreColor(total),
     factors: [
       { label: 'Stage',          score: stageBase,  max: 35, color: stageBase  >= 22 ? '#22c55e' : stageBase  >= 12 ? '#facc15' : '#ef4444', detail: o.stage || '(no stage)' },
       { label: 'Win probability',score: winScore,   max: 30, color: winScore   >= 18 ? '#22c55e' : winScore   >= 9  ? '#facc15' : '#ef4444', detail: winPct + '%' },
       { label: 'Touch recency',  score: touchScore, max: 20, color: touchScore >= 14 ? '#22c55e' : touchScore >= 8  ? '#facc15' : '#ef4444', detail: touchDays == null ? 'no meetings logged' : touchDays + ' days since last' },
-      { label: 'Stage freshness',score: freshScore, max: 15, color: freshScore >= 10 ? '#22c55e' : freshScore >= 5  ? '#facc15' : '#ef4444', detail: stageDays == null ? 'no stage history' : stageDays + ' days in stage' }
+      { label: 'Stage freshness',score: freshScore, max: 15, color: freshScore >= 10 ? '#22c55e' : freshScore >= 5  ? '#facc15' : '#ef4444', detail: stageDays == null ? 'no stage history' : stageDays + ' days in stage' },
+      { label: 'Static profile', score: staticScore,max: 10, color: staticScore >= 6 ? '#22c55e' : staticScore >= 3  ? '#facc15' : '#ef4444', detail: staticDetail }
     ],
     suggestions: suggestions
+  };
+};
+
+// P13.102 — Canonical auto-score for the ingest path and the renderers.
+// Matches the spec's required shape: { score, tier, factors[], confidence }.
+// Composes from _dealScoreBreakdown (single source of truth for the formula)
+// and surfaces the structured object operator-facing code reads/writes.
+// Doctrine: every score shows its reasoning — no black-box numbers.
+window._computeOppScore = function(opp){
+  if (!opp) return null;
+  var stage = String(opp.stage || '').toLowerCase();
+  // Closed pursuits don't get a meaningful rank — return null so renderers
+  // can skip badge + sort. saveOpp also skips persisting score on closed opps.
+  if (stage === 'won' || stage === 'lost') return null;
+  var b = window._dealScoreBreakdown(opp);
+  if (!b) return null;
+  return {
+    score:       b.total,
+    tier:        b.tier,
+    confidence:  b.confidence,
+    factors:     b.factors,
+    color:       b.color,
+    suggestions: b.suggestions,
+    computedAt:  Date.now()
   };
 };
 
@@ -60910,6 +61015,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.101"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.102"></script>
 </body>
 </html>
