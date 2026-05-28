@@ -362,11 +362,20 @@ window.renderCopSection = function() {
       h += '</div>';
 
       // Rollup line: value · weighted
+      // P13.148 — softer empty state when no values are scored yet.
+      // Showing "$0 · $0 weighted" on every column makes a fresh
+      // pipeline (or one mid-annotation, like the 122 Atlas opps) look
+      // broken in demos. When the column has cards but no values,
+      // surface a muted "value pending" instead.
       if (roll.count > 0) {
         h += '<div class="cop-kanban-col-rollup">';
-        h += '<span title="Total value">$' + _formatVal(roll.value) + '</span>';
-        h += '<span class="cop-kanban-rollup-sep">·</span>';
-        h += '<span title="Weighted (sum of value × pwin)">$' + _formatVal(roll.weighted) + ' weighted</span>';
+        if (roll.value > 0) {
+          h += '<span title="Total value">$' + _formatVal(roll.value) + '</span>';
+          h += '<span class="cop-kanban-rollup-sep">·</span>';
+          h += '<span title="Weighted (sum of value × pwin)">$' + _formatVal(roll.weighted) + ' weighted</span>';
+        } else {
+          h += '<span title="None of these opps have value/pwin set — click a card to add" style="color:var(--t3);font-style:italic">value pending</span>';
+        }
         h += '</div>';
       }
 
