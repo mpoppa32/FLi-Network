@@ -629,18 +629,19 @@ html,body{
 .activate-skip button:hover{color:var(--t2);opacity:1}
 
 /* Guided Tour — spotlight, callout, chapter selector */
-/* P13.146 — Tour backdrop opacity sweep. Mike reported during pre-demo
-   verification: backdrop was so dark (.78 alpha + blur(2px) + .82 alpha
-   surrounding spotlight) that operators couldn't see what the callout
-   speaking-points referred to — defeats the whole tour's purpose. New
-   values keep the gold spotlight ring + glow loud (focus signal still
-   clear) but dim the rest of the UI just enough to push it visually
-   to the background. .78 → .35 on the backdrop, .82 → .55 on the
-   spotlight surround. Surrounding UI is now legible while the spotlight
-   target still pops. */
+/* P13.147 — Tour backdrop legibility, second pass. P13.146 reduced
+   rgba alpha but stacking a dark overlay on already-dark page
+   compounds darkness — still unreadable. New approach: backdrop is
+   TRANSPARENT and uses backdrop-filter:brightness() for uniform
+   dimming. Spotlight loses the 9999px dark-surround box-shadow
+   entirely (which was the dominant dimmer); focus signal is now
+   pure gold ring + outer glow, which pops against the uniformly-
+   dimmed page without obscuring it. */
 .tour-backdrop{
   position:fixed;inset:0;z-index:9500;
-  background:rgba(7,13,24,.35);
+  background:transparent;
+  -webkit-backdrop-filter:brightness(.55);
+  backdrop-filter:brightness(.55);
   animation:tourFadeIn .25s ease;
   pointer-events:auto
 }
@@ -648,18 +649,22 @@ html,body{
 .tour-spotlight{
   position:fixed;
   border-radius:8px;
-  box-shadow:0 0 0 9999px rgba(7,13,24,.55),
-             0 0 0 3px rgba(212,130,58,.95),
-             0 0 36px rgba(212,130,58,.55),
-             inset 0 0 0 1px rgba(255,255,255,.08);
+  /* No dark surround — only the gold ring + glow. Page underneath
+     keeps its uniform .55 brightness from the backdrop. The spotlight
+     element acts as a "lift" — clear gold edge + outer halo signals
+     focus without stacking more darkness anywhere. */
+  box-shadow:0 0 0 3px rgba(212,130,58,1),
+             0 0 28px rgba(212,130,58,.65),
+             0 0 64px rgba(212,130,58,.30),
+             inset 0 0 0 1px rgba(255,255,255,.12);
   pointer-events:none;
   z-index:9501;
   transition:all .35s cubic-bezier(.65,0,.35,1);
   animation:tourSpotlightPulse 2.4s ease-in-out infinite
 }
 @keyframes tourSpotlightPulse{
-  0%,100%{box-shadow:0 0 0 9999px rgba(7,13,24,.55),0 0 0 3px rgba(212,130,58,.95),0 0 36px rgba(212,130,58,.55),inset 0 0 0 1px rgba(255,255,255,.08)}
-  50%{box-shadow:0 0 0 9999px rgba(7,13,24,.55),0 0 0 3px rgba(212,130,58,1),0 0 52px rgba(212,130,58,.75),inset 0 0 0 1px rgba(255,255,255,.10)}
+  0%,100%{box-shadow:0 0 0 3px rgba(212,130,58,1),0 0 28px rgba(212,130,58,.65),0 0 64px rgba(212,130,58,.30),inset 0 0 0 1px rgba(255,255,255,.12)}
+  50%{box-shadow:0 0 0 3px rgba(212,130,58,1),0 0 44px rgba(212,130,58,.85),0 0 96px rgba(212,130,58,.50),inset 0 0 0 1px rgba(255,255,255,.16)}
 }
 .tour-callout{
   position:fixed;z-index:9502;
@@ -8844,7 +8849,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.146</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.147</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -62831,6 +62836,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.146"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.147"></script>
 </body>
 </html>
