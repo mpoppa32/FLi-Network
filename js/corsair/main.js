@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.112';
-  window.Corsair.buildBlurb  = 'Audit Finding 6.1 — FLiIntel.js (20,510 lines of dead code, never referenced by any <script src> in the live HTML) moved to _archived/FLiIntel.legacy.js with a README documenting that nothing here is loaded and operators should not copy patterns back without re-verifying. Was a parallel implementation from a prior architecture phase: duplicate wsPath, duplicate Firebase imports, duplicate save functions, plus a meeting→opp link block at the dead-file line 5818 that the live saveMeeting was actually missing until P13.107 brought equivalent logic into the inline tree. A future engineer finding the file via the tree would have assumed it was active, edited it, and shipped a no-op fix. Now the trap is closed. Critical Findings closed total: 9 (across 7 tags, P13.106-P13.112).';
+  window.Corsair.buildTag    = 'P13.113';
+  window.Corsair.buildBlurb  = 'Audit Finding 7.2 — when the active workspace was deleted in Firebase Console (or the user was removed from it) mid-session, the opportunities listener fired snap.val()=null, opportunities=[], UI silently emptied to "0 pursuits" with no error. Operator concluded "the platform broke." Now: connectWorkspace subscribes to users/{uid}/workspaces/{wsId} — a shallow access record that exists for any member-accessible workspace. When it transitions from non-null to null mid-session (initial null suppressed), surfaces a full-screen modal: "This workspace is no longer available — deleted or your access was revoked. Return to workspace picker." Button takes the operator back to ws-screen and re-renders the workspace list. Subscription pushed into netListeners so the next workspace switch cleans it up. Demo-safe: a buyer asking "what if my workspace is deleted" gets a graceful answer. Critical Findings closed total: 10.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

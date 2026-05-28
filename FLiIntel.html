@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.112</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.113</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12975,10 +12975,54 @@ function _showNewMemberBanner(){
   document.body.appendChild(b);
 }
 
+// P13.113 (audit Finding 7.2) — workspace-removed modal. Surfaces when
+// the active workspace is deleted in Firebase or when the user is removed
+// from it mid-session. Without this, the opportunities listener fires
+// snap.val() = null, opportunities = [], UI silently empties to "0
+// pursuits" with no error and no path back. The operator concludes
+// "the platform broke" — a demo-fatal reliability gap.
+window._showWorkspaceRemovedModal = function() {
+  if (document.getElementById('ws-removed-modal')) return;
+  var ov = document.createElement('div');
+  ov.id = 'ws-removed-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(7,13,24,.92);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);font-family:IBM Plex Sans,sans-serif';
+  ov.innerHTML =
+    '<div style="max-width:520px;margin:24px;padding:32px;background:linear-gradient(180deg,rgba(13,20,38,.99),rgba(7,13,24,.99));border:1px solid rgba(239,68,68,.5);border-radius:4px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6)">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.22em;color:#ef4444;text-transform:uppercase;margin-bottom:14px">Workspace removed</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:26px;color:var(--bone);line-height:1.2;margin-bottom:14px">This workspace is no longer available.</div>' +
+      '<div style="font-size:14px;color:var(--paper);line-height:1.55;margin-bottom:24px">The workspace was deleted, or your access was revoked. Your local view is no longer connected to live data — any unsaved changes will not persist.</div>' +
+      '<button onclick="document.getElementById(\'ws-removed-modal\').remove();document.body.classList.add(\'app-active\');document.getElementById(\'auth-screen\').style.display=\'none\';document.getElementById(\'main-app\').style.display=\'none\';document.getElementById(\'ws-screen\').style.display=\'flex\';if(typeof renderWsList===\'function\')renderWsList();" style="padding:11px 22px;background:var(--gold);border:1px solid var(--gold);color:#0b0d11;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;border-radius:2px">Return to workspace picker</button>' +
+    '</div>';
+  document.body.appendChild(ov);
+};
+
 function connectWorkspace(){
   netListeners.forEach(function(u){try{u();}catch(e){}});
   netListeners=[];
   setSS('connecting...');
+  // P13.113 — subscribe to the user's own access record for this workspace
+  // at users/{uid}/workspaces/{wsId}. If it transitions from non-null to
+  // null mid-session, either the workspace was deleted OR this user was
+  // removed from it (both warrant the same return-to-picker flow). Initial
+  // null is suppressed — only treat null as "removed" after we've seen the
+  // record once. Subscription unsubscribe pushed into netListeners so the
+  // next workspace switch cleans it up.
+  if (currentUser && currentUser.uid && currentWsId) {
+    var _wsAccessSeen = false;
+    try {
+      var uWsAccess = onValue(ref(db, 'users/'+currentUser.uid+'/workspaces/'+currentWsId), function(snap){
+        if (snap.val()) {
+          _wsAccessSeen = true;
+        } else if (_wsAccessSeen) {
+          _wsAccessSeen = false;
+          console.warn('[P13.113] workspace access lost mid-session — surfacing removed modal');
+          try { window._showWorkspaceRemovedModal(); }
+          catch(e){ console.error('[P13.113 show modal]', e); }
+        }
+      });
+      netListeners.push(uWsAccess);
+    } catch(e){ console.error('[P13.113 ws-access listener]', e); }
+  }
   window._loadCurrentUserRole&&window._loadCurrentUserRole(currentWsId);
   if(window._initTheme)window._initTheme();
   // Schedule the rhythm briefing once data has had time to settle from
@@ -62219,6 +62263,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.112"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.113"></script>
 </body>
 </html>
