@@ -8542,7 +8542,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.94</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.95</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8625,7 +8625,11 @@ input[type="url"], textarea, select {
           <span class="mode-lbl">More</span>
         </button>
         <div id="tools-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:300px;max-height:80vh;overflow-y:auto;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.98));border:1px solid rgba(26,34,54,.6);border-radius:3px;padding:6px;z-index:120;box-shadow:0 16px 48px rgba(0,0,0,.6)">
-          <!-- P13.77 — restructured from 5 loose groups to 4 cleanly-named buckets: NETWORK (who) / CAPTURE (act) / INSIGHTS (see) / DATA & HELP (manage). Items are unchanged. -->
+          <!-- P13.77 — restructured from 5 loose groups to 4 cleanly-named buckets: NETWORK (who) / CAPTURE (act) / INSIGHTS (see) / DATA & HELP (manage). P13.96 added WORKSPACE at top for the new ATLAS internal-company view. -->
+          <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Workspace</div>
+          <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">About us · what we are saying right now</div>
+          <button class="tools-menu-item" data-view="atlas" onclick="window._toolsMenuSelect('atlas')"><span style="color:var(--gold);width:18px;display:inline-block">🏢</span><span id="tools-menu-atlas-label">Atlas</span><span class="tm-meta">internal updates · talking points</span></button>
+          <div style="height:1px;background:rgba(26,34,54,.5);margin:7px 4px"></div>
           <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Network</div>
           <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">Who you know · where they sit</div>
           <button class="tools-menu-item" data-view="graph" onclick="window._toolsMenuSelect('graph')"><span style="color:#5fb3b8;width:18px;display:inline-block">◯</span><span>Graph</span><span class="tm-meta">entity network · relationships</span></button>
@@ -8818,6 +8822,14 @@ input[type="url"], textarea, select {
     </div>
   </div>
 
+  <!-- P13.96 — ATLAS view: dedicated INTERNAL-company surface. The other
+       views are customer-facing (pipeline, network, accounts). This is the
+       only surface ABOUT us — internal updates, talking points, voice memos
+       (deferred), and anything Bryce needs to brief from. Label is the
+       workspace name so every customer's view of this tab reflects their
+       own company. -->
+  <div class="atlas-view" id="atlas-view" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg)"></div>
+
   <!-- INTEL VIEW -->
   <div class="intel-view" id="intel-view" style="display:none">
     <div class="intel-sidebar">
@@ -8899,6 +8911,7 @@ input[type="url"], textarea, select {
           </div>
           <div style="display:flex;align-items:center;gap:10px">
             <span id="brief-master-health-chip" style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;padding:3px 8px;border:1px solid var(--b1);border-radius:2px;cursor:pointer" onclick="window._toggleSourceHealth&&window._toggleSourceHealth()" title="Click to expand Source Health">— sources</span>
+            <button onclick="window._previewBriefEmail&&window._previewBriefEmail()" style="padding:7px 14px;border:1px solid rgba(167,139,250,.4);border-radius:2px;background:rgba(167,139,250,.10);color:#a78bfa;font-size:14px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase" title="See what the daily 7am email looks like with today's data — no deploy needed">👁 Preview Email</button>
             <button onclick="window.showIntelBriefModal&&window.showIntelBriefModal()" style="padding:7px 14px;border:1px solid rgba(52,211,153,.4);border-radius:2px;background:rgba(52,211,153,.10);color:#34d399;font-size:14px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase" title="Subscribe to daily/weekly Brief email digest (P13.40 — closes SME-eval gap #2)">📧 Email Digest</button>
             <button onclick="window._slackSendBriefDigest&&window._slackSendBriefDigest()" style="padding:7px 14px;border:1px solid rgba(236,178,46,.4);border-radius:2px;background:rgba(74,21,75,.18);color:#ecb22e;font-size:14px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase" title="Post the Brief column counts to your configured Slack channel (P13.72)"># Slack</button>
             <button id="brief-master-refresh-btn" onclick="window._briefMasterRefresh&&window._briefMasterRefresh()" title="Refresh every card on the Brief surface — Workspace Pulse, Adversary Leaderboard, External Intelligence, Recompete Watch, Source Health" style="padding:7px 14px;border:1px solid rgba(95,179,184,.45);border-radius:2px;background:rgba(95,179,184,.10);color:#5fb3b8;font-size:14px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;text-transform:uppercase">↻ Refresh All Cards</button>
@@ -12301,7 +12314,7 @@ function _relocateViewsIntoMainApp(){
   // very same new-view-checklist bug that bit P12.8 (Accounts). They
   // rendered far below the viewport and switching to them showed a blank
   // screen. Adding them to the relocator now.
-  ['today-view','team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view','winloss-view','trends-view','table-view','pulse-view'].forEach(function(id){
+  ['today-view','atlas-view','team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view','winloss-view','trends-view','table-view','pulse-view'].forEach(function(id){
     var el = document.getElementById(id);
     if(el && el.parentElement !== mainApp){ mainApp.appendChild(el); }
   });
@@ -16904,7 +16917,7 @@ async function wireListeners(){
 }
 
 // ── VIEW REGISTRY — all switchable view container IDs (suffix '-view') ──
-var _CORSAIR_VIEWS=['today','intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts','winloss','trends'];
+var _CORSAIR_VIEWS=['today','atlas','intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts','winloss','trends'];
 
 // Map mode aliases → underlying view IDs
 var _CORSAIR_MODE_ALIAS={'graph':'network','cop':'opps','brief':'today'};
@@ -17003,6 +17016,7 @@ function switchView(v){
     } }catch(e){}
   }
   if(v==='today'&&typeof window.renderTodayView==='function')window.renderTodayView();
+  if(v==='atlas'&&typeof window.renderAtlasView==='function')window.renderAtlasView();
   if(v==='intel'&&activeIntelTab==='board')renderBoard();
   if(v==='timeline')renderTimeline();
   if(v==='opps')renderOppSidebar();
@@ -28811,6 +28825,118 @@ window._rhythmSnoozeItem = function(key, days){
   if (typeof _corsairRefreshRhythm === 'function') _corsairRefreshRhythm();
 };
 
+// P13.95 — Client-side Daily Brief email PREVIEW.
+// Mirrors what composeBrief() in functions/src/jobs/dailyBriefDigest.ts
+// emits at the scheduled 11 UTC (~7am ET) cron. Renders in a modal so
+// Mike can demo "here is what the email looks like" without requiring
+// the SendGrid signup + secrets + deploy first. Production daily send
+// still requires the deploy steps documented in the modal footer.
+window._previewBriefEmail = function(){
+  var wsName = (window.currentWs && window.currentWs.name) || 'Workspace';
+  var nowDate = new Date();
+  var dateStr = nowDate.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  // Pull data
+  var rhythm = (typeof _corsairBuildRhythm === 'function') ? _corsairBuildRhythm() : { items: [], critCount: 0, warnCount: 0 };
+  var crit = (rhythm.items || []).filter(function(i){ return i.sev === 'critical'; }).slice(0, 6);
+  var warn = (rhythm.items || []).filter(function(i){ return i.sev === 'warn'; }).slice(0, 6);
+  var ops = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
+  var totalPipeline = 0, weightedPipeline = 0;
+  ops.forEach(function(o){
+    var v = Number(o.value || o.contractValue || 0);
+    var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+    if (p > 1) p = p / 100;
+    totalPipeline += v;
+    weightedPipeline += v * p;
+  });
+  function _fmtM(v){ if (!v) return '$0'; if (v >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M'; if (v >= 1e3) return '$' + Math.round(v/1e3) + 'K'; return '$' + v.toFixed(0); }
+  function _esc(s){ return String(s == null ? '' : s).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
+  // Top scored opps
+  var topScored = ops.filter(function(o){ var v=Number(o.value||0); var p=Number(o.pwin||0); return v > 0 || p > 0; }).slice(0, 5);
+  // Build modal
+  var existing = document.getElementById('brief-email-preview-modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'brief-email-preview-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(7,13,24,.84);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:20px';
+  var html = '<div style="background:#fafaf6;border-radius:6px;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.7);color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif">';
+  // Email header
+  html += '<div style="padding:14px 22px;background:#f0eee5;border-bottom:1px solid #e0dcd0;display:flex;align-items:center;justify-content:space-between;gap:12px;font-family:IBM Plex Mono,monospace;font-size:11px;color:#6a6358;letter-spacing:.06em">';
+  html += '<div>From: <b style="color:#3a3128">Corsair Daily Brief</b> &lt;brief@corsair.fli&gt;</div>';
+  html += '<button onclick="document.getElementById(\'brief-email-preview-modal\').remove()" style="background:transparent;border:0;color:#6a6358;font-size:22px;line-height:1;cursor:pointer;padding:0 4px">×</button>';
+  html += '</div>';
+  // Subject line
+  html += '<div style="padding:10px 22px 4px;background:#f0eee5;border-bottom:1px solid #e0dcd0;font-family:IBM Plex Mono,monospace;font-size:11px;color:#6a6358">Subject:</div>';
+  html += '<div style="padding:0 22px 14px;background:#f0eee5;border-bottom:2px solid #d4823a;font-family:-apple-system,sans-serif;font-size:16px;font-weight:600;color:#1a1a1a">[' + _esc(wsName) + '] Today\'s Brief — ' + (crit.length + warn.length) + ' watch items · ' + _fmtM(weightedPipeline) + ' weighted pipeline</div>';
+  // Body
+  html += '<div style="padding:24px 28px;background:#fafaf6">';
+  html += '<div style="font-family:Anton,sans-serif;font-size:22px;letter-spacing:.04em;text-transform:uppercase;color:#1a1a1a;margin-bottom:4px">Good Morning</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.10em;color:#7a7368;text-transform:uppercase;margin-bottom:22px">' + dateStr + ' &nbsp;·&nbsp; ' + _esc(wsName) + '</div>';
+  // Critical section
+  if (crit.length) {
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#b34040;text-transform:uppercase;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #e0dcd0">Critical · act today · ' + crit.length + '</div>';
+    crit.forEach(function(it){
+      html += '<div style="margin-bottom:10px;padding:10px 12px;background:rgba(179,64,64,0.06);border-left:3px solid #b34040;border-radius:3px">';
+      html +=   '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:#b34040;text-transform:uppercase;margin-bottom:3px">' + _esc(it.kind) + ' · ' + _esc(it.meta) + '</div>';
+      html +=   '<div style="font-size:14px;color:#1a1a1a;font-weight:500">' + _esc(it.subject) + '</div>';
+      if (it.actor) html += '<div style="font-size:12px;color:#6a6358;margin-top:2px">' + _esc(it.actor) + '</div>';
+      html += '</div>';
+    });
+  }
+  // Watch section
+  if (warn.length) {
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#b86b2a;text-transform:uppercase;margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid #e0dcd0">Watch · resolve this week · ' + warn.length + '</div>';
+    warn.forEach(function(it){
+      html += '<div style="margin-bottom:10px;padding:10px 12px;background:rgba(184,107,42,0.06);border-left:3px solid #b86b2a;border-radius:3px">';
+      html +=   '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:#b86b2a;text-transform:uppercase;margin-bottom:3px">' + _esc(it.kind) + ' · ' + _esc(it.meta) + '</div>';
+      html +=   '<div style="font-size:14px;color:#1a1a1a;font-weight:500">' + _esc(it.subject) + '</div>';
+      if (it.actor) html += '<div style="font-size:12px;color:#6a6358;margin-top:2px">' + _esc(it.actor) + '</div>';
+      html += '</div>';
+    });
+  }
+  if (!crit.length && !warn.length) {
+    html += '<div style="padding:14px;background:rgba(34,197,94,0.06);border-left:3px solid #3a8a5c;border-radius:3px;color:#1a1a1a;font-size:14px">All clear — no critical or watch items today. Use the time to log a meeting or scope a new pursuit.</div>';
+  }
+  // Pipeline summary
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#3a3128;text-transform:uppercase;margin:22px 0 10px;padding-bottom:6px;border-bottom:1px solid #e0dcd0">Pipeline snapshot</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">';
+  html += '<tr><td style="padding:6px 0;color:#6a6358">Active pursuits</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#1a1a1a">' + ops.length + '</td></tr>';
+  html += '<tr><td style="padding:6px 0;color:#6a6358">Total pipeline</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#1a1a1a">' + _fmtM(totalPipeline) + '</td></tr>';
+  html += '<tr><td style="padding:6px 0;color:#6a6358">Weighted (PWin)</td><td style="padding:6px 0;text-align:right;font-weight:600;color:#d4823a">' + _fmtM(weightedPipeline) + '</td></tr>';
+  html += '</table>';
+  if (topScored.length) {
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:#3a3128;text-transform:uppercase;margin-bottom:8px">Top scored pursuits</div>';
+    topScored.forEach(function(o){
+      var v = Number(o.value || 0);
+      var p = Number(o.pwin || 0);
+      var pPct = p > 1 ? Math.round(p) : Math.round(p * 100);
+      html += '<div style="padding:8px 0;border-bottom:1px solid #e8e4d8;display:flex;justify-content:space-between;gap:10px">';
+      html += '<span style="font-size:13px;color:#1a1a1a;font-weight:500">' + _esc(o.name) + '</span>';
+      html += '<span style="font-family:IBM Plex Mono,monospace;font-size:11px;color:#6a6358">' + _fmtM(v) + ' · ' + pPct + '% PWin</span>';
+      html += '</div>';
+    });
+  }
+  html += '<div style="margin-top:24px;padding:14px;background:#f0eee5;border-left:3px solid #d4823a;border-radius:3px;font-size:12px;color:#6a6358;line-height:1.55">';
+  html += '<b style="color:#1a1a1a">Open ' + _esc(wsName) + ' in Corsair →</b><br>';
+  html += 'You can clear any of these items in one click with ✓ DONE / ✗ DROP on each card.';
+  html += '</div>';
+  html += '</div>';
+  // Footer with production deploy CTA
+  html += '<div style="padding:14px 22px;background:#f0eee5;border-top:1px solid #e0dcd0;font-family:IBM Plex Mono,monospace;font-size:10.5px;color:#7a7368;letter-spacing:.04em;line-height:1.55">';
+  html += '<b style="color:#3a3128">Production daily send</b> requires three one-time steps:<br>';
+  html += '1. SendGrid signup + verify sender (10 min · free tier covers 100 emails/day)<br>';
+  html += '2. <code style="background:#e8e4d8;padding:1px 4px;border-radius:2px">firebase functions:secrets:set SENDGRID_API_KEY</code> + <code style="background:#e8e4d8;padding:1px 4px;border-radius:2px">BRIEF_FROM_EMAIL</code><br>';
+  html += '3. <code style="background:#e8e4d8;padding:1px 4px;border-radius:2px">firebase deploy --only functions:dailyBriefDigest,functions:triggerBriefDigestTest</code><br>';
+  html += '<br>Then users click <b>📧 Email Digest</b> on the Brief tab to subscribe with their address + frequency. Cron fires daily at 11 UTC (7am ET).';
+  html += '</div>';
+  html += '</div>';
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(ev){ if (ev.target === modal) modal.remove(); });
+  document.addEventListener('keydown', function escClose(ev){
+    if (ev.key === 'Escape') { var m = document.getElementById('brief-email-preview-modal'); if (m) m.remove(); document.removeEventListener('keydown', escClose); }
+  });
+};
+
 function _corsairBuildRhythm(){
   var now = new Date();
   var todayMs = now.getTime();
@@ -29162,6 +29288,164 @@ window._corsairToggleRhythm = function(){
   if (lbl) lbl.textContent = _corsairRhythmCollapsed ? 'Expand' : 'Collapse';
 };
 
+// P13.96 — ATLAS view: dedicated INTERNAL-company surface. All other
+// views are customer-facing; this is the only one ABOUT us. MVP scope:
+// Updates feed (text notes, localStorage, dated) + Talking Points
+// placeholder + Voice Memos placeholder. Label is workspace name so the
+// surface adapts per customer (Mike's workspace = "Atlas" → header reads
+// "ATLAS"; a future Globex workspace → header reads "GLOBEX").
+function _atlasGetUpdates(){
+  var wsId = window.currentWsId || 'default';
+  try { return JSON.parse(localStorage.getItem('corsair-atlas-updates-' + wsId) || '[]') || []; }
+  catch(e){ return []; }
+}
+function _atlasSaveUpdates(arr){
+  var wsId = window.currentWsId || 'default';
+  try { localStorage.setItem('corsair-atlas-updates-' + wsId, JSON.stringify(arr)); } catch(e){}
+}
+window._atlasAddUpdate = function(){
+  var text = prompt('What is the latest update for your team?\n\nExamples:\n• "Shipped v2.3 with new red-team scoring — Bryce, mention this on the DARPA call"\n• "Price drop on Tier 2 contracts approved, new sheet attached"\n• "Lost out on Anduril MQ-9 — debrief next Tuesday"\n• "New case study with USSOCOM in hand, available on the shared drive"');
+  if (!text || !text.trim()) return;
+  var tag = prompt('Tag (optional): product, team, competitive, pricing, win, loss, ops, other\n\nLeave blank for none.');
+  var arr = _atlasGetUpdates();
+  arr.unshift({
+    id: 'upd-' + Date.now(),
+    ts: Date.now(),
+    text: text.trim(),
+    tag: tag ? tag.trim().toLowerCase() : null,
+    author: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'You'
+  });
+  _atlasSaveUpdates(arr);
+  if (typeof toast === 'function') toast('Update added');
+  if (window.activeView === 'atlas' && typeof window.renderAtlasView === 'function') window.renderAtlasView();
+  if (typeof window._renderAtlasTodayWidget === 'function') window._renderAtlasTodayWidget();
+};
+window._atlasDeleteUpdate = function(id){
+  if (!confirm('Delete this update?')) return;
+  var arr = _atlasGetUpdates().filter(function(u){ return u.id !== id; });
+  _atlasSaveUpdates(arr);
+  if (typeof toast === 'function') toast('Update deleted');
+  if (window.activeView === 'atlas' && typeof window.renderAtlasView === 'function') window.renderAtlasView();
+  if (typeof window._renderAtlasTodayWidget === 'function') window._renderAtlasTodayWidget();
+};
+window.renderAtlasView = function(){
+  var view = document.getElementById('atlas-view');
+  if (!view) return;
+  var wsName = (window.currentWs && window.currentWs.name) || 'Workspace';
+  var safeWsName = String(wsName).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  var updates = _atlasGetUpdates();
+  var thisWeekMs = 7 * 86400000;
+  var nowTs = Date.now();
+  var thisWeekCount = updates.filter(function(u){ return (nowTs - u.ts) <= thisWeekMs; }).length;
+  // Update the MORE menu label to match workspace name
+  var menuLbl = document.getElementById('tools-menu-atlas-label');
+  if (menuLbl) menuLbl.textContent = wsName;
+  function _fmtTs(ts){
+    var d = new Date(ts);
+    var diff = nowTs - ts;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+    if (diff < 7*86400000) return Math.floor(diff/86400000) + 'd ago';
+    return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+  }
+  function _esc(s){ return String(s == null ? '' : s).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
+  function _tagColor(t){
+    switch ((t || '').toLowerCase()) {
+      case 'product':     return '#5fb3b8';
+      case 'team':        return '#a78bfa';
+      case 'competitive': return '#ef4444';
+      case 'pricing':     return '#f0a560';
+      case 'win':         return '#22c55e';
+      case 'loss':        return '#b34040';
+      case 'ops':         return '#38bdf8';
+      default:            return '#7d7669';
+    }
+  }
+  var h = '';
+  // Header
+  h += '<div style="padding:22px 32px 14px;border-bottom:1px solid var(--rule);background:linear-gradient(180deg,rgba(212,130,58,.04),transparent)">';
+  h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;flex-wrap:wrap">';
+  h += '<div>';
+  h += '<div style="font-family:Anton,sans-serif;font-size:28px;letter-spacing:.08em;text-transform:uppercase;color:var(--bone);line-height:1">' + safeWsName + '</div>';
+  h += '<div style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.14em;color:var(--paper);text-transform:uppercase">Internal updates &nbsp;·&nbsp; talking points &nbsp;·&nbsp; voice memos</div>';
+  h += '</div>';
+  h += '<button onclick="window._atlasAddUpdate&&window._atlasAddUpdate()" style="display:flex;align-items:center;gap:9px;padding:11px 18px;background:linear-gradient(180deg,rgba(212,130,58,.22),rgba(212,130,58,.10));border:1px solid var(--gold);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer">+ Add Update</button>';
+  h += '</div>';
+  h += '</div>';
+  // Body (scrollable)
+  h += '<div style="flex:1;overflow-y:auto;padding:20px 32px">';
+  // Updates feed section
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:baseline;justify-content:space-between">';
+  h += '<span>Updates Feed</span>';
+  h += '<span style="font-weight:400;color:var(--paper-2);font-size:10px">' + updates.length + ' total · ' + thisWeekCount + ' this week</span>';
+  h += '</div>';
+  if (updates.length === 0) {
+    h += '<div style="padding:30px 22px;background:linear-gradient(135deg,rgba(212,130,58,.05),rgba(95,179,184,.03));border:1px dashed rgba(212,130,58,.4);border-radius:4px;text-align:center;margin-bottom:30px">';
+    h += '<div style="font-family:Antonio,sans-serif;font-size:20px;color:var(--bone);margin-bottom:8px">Drop your first update.</div>';
+    h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);line-height:1.55;max-width:520px;margin:0 auto 18px">This is the &quot;here is what is happening at <b>' + safeWsName + '</b>&quot; surface. Product launches, pricing changes, win-loss stories, internal threads, competitive intel — anything your BD team needs to know before walking into a customer call.</div>';
+    h += '<button onclick="window._atlasAddUpdate&&window._atlasAddUpdate()" style="padding:10px 22px;background:var(--gold);border:1px solid var(--gold);color:#0b0d11;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:3px;cursor:pointer">+ Add First Update</button>';
+    h += '</div>';
+  } else {
+    h += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:30px">';
+    updates.forEach(function(u){
+      var tag = u.tag || null;
+      var tColor = _tagColor(tag);
+      h += '<div style="padding:12px 14px;background:linear-gradient(160deg,rgba(13,20,38,.92),rgba(7,13,24,.96));border:1px solid var(--rule-2);border-left:3px solid ' + tColor + ';border-radius:3px;position:relative;group">';
+      h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px">';
+      h += '<div style="display:flex;align-items:baseline;gap:8px">';
+      if (tag) h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:' + tColor + ';text-transform:uppercase">' + _esc(tag) + '</span>';
+      h += '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.06em">' + _fmtTs(u.ts) + ' &nbsp;·&nbsp; ' + _esc(u.author || 'Unknown') + '</span>';
+      h += '</div>';
+      h += '<button onclick="window._atlasDeleteUpdate&&window._atlasDeleteUpdate(\'' + _esc(u.id) + '\')" title="Delete this update" style="background:transparent;border:0;color:var(--paper-2);cursor:pointer;font-size:14px;padding:0 4px;opacity:.6">×</button>';
+      h += '</div>';
+      h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--bone);line-height:1.5;white-space:pre-wrap">' + _esc(u.text) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  // Talking Points placeholder
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:10px">Talking Points</div>';
+  h += '<div style="padding:16px 18px;background:rgba(95,179,184,.04);border:1px dashed rgba(95,179,184,.3);border-radius:3px;margin-bottom:24px">';
+  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);line-height:1.55">Coming next: editable pitch doc with sections for Current Capability Statement / Pricing / Recent Wins / Competitive Position. Pulls into PowerPoint exports so every briefing reflects today\'s positioning automatically.</div>';
+  h += '</div>';
+  // Voice memos placeholder
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#a78bfa;text-transform:uppercase;margin-bottom:10px">Voice Memos</div>';
+  h += '<div style="padding:16px 18px;background:rgba(167,139,250,.04);border:1px dashed rgba(167,139,250,.3);border-radius:3px;margin-bottom:24px">';
+  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);line-height:1.55">Coming next: drop an audio file, Corsair transcribes via the same LLM that powers PROCESS, output becomes a searchable Update in the feed above.</div>';
+  h += '</div>';
+  h += '</div>';
+  view.innerHTML = h;
+};
+
+// P13.96 — TODAY widget: small chip showing latest ATLAS update.
+// Surfaces the freshest internal context on the morning page so even
+// users who never open the ATLAS tab still see "what is the team up to."
+window._renderAtlasTodayWidget = function(){
+  var hostP = document.getElementById('today-rhythm-host');
+  if (!hostP || !hostP.parentElement) return;
+  var existing = document.getElementById('today-atlas-widget');
+  if (existing) existing.remove();
+  var updates = _atlasGetUpdates();
+  if (!updates.length) return;
+  var latest = updates[0];
+  var wsName = (window.currentWs && window.currentWs.name) || 'Workspace';
+  var safeWsName = String(wsName).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  var thisWeekCount = updates.filter(function(u){ return (Date.now() - u.ts) <= 7*86400000; }).length;
+  var safeText = String(latest.text || '').replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }).slice(0, 180);
+  var widget = document.createElement('div');
+  widget.id = 'today-atlas-widget';
+  widget.style.cssText = 'margin:0 22px 14px;padding:11px 14px;background:linear-gradient(135deg,rgba(212,130,58,.10),rgba(95,179,184,.05));border:1px solid rgba(212,130,58,.32);border-left:3px solid var(--gold);border-radius:3px;cursor:pointer;transition:background 140ms';
+  widget.title = 'Open ' + wsName + ' workspace surface · ' + thisWeekCount + ' update' + (thisWeekCount === 1 ? '' : 's') + ' this week';
+  var diff = Date.now() - latest.ts;
+  var ago = diff < 3600000 ? Math.floor(diff/60000) + 'm ago' : diff < 86400000 ? Math.floor(diff/3600000) + 'h ago' : Math.floor(diff/86400000) + 'd ago';
+  widget.innerHTML = '<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase;flex-shrink:0">Latest from ' + safeWsName + '</span><span style="font-family:IBM Plex Mono,monospace;font-size:9.5px;color:var(--paper-2);letter-spacing:.06em">' + ago + ' · ' + thisWeekCount + ' this week</span></div><div style="margin-top:5px;font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4">' + safeText + (latest.text.length > 180 ? '…' : '') + ' <span style="color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.06em">View ' + safeWsName + ' ↗</span></div>';
+  widget.onclick = function(){ if (typeof switchView === 'function') switchView('atlas'); };
+  widget.addEventListener('mouseover', function(){ widget.style.background = 'linear-gradient(135deg,rgba(212,130,58,.18),rgba(95,179,184,.08))'; });
+  widget.addEventListener('mouseout',  function(){ widget.style.background = 'linear-gradient(135deg,rgba(212,130,58,.10),rgba(95,179,184,.05))'; });
+  hostP.parentElement.insertBefore(widget, hostP);
+};
+
 // P13.77 — TODAY view: relocate the existing #corsair-rhythm panel INTO
 // the today-view host. Reuses the same element (and all its event wiring,
 // snooze handlers, Slack buttons) — no duplicate render. On exit, the
@@ -29240,6 +29524,8 @@ window.renderTodayView = function(){
       hostP.parentElement.insertBefore(callout, hostP);
     }
   } catch(e){ console.warn('[P13.92 quickstart callout] failed:', e); }
+  // P13.96 — ATLAS latest-update widget. Renders only when updates exist.
+  try { if (typeof window._renderAtlasTodayWidget === 'function') window._renderAtlasTodayWidget(); } catch(e){ console.warn('[P13.96 atlas widget] failed:', e); }
   // P13.93 (Day 6) — OSINT signals matched to active pursuits.
   // Surfaces the 16-source moat at the morning surface: "N signals today
   // match your pursuits" with the top 3 most relevant. Renders only when
@@ -59999,6 +60285,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.94"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.95"></script>
 </body>
 </html>
