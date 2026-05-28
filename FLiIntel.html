@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.105</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.106</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12449,28 +12449,55 @@ async function saveOpp(opp){
 // "0 scored" workspace into 122/122 stack-ranked. Awaits each saveOpp so
 // scoreFactors land in Firebase, then forces re-renders.
 window._bulkAutoScorePipeline = async function(){
-  var opps = (window.opportunities || []).slice();
-  if (!opps.length){
+  // P13.106 (audit Finding 2.1): was sequential await per opp = 122 × ~400ms =
+  // 36-61s UI freeze on Atlas. Now chunked Promise.all (25 per chunk) so 25
+  // Firebase writes go in flight in parallel, then await the chunk before the
+  // next. Expected 36s → ~3s. Bounded concurrency (25) avoids Firebase RTDB
+  // rate-limit while still parallelizing meaningfully.
+  // P13.106 (audit Finding 1.5): the 4 re-render try/catch blocks were silent
+  // catch(e){} — render failure produced a "Scored 122 ✓" toast plus a blank
+  // Pipeline. Now they log so a render bug surfaces in the console instead of
+  // hiding behind a successful toast.
+  var allOpps = (window.opportunities || []).slice();
+  if (!allOpps.length){
     if (typeof toast === 'function') toast('No opps to score');
     return { scored: 0, skipped: 0, failed: 0 };
   }
-  var scored = 0, skipped = 0, failed = 0;
+  // Filter out closed pursuits up front — saveOpp clears their score anyway.
+  var opps = allOpps.filter(function(o){
+    return o && o.stage !== 'won' && o.stage !== 'lost';
+  });
+  var skipped = allOpps.length - opps.length;
   if (typeof toast === 'function') toast('Scoring ' + opps.length + ' pursuits…');
-  for (var i = 0; i < opps.length; i++){
-    var o = opps[i];
-    if (!o) { skipped++; continue; }
-    if (o.stage === 'won' || o.stage === 'lost') { skipped++; continue; }
-    try { await saveOpp(o); scored++; }
-    catch(e){ console.warn('[P13.102 bulk auto-score] failed for', o && o.id, e); failed++; }
+  var scored = 0, failed = 0;
+  var CHUNK_SIZE = 25;
+  for (var i = 0; i < opps.length; i += CHUNK_SIZE) {
+    var chunk = opps.slice(i, i + CHUNK_SIZE);
+    var results = await Promise.all(chunk.map(function(o){
+      return saveOpp(o).then(
+        function(){ return { ok: true, id: o && o.id }; },
+        function(err){
+          console.error('[P13.106 bulk auto-score] failed for', o && o.id, err);
+          return { ok: false, id: o && o.id, err: err };
+        }
+      );
+    }));
+    results.forEach(function(r){ if (r.ok) scored++; else failed++; });
   }
   if (typeof toast === 'function') {
     toast('Scored ' + scored + ' pursuit' + (scored === 1 ? '' : 's') + (failed ? ' · ' + failed + ' failed' : '') + (skipped ? ' · ' + skipped + ' skipped (closed)' : ''));
   }
-  // Re-render surfaces so badges + sort reflect the new ranks
-  try { if (typeof renderOppSidebar === 'function') renderOppSidebar(); } catch(e){}
-  try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); } catch(e){}
-  try { if (typeof window._renderTableView === 'function') window._renderTableView(); } catch(e){}
-  try { if (typeof window._renderCopBoard === 'function') window._renderCopBoard(); } catch(e){}
+  // Re-render surfaces so badges + sort reflect the new ranks. Logged catches
+  // per Finding 1.5 — if a render throws, the failure surfaces in the console
+  // with context instead of disappearing into a misleading success toast.
+  try { if (typeof renderOppSidebar === 'function') renderOppSidebar(); }
+  catch(e){ console.error('[P13.106 re-render renderOppSidebar]', e); }
+  try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); }
+  catch(e){ console.error('[P13.106 re-render _renderCopForecast]', e); }
+  try { if (typeof window._renderTableView === 'function') window._renderTableView(); }
+  catch(e){ console.error('[P13.106 re-render _renderTableView]', e); }
+  try { if (typeof window._renderCopBoard === 'function') window._renderCopBoard(); }
+  catch(e){ console.error('[P13.106 re-render _renderCopBoard]', e); }
   return { scored: scored, skipped: skipped, failed: failed };
 };
 // P13.74 — expose for cross-module callers (bulk-score apply path,
@@ -61952,6 +61979,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.105"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.106"></script>
 </body>
 </html>
