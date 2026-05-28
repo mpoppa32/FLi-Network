@@ -723,11 +723,21 @@ function _tblProcessOpps(allOpps, pipelineMod, stages) {
   }
 
   if (_tblState.sortKey === 'score') {
-    // P13.102 — primary: auto-score desc. Tiebreak: stage order (earlier stages
-    // below — late-stage tied scores rank higher). Final tiebreak: pursuit name.
+    // P13.102 — primary: auto-score desc.
+    // P13.134 Day 2 — when scores tie, confidence is the next tiebreaker so
+    // high-confidence opps outrank sparse-data ones at the same numeric
+    // score. Previously a sparse A 89 and a high-confidence A 89 sorted by
+    // stage order alone; operator scanning the top of the table couldn't
+    // tell which one was earned. Order: high > partial > sparse > unknown.
+    function _confRankT(o) {
+      var c = o && o.scoreConfidence;
+      return c === 'high' ? 3 : c === 'partial' ? 2 : c === 'sparse' ? 1 : 0;
+    }
     opps.sort(function(a, b) {
       var sa = scoreOf(a), sb = scoreOf(b);
       if (sa !== sb) return cmp(a, b, sa - sb);
+      var ca = _confRankT(a), cb = _confRankT(b);
+      if (ca !== cb) return cmp(a, b, ca - cb);
       var sta = stageOrder[a.stage] != null ? stageOrder[a.stage] : 999;
       var stb = stageOrder[b.stage] != null ? stageOrder[b.stage] : 999;
       if (sta !== stb) return sta - stb;
@@ -863,11 +873,19 @@ function _tblRenderRows(opps, pipelineMod) {
     if (_scoreObj && _scoreObj.score != null) {
       var _tcol = _scoreObj.tier === 'A' ? '#22c55e' : _scoreObj.tier === 'B' ? '#facc15' : '#ef4444';
       var _confLabel = _scoreObj.confidence === 'sparse' ? 'sparse' : _scoreObj.confidence === 'partial' ? 'partial' : 'high';
-      var _confMark = _scoreObj.confidence === 'sparse' ? ' °' : '';
+      // P13.134 Day 2 (reconciliation audit Pipeline Surface #2) — surface
+      // confidence INLINE in the chip text instead of relying on a hover
+      // tooltip + subtle opacity. Sparse opps used to read "A 89°" and
+      // operators trusted the tier letter without realizing it was inferred
+      // from static profile only.  Now reads "A 89 ·thin" / "A 89 ·part" so
+      // the data-quality state is visible without hover.
+      var _confSuffix = _scoreObj.confidence === 'sparse' ? ' ·thin'
+                      : _scoreObj.confidence === 'partial' ? ' ·part'
+                      : '';
       var _border = _scoreObj.confidence === 'sparse' ? 'dashed' : 'solid';
       var _opacity = _scoreObj.confidence === 'sparse' ? '.78' : '1';
       var _tip = 'Tier ' + _scoreObj.tier + ' · ' + _scoreObj.score + '/100 · ' + _confLabel + ' confidence (' + (_scoreObj.confidence === 'sparse' ? 'thin data: ranking from static profile only — log a meeting or set value/pwin to earn confidence' : _scoreObj.confidence === 'partial' ? 'partial engagement signal' : 'full engagement signal') + ') · click for factor breakdown';
-      html += '<td class="tbl-cell tbl-cell-center" style="padding:4px 6px"><span onclick="event.stopPropagation();window._openDealScoreDetail&&window._openDealScoreDetail(\'' + safeId + '\')" title="' + _tip + '" style="display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px ' + _border + ' ' + _tcol + '70;border-radius:3px;background:rgba(0,0,0,.22);color:' + _tcol + ';font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;opacity:' + _opacity + '"><span style="font-size:10px;letter-spacing:.10em">' + _scoreObj.tier + '</span><span>' + _scoreObj.score + _confMark + '</span></span></td>';
+      html += '<td class="tbl-cell tbl-cell-center" style="padding:4px 6px"><span onclick="event.stopPropagation();window._openDealScoreDetail&&window._openDealScoreDetail(\'' + safeId + '\')" title="' + _tip + '" style="display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px ' + _border + ' ' + _tcol + '70;border-radius:3px;background:rgba(0,0,0,.22);color:' + _tcol + ';font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer;opacity:' + _opacity + '"><span style="font-size:10px;letter-spacing:.10em">' + _scoreObj.tier + '</span><span>' + _scoreObj.score + _confSuffix + '</span></span></td>';
     } else {
       html += '<td class="tbl-cell tbl-cell-center"><span class="tbl-cell-meta">&mdash;</span></td>';
     }

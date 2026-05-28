@@ -330,8 +330,30 @@ window.renderCopSection = function() {
           var safeId = String(o.id).replace(/'/g, '&#39;');
           var pwinPct = Math.round(Number(o.pwin || 0) * 100);
 
-          h += '<div class="cop-kanban-card' + (aged ? ' cop-kanban-card-aged' : '') + '" onclick="window.openEntityInspector(\'' + safeId + '\')" title="Open dossier">';
+          // P13.134 Day 2 (Pipeline Surface #2) — surface score tier +
+          // confidence on Kanban cards. Previously the card showed
+          // value/pwin/days but NOT score at all — operator scanning the
+          // Kanban couldn't tell which deals were ranked high (A tier on
+          // earned data) vs. which were thin profiles auto-scored without
+          // engagement signal. Now: small tier+score chip + sparse cards
+          // get a dashed top border + faded opacity matching the Table.
+          var scoreTier = (o.tier === 'A' || o.tier === 'B' || o.tier === 'C') ? o.tier : null;
+          var scoreNum = (typeof o.score === 'number') ? o.score : null;
+          var scoreConf = o.scoreConfidence || null;
+          var isSparse = scoreConf === 'sparse';
+          var cardCls = 'cop-kanban-card' + (aged ? ' cop-kanban-card-aged' : '') + (isSparse ? ' cop-kanban-card-sparse' : '');
+          // Sparse visual treatment via inline style (no new CSS rules needed)
+          var cardSparseStyle = isSparse ? 'border-style:dashed;opacity:.78;' : '';
+
+          h += '<div class="' + cardCls + '"' + (cardSparseStyle ? ' style="' + cardSparseStyle + '"' : '') + ' onclick="window.openEntityInspector(\'' + safeId + '\')" title="Open dossier">';
           h += '<div class="cop-kanban-card-name">' + _copEsc(o.name || '(unnamed)') + '</div>';
+          // Score line — own row above value/pwin/days so the tier chip is
+          // unambiguous and lines up across cards.
+          if (scoreTier && scoreNum != null) {
+            var tcol = scoreTier === 'A' ? '#22c55e' : scoreTier === 'B' ? '#facc15' : '#ef4444';
+            var confSuffix = isSparse ? ' ·thin' : scoreConf === 'partial' ? ' ·part' : '';
+            h += '<div style="display:inline-block;margin:4px 0 6px;padding:1px 6px;border:1px ' + (isSparse ? 'dashed' : 'solid') + ' ' + tcol + '70;border-radius:3px;background:rgba(0,0,0,.22);color:' + tcol + ';font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.04em"><span style="letter-spacing:.10em">' + scoreTier + '</span> ' + scoreNum + confSuffix + '</div>';
+          }
           var metaBits = [];
           if (o.value)        metaBits.push('$' + _formatVal(o.value));
           if (o.pwin != null) metaBits.push(pwinPct + '%');
