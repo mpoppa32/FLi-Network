@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.108</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.109</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12594,7 +12594,79 @@ window._genBdOppsCreate = async function(specs){
   }
   return { created: created, failed: failed };
 };
-async function deleteOpp(id){setSS('saving');await remove(ref(db,wsPath('opportunities/'+id)));setSS('live');}
+async function deleteOpp(id){
+  setSS('saving');
+  // P13.109 (audit Finding 1.2) — cascade cleanup of cross-entity FKs before
+  // removing the opp record. Previously this was a one-liner that left
+  // meetings with m.oppId === id orphaned forever, commitments + ledger
+  // entries with pursuitId pointing at a phantom opp, and CorsairIndex
+  // .meetingsByOppId carrying a dead bucket. Sibling deleteMeeting at line
+  // 12365 already does cascade for commitments + tlCommitments — same
+  // pattern, applied here.
+  //
+  // Strategy: PRESERVE referencing records, NULL the FK. A meeting still
+  // has intel value (attendees, notes, extraction) even if its parent opp
+  // is deleted; same for commitments and ledger entries. Reevo would null
+  // the FK; Salesforce gives you a choice. We go preserve-by-default. Only
+  // the opp record itself is deleted.
+  var sid = String(id);
+  // Meetings — null m.oppId on every meeting linked to this opp
+  var orphanMtgs = (window.meetings || []).filter(function(m){
+    return m && String(m.oppId) === sid;
+  });
+  for (var mi = 0; mi < orphanMtgs.length; mi++){
+    var om = orphanMtgs[mi];
+    om.oppId = null;
+    try { await fbSet(wsPath('meetings/'+om.id), om); }
+    catch(e){ console.error('[P13.109 cascade meeting unlink]', om && om.id, e); }
+  }
+  // Commitments — null c.pursuitId / c.sourceId on every commitment linked
+  // to this opp. Different commitment shapes use different field names, so
+  // check both.
+  var orphanComs = (window.commitments || []).filter(function(c){
+    return c && (String(c.pursuitId) === sid || String(c.sourceId) === sid);
+  });
+  for (var ci = 0; ci < orphanComs.length; ci++){
+    var oc = orphanComs[ci];
+    if (String(oc.pursuitId) === sid) oc.pursuitId = null;
+    if (String(oc.sourceId) === sid) oc.sourceId = null;
+    try { await fbSet(wsPath('commitments/'+oc.id), oc); }
+    catch(e){ console.error('[P13.109 cascade commitment unlink]', oc && oc.id, e); }
+  }
+  // Ledger entries — null e.pursuitId on every ledger entry linked to this opp
+  var orphanLed = (window.ledger || []).filter(function(e){
+    return e && String(e.pursuitId) === sid;
+  });
+  for (var li = 0; li < orphanLed.length; li++){
+    var ol = orphanLed[li];
+    ol.pursuitId = null;
+    try { await fbSet(wsPath('ledger/'+ol.id), ol); }
+    catch(e){ console.error('[P13.109 cascade ledger unlink]', ol && ol.id, e); }
+  }
+  // CorsairIndex — drop the dead bucket so the next score read doesn't
+  // resolve to a phantom opp. Synchronous so a follow-up render in this
+  // tick sees the clean state.
+  try {
+    var idx = window.CorsairIndex;
+    if (idx && idx.meetingsByOppId && typeof idx.meetingsByOppId.delete === 'function'){
+      idx.meetingsByOppId.delete(sid);
+    }
+  } catch(e){ console.error('[P13.109 CorsairIndex bucket drop]', e); }
+  // Local state — drop from window.opportunities so renders don't briefly
+  // show the deleted opp before the Firebase listener fires.
+  try {
+    if (Array.isArray(window.opportunities)){
+      var lcl = window.opportunities;
+      for (var oi = lcl.length - 1; oi >= 0; oi--){
+        if (lcl[oi] && String(lcl[oi].id) === sid) lcl.splice(oi, 1);
+      }
+    }
+  } catch(e){ console.error('[P13.109 local opportunities splice]', e); }
+  // Finally, remove the opp record itself.
+  await remove(ref(db, wsPath('opportunities/'+id)));
+  console.log('[P13.109 deleteOpp]', id, 'cascaded: meetings', orphanMtgs.length, '· commitments', orphanComs.length, '· ledger', orphanLed.length);
+  setSS('live');
+}
 async function saveCommitment(c){await fbSet(wsPath('commitments/'+c.id),c);}
 async function deleteCommitment(id){setSS('saving');await remove(ref(db,wsPath('commitments/'+id)));setSS('live');}
 // Phase 7.5.3 — Ledger (Posture surface)
@@ -62085,6 +62157,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.108"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.109"></script>
 </body>
 </html>
