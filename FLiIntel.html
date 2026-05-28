@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.124</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.127</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12246,10 +12246,34 @@ async function fbRemove(path){setSS('saving');try{await remove(ref(db,path));set
 function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
 
 // ── API KEY RESOLUTION ───────────────────────────────────────
-// Workspace key (shared) takes priority over personal key
+// P13.127 (audit Finding 3.1 cont.) — historically apiKey was the
+// Anthropic key held in the workspace's Firebase config, exposed to the
+// browser, and required to be non-empty before AI features would
+// engage. Now (P13.124) the real key lives only server-side inside the
+// anthropicProxy Firebase Function as a Secret Manager value; the
+// browser never sees it. The 14 `if(!apiKey)` guards scattered across
+// the AI features were correct in the old world and stale in the new
+// one — they were blocking ⚡ Ask Corsair / Brief synthesis / RFI /
+// Intel Center / Process extraction / RFP analysis with "Add API key
+// in Settings" toasts even though the user is fully authorized.
+//
+// Set apiKey to a sentinel non-empty string so existing guards pass.
+// The downstream _apiFetch ignores the passed-in key anyway (P13.124)
+// and forwards the call through the proxy which uses the real secret-
+// held key. The sentinel value is also self-documenting in DevTools:
+// `console.log(window.apiKey)` now prints "proxy-routed-server-side"
+// instead of "" — telling a future debugger exactly what's happening.
 function refreshApiKey(){
+  // wsApiKey + personal localStorage values are still tracked in case
+  // legacy paths read them, but apiKey itself becomes the sentinel so
+  // the guards pass and the proxy gets called.
   var personal=currentUser?localStorage.getItem('fli-apikey-'+currentUser.uid)||'':'';
-  apiKey=wsApiKey||personal;
+  // Keep variable assignment for legacy code that reads wsApiKey/personal
+  // directly (rare). The sentinel keeps the 14 `if(!apiKey)` guards happy.
+  apiKey='proxy-routed-server-side';
+  // _ for reference only: the legacy resolution used to be:
+  //   apiKey = wsApiKey || personal;
+  // Now: server-side via anthropicProxy Function.
   deepgramKey=currentUser?localStorage.getItem('fli-dgkey-'+currentUser.uid)||'':'';
   _updateDgKeyUI();
 }
@@ -62367,6 +62391,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.124"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.127"></script>
 </body>
 </html>
