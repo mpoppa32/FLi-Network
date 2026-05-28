@@ -8542,7 +8542,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.100</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.101</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10524,7 +10524,8 @@ input[type="url"], textarea, select {
       <button onclick="window._outreachCopy()" id="outreach-copy-btn" style="padding:9px 14px;border:1px solid var(--b2);border-radius:4px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">⎘ Copy</button>
       <button onclick="window._outreachOpenInMail()" id="outreach-mailto-btn" style="padding:9px 14px;border:1px solid var(--b2);border-radius:4px;background:transparent;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer" title="Open in default mail client (Outlook, Apple Mail, etc)">📧 Mail app</button>
       <button onclick="window._outreachOpenInGmail()" id="outreach-gmail-btn" style="padding:9px 14px;border:1px solid rgba(212,130,58,.45);border-radius:4px;background:transparent;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer" title="Open in Gmail tab — review and click Send there">✉ Open in Gmail</button>
-      <button onclick="window._gmailDirectSend()" id="outreach-gmail-direct-btn" style="padding:9px 18px;border:1px solid var(--gold);border-radius:4px;background:linear-gradient(180deg,rgba(212,130,58,.22),rgba(212,130,58,.10));color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;box-shadow:0 0 14px rgba(212,130,58,.15)" title="Send directly via Gmail API — first send prompts to grant permission, subsequent sends fire silently. Logs a touchpoint after success."><span style="font-size:14px">✉</span>&nbsp;Send Now</button>
+      <button onclick="window._outlookDirectSend()" id="outreach-outlook-direct-btn" style="padding:9px 16px;border:1px solid #5fb3b8;border-radius:4px;background:linear-gradient(180deg,rgba(95,179,184,.20),rgba(95,179,184,.08));color:#5fb3b8;font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;box-shadow:0 0 14px rgba(95,179,184,.14)" title="Send directly via Microsoft Graph (Outlook / M365) — first send prompts the Microsoft account picker + consent. Logs a touchpoint after success."><span style="font-size:14px">✉</span>&nbsp;Send via Outlook</button>
+      <button onclick="window._gmailDirectSend()" id="outreach-gmail-direct-btn" style="padding:9px 16px;border:1px solid var(--gold);border-radius:4px;background:linear-gradient(180deg,rgba(212,130,58,.22),rgba(212,130,58,.10));color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;box-shadow:0 0 14px rgba(212,130,58,.15)" title="Send directly via Gmail API — first send prompts to grant permission, subsequent sends fire silently. Logs a touchpoint after success."><span style="font-size:14px">✉</span>&nbsp;Send via Gmail</button>
     </div>
   </div>
 </div>
@@ -11679,7 +11680,7 @@ input[type="url"], textarea, select {
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getDatabase, ref, set, get, onValue, remove, query, orderByChild, limitToLast, endBefore, onDisconnect } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
@@ -13144,10 +13145,121 @@ window._gmailDirectSend = async function(){
     console.error('[P13.98 gmail send] failed:', err);
     var em = (err && err.message) || String(err);
     if (/popup|cancel|closed/i.test(em)) toast('Gmail send cancelled');
-    else if (/auth|token|scope/i.test(em)) toast('Gmail permission needed — click Send Now and grant access');
+    else if (/auth|token|scope/i.test(em)) toast('Gmail permission needed — click Send via Gmail and grant access');
     else toast('Gmail send failed: ' + em.slice(0, 80));
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<span style="font-size:14px">✉</span>&nbsp;Send Now'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span style="font-size:14px">✉</span>&nbsp;Send via Gmail'; }
+  }
+};
+
+// P13.101 — Outlook two-way DIRECT SEND via Microsoft Graph. Mirrors the
+// P13.98 Gmail path: Firebase Auth OAuthProvider('microsoft.com') with
+// Mail.Send scope, raw POST to graph.microsoft.com/v1.0/me/sendMail.
+// First click prompts the Microsoft account picker + consent screen;
+// subsequent sends fire silently. Auto-logs an outbound-email touchpoint
+// after success so relationship-health and Brief synthesis pick up the
+// contact event.
+//
+// One-time operator setup (per Firebase project):
+//   1. Azure portal → register an app (Single Page Application)
+//   2. Redirect URI: https://<project>.firebaseapp.com/__/auth/handler
+//   3. Add API permission: Microsoft Graph → Delegated → Mail.Send (+ User.Read)
+//   4. Firebase Console → Authentication → Sign-in method → Microsoft
+//      → paste Application (client) ID + a client secret → enable
+// After that, Send via Outlook just works for any signed-in user.
+window._outlookEnsureSendToken = async function(){
+  if (window._msAccessToken_send) return window._msAccessToken_send;
+  var provider = new OAuthProvider('microsoft.com');
+  provider.addScope('Mail.Send');
+  provider.addScope('User.Read');
+  // 'common' tenant accepts both Work/School (M365) and personal MSAs.
+  provider.setCustomParameters({ tenant: 'common', prompt: 'consent' });
+  var result = await signInWithPopup(auth, provider);
+  var cred = OAuthProvider.credentialFromResult(result);
+  if (!cred || !cred.accessToken) throw new Error('No access token returned from Microsoft.');
+  window._msAccessToken_send = cred.accessToken;
+  return cred.accessToken;
+};
+window._outlookDirectSend = async function(){
+  var subject = (document.getElementById('outreach-subject')||{}).value || '';
+  var body    = (document.getElementById('outreach-body')||{}).value || '';
+  if (!body.trim() && !subject.trim()){ toast('Nothing to send'); return; }
+  var name = ((document.getElementById('outreach-contact-name')||{}).textContent || '').trim();
+  var to = '';
+  var contactNode = null;
+  if (name && window.nodes){
+    var lc = name.toLowerCase();
+    for (var i = 0; i < window.nodes.length; i++){
+      var n = window.nodes[i];
+      if (n && n.type === 'person' && String(n.name||'').toLowerCase().trim() === lc){
+        contactNode = n;
+        to = n.email || n.emailAddress || '';
+        break;
+      }
+    }
+  }
+  if (!to){
+    to = prompt('Recipient email (no address found on the person record):');
+    if (!to || !to.trim()) { toast('Cancelled — no recipient'); return; }
+    to = to.trim();
+  }
+  var btn = document.getElementById('outreach-outlook-direct-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+  try {
+    var token = await window._outlookEnsureSendToken();
+    var payload = {
+      message: {
+        subject: subject,
+        body: { contentType: 'Text', content: body },
+        toRecipients: [{ emailAddress: { address: to } }]
+      },
+      saveToSentItems: true
+    };
+    var resp = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    // sendMail returns 202 Accepted with no body on success
+    if (resp.status !== 202 && !resp.ok) {
+      var errTxt = await resp.text();
+      throw new Error('Graph API ' + resp.status + ': ' + errTxt.slice(0, 200));
+    }
+    closeModal('outreach-draft-modal');
+    toast('Sent via Outlook ✓ to ' + to);
+    // Auto-log outbound-email touchpoint, identical shape to Gmail send.
+    if (contactNode && typeof saveMeeting === 'function') {
+      try {
+        var nowIso = new Date().toISOString().slice(0, 10);
+        var mtg = {
+          id: 'outreach-' + Date.now(),
+          meta: {
+            title: 'Outbound email · ' + (subject || '(no subject)'),
+            date: nowIso,
+            type: 'outbound-email',
+            att: name + ' <' + to + '>'
+          },
+          intel: {
+            summary: 'Sent via Corsair Outlook direct send.',
+            keyPeople: [{ name: name, role: contactNode.role || '', org: contactNode.org || '' }],
+            commitments: [],
+            risks: [],
+            actionItems: [],
+            openQuestions: []
+          }
+        };
+        if (window.currentWsId) await saveMeeting(mtg);
+      } catch(logErr){ console.warn('[P13.101] post-send log failed:', logErr); }
+    }
+  } catch (err) {
+    console.error('[P13.101 outlook send] failed:', err);
+    var em = (err && err.message) || String(err);
+    if (/popup|cancel|closed/i.test(em)) toast('Outlook send cancelled');
+    else if (/provider|not enabled|auth\/operation-not-allowed/i.test(em)) toast('Outlook not configured — enable Microsoft provider in Firebase Auth');
+    else if (/auth|token|scope/i.test(em)) toast('Outlook permission needed — click Send via Outlook and grant access');
+    else toast('Outlook send failed: ' + em.slice(0, 80));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span style="font-size:14px">✉</span>&nbsp;Send via Outlook'; }
   }
 };
 
@@ -60798,6 +60910,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.100"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.101"></script>
 </body>
 </html>

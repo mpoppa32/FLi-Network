@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.100';
-  window.Corsair.buildBlurb  = 'ATLAS Talking Points editor — replaces the "coming next" placeholder with a real editable structured doc: Capability Statement, Pricing, Recent Wins, Competitive Position. Per-section inline edit (textarea + Save/Cancel), per-workspace localStorage persistence, "last edit" timestamp + author. PowerPoint Briefing export auto-pulls all four sections into a 2x2 quadrant slide between OSINT and the Latest Update slide — every BD deck now reflects today positioning without operator copy-paste. Defense-BD culture loves "before we walk in, here is what we say about ourselves."';
+  window.Corsair.buildTag    = 'P13.101';
+  window.Corsair.buildBlurb  = 'Outlook / M365 two-way direct send — closes the #1 month-6 retention move per the operator pass-down. New ✉ Send via Outlook button in the outreach modal sits next to ✉ Send via Gmail. First click prompts a Microsoft account picker + consent screen (Mail.Send + User.Read scopes via Firebase Auth OAuthProvider("microsoft.com")), subsequent sends fire silently via raw POST to graph.microsoft.com/v1.0/me/sendMail. Auto-logs the same outbound-email touchpoint shape Gmail uses so relationship-health and Brief synthesis stay current regardless of provider. One-time op setup: register an Azure AD SPA + enable the Microsoft provider in Firebase Console (paste app ID + secret). Defense BD teams running on Microsoft 365 are now first-class.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
