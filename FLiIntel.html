@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.141</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.142</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12179,6 +12179,13 @@ async function _apiFetch(key,payload,timeoutMs){
     var em=String((e&&e.message)||'AI proxy failed');
     var code=(e&&e.code)||'';
     if(/resource-exhausted/.test(code)||/429/.test(em)){
+      // P13.142 — pass the proxy's structured quota message through when
+      // present (e.g. "Workspace AI quota: 30/30 requests this hour. Try
+      // again in ~15 min.") so the operator sees the actual limit + reset
+      // window. Fall back to a generic message for non-quota 429s.
+      if(/quota/i.test(em)){
+        throw new Error(em);
+      }
       throw new Error('Too many requests — wait 30 seconds and try again.');
     }
     if(/unauthenticated/.test(code)){
@@ -62729,6 +62736,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.141"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.142"></script>
 </body>
 </html>

@@ -58,6 +58,16 @@ const MAX_MESSAGES = 200;
 const MAX_TOKENS_DEFAULT = 1024;
 const MAX_TOKENS_CEILING = 8192;
 
+// P13.142 — per-workspace request quota. The proxy already gates model
+// + max_tokens + message count, but a logged-in workspace member could
+// still burn the monthly Anthropic budget via repeated RFI runs or a
+// runaway client loop. This caps requests-per-workspace-per-hour with
+// a sliding-window counter persisted in RTDB. Workspace operators can
+// override the default per-workspace by setting workspaces/{wsId}/
+// settings/anthropicHourlyQuota (admin-only via RTDB rules).
+const QUOTA_DEFAULT_PER_HOUR = 30;
+const QUOTA_HARD_CEILING = 200; // safety: even an admin can't override above this
+
 export const anthropicProxy = onCall(
   {
     region: "us-central1",
@@ -104,6 +114,56 @@ export const anthropicProxy = onCall(
         message: e.message,
       });
       throw new HttpsError("internal", `Membership check failed: ${e.message}`);
+    }
+
+    // P13.142 — per-workspace hourly quota check + atomic increment.
+    // Each request increments a counter keyed by the current UTC hour
+    // window. Rejects when count > limit. Counter resets implicitly when
+    // the hour changes (new hourKey writes a fresh count=1). The
+    // transaction ensures concurrent requests can't race the counter.
+    try {
+      const db = admin.database();
+      const settingsSnap = await db
+        .ref(`workspaces/${workspaceId}/settings/anthropicHourlyQuota`)
+        .once("value");
+      const settingsRaw = Number(settingsSnap.val());
+      const limit = Number.isFinite(settingsRaw) && settingsRaw > 0
+        ? Math.min(settingsRaw, QUOTA_HARD_CEILING)
+        : QUOTA_DEFAULT_PER_HOUR;
+      const now = new Date();
+      const hourKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}`;
+      const counterRef = db.ref(`workspaces/${workspaceId}/quotas/anthropic/current`);
+      const txResult = await counterRef.transaction((curr: { hourKey?: string; count?: number } | null) => {
+        if (!curr || curr.hourKey !== hourKey) {
+          return { hourKey, count: 1, lastAt: Date.now() };
+        }
+        return { hourKey, count: Number(curr.count || 0) + 1, lastAt: Date.now() };
+      });
+      const updated = txResult.snapshot.val() as { hourKey?: string; count?: number };
+      const count = Number(updated?.count || 0);
+      if (count > limit) {
+        // Compute time-until-reset (top of next hour) so the toast can
+        // tell the operator when to retry.
+        const minutesLeft = 60 - now.getUTCMinutes();
+        log.warn("quota_exceeded", {
+          workspaceId,
+          userId: auth.uid,
+          count,
+          limit,
+          hourKey,
+        });
+        throw new HttpsError(
+          "resource-exhausted",
+          `Workspace AI quota: ${count - 1}/${limit} requests this hour. Try again in ~${minutesLeft} min.`
+        );
+      }
+      log.info("quota_check", { workspaceId, count, limit });
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      const e = err as Error;
+      // Quota-check failures should fail open — never block legitimate
+      // calls because the counter pathway broke. Log + continue.
+      log.warn("quota_check_failed_open", { workspaceId, message: e.message });
     }
 
     // Validate the payload before forwarding.
