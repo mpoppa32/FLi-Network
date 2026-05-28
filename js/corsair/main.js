@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.98';
-  window.Corsair.buildBlurb  = 'Gmail two-way DIRECT SEND — new ✉ Send Now button in outreach modal uses Firebase Auth gmail.send scope + raw Gmail API POST. First send prompts for permission, subsequent sends fire silently. Auto-logs an outbound-email touchpoint after success so relationship health and Brief synthesis pick up the contact event. Existing Open in Gmail tab-bounce button kept as fallback.';
+  window.Corsair.buildTag    = 'P13.99';
+  window.Corsair.buildBlurb  = 'Daily Brief card now lives on TODAY — Decay/Stale/Upcoming/Commitments/Coverage/Aged columns surface on the morning landing, immediately above the watch queue. Closes the IA snag where decay alerts were buried in the Log Meeting screen. Single-DOM-element relocate (same pattern as the rhythm panel) — Log Meeting screen still shows the card too via _exitTodayView restore. Outreach ✉ button on Decay column gets a clearer hover tooltip + aria-label + visible Draft label for screen-reader and at-a-glance scannability.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

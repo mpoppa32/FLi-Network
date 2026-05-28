@@ -8542,7 +8542,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.98</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.99</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -29729,6 +29729,32 @@ window.renderTodayView = function(){
       }
     }
   } catch(e){ console.warn('[P13.93 osint-on-today] failed:', e); }
+  // P13.99 — relocate the existing #brief-card (Decay/Stale/Upcoming/Commitments/
+  // Coverage/Aged columns) into TODAY, immediately above the rhythm host. Closes
+  // the IA snag where the morning landing showed no decay alerts because the
+  // Brief card had been left behind in the Log Meeting screen. Same single-DOM-
+  // element relocate pattern as #corsair-rhythm — all event wiring (collapse
+  // toggle, column-header onclicks, ✉ Draft buttons) carries with the element.
+  try {
+    var briefCard = document.getElementById('brief-card');
+    var hostBC = document.getElementById('today-rhythm-host');
+    if (briefCard && hostBC && hostBC.parentElement) {
+      // Capture original position once so _exitTodayView can restore precisely
+      if (!briefCard.dataset.origParentId) {
+        briefCard.dataset.origParentId = (briefCard.parentElement && briefCard.parentElement.id) || 'itab-log';
+      }
+      if (briefCard.parentElement !== hostBC.parentElement || briefCard.nextSibling !== hostBC) {
+        hostBC.parentElement.insertBefore(briefCard, hostBC);
+      }
+      briefCard.classList.add('today-embedded');
+      // Force expanded on TODAY — collapsing makes no sense on the morning landing
+      briefCard.classList.remove('is-collapsed');
+    }
+    // Always re-render after relocation so columns reflect current data
+    if (typeof window.renderDailyBrief === 'function') {
+      try { window.renderDailyBrief(); } catch(e){}
+    }
+  } catch(e){ console.warn('[P13.99 brief-on-today] failed:', e); }
   // Refresh rhythm content (in case data changed while user was on another view)
   if (typeof _corsairRenderRhythm === 'function') {
     try { _corsairRenderRhythm(); } catch(e){}
@@ -29738,17 +29764,36 @@ window.renderTodayView = function(){
 window._exitTodayView = function(){
   var panel = document.getElementById('corsair-rhythm');
   var mainApp = document.getElementById('main-app');
-  if (!panel || !mainApp) return;
-  // Restore panel to its original sibling slot in #main-app, right after #intel-ticker
-  var ticker = document.getElementById('intel-ticker');
-  if (panel.parentElement !== mainApp) {
-    if (ticker && ticker.parentElement === mainApp && ticker.nextSibling) {
-      mainApp.insertBefore(panel, ticker.nextSibling);
-    } else {
-      mainApp.appendChild(panel);
+  if (panel && mainApp) {
+    // Restore panel to its original sibling slot in #main-app, right after #intel-ticker
+    var ticker = document.getElementById('intel-ticker');
+    if (panel.parentElement !== mainApp) {
+      if (ticker && ticker.parentElement === mainApp && ticker.nextSibling) {
+        mainApp.insertBefore(panel, ticker.nextSibling);
+      } else {
+        mainApp.appendChild(panel);
+      }
+      panel.classList.remove('today-embedded');
     }
-    panel.classList.remove('today-embedded');
   }
+  // P13.99 — restore #brief-card to its original home (#itab-log inside intel-view),
+  // immediately before #brief-master-refresh (the Preview/Digest/Slack/Refresh action bar)
+  // so Log Meeting screen still shows the brief card the way it always has.
+  try {
+    var briefCard = document.getElementById('brief-card');
+    if (briefCard) {
+      var origParent = document.getElementById(briefCard.dataset.origParentId || 'itab-log');
+      var beforeEl = document.getElementById('brief-master-refresh');
+      if (origParent && briefCard.parentElement !== origParent) {
+        if (beforeEl && beforeEl.parentElement === origParent) {
+          origParent.insertBefore(briefCard, beforeEl);
+        } else {
+          origParent.appendChild(briefCard);
+        }
+        briefCard.classList.remove('today-embedded');
+      }
+    }
+  } catch(e){ console.warn('[P13.99 brief-exit-today] failed:', e); }
 };
 
 // CRM P0.3 — Daily Brief Card collapse + persist
@@ -60647,6 +60692,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.98"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.99"></script>
 </body>
 </html>
