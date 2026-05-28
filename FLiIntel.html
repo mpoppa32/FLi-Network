@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.142</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.143</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -41358,9 +41358,15 @@ function renderCaptureView() {
         '</div>' +
       '</div>' +
       '<div style="display:flex;flex-direction:column;gap:7px;flex-shrink:0">' +
-        '<button onclick="window._approveCapture(' + JSON.stringify(item.id) + ')" ' +
+        // P13.143 — JSON.stringify returns "ID" (with surrounding double
+        // quotes); embedded into onclick="..." (double-quoted attr) the
+        // browser truncated the value at the second " and the click
+        // SyntaxErrored silently. Switched to single-quoted JS-string
+        // form with HTML-entity-escaped apostrophes — same pattern as
+        // every other onclick in the codebase.
+        '<button onclick="window._approveCapture(\'' + String(item.id).replace(/'/g, '&#39;') + '\')" ' +
           'style="padding:6px 16px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.4);border-radius:var(--rsm);color:var(--green);font-size:14px;font-weight:700;cursor:pointer;font-family:IBM Plex Sans,sans-serif;white-space:nowrap">✓ APPROVE</button>' +
-        '<button onclick="window._discardCapture(' + JSON.stringify(item.id) + ')" ' +
+        '<button onclick="window._discardCapture(\'' + String(item.id).replace(/'/g, '&#39;') + '\')" ' +
           'style="padding:6px 16px;background:transparent;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);color:var(--red);font-size:14px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;white-space:nowrap">✕ DISCARD</button>' +
       '</div>' +
     '</div>';
@@ -62736,6 +62742,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.142"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.143"></script>
 </body>
 </html>
