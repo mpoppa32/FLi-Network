@@ -150,6 +150,10 @@ export { captureHourly } from "./jobs/captureHourly";
 // matcher applied without waiting for them to age out and re-capture.
 export { backfillCaptureMatches } from "./http/backfillCaptureMatches";
 
+// P13.154 — scoped invite read (replaces client-side full-tree /invites
+// read that required .read: "auth != null" on the entire invites tree).
+export { listMyInvites } from "./http/listMyInvites";
+
 // Daily Brief Email Digest (closes 2026-05-25 SME-eval gap #2)
 // Requires:
 //   cd functions && npm install

@@ -8849,7 +8849,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.153</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.154</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -26947,19 +26947,22 @@ window._resendInvite=async function(btn){
 
 
 async function checkInvites(user){
-  var email=user.email.replace(/\./g,'_');
-  var snap=await get(ref(db,'invites'));
-  if(!snap.val())return;
-  var invites=snap.val();
-  var myInvites=[];
-  Object.keys(invites).forEach(function(wsId){
-    if(invites[wsId][email]){
-      myInvites.push(Object.assign({},invites[wsId][email],{wsId:wsId}));
-    }
-  });
-  if(!myInvites.length)return;
-  // Show styled invite cards on workspace picker screen
-  myInvites.forEach(function(inv){_showInviteCard(inv,user);});
+  // P13.154 — server-side scoped read via callable. Replaces the prior
+  // client-side full-tree get('invites') which required .read on the
+  // entire invites root (cross-workspace invite enumeration). The rule
+  // now grants only .write per (wsId, email) so the client cannot read
+  // any invite from a browser context.
+  try {
+    if (!window._httpsCallable || !window._fbFunctions) return;
+    var fn = window._httpsCallable(window._fbFunctions, 'listMyInvites');
+    var res = await fn();
+    var myInvites = (res && res.data && Array.isArray(res.data.invites)) ? res.data.invites : [];
+    if (!myInvites.length) return;
+    myInvites.forEach(function(inv){ _showInviteCard(inv, user); });
+  } catch (err) {
+    // Invite check is non-critical — user can still proceed without it.
+    console.warn('[invites] listMyInvites failed:', (err && err.message) || err);
+  }
 }
 
 function _showInviteCard(inv,user){
@@ -62842,6 +62845,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.153"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.154"></script>
 </body>
 </html>
