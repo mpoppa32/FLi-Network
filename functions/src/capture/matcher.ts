@@ -98,12 +98,20 @@ const STAGE_ORDER: Record<string, number> = {
 /**
  * Load all the workspace state the matcher needs in one pass. Called once
  * per sync run in dispatcher.ts so we don't re-fetch nodes/opps per email.
+ *
+ * P13.149 — accepts optional syncUid so the matcher can also add the
+ * connected Google account's email to operatorEmails. Workspace members
+ * map to the auth-account uid, NOT the sync-account email. Without
+ * this, a workspace member who connected a DIFFERENT Google account
+ * for sync (e.g. signed in as mpoppa32@gmail.com but syncs from
+ * mike@atlasmotion.com) had outbound mail wrongly tagged inbound.
  */
-export async function loadMatchContext(workspaceId: string): Promise<MatchContext> {
-  const [nodesSnap, oppsSnap, membersSnap] = await Promise.all([
+export async function loadMatchContext(workspaceId: string, syncUid?: string): Promise<MatchContext> {
+  const [nodesSnap, oppsSnap, membersSnap, syncAuthSnap] = await Promise.all([
     db.ref(wsPath(workspaceId, "nodes")).get(),
     db.ref(wsPath(workspaceId, "opportunities")).get(),
     db.ref(wsPath(workspaceId, "members")).get(),
+    syncUid ? db.ref(`users/${syncUid}/captureAuth/google`).get() : Promise.resolve(null as any),
   ]);
 
   const personByEmail = new Map<string, { id: string; name?: string; org?: string }>();
@@ -173,6 +181,14 @@ export async function loadMatchContext(workspaceId: string): Promise<MatchContex
     if (!m) continue;
     const e = String(m.email || "").toLowerCase().trim();
     if (e) operatorEmails.add(e);
+  }
+  // P13.149 — add the connected Google account email so outbound
+  // messages from the sync account are tagged correctly even when the
+  // operator's auth account differs from their sync account.
+  if (syncAuthSnap && typeof syncAuthSnap.val === "function") {
+    const auth = syncAuthSnap.val() as { connectedEmail?: string } | null;
+    const ce = String(auth?.connectedEmail || "").toLowerCase().trim();
+    if (ce) operatorEmails.add(ce);
   }
 
   return {

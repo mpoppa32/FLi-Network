@@ -82,7 +82,9 @@ export const backfillCaptureMatches = onCall(
     log.info("backfill_start", { workspaceId, userId: auth.uid });
 
     const db = admin.database();
-    const ctx = await loadMatchContext(workspaceId);
+    // P13.149 — pass the caller's uid so the matcher resolves the
+    // connected Google account's email and adds it to operatorEmails.
+    const ctx = await loadMatchContext(workspaceId, auth.uid);
 
     const snap = await db.ref(wsPath(workspaceId, "pendingCapture")).get();
     const entries = (snap.val() ?? {}) as Record<string, PendingCaptureEntry>;

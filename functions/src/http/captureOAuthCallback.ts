@@ -56,6 +56,33 @@ export const captureOAuthCallback = onRequest(
       const expiresAt = tokens.expiry_date
         ? new Date(tokens.expiry_date).toISOString()
         : new Date(Date.now() + 50 * 60 * 1000).toISOString();
+      // P13.149 — fetch userinfo at grant time and persist email + name.
+      // The matcher needs the connected-account email to correctly tag
+      // outbound messages (sender === operator). Before this fix the
+      // matcher only had workspace members' emails — if the operator
+      // connected a different Google account for sync (e.g. signed in
+      // as mpoppa32@gmail.com but synced mike@atlasmotion.com), outbound
+      // messages from the sync account were mis-tagged as inbound and
+      // the Nudge Engine surfaced false "they're waiting on you" alerts
+      // for messages the operator had just sent.
+      let connectedEmail = "";
+      let connectedName = "";
+      try {
+        const userinfoResp = await fetch(
+          "https://www.googleapis.com/oauth2/v2/userinfo",
+          { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+        );
+        if (userinfoResp.ok) {
+          const ui = (await userinfoResp.json()) as { email?: string; name?: string };
+          connectedEmail = String(ui.email || "").toLowerCase().trim();
+          connectedName = String(ui.name || "").trim();
+        } else {
+          log.warn("userinfo_fetch_non_ok", { uid, status: userinfoResp.status });
+        }
+      } catch (uiErr) {
+        const e = uiErr as Error;
+        log.warn("userinfo_fetch_failed", { uid, message: e.message });
+      }
       await db.ref(`users/${uid}/captureAuth/google`).set({
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
@@ -63,8 +90,10 @@ export const captureOAuthCallback = onRequest(
         tokenType: "Bearer",
         expiresAt,
         grantedAt: new Date().toISOString(),
+        connectedEmail,
+        connectedName,
       });
-      log.info("tokens_persisted", { uid });
+      log.info("tokens_persisted", { uid, connectedEmail: connectedEmail || "(not captured)" });
       res.set("Content-Type", "text/html").send(CONNECTED_PAGE_HTML);
     } catch (e) {
       const errObj = e as Error;

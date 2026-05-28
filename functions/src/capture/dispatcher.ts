@@ -139,7 +139,10 @@ export async function syncGmail(uid: string, workspaceId: string): Promise<SyncR
     // P13.137 — load workspace match context ONCE per sync run so the
     // matcher is O(messages) instead of O(messages × nodes). Phase 0
     // audit found 0% match rate; this closes the gap.
-    const matchCtx = await loadMatchContext(workspaceId);
+    // P13.149 — pass uid so the matcher can also include the connected
+    // Google account's email (captureAuth.connectedEmail) in
+    // operatorEmails, not just workspace members'.
+    const matchCtx = await loadMatchContext(workspaceId, uid);
     const updates: Record<string, unknown> = {};
     for (const msg of messages) {
       const entry = gmailToPendingCapture(msg);
@@ -200,7 +203,10 @@ export async function syncCalendar(
     // P13.137 — same match-context pattern as Gmail. Calendar invites have
     // attendee emails too; running the matcher gives us account linkage
     // for "next meeting with this org" surfaces.
-    const matchCtx = await loadMatchContext(workspaceId);
+    // P13.149 — pass uid so the matcher can also include the connected
+    // Google account's email (captureAuth.connectedEmail) in
+    // operatorEmails, not just workspace members'.
+    const matchCtx = await loadMatchContext(workspaceId, uid);
     const updates: Record<string, unknown> = {};
     for (const ev of events) {
       const entry = calendarEventToPendingCapture(ev);
