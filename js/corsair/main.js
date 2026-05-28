@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.92';
-  window.Corsair.buildBlurb  = 'Atlas Day 5: Quick Start callout on TODAY for first-time users. 4-step grid (Log meeting / Add contact / Open pursuit / Clear queue) plus an Atlas-specific Bulk Score nudge when unscored opps > 5. Per-workspace dismiss via × button (localStorage). Replaces a tour-overlay approach with an inline-on-the-page guide that does not interrupt.';
+  window.Corsair.buildTag    = 'P13.93';
+  window.Corsair.buildBlurb  = 'Atlas Day 6: OSINT-on-Today panel. Scans _dailyFeedData for signals whose headline/detail/tags mention any active opp agency/customer-org/name/vehicle. Shows top 3 matches with severity color, source link, and the matched terms. Surfaces the 16-source OSINT moat at the morning surface where buying-signal context drives the daily queue. Renders only when matches exist.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

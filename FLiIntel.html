@@ -8526,7 +8526,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.92</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.93</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -29172,6 +29172,88 @@ window.renderTodayView = function(){
       hostP.parentElement.insertBefore(callout, hostP);
     }
   } catch(e){ console.warn('[P13.92 quickstart callout] failed:', e); }
+  // P13.93 (Day 6) — OSINT signals matched to active pursuits.
+  // Surfaces the 16-source moat at the morning surface: "N signals today
+  // match your pursuits" with the top 3 most relevant. Renders only when
+  // matches exist — keeps the TODAY page clean during dry feed days.
+  try {
+    var hostP6 = document.getElementById('today-rhythm-host');
+    var existing6 = document.getElementById('today-osint-callout');
+    if (existing6) existing6.remove();
+    if (hostP6 && hostP6.parentElement && Array.isArray(window._dailyFeedData) && window._dailyFeedData.length) {
+      // Build match-term set from active pursuits
+      var activeOps = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
+      var termSet = new Set();
+      activeOps.forEach(function(o){
+        [o.agency, o.customerOrg, o.name, o.vehicle].forEach(function(t){
+          if (t && String(t).length > 2 && String(t).toLowerCase() !== 'agency unknown') {
+            termSet.add(String(t).toLowerCase().trim());
+          }
+        });
+      });
+      // Score each signal: how many distinct terms hit
+      var scored = [];
+      window._dailyFeedData.forEach(function(s){
+        if (!s) return;
+        var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
+        var hits = 0;
+        var matchedTerms = [];
+        termSet.forEach(function(t){
+          if (t && t.length > 2 && blob.indexOf(t) >= 0) { hits++; matchedTerms.push(t); }
+        });
+        if (hits > 0) scored.push({ s: s, hits: hits, matched: matchedTerms.slice(0, 2) });
+      });
+      // Sort by hits desc, then by date desc
+      scored.sort(function(a, b){
+        if (b.hits !== a.hits) return b.hits - a.hits;
+        var da = a.s.date ? new Date(a.s.date).getTime() : 0;
+        var db = b.s.date ? new Date(b.s.date).getTime() : 0;
+        return db - da;
+      });
+      if (scored.length > 0) {
+        var topSignals = scored.slice(0, 3);
+        var callout6 = document.createElement('div');
+        callout6.id = 'today-osint-callout';
+        callout6.style.cssText = 'margin:0 22px 14px;padding:14px 16px;background:linear-gradient(135deg,rgba(95,179,184,.08),rgba(34,197,94,.05));border:1px solid rgba(95,179,184,.32);border-left:3px solid #5fb3b8;border-radius:3px';
+        var h6 = '';
+        h6 += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap">';
+        h6 +=   '<div style="display:flex;align-items:baseline;gap:10px">';
+        h6 +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase">Today\'s Signals</div>';
+        h6 +=     '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.08em"><b style="color:#5fb3b8">' + scored.length + '</b> OSINT signal' + (scored.length === 1 ? '' : 's') + ' match your pursuits</div>';
+        h6 +=   '</div>';
+        h6 +=   '<button onclick="switchView(\'pulse\')" style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:#5fb3b8;background:transparent;border:1px solid rgba(95,179,184,.42);padding:6px 10px;border-radius:3px;cursor:pointer;text-transform:uppercase">All signals ↗</button>';
+        h6 += '</div>';
+        h6 += '<div style="display:flex;flex-direction:column;gap:6px">';
+        topSignals.forEach(function(row){
+          var s = row.s;
+          var sev = s.severity || 'info';
+          var sevCol = sev === 'high' ? '#ef4444' : sev === 'med' ? '#f0a560' : sev === 'low' ? '#6ed094' : '#5fb3b8';
+          var hl = String(s.headline || '').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}).slice(0, 120);
+          var cat = s.category ? String(s.category).toUpperCase().slice(0, 22) : '';
+          var date = s.date ? String(s.date).slice(0, 10) : '';
+          var url = s.url ? String(s.url) : '';
+          var click = url ? 'event.stopPropagation();window.open(\'' + url.replace(/'/g, "\\'") + '\',\'_blank\',\'noopener\')' : 'switchView(\'pulse\')';
+          var matchedDisplay = row.matched.length ? row.matched.map(function(m){return m.charAt(0).toUpperCase() + m.slice(1);}).join(' · ') : '';
+          h6 += '<div style="padding:8px 11px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:2px solid ' + sevCol + ';border-radius:2px;cursor:pointer;transition:border-color 140ms" onmouseover="this.style.borderLeftColor=\'#5fb3b8\'" onmouseout="this.style.borderLeftColor=\'' + sevCol + '\'" onclick="' + click + '">';
+          h6 +=   '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:3px">';
+          if (cat) h6 += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + sevCol + ';text-transform:uppercase">' + cat + '</span>';
+          if (date) h6 += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2)">' + date + '</span>';
+          h6 +=   '</div>';
+          h6 +=   '<div style="font-family:IBM Plex Sans,sans-serif;font-size:12.5px;color:var(--bone);line-height:1.35;margin-bottom:' + (matchedDisplay ? '3px' : '0') + '">' + hl + (url ? ' <span style="color:' + sevCol + ';font-family:IBM Plex Mono,monospace;font-size:10px">↗</span>' : '') + '</div>';
+          if (matchedDisplay) {
+            h6 += '<div style="font-family:IBM Plex Mono,monospace;font-size:9.5px;color:var(--paper-2);letter-spacing:.04em">Matches · ' + matchedDisplay.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) + '</div>';
+          }
+          h6 += '</div>';
+        });
+        h6 += '</div>';
+        if (scored.length > 3) {
+          h6 += '<div style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.06em">+' + (scored.length - 3) + ' more match' + (scored.length - 3 === 1 ? '' : 'es') + ' · Intel Center for full list</div>';
+        }
+        callout6.innerHTML = h6;
+        hostP6.parentElement.insertBefore(callout6, hostP6);
+      }
+    }
+  } catch(e){ console.warn('[P13.93 osint-on-today] failed:', e); }
   // Refresh rhythm content (in case data changed while user was on another view)
   if (typeof _corsairRenderRhythm === 'function') {
     try { _corsairRenderRhythm(); } catch(e){}
@@ -59822,6 +59904,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.92"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.93"></script>
 </body>
 </html>
