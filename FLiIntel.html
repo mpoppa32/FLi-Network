@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.106</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.107</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12361,7 +12361,60 @@ function initAttendeeAutocomplete(inputId){
     if(e.key==='Escape'){box.style.display='none';}
   });
 }
-async function saveMeeting(m){if(window._canWrite&&!window._canWrite()){toast('Observers cannot log meetings');return;}await fbSet(wsPath('meetings/'+m.id),m);}
+async function saveMeeting(m){
+  if(window._canWrite && !window._canWrite()){ toast('Observers cannot log meetings'); return; }
+  await fbSet(wsPath('meetings/'+m.id), m);
+  // P13.107 (audit Finding 1.1) — re-score the linked opportunity so the
+  // operator's tier badge / score chip / confidence label updates the moment
+  // a meeting is logged. Without this, P13.102's auto-score froze at the
+  // last opp save: log a meeting → tier badge unchanged → operator loses
+  // confidence in "live ranking." Reevo would update its forecast.
+  //
+  // Also patches CorsairIndex.meetingsByOppId synchronously (audit Finding
+  // 1.3) so _computeOppScore inside saveOpp reads the new meeting in this
+  // tick instead of waiting for the 150ms debounced rebuild. Closes the
+  // staleness window where a render between fbSet and rebuild shows the
+  // pre-meeting score.
+  if (m && m.oppId){
+    var opp = (window.opportunities || []).find(function(o){
+      return o && String(o.id) === String(m.oppId);
+    });
+    if (opp){
+      // Link meeting to opp.meetings[] idempotently — CorsairIndex's reverse
+      // pass at FLiIntel.html:34582+ uses opp.meetings[] as a backfill source
+      // for meetingsByOppId, so this also stabilises the index after the
+      // next rebuild.
+      if (!Array.isArray(opp.meetings)) opp.meetings = [];
+      if (opp.meetings.indexOf(m.id) === -1) opp.meetings.push(m.id);
+      opp.updatedAt = new Date().toISOString();
+      // Patch CorsairIndex.meetingsByOppId synchronously so saveOpp's auto-
+      // score (which runs _dealScoreBreakdown → reads idx.meetingsByOppId)
+      // sees this meeting THIS tick. Replaces existing entry with same id
+      // if present (post-edit rescore) else appends. Logged error if the
+      // patch fails so it doesn't disappear silently.
+      try {
+        var idx = window.CorsairIndex;
+        if (idx && idx.meetingsByOppId && typeof idx.meetingsByOppId.set === 'function'){
+          var oidKey = String(m.oppId);
+          if (!idx.meetingsByOppId.has(oidKey)) idx.meetingsByOppId.set(oidKey, []);
+          var bucket = idx.meetingsByOppId.get(oidKey);
+          var existingIdx = -1;
+          for (var bi = 0; bi < bucket.length; bi++){
+            if (bucket[bi] && String(bucket[bi].id) === String(m.id)){ existingIdx = bi; break; }
+          }
+          if (existingIdx >= 0) bucket[existingIdx] = m;
+          else bucket.push(m);
+        }
+      } catch(idxErr){ console.error('[P13.107 CorsairIndex sync patch]', idxErr); }
+      // Trigger saveOpp — P13.102 auto-score hook recomputes score / tier /
+      // scoreConfidence / scoreFactors using the just-patched index. Logged
+      // catch so a score-recompute failure surfaces in console instead of
+      // disappearing into a successful-looking meeting save.
+      try { await saveOpp(opp); }
+      catch(scoreErr){ console.error('[P13.107 saveOpp re-score on meeting log]', scoreErr); }
+    }
+  }
+}
 async function deleteMeeting(id){
   setSS('saving');
   // Clean up commitments referencing this meeting (prevent orphaned Board/Timeline entries)
@@ -61979,6 +62032,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.106"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.107"></script>
 </body>
 </html>
