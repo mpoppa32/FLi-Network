@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.122';
-  window.Corsair.buildBlurb  = 'Audit Finding 6.2 batch 1 — replaced 6 silent catch(e){} blocks in Firebase listener post-render paths with logged catches. Targeted the consequential ones the audit named: _updateTicker, _renderTableView, _renderCopForecast, _renderWinLossView (twice — once in opps listener, once in calibration listener, once in demo-heal Promise.all then), _renderInspectorView. If any of these renders threw inside a listener fire, the user saw stale UI forever with no console signal and no toast. Now logged with explicit context ([P13.122 <listener> <fn>]) so render bugs surface in DevTools instead of disappearing. Daily-workflow render paths covered. Remaining ~200 catches in the file are mostly legitimately-silent (localStorage best-effort, browser API best-effort, cleanup paths where failure does not matter). Critical Findings closed total: 16.';
+  window.Corsair.buildTag    = 'P13.123';
+  window.Corsair.buildBlurb  = 'Audit Finding 2.3 — service worker caching. New sw.js at repo root caches FLiIntel.html (network-first so deploys propagate) + js/corsair/*.js modules (cache-first, ?v=buildTag does the invalidation) so the 1.4-1.8s cold parse of the 3.4MB single file only happens on FIRST visit. Subsequent loads serve from local cache — sub-100ms time-to-interactive. Each deploy bumps CACHE_VERSION in sw.js (now a 4-site bump per release: HTML auth span, HTML script ?v=, main.js buildTag, sw.js CACHE_VERSION). On activate, old caches purge cleanly. Cross-origin CDN requests bypass SW entirely (third parties handle their own caching). Critical Findings closed total: 17 — all pure-code Critical findings from the adversarial audit are now closed. Operator-gated remaining: 3.1 Anthropic key rotation, 3.2 Firebase rules export.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.122</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.123</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12798,6 +12798,23 @@ async function deleteLinkFromDB(id){setSS('saving');await remove(ref(db,wsPath('
 async function saveEntity(e){var c=Object.assign({},e);delete c.fx;delete c.fy;delete c.vx;delete c.vy;delete c.index;await fbSet(wsPath('nodes/'+e.id),c);}
 
 function showAuthError(msg){var el=document.getElementById('auth-error');if(el){el.textContent=msg;el.style.display='block';}}
+
+// P13.123 (audit Finding 2.3) — service worker registration. Caches the
+// 3.4MB HTML + ES module bundle so the second-and-onward load skips the
+// 1.4-1.8s cold parse. First-time visitors still pay the parse cost (no
+// SW to serve from), but every subsequent visit on the same browser
+// loads from the cache. Network-first for HTML so deploys propagate;
+// cache-first for versioned JS modules (?v=buildTag is the invalidation).
+// Cache name keyed by build tag — each deploy gets a fresh cache, the
+// old one is purged on activate.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    // Use ./sw.js (relative) so it scopes to /FLi-Network/ on GitHub Pages.
+    navigator.serviceWorker.register('./sw.js')
+      .then(function(reg) { console.log('[SW] registered, scope:', reg.scope); })
+      .catch(function(err) { console.warn('[SW] registration failed:', err && err.message); });
+  });
+}
 
 // P13.117 (audit Finding 3.3) — canonical HTML escape helper exposed on
 // window so every XSS-prone innerHTML callsite can wrap interpolations
@@ -62325,6 +62342,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.122"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.123"></script>
 </body>
 </html>
