@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.123</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.124</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12090,15 +12090,29 @@ var currentUser=null,currentWs=null,currentWsId=null,currentUserRole='Analyst',u
 var _nodePositionUndo=null,_nodeUndoTimer=null;
 
 // ── Shared Anthropic API fetch helper ────────────────────────
-// Centralizes: adaptive timeout, humanized errors, required headers.
-// The browser-direct header is required by Anthropic when calling
-// from a browser without a server proxy — not a security risk.
+// P13.124 (audit Finding 3.1) — was direct fetch to api.anthropic.com with
+// the operator's API key in the x-api-key header. The key was exfiltratable
+// via DevTools (`window.apiKey`), via any of the 25+ XSS callsites (now
+// closed in P13.116-P13.119), or via the now-fixed P13.108 localStorage
+// signout leak. The `anthropic-dangerous-direct-browser-access: true`
+// header was Anthropic's own warning that the pattern was unsafe.
 //
-// Timeout strategy: defense BD transcripts often run 30K–80K chars
-// (full meeting + auto-capture). At max_tokens=3000 these can take
-// 60–180 seconds end-to-end. Default scales with payload size and
-// caps at 5 minutes. Callers can still override explicitly.
+// Now: route through the anthropicProxy Firebase Function which holds
+// the new key as a server-side secret. The browser never sees the key.
+// The function validates that the caller is authenticated AND a member
+// of currentWsId before forwarding.
+//
+// Signature kept (key, payload, timeoutMs) for backward compatibility —
+// callers don't need to change. The `key` arg is now ignored; the proxy
+// owns the real key. Return value still mimics a Response object so
+// `await res.json()` in callers continues to work.
 async function _apiFetch(key,payload,timeoutMs){
+  if(!window._fbFunctions || !window._httpsCallable){
+    throw new Error('AI proxy unavailable — Firebase Functions SDK not loaded.');
+  }
+  if(!window.currentWsId){
+    throw new Error('No workspace selected — AI features require a workspace.');
+  }
   if(!timeoutMs){
     var bodyLen=0;
     try{
@@ -12109,39 +12123,62 @@ async function _apiFetch(key,payload,timeoutMs){
       if(payload.system)bodyLen+=String(payload.system).length;
     }catch(e){}
     // Base 90s, +12s per 10K chars over 10K, capped at 300s (5 min).
+    // Note: Cloud Functions has its own 90s timeout in anthropicProxy.ts.
+    // The browser timeout here is a safety net for the round trip.
     var extra=Math.max(0,Math.floor((bodyLen-10000)/10000))*12000;
     timeoutMs=Math.min(300000,90000+extra);
   }
-  var elapsed=0;
   var startedAt=Date.now();
-  var ctrl=new AbortController();
-  var timer=setTimeout(function(){ctrl.abort();},timeoutMs);
+  // httpsCallable from the SDK doesn't take an AbortSignal directly, but
+  // we wrap with Promise.race against a timer so callers still get the
+  // "request timed out" UX they had with the fetch path.
+  var callable=window._httpsCallable(window._fbFunctions,'anthropicProxy');
+  var proxyPayload=Object.assign({},payload,{workspaceId:window.currentWsId});
+  var timeoutPromise=new Promise(function(_,reject){
+    setTimeout(function(){
+      var elapsedSec=Math.round((Date.now()-startedAt)/1000);
+      reject(new Error('Request timed out after '+elapsedSec+'s. For very large transcripts, try splitting into two sections.'));
+    },timeoutMs);
+  });
   try{
-    var res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',signal:ctrl.signal,
-      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify(payload)
-    });
-    clearTimeout(timer);
-    if(!res.ok){
-      var eb=await res.json().catch(function(){return{};});
-      var msg=eb.error?eb.error.message:'API error '+res.status;
-      if(res.status===429)throw new Error('Too many requests — wait 30 seconds and try again.');
-      if(res.status===401)throw new Error('Invalid API key — check your key in Settings.');
-      if(res.status===413||msg.indexOf('maximum context length')!==-1||msg.indexOf('too long')!==-1)
-        throw new Error('Notes are too long — try pasting a shorter section.');
-      if(res.status===529)throw new Error('Claude is overloaded — try again in a moment.');
-      throw new Error(msg);
-    }
-    return res;
+    var result=await Promise.race([callable(proxyPayload),timeoutPromise]);
+    // httpsCallable wraps the function return value under .data
+    var responseBody=result&&result.data?result.data:result;
+    return {
+      ok: true,
+      status: 200,
+      json: function(){ return Promise.resolve(responseBody); }
+    };
   }catch(e){
-    clearTimeout(timer);
-    elapsed=Math.round((Date.now()-startedAt)/1000);
-    if(e.name==='AbortError'){
-      var capSec=Math.round(timeoutMs/1000);
-      throw new Error('Request timed out after '+capSec+'s. For very large transcripts, try splitting into two sections, or check your connection.');
+    // HttpsError surfaces as a normal Error in the browser. .code holds
+    // the symbolic Firebase error code; .message is the human string.
+    var em=String((e&&e.message)||'AI proxy failed');
+    var code=(e&&e.code)||'';
+    if(/resource-exhausted/.test(code)||/429/.test(em)){
+      throw new Error('Too many requests — wait 30 seconds and try again.');
     }
-    throw e;
+    if(/unauthenticated/.test(code)){
+      throw new Error('Sign in required to use AI features.');
+    }
+    if(/permission-denied/.test(code)){
+      throw new Error('You are not a member of this workspace.');
+    }
+    if(/failed-precondition/.test(code)&&/key/i.test(em)){
+      throw new Error('AI proxy not configured server-side — Anthropic key secret missing. Contact admin.');
+    }
+    if(/deadline-exceeded/.test(code)){
+      throw new Error('AI request timed out. Try a shorter input.');
+    }
+    if(em.indexOf('maximum context length')!==-1||em.indexOf('too long')!==-1){
+      throw new Error('Notes are too long — try pasting a shorter section.');
+    }
+    if(em.indexOf('Anthropic API 401')>=0){
+      throw new Error('AI proxy secret invalid — contact admin to rotate the Anthropic key.');
+    }
+    if(em.indexOf('Anthropic API 529')>=0){
+      throw new Error('Claude is overloaded — try again in a moment.');
+    }
+    throw new Error(em);
   }
 }
 // ── Performance: health score cache + render debounce ─────────
@@ -16029,35 +16066,25 @@ function _linkifyIntel(text){
 }
 
 async function _callIntelClaude(systemPrompt, userMessage, maxTokens) {
+  // P13.124 — routes through anthropicProxy (Firebase Function) instead of
+  // direct fetch to api.anthropic.com. Same Anthropic payload (web_search
+  // tool) forwarded server-side; key never reaches the browser.
   maxTokens = maxTokens || 1500;
   // Always ask for source URLs so users can verify intelligence
   systemPrompt = systemPrompt + '\n\nCRITICAL: For every specific finding (solicitation number, contract award, policy memo, news item), you MUST include the direct source URL in parentheses after the claim. Format: "Finding detail (Source: https://url)". If you cannot find a verified URL, do not include the finding — accuracy is more important than comprehensiveness.';
-  var ctrl = new AbortController();
-  var timer = setTimeout(function(){ctrl.abort();}, 60000); // 60s for web searches
   try {
-    var res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: maxTokens,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }]
-      })
-    });
-    clearTimeout(timer);
+    // _apiFetch is the P13.124 proxy-wrapped helper. 60s timeout for web
+    // searches matches the prior fetch timeout.
+    var res = await _apiFetch(null, {
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }]
+    }, 60000);
     if (!res.ok) {
       var eb = await res.json().catch(function(){return{};});
       var msg = eb.error ? eb.error.message : 'API error ' + res.status;
-      if (res.status === 429) throw new Error('Too many requests — wait 30 seconds.');
-      if (res.status === 401) throw new Error('Invalid API key — check Settings.');
       throw new Error(msg);
     }
     var d = await res.json();
@@ -16065,8 +16092,7 @@ async function _callIntelClaude(systemPrompt, userMessage, maxTokens) {
     var text = (d.content || []).map(function(b){ return b.type === 'text' ? b.text : ''; }).join('');
     return text;
   } catch(e) {
-    clearTimeout(timer);
-    if (e.name === 'AbortError') throw new Error('Intelligence sweep timed out — try again.');
+    if (e && /timed out/.test(String(e.message||''))) throw new Error('Intelligence sweep timed out — try again.');
     throw e;
   }
 }
@@ -17265,22 +17291,21 @@ window._handleRfpFile = async function(input, oppId) {
   }
 
   try {
-    var response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        system: 'You are a defense BD expert analyzing a government solicitation. Be precise and cite specific sections.',
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-            { type: 'text', text: 'Analyze this government solicitation for opportunity "' + opp.name + '" at ' + (opp.agency || 'the agency') + '.\n\n' + meetingContext + '\n\nProvide:\n1. REQUIREMENTS: Top 5 most critical technical/capability requirements from Section L/M/SOW\n2. EVALUATION CRITERIA: How proposals will be scored (factors and weights if stated)\n3. KEY DATES: All important deadlines\n4. MATCH ANALYSIS: For each requirement, rate our position STRONG/MODERATE/WEAK based on the meeting intelligence above\n5. RELATIONSHIP LEVERAGE: Which of our contacts mentioned above are relevant to specific requirements\n6. GO/NO-GO: Recommend GO or NO-GO with 3 key reasons\n7. IMMEDIATE ACTIONS: Top 3 actions to take in the next 30 days\n\nBe specific. Reference section numbers. Show where our meeting intelligence confirms or conflicts with requirements.' }
-          ]
-        }]
-      })
-    });
+    // P13.124 — routed through anthropicProxy Firebase Function. PDF base64
+    // content still flows as messages[0].content[0] document block — proxy
+    // is a transport-layer pass-through and doesn't inspect message content.
+    var response = await _apiFetch(null, {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system: 'You are a defense BD expert analyzing a government solicitation. Be precise and cite specific sections.',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+          { type: 'text', text: 'Analyze this government solicitation for opportunity "' + opp.name + '" at ' + (opp.agency || 'the agency') + '.\n\n' + meetingContext + '\n\nProvide:\n1. REQUIREMENTS: Top 5 most critical technical/capability requirements from Section L/M/SOW\n2. EVALUATION CRITERIA: How proposals will be scored (factors and weights if stated)\n3. KEY DATES: All important deadlines\n4. MATCH ANALYSIS: For each requirement, rate our position STRONG/MODERATE/WEAK based on the meeting intelligence above\n5. RELATIONSHIP LEVERAGE: Which of our contacts mentioned above are relevant to specific requirements\n6. GO/NO-GO: Recommend GO or NO-GO with 3 key reasons\n7. IMMEDIATE ACTIONS: Top 3 actions to take in the next 30 days\n\nBe specific. Reference section numbers. Show where our meeting intelligence confirms or conflicts with requirements.' }
+        ]
+      }]
+    }, 180000);
     var data = await response.json();
     var text = data.content ? data.content.map(function(i) { return i.text || ''; }).join('') : '';
     if (!text) throw new Error('No response from Claude');
@@ -62342,6 +62367,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.123"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.124"></script>
 </body>
 </html>

@@ -16,6 +16,13 @@ export { triggerInventory } from "./http/triggerInventory";
 export { triggerMigration } from "./http/triggerMigration";
 export { triggerRollback } from "./http/triggerRollback";
 
+// P13.124 (audit Finding 3.1) — Anthropic API proxy. Holds the API key as a
+// Firebase secret (ANTHROPIC_API_KEY) and forwards /v1/messages on behalf
+// of authenticated workspace members so the key never reaches the browser.
+// One-time setup: `firebase functions:secrets:set ANTHROPIC_API_KEY` then
+// `firebase deploy --only functions:anthropicProxy`.
+export { anthropicProxy } from "./http/anthropicProxy";
+
 // USAspending (Phase 8.5.4 + v1.1)
 export { triggerUsaSpendingSync } from "./http/triggerUsaSpendingSync";
 export { usaSpendingNightly } from "./jobs/usaSpendingNightly";

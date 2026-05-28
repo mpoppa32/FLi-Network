@@ -15,6 +15,12 @@ export interface Secrets {
   samgov: { apiKey: string };
   congressgov: { apiKey: string };
   secEdgar: { userAgent: string };
+  // P13.124 (audit Finding 3.1): Anthropic API key for the in-browser AI
+  // features (Ask Corsair, Brief synthesis, intel extraction). Was deployed
+  // in the workspace's RTDB config and exfiltratable via window.apiKey in
+  // the browser. Now held server-side only — anthropicProxy function
+  // forwards /v1/messages calls.
+  anthropic: { apiKey: string };
 }
 
 let cachedSecrets: Partial<Secrets> | null = null;
@@ -45,6 +51,9 @@ export function getSecrets(): Partial<Secrets> {
         process.env.SEC_USER_AGENT ??
         "Corsair Defense BD Intel ops@corsairhq.io",
     },
+    anthropic: {
+      apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    },
   };
   return cachedSecrets;
 }
@@ -71,6 +80,10 @@ export function requireSecret<K extends keyof Secrets>(source: K): Secrets[K] {
     const v = (s as Secrets["secEdgar"]).userAgent;
     if (!v) throw new ConfigError(`SEC EDGAR User-Agent not set. Set SEC_EDGAR_USER_AGENT env var.`);
   }
+  if (source === "anthropic") {
+    const v = (s as Secrets["anthropic"]).apiKey;
+    if (!v) throw new ConfigError(`Anthropic API key not set. Set ANTHROPIC_API_KEY via firebase functions:secrets:set ANTHROPIC_API_KEY.`);
+  }
   return s as Secrets[K];
 }
 
@@ -85,6 +98,7 @@ export function listConfiguredSecrets(): Record<keyof Secrets, boolean> {
     samgov: Boolean(all.samgov?.apiKey),
     congressgov: Boolean(all.congressgov?.apiKey),
     secEdgar: Boolean(all.secEdgar?.userAgent),
+    anthropic: Boolean(all.anthropic?.apiKey),
   };
 }
 
