@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.110</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.111</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12501,7 +12501,13 @@ async function saveOpp(opp){
   // and so a freshly imported opp gets its tier the moment it lands. Closed
   // pursuits (won/lost) skip — their rank is no longer interesting. Idempotent:
   // running this twice on the same opp produces the same result.
-  if (opp && opp.stage && opp.stage !== 'won' && opp.stage !== 'lost') {
+  // P13.111 (audit Finding 1.7) — was strict 'won'/'lost' comparison;
+  // imports from Monday/CSV with capital W, "WON", or trailing whitespace
+  // bypassed the clear, leaving closed deals with a stale rank polluting
+  // the score-sorted Pipeline. Normalize the stage string before checking.
+  var _normStage = String((opp && opp.stage) || '').toLowerCase().trim();
+  var _isClosed = (_normStage === 'won' || _normStage === 'lost');
+  if (opp && opp.stage && !_isClosed) {
     if (typeof window._computeOppScore === 'function') {
       try {
         var _s = window._computeOppScore(opp);
@@ -12514,7 +12520,7 @@ async function saveOpp(opp){
         }
       } catch(scoreErr){ console.warn('[P13.102 auto-score on save] failed:', scoreErr); }
     }
-  } else if (opp && (opp.stage === 'won' || opp.stage === 'lost')) {
+  } else if (opp && _isClosed) {
     // Closed pursuit — clear ranking fields so they don't pollute live sort
     delete opp.score; delete opp.tier; delete opp.scoreConfidence;
     delete opp.scoreFactors; delete opp.scoreComputedAt;
@@ -12568,8 +12574,11 @@ window._bulkAutoScorePipeline = async function(){
     return { scored: 0, skipped: 0, failed: 0 };
   }
   // Filter out closed pursuits up front — saveOpp clears their score anyway.
+  // P13.111 — normalize stage so "Won"/"WON"/"won " all match.
   var opps = allOpps.filter(function(o){
-    return o && o.stage !== 'won' && o.stage !== 'lost';
+    if (!o) return false;
+    var s = String(o.stage || '').toLowerCase().trim();
+    return s !== 'won' && s !== 'lost';
   });
   var skipped = allOpps.length - opps.length;
   if (typeof toast === 'function') toast('Scoring ' + opps.length + ' pursuits…');
@@ -19469,7 +19478,9 @@ window._dealScoreBreakdown = function(o){
 // Doctrine: every score shows its reasoning — no black-box numbers.
 window._computeOppScore = function(opp){
   if (!opp) return null;
-  var stage = String(opp.stage || '').toLowerCase();
+  // P13.111 — trim() in addition to toLowerCase() so a CSV import with
+  // trailing whitespace ("won ") still matches.
+  var stage = String(opp.stage || '').toLowerCase().trim();
   // Closed pursuits don't get a meaningful rank — return null so renderers
   // can skip badge + sort. saveOpp also skips persisting score on closed opps.
   if (stage === 'won' || stage === 'lost') return null;
@@ -62208,6 +62219,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.110"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.111"></script>
 </body>
 </html>
