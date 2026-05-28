@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.99';
-  window.Corsair.buildBlurb  = 'Daily Brief card now lives on TODAY — Decay/Stale/Upcoming/Commitments/Coverage/Aged columns surface on the morning landing, immediately above the watch queue. Closes the IA snag where decay alerts were buried in the Log Meeting screen. Single-DOM-element relocate (same pattern as the rhythm panel) — Log Meeting screen still shows the card too via _exitTodayView restore. Outreach ✉ button on Decay column gets a clearer hover tooltip + aria-label + visible Draft label for screen-reader and at-a-glance scannability.';
+  window.Corsair.buildTag    = 'P13.100';
+  window.Corsair.buildBlurb  = 'ATLAS Talking Points editor — replaces the "coming next" placeholder with a real editable structured doc: Capability Statement, Pricing, Recent Wins, Competitive Position. Per-section inline edit (textarea + Save/Cancel), per-workspace localStorage persistence, "last edit" timestamp + author. PowerPoint Briefing export auto-pulls all four sections into a 2x2 quadrant slide between OSINT and the Latest Update slide — every BD deck now reflects today positioning without operator copy-paste. Defense-BD culture loves "before we walk in, here is what we say about ourselves."';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

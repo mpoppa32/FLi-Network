@@ -8542,7 +8542,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.99</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.100</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -29424,6 +29424,47 @@ function _atlasSaveUpdates(arr){
   var wsId = window.currentWsId || 'default';
   try { localStorage.setItem('corsair-atlas-updates-' + wsId, JSON.stringify(arr)); } catch(e){}
 }
+// P13.100 — Talking Points: structured editable positioning doc per workspace.
+// 4 fixed sections (Capability / Pricing / Recent Wins / Competitive). Each
+// section is plain text, edited inline, persists to localStorage, surfaces
+// automatically in the PowerPoint export so every BD briefing reflects
+// today's positioning without operator copy-paste.
+function _atlasGetTalkingPoints(){
+  var wsId = window.currentWsId || 'default';
+  try { return JSON.parse(localStorage.getItem('corsair-atlas-talking-points-' + wsId) || '{}') || {}; }
+  catch(e){ return {}; }
+}
+function _atlasSaveTalkingPoints(obj){
+  var wsId = window.currentWsId || 'default';
+  try { localStorage.setItem('corsair-atlas-talking-points-' + wsId, JSON.stringify(obj || {})); } catch(e){}
+}
+window._atlasEditingTpKey = null;
+window._atlasEditTalkingPoint = function(key){
+  window._atlasEditingTpKey = key;
+  if (typeof window.renderAtlasView === 'function') window.renderAtlasView();
+  setTimeout(function(){
+    var ta = document.getElementById('tp-edit-textarea');
+    if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+  }, 40);
+};
+window._atlasSaveTalkingPoint = function(){
+  var key = window._atlasEditingTpKey;
+  if (!key) return;
+  var ta = document.getElementById('tp-edit-textarea');
+  if (!ta) return;
+  var tp = _atlasGetTalkingPoints();
+  tp[key] = (ta.value || '').trim();
+  tp.updatedTs = Date.now();
+  tp.updatedBy = (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'You';
+  _atlasSaveTalkingPoints(tp);
+  window._atlasEditingTpKey = null;
+  if (typeof toast === 'function') toast('Talking points saved');
+  if (typeof window.renderAtlasView === 'function') window.renderAtlasView();
+};
+window._atlasCancelTalkingPoint = function(){
+  window._atlasEditingTpKey = null;
+  if (typeof window.renderAtlasView === 'function') window.renderAtlasView();
+};
 window._atlasAddUpdate = function(){
   var text = prompt('What is the latest update for your team?\n\nExamples:\n• "Shipped v2.3 with new red-team scoring — Bryce, mention this on the DARPA call"\n• "Price drop on Tier 2 contracts approved, new sheet attached"\n• "Lost out on Anduril MQ-9 — debrief next Tuesday"\n• "New case study with USSOCOM in hand, available on the shared drive"');
   if (!text || !text.trim()) return;
@@ -29525,10 +29566,45 @@ window.renderAtlasView = function(){
     });
     h += '</div>';
   }
-  // Talking Points placeholder
-  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:10px">Talking Points</div>';
-  h += '<div style="padding:16px 18px;background:rgba(95,179,184,.04);border:1px dashed rgba(95,179,184,.3);border-radius:3px;margin-bottom:24px">';
-  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);line-height:1.55">Coming next: editable pitch doc with sections for Current Capability Statement / Pricing / Recent Wins / Competitive Position. Pulls into PowerPoint exports so every briefing reflects today\'s positioning automatically.</div>';
+  // Talking Points — P13.100 — editable structured pitch doc (4 sections)
+  var tp = _atlasGetTalkingPoints();
+  var tpSections = [
+    { key: 'capability',  title: 'Capability Statement',  hint: 'What you do, who you do it for, your moat. The 30-second pitch.', color: '#5fb3b8' },
+    { key: 'pricing',     title: 'Pricing',               hint: 'Current rates, tiers, contract vehicles you accept. The "how much" answer before they ask.', color: '#f0a560' },
+    { key: 'recentWins',  title: 'Recent Wins',           hint: 'Last 6-12 months of wins — agency, value, what won it. Use these as proof points on calls.', color: '#22c55e' },
+    { key: 'competitive', title: 'Competitive Position',  hint: 'Who you beat, who beats you, when each happens. Why a customer picks you over the next-best option.', color: '#ef4444' }
+  ];
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap">';
+  h += '<span>Talking Points</span>';
+  if (tp.updatedTs) {
+    h += '<span style="font-weight:400;color:var(--paper-2);font-size:10px">Last edit ' + _fmtTs(tp.updatedTs) + ' &nbsp;·&nbsp; ' + _esc(tp.updatedBy || 'Unknown') + '</span>';
+  }
+  h += '</div>';
+  h += '<div style="margin-bottom:14px;padding:9px 13px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.22);border-radius:2px;font-family:IBM Plex Sans,sans-serif;font-size:12px;color:var(--paper);line-height:1.5">Drives the <b style="color:var(--bone)">PowerPoint Briefing</b> export &mdash; every deck pulls today&rsquo;s positioning automatically. Edit each section as your story shifts.</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px;margin-bottom:30px">';
+  tpSections.forEach(function(sec){
+    var val = tp[sec.key] || '';
+    var isEditing = window._atlasEditingTpKey === sec.key;
+    h += '<div style="padding:14px 16px;background:linear-gradient(160deg,rgba(13,20,38,.92),rgba(7,13,24,.96));border:1px solid var(--rule-2);border-left:3px solid ' + sec.color + ';border-radius:3px">';
+    h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:9px">';
+    h += '<span style="font-family:IBM Plex Mono,monospace;font-size:10.5px;font-weight:700;letter-spacing:.14em;color:' + sec.color + ';text-transform:uppercase">' + sec.title + '</span>';
+    if (!isEditing) {
+      h += '<button onclick="window._atlasEditTalkingPoint&&window._atlasEditTalkingPoint(\'' + sec.key + '\')" style="background:transparent;border:1px solid rgba(255,255,255,.14);color:var(--paper);cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.10em;text-transform:uppercase;padding:3px 10px;border-radius:2px">' + (val ? '&#9998; Edit' : '+ Add') + '</button>';
+    }
+    h += '</div>';
+    if (isEditing) {
+      h += '<textarea id="tp-edit-textarea" placeholder="' + _esc(sec.hint) + '" style="width:100%;min-height:160px;padding:10px 12px;background:rgba(7,13,24,.65);border:1px solid var(--rule);border-radius:2px;color:var(--bone);font-family:IBM Plex Sans,sans-serif;font-size:13px;line-height:1.55;resize:vertical;box-sizing:border-box;outline:none">' + _esc(val) + '</textarea>';
+      h += '<div style="display:flex;gap:8px;margin-top:9px;justify-content:flex-end">';
+      h += '<button onclick="window._atlasCancelTalkingPoint&&window._atlasCancelTalkingPoint()" style="background:transparent;border:1px solid var(--rule);color:var(--paper-2);cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;padding:6px 12px;border-radius:2px">Cancel</button>';
+      h += '<button onclick="window._atlasSaveTalkingPoint&&window._atlasSaveTalkingPoint()" style="background:' + sec.color + ';border:1px solid ' + sec.color + ';color:#0b0d11;cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;padding:6px 14px;border-radius:2px;font-weight:700">Save</button>';
+      h += '</div>';
+    } else if (val) {
+      h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.55;white-space:pre-wrap">' + _esc(val) + '</div>';
+    } else {
+      h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:12.5px;color:var(--paper-2);line-height:1.5;font-style:italic">' + _esc(sec.hint) + '</div>';
+    }
+    h += '</div>';
+  });
   h += '</div>';
   // Voice memos placeholder
   h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#a78bfa;text-transform:uppercase;margin-bottom:10px">Voice Memos</div>';
@@ -49510,11 +49586,14 @@ window._exportPipelinePPT = async function(){
     var warnItems = (rhythm.items || []).filter(function(i){ return i.sev === 'warn'; }).slice(0, 6);
     // Active ATLAS update for "what's happening on our side"
     var atlasUpdates = [];
+    var atlasTp = {};
     try {
       var wsId = window.currentWsId || 'default';
       atlasUpdates = JSON.parse(localStorage.getItem('corsair-atlas-updates-' + wsId) || '[]');
+      atlasTp = JSON.parse(localStorage.getItem('corsair-atlas-talking-points-' + wsId) || '{}') || {};
     } catch(e){}
     var latestAtlas = atlasUpdates[0] || null;
+    var hasTalkingPoints = atlasTp && (atlasTp.capability || atlasTp.pricing || atlasTp.recentWins || atlasTp.competitive);
     // OSINT matches
     var matchedSignals = [];
     if (Array.isArray(window._dailyFeedData)) {
@@ -49671,6 +49750,33 @@ window._exportPipelinePPT = async function(){
         yo += 0.95;
       });
       so.addText(wsName + ' · ' + dateStr, { x: 0.5, y: 6.9, w: 12.3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, charSpacing: 3 });
+    }
+    // === SLIDE — Talking Points (P13.100) ===
+    // 2x2 quadrant layout. Renders only when at least one section is filled.
+    if (hasTalkingPoints) {
+      var stp = pres.addSlide();
+      stp.background = { color: INK };
+      stp.addText(wsName + ' — Talking Points', { x: 0.5, y: 0.3, w: 10, h: 0.6, fontFace: 'Anton', fontSize: 28, color: BONE });
+      stp.addText(dateStr.toUpperCase(), { x: 9.5, y: 0.5, w: 3.5, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: PAPER, align: 'right', charSpacing: 3 });
+      stp.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.0, w: 12.3, h: 0.03, fill: { color: AMBER } });
+      var tpQuads = [
+        { key: 'capability',  title: 'CAPABILITY STATEMENT',  color: '5FB3B8', x: 0.5, y: 1.3 },
+        { key: 'pricing',     title: 'PRICING',               color: 'F0A560', x: 6.95, y: 1.3 },
+        { key: 'recentWins',  title: 'RECENT WINS',           color: '22C55E', x: 0.5, y: 4.05 },
+        { key: 'competitive', title: 'COMPETITIVE POSITION',  color: 'EF4444', x: 6.95, y: 4.05 }
+      ];
+      tpQuads.forEach(function(q){
+        var val = (atlasTp[q.key] || '').toString();
+        stp.addShape(pres.ShapeType.rect, { x: q.x, y: q.y, w: 5.85, h: 2.55, fill: { color: INK2 }, line: { color: AMBER_DIM, width: 0.5 } });
+        stp.addShape(pres.ShapeType.rect, { x: q.x, y: q.y, w: 0.05, h: 2.55, fill: { color: q.color } });
+        stp.addText(q.title, { x: q.x + 0.18, y: q.y + 0.12, w: 5.55, h: 0.28, fontFace: 'IBM Plex Mono', fontSize: 9.5, color: q.color, bold: true, charSpacing: 3 });
+        if (val) {
+          stp.addText(val.slice(0, 700), { x: q.x + 0.18, y: q.y + 0.5, w: 5.55, h: 2.0, fontFace: 'IBM Plex Sans', fontSize: 11, color: BONE, valign: 'top' });
+        } else {
+          stp.addText('— not yet set —', { x: q.x + 0.18, y: q.y + 0.5, w: 5.55, h: 2.0, fontFace: 'IBM Plex Sans', fontSize: 11, color: PAPER, italic: true });
+        }
+      });
+      stp.addText(wsName + ' · ' + dateStr, { x: 0.5, y: 6.9, w: 12.3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, charSpacing: 3 });
     }
     // === SLIDE — Latest internal update (ATLAS) ===
     if (latestAtlas) {
@@ -60692,6 +60798,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.99"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.100"></script>
 </body>
 </html>
