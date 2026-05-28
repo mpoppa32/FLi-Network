@@ -327,6 +327,7 @@ window.renderCopSection = function() {
         cards.forEach(function(o) {
           var aged = (typeof pipelineMod.isStageStuck === 'function') && pipelineMod.isStageStuck(o);
           var days = (typeof pipelineMod.daysInStage === 'function') ? pipelineMod.daysInStage(o) : null;
+          var ageLimit = (typeof pipelineMod.ageLimit === 'function') ? pipelineMod.ageLimit(o.stage) : null;
           var safeId = String(o.id).replace(/'/g, '&#39;');
           var pwinPct = Math.round(Number(o.pwin || 0) * 100);
 
@@ -341,12 +342,34 @@ window.renderCopSection = function() {
           var scoreNum = (typeof o.score === 'number') ? o.score : null;
           var scoreConf = o.scoreConfidence || null;
           var isSparse = scoreConf === 'sparse';
+          // P13.136 Day 5 (Pipeline Surface #5) — health pill in top-right
+          // corner of card. Health came from window._computePursuitHealth
+          // (already used by Table) — Kanban was missing this entirely
+          // so operator had to inspector-click to see HOT/WARM/COLD.
+          var health = (typeof window._computePursuitHealth === 'function')
+            ? window._computePursuitHealth(o)
+            : null;
+          var healthStatus = (health && health.status) || null;
+          var healthCol = healthStatus === 'hot' ? '#22c55e'
+                        : healthStatus === 'warm' ? '#facc15'
+                        : healthStatus === 'cold' ? '#ef4444'
+                        : null;
+          // Aged-and-over-limit cards get a red outline per audit ask —
+          // makes "stuck and over the age threshold" unmistakable from
+          // a card-scan distance.
           var cardCls = 'cop-kanban-card' + (aged ? ' cop-kanban-card-aged' : '') + (isSparse ? ' cop-kanban-card-sparse' : '');
-          // Sparse visual treatment via inline style (no new CSS rules needed)
-          var cardSparseStyle = isSparse ? 'border-style:dashed;opacity:.78;' : '';
+          var cardStyleParts = [];
+          if (isSparse) cardStyleParts.push('border-style:dashed', 'opacity:.78');
+          if (aged) cardStyleParts.push('border:1px solid rgba(239,68,68,.55)', 'box-shadow:0 0 0 1px rgba(239,68,68,.18) inset');
+          var cardInlineStyle = cardStyleParts.length ? ' style="' + cardStyleParts.join(';') + '"' : '';
 
-          h += '<div class="' + cardCls + '"' + (cardSparseStyle ? ' style="' + cardSparseStyle + '"' : '') + ' onclick="window.openEntityInspector(\'' + safeId + '\')" title="Open dossier">';
-          h += '<div class="cop-kanban-card-name">' + _copEsc(o.name || '(unnamed)') + '</div>';
+          h += '<div class="' + cardCls + '"' + cardInlineStyle + ' onclick="window.openEntityInspector(\'' + safeId + '\')" title="Open dossier">';
+          // Health pill — absolute top-right, small + colored. Skipped when
+          // health module is unavailable (graceful degrade for cold load).
+          if (healthCol && healthStatus) {
+            h += '<span title="Health: ' + healthStatus + ' (Click → dossier for factor breakdown)" style="position:absolute;top:6px;right:8px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:' + healthCol + ';background:rgba(0,0,0,.32);border:1px solid ' + healthCol + '70;border-radius:2px;padding:1px 5px;line-height:1">' + healthStatus + '</span>';
+          }
+          h += '<div class="cop-kanban-card-name" style="padding-right:42px">' + _copEsc(o.name || '(unnamed)') + '</div>';
           // Score line — own row above value/pwin/days so the tier chip is
           // unambiguous and lines up across cards.
           if (scoreTier && scoreNum != null) {
@@ -357,9 +380,16 @@ window.renderCopSection = function() {
           var metaBits = [];
           if (o.value)        metaBits.push('$' + _formatVal(o.value));
           if (o.pwin != null) metaBits.push(pwinPct + '%');
-          if (days != null)   metaBits.push(days + 'd');
           h += '<div class="cop-kanban-card-meta">' + metaBits.join(' · ') + '</div>';
-          if (aged) h += '<div class="cop-kanban-card-aged-badge">aged</div>';
+          // P13.136 Day 5 — days-in-stage with explicit age limit so the
+          // "30d" number reads as "30d / Limit 14" instead of operator
+          // having to remember each stage's threshold. Aged opps get a
+          // red label; on-track opps stay dim.
+          if (days != null) {
+            var daysCol = aged ? '#ef4444' : 'var(--t3)';
+            var limitStr = (ageLimit != null) ? ' / Limit ' + ageLimit : '';
+            h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.06em;color:' + daysCol + ';margin-top:4px;font-weight:' + (aged ? '700' : '500') + '">' + days + 'd in stage' + limitStr + '</div>';
+          }
           h += '</div>';
         });
       }
