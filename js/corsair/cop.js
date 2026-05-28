@@ -288,21 +288,72 @@ window.renderCopSection = function() {
     var rollups = d.stageRollups   || {};
 
     h += '<div style="margin-top:24px">';
-    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--rule)">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--rule);flex-wrap:wrap;gap:10px">';
     h += '<div style="display:flex;align-items:center;gap:12px">';
     h += '<span style="width:5px;height:22px;background:var(--gold);border-radius:1px"></span>';
     h += '<div><div style="font-family:\'Antonio\',\'Outfit\',sans-serif;font-size:var(--text-lg);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--text)">Pipeline Board</div>';
     h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-xs);letter-spacing:0.12em;color:var(--t3);text-transform:uppercase;margin-top:2px">' + d.activeOppsCount + ' active pursuits across ' + stages.filter(function(s){return s.key!=='won'&&s.key!=='lost';}).length + ' stages</div></div>';
     h += '</div>';
-    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:var(--text-xs);letter-spacing:0.1em;color:var(--t3);text-transform:uppercase">click card → dossier</div>';
+    // P13.141 — Kanban filter chips (audit High #9 / Visual Flow). Operator
+    // used to hunt across 8 columns to find aged or ready-to-advance deals;
+    // now one click filters all columns simultaneously. State persists on
+    // window so the filter survives renders. Filtered counts/rollups are
+    // computed from the post-filter card set so the header math stays
+    // honest. Click the active chip again to clear → All.
+    var _filterMode = window._copKanbanFilter || 'all';
+    function _chip(mode, label) {
+      var active = _filterMode === mode;
+      var bg = active ? 'rgba(212,130,58,.18)' : 'transparent';
+      var bd = active ? 'var(--gold)' : 'var(--b2)';
+      var fg = active ? 'var(--gold)' : 'var(--t2)';
+      return '<button onclick="window._copSetKanbanFilter&amp;&amp;window._copSetKanbanFilter(\'' + mode + '\')" style="padding:5px 10px;border:1px solid ' + bd + ';border-radius:2px;background:' + bg + ';color:' + fg + ';font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">' + label + '</button>';
+    }
+    h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+         _chip('all', 'All') +
+         _chip('ready', 'Ready') +
+         _chip('aged', 'Aged') +
+         _chip('sparse', 'Sparse data') +
+         '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;margin-left:10px">click card → dossier</span>' +
+         '</div>';
     h += '</div>';
+
+    // Filter predicate matching the active chip. Aged uses
+    // pipelineMod.isStageStuck; Ready uses pipelineMod.validateAdvance
+    // against the next stage; Sparse uses scoreConfidence.
+    function _matchesFilter(o) {
+      if (_filterMode === 'all') return true;
+      if (_filterMode === 'aged') {
+        return typeof pipelineMod.isStageStuck === 'function' && pipelineMod.isStageStuck(o);
+      }
+      if (_filterMode === 'sparse') {
+        return o && o.scoreConfidence === 'sparse';
+      }
+      if (_filterMode === 'ready' && typeof pipelineMod.validateAdvance === 'function' && typeof pipelineMod.index === 'function') {
+        var stagesArr = pipelineMod.stages || [];
+        var curIdx = pipelineMod.index(o.stage);
+        if (curIdx < 0 || curIdx >= stagesArr.length - 1) return false;
+        var nextS = stagesArr[curIdx + 1];
+        if (!nextS || nextS.key === 'won' || nextS.key === 'lost') return false;
+        var v = pipelineMod.validateAdvance(o, o.stage, nextS.key);
+        return !!(v && v.ok);
+      }
+      return true;
+    }
 
     h += '<div class="cop-kanban">';
     stages.forEach(function(s) {
       // Skip terminal stages in the active board (won + lost are end states)
       if (s.key === 'won' || s.key === 'lost') return;
-      var roll = rollups[s.key] || { count: 0, value: 0, weighted: 0 };
-      var cards = byStage[s.key] || [];
+      var rawCards = byStage[s.key] || [];
+      var cards = rawCards.filter(_matchesFilter);
+      // Recompute count + rollup off the FILTERED cards so the column
+      // header math doesn't lie when a filter is active.
+      var roll = { count: cards.length, value: 0, weighted: 0 };
+      for (var ci = 0; ci < cards.length; ci++) {
+        var cc = cards[ci];
+        roll.value += Number(cc.value || 0);
+        roll.weighted += Number(cc.value || 0) * Number(cc.pwin || 0);
+      }
 
       h += '<div class="cop-kanban-col">';
       h += '<div class="cop-kanban-col-head">';
@@ -496,4 +547,23 @@ window.Corsair = window.Corsair || {};
 window.Corsair.cop = {
   build:  window._buildCopData,
   render: window.renderCopSection
+};
+
+// P13.141 — Kanban filter toggle. Click sets the mode (or clears if
+// the same mode is already active), then triggers a re-render. Uses
+// the existing renderBoard() entry point so the whole Brief surface
+// stays in sync. Survives a single click → state set → re-render.
+window._copSetKanbanFilter = function(mode) {
+  if (!mode) return;
+  if (window._copKanbanFilter === mode) {
+    window._copKanbanFilter = 'all';
+  } else {
+    window._copKanbanFilter = mode;
+  }
+  // Trigger the surfaces that paint the COP. renderBoard re-emits the
+  // whole intel board including the cop section; fallbacks handle direct
+  // COP view paint too.
+  try { if (typeof window.renderBoard === 'function') window.renderBoard(); } catch(e){}
+  try { if (typeof window._renderCopBoard === 'function') window._renderCopBoard(); } catch(e){}
+  try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); } catch(e){}
 };
