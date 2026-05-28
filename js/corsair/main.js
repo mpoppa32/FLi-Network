@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.93';
-  window.Corsair.buildBlurb  = 'Atlas Day 6: OSINT-on-Today panel. Scans _dailyFeedData for signals whose headline/detail/tags mention any active opp agency/customer-org/name/vehicle. Shows top 3 matches with severity color, source link, and the matched terms. Surfaces the 16-source OSINT moat at the morning surface where buying-signal context drives the daily queue. Renders only when matches exist.';
+  window.Corsair.buildTag    = 'P13.94';
+  window.Corsair.buildBlurb  = 'Accounts grid: SET STATUS / UNOWNED / NO POC SET placeholders are now click-to-fill via invisible overlay pickers — one click, save, re-render, no drawer round-trip.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
