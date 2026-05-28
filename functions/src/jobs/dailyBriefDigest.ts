@@ -222,7 +222,13 @@ export async function sendOne(
   apiKey: string,
   log: any
 ): Promise<boolean> {
-  const sgMail = await import("@sendgrid/mail").then((m) => m.default || m).catch(() => null);
+  // P13.125 — @sendgrid/mail is optional (not installed by default; opt-in
+  // when an operator wires daily-brief email via SendGrid). Dynamic import
+  // + null fallback handles missing-at-runtime; the @ts-ignore handles
+  // missing-at-compile so the deploy builds cleanly without forcing the
+  // operator-setup-tax of installing the package up front.
+  // @ts-ignore — package not installed by default; runtime fallback handles absence
+  const sgMail = await import("@sendgrid/mail").then((m: any) => m.default || m).catch(() => null);
   if (!sgMail) {
     log.error("sendgrid_module_missing", { hint: "Run: cd functions && npm install @sendgrid/mail" });
     return false;
@@ -295,7 +301,10 @@ export const dailyBriefDigest = onSchedule(
       const subKeys = Object.keys(subs);
       if (!subKeys.length) continue;
 
-      const wsLog = log.child({ workspace: wsId, wsName });
+      // P13.125 — cast: wsName is a useful debug breadcrumb but isn't on
+      // the strict LoggerContext type. Wider logger typing fix is a
+      // follow-on; this unblocks the deploy.
+      const wsLog = log.child({ workspace: wsId, wsName } as any);
 
       for (const uid of subKeys) {
         const sub = subs[uid] as BriefSubscription;
