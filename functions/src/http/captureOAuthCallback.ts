@@ -65,8 +65,15 @@ export const captureOAuthCallback = onRequest(
       // messages from the sync account were mis-tagged as inbound and
       // the Nudge Engine surfaced false "they're waiting on you" alerts
       // for messages the operator had just sent.
-      let connectedEmail = "";
-      let connectedName = "";
+      // P13.151 — seed from existing record so a userinfo failure on
+      // re-grant doesn't wipe a previously-good connectedEmail.
+      const existingSnap = await db.ref(`users/${uid}/captureAuth/google`).get();
+      const existing = (existingSnap.val() ?? {}) as {
+        connectedEmail?: string;
+        connectedName?: string;
+      };
+      let connectedEmail = String(existing.connectedEmail || "");
+      let connectedName = String(existing.connectedName || "");
       try {
         const userinfoResp = await fetch(
           "https://www.googleapis.com/oauth2/v2/userinfo",
@@ -74,8 +81,10 @@ export const captureOAuthCallback = onRequest(
         );
         if (userinfoResp.ok) {
           const ui = (await userinfoResp.json()) as { email?: string; name?: string };
-          connectedEmail = String(ui.email || "").toLowerCase().trim();
-          connectedName = String(ui.name || "").trim();
+          const newEmail = String(ui.email || "").toLowerCase().trim();
+          const newName = String(ui.name || "").trim();
+          if (newEmail) connectedEmail = newEmail;
+          if (newName) connectedName = newName;
         } else {
           log.warn("userinfo_fetch_non_ok", { uid, status: userinfoResp.status });
         }
