@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.96';
-  window.Corsair.buildBlurb  = 'ATLAS promoted to top nav (between TODAY and ACCOUNTS) + visible transcript-file drop zone above Log notes (Otter.ai/Zoom/Teams .txt/.srt/.vtt). MORE menu cleaned up to avoid duplication.';
+  window.Corsair.buildTag    = 'P13.97';
+  window.Corsair.buildBlurb  = 'PowerPoint export (.pptx capture briefing) — pptxgenjs lazy-loaded from CDN, generates a real defense-BD deck with cover, pipeline snapshot, top 5 pursuit detail slides, watch summary, OSINT matches, latest ATLAS update, and close slide. Brand: dark ink + amber accents, 16:9. Triggered via new 📊 PowerPoint Briefing in MORE menu DATA & HELP.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

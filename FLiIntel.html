@@ -8542,7 +8542,7 @@ input[type="url"], textarea, select {
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.96</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.97</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8668,6 +8668,7 @@ input[type="url"], textarea, select {
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();openModal('import-data-modal');setTimeout(function(){if(window._impSetType)window._impSetType('person')},60)"><span style="color:var(--gold);width:18px;display:inline-block">⬆</span><span>Import Data</span><span class="tm-meta">CSV / paste bulk-add</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('json')"><span style="color:#22c55e;width:18px;display:inline-block">⬇</span><span>Backup JSON</span><span class="tm-meta">full workspace, lossless</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window.exportWorkspace&&window.exportWorkspace('csv')"><span style="color:#5b8fc4;width:18px;display:inline-block">⬇</span><span>Export CSVs</span><span class="tm-meta">4 files · meetings/contacts/opps/commits</span></button>
+          <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._exportPipelinePPT&&window._exportPipelinePPT()"><span style="color:#d4823a;width:18px;display:inline-block">📊</span><span>PowerPoint Briefing</span><span class="tm-meta">.pptx · cover · pipeline · top pursuits · watch · OSINT</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._exportWorkspacePDF&&window._exportWorkspacePDF()"><span style="color:#a78bfa;width:18px;display:inline-block">📄</span><span>Print / PDF Report</span><span class="tm-meta">board-deck snapshot in new tab</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._showMissionBriefing&&window._showMissionBriefing()"><span style="color:var(--gold);width:18px;display:inline-block">⬡</span><span>Mission Briefing</span><span class="tm-meta">4-slide platform overview</span></button>
           <button class="tools-menu-item" onclick="window._toggleToolsMenu&&window._toggleToolsMenu();window._tourStart&&window._tourStart()"><span style="color:#a78bfa;width:18px;display:inline-block">★</span><span>Replay welcome tour</span><span class="tm-meta">5-slide intro modal</span></button>
@@ -49302,6 +49303,247 @@ window.exportWorkspace = async function(format) {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// P13.97 — Workspace PowerPoint export (.pptx capture briefing)
+// Generates a real .pptx deck via pptxgenjs (CDN-loaded). Defense BD
+// culture runs on briefings — having Corsair BE the deck source rather
+// than its input is sticky. Pulls live data: pipeline totals, top
+// pursuits by deal score, watch summary, recent OSINT matches. Brand:
+// dark ink + amber accents, 16:9, professional but tactical look.
+// ═══════════════════════════════════════════════════════════════
+window._loadPptxGenJS = function(){
+  return new Promise(function(resolve, reject){
+    if (window.PptxGenJS) return resolve(window.PptxGenJS);
+    var script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+    script.onload = function(){ resolve(window.PptxGenJS); };
+    script.onerror = function(){ reject(new Error('Failed to load pptxgenjs from CDN')); };
+    document.head.appendChild(script);
+  });
+};
+window._exportPipelinePPT = async function(){
+  if (typeof toast === 'function') toast('Loading PowerPoint engine...');
+  try {
+    var PptxGenJS = await window._loadPptxGenJS();
+    var ws = (window.currentWs || {});
+    var wsName = ws.name || 'Workspace';
+    var when = new Date();
+    var dateStr = when.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    var fileStub = String(wsName).replace(/[^A-Za-z0-9]/g, '_') + '_BD_Briefing_' + when.toISOString().slice(0, 10);
+    // ── Data aggregation ──
+    var allOpps = window.opportunities || [];
+    var openOpps = allOpps.filter(function(o){
+      var s = String(o && o.stage || '').toLowerCase();
+      return s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
+    });
+    var wonOpps = allOpps.filter(function(o){return String(o && o.stage || '').toLowerCase() === 'won';});
+    var totalPipe = 0, weightedPipe = 0, scoredCount = 0;
+    openOpps.forEach(function(o){
+      var v = Number(o.value || 0);
+      var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+      if (p > 1) p = p / 100;
+      totalPipe += v;
+      weightedPipe += v * p;
+      if (v > 0 || p > 0) scoredCount++;
+    });
+    function fmt$(v){ if (!v) return '$0'; if (v >= 1e9) return '$' + (v/1e9).toFixed(2) + 'B'; if (v >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M'; if (v >= 1e3) return '$' + Math.round(v/1e3) + 'K'; return '$' + Math.round(v); }
+    // Top 5 by deal score
+    var topOpps = openOpps.map(function(o){
+      var score = (typeof window._dealScore === 'function') ? window._dealScore(o) : 0;
+      return { o: o, score: score };
+    }).sort(function(a, b){ return b.score - a.score; }).slice(0, 5).map(function(r){ return r.o; });
+    // Watch items
+    var rhythm = (typeof _corsairBuildRhythm === 'function') ? _corsairBuildRhythm() : { items: [] };
+    var critItems = (rhythm.items || []).filter(function(i){ return i.sev === 'critical'; }).slice(0, 6);
+    var warnItems = (rhythm.items || []).filter(function(i){ return i.sev === 'warn'; }).slice(0, 6);
+    // Active ATLAS update for "what's happening on our side"
+    var atlasUpdates = [];
+    try {
+      var wsId = window.currentWsId || 'default';
+      atlasUpdates = JSON.parse(localStorage.getItem('corsair-atlas-updates-' + wsId) || '[]');
+    } catch(e){}
+    var latestAtlas = atlasUpdates[0] || null;
+    // OSINT matches
+    var matchedSignals = [];
+    if (Array.isArray(window._dailyFeedData)) {
+      var termSet = new Set();
+      openOpps.forEach(function(o){
+        [o.agency, o.customerOrg, o.name, o.vehicle].forEach(function(t){
+          if (t && String(t).length > 2 && String(t).toLowerCase() !== 'agency unknown') termSet.add(String(t).toLowerCase().trim());
+        });
+      });
+      window._dailyFeedData.forEach(function(s){
+        if (!s) return;
+        var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
+        var hits = 0;
+        termSet.forEach(function(t){ if (t && t.length > 2 && blob.indexOf(t) >= 0) hits++; });
+        if (hits > 0) matchedSignals.push({ s: s, hits: hits });
+      });
+      matchedSignals.sort(function(a, b){ return b.hits - a.hits; });
+      matchedSignals = matchedSignals.slice(0, 5);
+    }
+    // ── Build deck ──
+    var pres = new PptxGenJS();
+    pres.layout = 'LAYOUT_WIDE';
+    pres.title = wsName + ' BD Briefing — ' + dateStr;
+    pres.author = (window.currentUser && window.currentUser.displayName) || 'Corsair';
+    pres.company = wsName;
+    // Brand colors
+    var INK = '070D18', INK2 = '0A1020', AMBER = 'D4823A', BONE = 'F4EDE0', PAPER = 'B5AD9F', GREEN = '22C55E', RED = 'EF4444', AMBER_DIM = '8B5A28';
+    // === SLIDE 1 — Cover ===
+    var s1 = pres.addSlide();
+    s1.background = { color: INK };
+    s1.addShape(pres.ShapeType.rect, { x: 0, y: 6.6, w: 13.333, h: 0.05, fill: { color: AMBER } });
+    s1.addText('CORSAIR', { x: 0.5, y: 0.4, w: 4, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 11, color: AMBER, bold: true, charSpacing: 5 });
+    s1.addText(wsName, { x: 0.5, y: 1.2, w: 12, h: 1.6, fontFace: 'Anton', fontSize: 60, color: BONE, bold: true });
+    s1.addText('BD Capture Briefing', { x: 0.5, y: 3.0, w: 12, h: 0.6, fontFace: 'IBM Plex Sans', fontSize: 24, color: PAPER });
+    s1.addText(dateStr, { x: 0.5, y: 6.9, w: 6, h: 0.4, fontFace: 'IBM Plex Mono', fontSize: 12, color: PAPER, charSpacing: 3 });
+    s1.addText((window.currentUser && window.currentUser.displayName) || '', { x: 7, y: 6.9, w: 5.8, h: 0.4, fontFace: 'IBM Plex Mono', fontSize: 12, color: PAPER, align: 'right', charSpacing: 3 });
+    // === SLIDE 2 — Pipeline snapshot ===
+    var s2 = pres.addSlide();
+    s2.background = { color: INK };
+    s2.addText('Pipeline Snapshot', { x: 0.5, y: 0.3, w: 8, h: 0.6, fontFace: 'Anton', fontSize: 32, color: BONE });
+    s2.addText(dateStr.toUpperCase(), { x: 9.5, y: 0.5, w: 3.5, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: PAPER, align: 'right', charSpacing: 3 });
+    s2.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.0, w: 12.3, h: 0.03, fill: { color: AMBER } });
+    // 4 metric tiles
+    var tiles = [
+      { lbl: 'ACTIVE PURSUITS', val: String(openOpps.length), sub: scoredCount + ' scored · ' + (openOpps.length - scoredCount) + ' need setup' },
+      { lbl: 'TOTAL PIPELINE',  val: fmt$(totalPipe),         sub: 'sum of values' },
+      { lbl: 'WEIGHTED ($ × pWin)', val: fmt$(weightedPipe),  sub: 'forecast at probability' },
+      { lbl: 'WON YTD',         val: String(wonOpps.length),  sub: fmt$(wonOpps.reduce(function(s,o){return s + Number(o.value||0);}, 0)) }
+    ];
+    tiles.forEach(function(t, i){
+      var x = 0.5 + i * 3.1;
+      s2.addShape(pres.ShapeType.rect, { x: x, y: 1.3, w: 2.9, h: 1.7, fill: { color: INK2 }, line: { color: AMBER_DIM, width: 0.5 } });
+      s2.addText(t.lbl, { x: x + 0.1, y: 1.4, w: 2.7, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, bold: true, charSpacing: 4 });
+      s2.addText(t.val, { x: x + 0.1, y: 1.75, w: 2.7, h: 0.9, fontFace: 'Anton', fontSize: 36, color: AMBER, bold: true });
+      s2.addText(t.sub, { x: x + 0.1, y: 2.6, w: 2.7, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 8, color: PAPER });
+    });
+    // Stage breakdown
+    var stages = {};
+    openOpps.forEach(function(o){
+      var s = (window.oppStageConfig && window.oppStageConfig(o.stage) || { label: o.stage }).label;
+      stages[s] = (stages[s] || 0) + 1;
+    });
+    var stageRows = Object.entries(stages).sort(function(a, b){ return b[1] - a[1]; }).slice(0, 10);
+    s2.addText('Stage breakdown', { x: 0.5, y: 3.4, w: 6, h: 0.4, fontFace: 'IBM Plex Mono', fontSize: 11, color: AMBER, bold: true, charSpacing: 3 });
+    var stageRowsHtml = stageRows.map(function(r){ return [{ text: r[0], options: { color: BONE, fontFace: 'IBM Plex Sans', fontSize: 14 } }, { text: String(r[1]), options: { color: AMBER, fontFace: 'IBM Plex Mono', fontSize: 14, bold: true, align: 'right' } }]; });
+    if (stageRowsHtml.length) {
+      s2.addTable(stageRowsHtml, { x: 0.5, y: 3.9, w: 6, colW: [4.5, 1.5], border: { type: 'solid', color: '1A2236', pt: 0.5 }, rowH: 0.35 });
+    }
+    s2.addText('Workspace · ' + wsName, { x: 0.5, y: 6.9, w: 12.3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, charSpacing: 3 });
+    // === SLIDES 3-N — Top pursuits ===
+    topOpps.forEach(function(o, idx){
+      var slide = pres.addSlide();
+      slide.background = { color: INK };
+      slide.addText('PURSUIT ' + (idx + 1) + ' OF ' + topOpps.length, { x: 0.5, y: 0.3, w: 5, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: AMBER, bold: true, charSpacing: 4 });
+      slide.addText(o.name || '(unnamed)', { x: 0.5, y: 0.7, w: 12.3, h: 1.0, fontFace: 'Anton', fontSize: 36, color: BONE });
+      var stageLbl = (window.oppStageConfig && window.oppStageConfig(o.stage) || { label: o.stage }).label;
+      var pwPct = Math.round((Number(o.pwin || 0) > 1 ? Number(o.pwin) : Number(o.pwin || 0) * 100));
+      var score = (typeof window._dealScore === 'function') ? window._dealScore(o) : 0;
+      // Header chips
+      slide.addText([
+        { text: stageLbl.toUpperCase(),  options: { color: AMBER, fontFace: 'IBM Plex Mono', fontSize: 10, bold: true, charSpacing: 3 } },
+        { text: '   ·   ',               options: { color: PAPER, fontSize: 10 } },
+        { text: (o.agency || 'AGENCY UNKNOWN').toUpperCase(), options: { color: PAPER, fontFace: 'IBM Plex Mono', fontSize: 10, charSpacing: 3 } }
+      ], { x: 0.5, y: 1.8, w: 12.3, h: 0.4 });
+      // Big metric tiles
+      var oppTiles = [
+        { lbl: 'VALUE',  val: o.value ? fmt$(Number(o.value)) : '—' },
+        { lbl: 'PWIN',   val: pwPct ? (pwPct + '%') : '—' },
+        { lbl: 'SCORE',  val: String(score) + '/100' },
+        { lbl: 'STAGE',  val: stageLbl }
+      ];
+      oppTiles.forEach(function(t, ti){
+        var x = 0.5 + ti * 3.1;
+        slide.addShape(pres.ShapeType.rect, { x: x, y: 2.5, w: 2.9, h: 1.2, fill: { color: INK2 }, line: { color: AMBER_DIM, width: 0.5 } });
+        slide.addText(t.lbl, { x: x + 0.1, y: 2.6, w: 2.7, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, bold: true, charSpacing: 4 });
+        slide.addText(t.val, { x: x + 0.1, y: 2.9, w: 2.7, h: 0.7, fontFace: 'Anton', fontSize: 22, color: AMBER });
+      });
+      // Capture lead + next action
+      slide.addText('Capture lead:', { x: 0.5, y: 4.0, w: 3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: PAPER, charSpacing: 3 });
+      slide.addText(o.captureLead || o.lead || '— Unassigned —', { x: 0.5, y: 4.3, w: 6, h: 0.4, fontFace: 'IBM Plex Sans', fontSize: 16, color: BONE, bold: true });
+      slide.addText('Next action:', { x: 7, y: 4.0, w: 3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: PAPER, charSpacing: 3 });
+      var nextActionTxt = o.nextAction || (typeof window.Corsair === 'object' && window.Corsair.pipeline && window.Corsair.pipeline.nextAction && window.Corsair.pipeline.nextAction(o.stage)) || '— Set next action —';
+      slide.addText(nextActionTxt, { x: 7, y: 4.3, w: 5.8, h: 0.8, fontFace: 'IBM Plex Sans', fontSize: 13, color: BONE });
+      // Notes
+      if (o.notes) {
+        slide.addText('Notes:', { x: 0.5, y: 5.4, w: 3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: PAPER, charSpacing: 3 });
+        slide.addText(String(o.notes).slice(0, 600), { x: 0.5, y: 5.7, w: 12.3, h: 1.3, fontFace: 'IBM Plex Sans', fontSize: 11, color: PAPER });
+      }
+      slide.addText(wsName + ' · ' + dateStr, { x: 0.5, y: 6.9, w: 12.3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, charSpacing: 3 });
+    });
+    // === SLIDE — Watch summary ===
+    if (critItems.length || warnItems.length) {
+      var sw = pres.addSlide();
+      sw.background = { color: INK };
+      sw.addText('Watch Summary', { x: 0.5, y: 0.3, w: 8, h: 0.6, fontFace: 'Anton', fontSize: 32, color: BONE });
+      sw.addText(critItems.length + ' critical · ' + warnItems.length + ' watch', { x: 9, y: 0.5, w: 4, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: PAPER, align: 'right', charSpacing: 3 });
+      sw.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.0, w: 12.3, h: 0.03, fill: { color: AMBER } });
+      var yPos = 1.3;
+      if (critItems.length) {
+        sw.addText('CRITICAL · act today', { x: 0.5, y: yPos, w: 12, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 11, color: RED, bold: true, charSpacing: 4 });
+        yPos += 0.4;
+        critItems.forEach(function(it){
+          sw.addShape(pres.ShapeType.rect, { x: 0.5, y: yPos, w: 0.05, h: 0.5, fill: { color: RED } });
+          sw.addText(it.kind + ' · ' + it.meta, { x: 0.7, y: yPos, w: 12, h: 0.25, fontFace: 'IBM Plex Mono', fontSize: 9, color: RED, charSpacing: 2 });
+          sw.addText(it.subject, { x: 0.7, y: yPos + 0.22, w: 12, h: 0.3, fontFace: 'IBM Plex Sans', fontSize: 13, color: BONE });
+          yPos += 0.6;
+        });
+      }
+      if (warnItems.length && yPos < 6.0) {
+        sw.addText('WATCH · resolve this week', { x: 0.5, y: yPos, w: 12, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 11, color: AMBER, bold: true, charSpacing: 4 });
+        yPos += 0.4;
+        warnItems.slice(0, Math.floor((6.5 - yPos) / 0.6)).forEach(function(it){
+          sw.addShape(pres.ShapeType.rect, { x: 0.5, y: yPos, w: 0.05, h: 0.5, fill: { color: AMBER } });
+          sw.addText(it.kind + ' · ' + it.meta, { x: 0.7, y: yPos, w: 12, h: 0.25, fontFace: 'IBM Plex Mono', fontSize: 9, color: AMBER, charSpacing: 2 });
+          sw.addText(it.subject, { x: 0.7, y: yPos + 0.22, w: 12, h: 0.3, fontFace: 'IBM Plex Sans', fontSize: 13, color: BONE });
+          yPos += 0.6;
+        });
+      }
+      sw.addText(wsName + ' · ' + dateStr, { x: 0.5, y: 6.9, w: 12.3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, charSpacing: 3 });
+    }
+    // === SLIDE — OSINT signals (if any) ===
+    if (matchedSignals.length) {
+      var so = pres.addSlide();
+      so.background = { color: INK };
+      so.addText('OSINT Signals Matching Pipeline', { x: 0.5, y: 0.3, w: 10, h: 0.6, fontFace: 'Anton', fontSize: 28, color: BONE });
+      so.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.0, w: 12.3, h: 0.03, fill: { color: AMBER } });
+      var yo = 1.3;
+      matchedSignals.forEach(function(row){
+        var s = row.s;
+        var col = s.severity === 'high' ? RED : s.severity === 'med' ? AMBER : '5FB3B8';
+        so.addShape(pres.ShapeType.rect, { x: 0.5, y: yo, w: 0.05, h: 0.7, fill: { color: col } });
+        so.addText((s.category || 'SIGNAL').toUpperCase() + ' · ' + (s.date || ''), { x: 0.7, y: yo, w: 12, h: 0.25, fontFace: 'IBM Plex Mono', fontSize: 9, color: col, charSpacing: 2 });
+        so.addText(String(s.headline || '').slice(0, 140), { x: 0.7, y: yo + 0.22, w: 12, h: 0.4, fontFace: 'IBM Plex Sans', fontSize: 12, color: BONE });
+        yo += 0.95;
+      });
+      so.addText(wsName + ' · ' + dateStr, { x: 0.5, y: 6.9, w: 12.3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 9, color: PAPER, charSpacing: 3 });
+    }
+    // === SLIDE — Latest internal update (ATLAS) ===
+    if (latestAtlas) {
+      var sa = pres.addSlide();
+      sa.background = { color: INK };
+      sa.addText('Latest From ' + wsName.toUpperCase(), { x: 0.5, y: 0.3, w: 10, h: 0.6, fontFace: 'Anton', fontSize: 28, color: BONE });
+      sa.addShape(pres.ShapeType.rect, { x: 0.5, y: 1.0, w: 12.3, h: 0.03, fill: { color: AMBER } });
+      if (latestAtlas.tag) sa.addText('TAG · ' + String(latestAtlas.tag).toUpperCase(), { x: 0.5, y: 1.3, w: 6, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: AMBER, bold: true, charSpacing: 3 });
+      sa.addText(String(latestAtlas.text), { x: 0.5, y: 1.8, w: 12.3, h: 4.5, fontFace: 'IBM Plex Sans', fontSize: 18, color: BONE });
+      sa.addText('— ' + (latestAtlas.author || 'Team') + ', ' + new Date(latestAtlas.ts).toLocaleDateString('en-US', { month:'short', day:'numeric' }), { x: 0.5, y: 6.5, w: 12, h: 0.4, fontFace: 'IBM Plex Mono', fontSize: 11, color: PAPER, charSpacing: 3 });
+    }
+    // === CLOSE SLIDE ===
+    var sf = pres.addSlide();
+    sf.background = { color: INK };
+    sf.addShape(pres.ShapeType.rect, { x: 0, y: 6.6, w: 13.333, h: 0.05, fill: { color: AMBER } });
+    sf.addText('Questions?', { x: 0.5, y: 2.5, w: 12, h: 1.5, fontFace: 'Anton', fontSize: 72, color: BONE });
+    sf.addText('Generated by Corsair · ' + dateStr, { x: 0.5, y: 6.9, w: 12.3, h: 0.3, fontFace: 'IBM Plex Mono', fontSize: 10, color: PAPER, align: 'center', charSpacing: 3 });
+    // === Write file ===
+    await pres.writeFile({ fileName: fileStub + '.pptx' });
+    if (typeof toast === 'function') toast('Deck downloaded — ' + fileStub + '.pptx');
+  } catch (err) {
+    console.error('[P13.97 export PPT] failed:', err);
+    if (typeof toast === 'function') toast('PowerPoint export failed: ' + (err.message || 'unknown'));
+  }
+};
+
 // P13.15 — Workspace PDF/print report
 // Generates a self-contained HTML document with the workspace snapshot
 // and opens it in a new tab. Operator hits Cmd-P / Ctrl-P to save as
@@ -60297,6 +60539,6 @@ document.addEventListener('fullscreenchange', function(){
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
-<script type="module" src="./js/corsair/main.js?v=P13.96"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.97"></script>
 </body>
 </html>
