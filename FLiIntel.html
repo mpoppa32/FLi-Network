@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.117</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.118</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -21237,7 +21237,7 @@ function renderOppDetail(opp){
       var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};
       h+='<div style="padding:6px 0;border-bottom:1px solid rgba(26,34,54,.3);cursor:pointer" onclick="switchView(\'intel\');goIntelById(\''+m.id+'\')">';
       h+='<div style="display:flex;justify-content:space-between;align-items:center">';
-      h+='<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">'+m.meta.title+'</div>';
+      h+='<div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">'+window._escHTML(m.meta.title)+'</div>';
       h+='<div style="display:flex;gap:4px;align-items:center">'+bdg(m.intel.companyPulse||'?',pc2)+'<span style="font-size:12px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace">'+m.meta.date.slice(5)+'</span></div></div>';
       if(m.intel.summary)h+='<div style="font-size:14px;color:var(--t2);margin-top:2px;font-style:italic">'+m.intel.summary.slice(0,100)+(m.intel.summary.length>100?'...':'')+'</div>';
       h+='</div>';
@@ -21484,7 +21484,7 @@ function updateOppSelectors(){
     var cur=sel.value;
     sel.innerHTML='<option value="">— None —</option>';
     opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';}).forEach(function(o){
-      sel.innerHTML+='<option value="'+o.id+'"'+(o.id===cur?' selected':'')+'>'+o.name+'</option>';
+      sel.innerHTML+='<option value="'+window._escHTML(o.id)+'"'+(o.id===cur?' selected':'')+'>'+window._escHTML(o.name)+'</option>';
     });
   });
 }
@@ -22012,7 +22012,7 @@ function _renderMemoryResults(query,answer,topMeetings,totalMatches){
       +'onmouseout="this.style.borderColor=\'var(--b1)\';this.style.background=\'var(--s1)\'">';
     h+='<div style="display:flex;align-items:center;gap:8px">';
     h+='<span style="font-size:12px;color:var(--t3);font-family:\'IBM Plex Mono\',monospace;flex-shrink:0;letter-spacing:.04em">'+m.meta.date+'</span>';
-    h+='<span style="font-size:14px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">'+m.meta.title+'</span>';
+    h+='<span style="font-size:14px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">'+window._escHTML(m.meta.title)+'</span>';
     if(m.intel.companyPulse){h+='<span style="font-size:11px;padding:1px 5px;border-radius:2px;background:'+sc.b+';color:'+sc.t+';font-family:\'IBM Plex Mono\',monospace;letter-spacing:.04em">'+m.intel.companyPulse+'</span>';}
     h+='<span style="font-size:14px;color:var(--purple);opacity:.5">&#10095;</span>';
     h+='</div>';
@@ -22058,7 +22058,7 @@ function renderSidebarMtgList(){
     var hr=(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).length;
     var typeShort=m.meta.type.length>12?m.meta.type.slice(0,11)+'…':m.meta.type;
     return '<div onclick="goIntelById(\''+m.id+'\')" style="padding:8px;border-radius:var(--rsm);cursor:pointer;margin-bottom:2px;background:'+(active?'rgba(255,255,255,.04)':'transparent')+';border-left:2px solid '+(active?tc.t:'transparent')+';transition:background .1s">'
-      +'<div style="font-size:12px;font-weight:'+(active?'600':'500')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">'+m.meta.title+'</div>'
+      +'<div style="font-size:12px;font-weight:'+(active?'600':'500')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">'+window._escHTML(m.meta.title)+'</div>'
       +'<div style="display:flex;align-items:center;justify-content:space-between;gap:4px">'
       +'<span style="font-size:13px;color:var(--t2)">'+m.meta.date+'</span>'
       +(hr?'<span style="font-size:12px;color:var(--red);font-weight:700;flex-shrink:0">⚠ '+hr+'</span>':'')
@@ -24319,7 +24319,7 @@ window.bulkDeleteArchive=async function(){
 function renderArchive(){var q=(document.getElementById('arch-q')?document.getElementById('arch-q').value:'').toLowerCase();var f=document.getElementById('arch-f')?document.getElementById('arch-f').value:'';var filtered=meetings.filter(function(m){if(f&&m.meta.type!==f)return false;if(q&&JSON.stringify(m).toLowerCase().indexOf(q)===-1)return false;return true;});var list=document.getElementById('arch-list'),empty=document.getElementById('arch-empty');if(!filtered.length){if(empty)empty.style.display='block';list.innerHTML='';return;}if(empty)empty.style.display='none';var bar=document.getElementById('arch-bulk-bar');if(bar&&!filtered.length)bar.style.display='none';var rows=filtered.map(function(m){var tc=TC[m.meta.type]||TC['Other'],pc=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};var ac=(m.intel.actionItems||[]).length,hr=(m.intel.risks||[]).filter(function(r){return r.severity==='high';}).length;return '<div class="mrow" style="border-left:3px solid '+tc.t+';padding-left:11px;align-items:flex-start;gap:10px;position:relative">'
       +'<input type="checkbox" class="arch-checkbox" data-id="'+m.id+'" onchange="window.toggleArchiveRow(this)" onclick="event.stopPropagation()" style="width:14px;height:14px;cursor:pointer;flex-shrink:0;margin-top:3px">'+'<div style="flex:1;min-width:0;cursor:pointer" onclick="goIntelById(\''+m.id+'\')">'
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">'+m.meta.title+'</div>'
+      +'<div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">'+window._escHTML(m.meta.title)+'</div>'
       +'<div style="font-size:14px;color:var(--t2)">'+m.meta.date+(m.meta.att?' · '+m.meta.att.split(',').slice(0,3).join(', '):'')+'</div>'
       +(m.intel&&m.intel.summary?'<div style="font-size:14px;color:var(--t3);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.intel.summary.slice(0,88)+'</div>':'')
       +'</div>'
@@ -25012,7 +25012,7 @@ function _dossierExportHTML(d){
       var p=(m.intel.keyPeople||[]).find(function(x){return nameSimilarity(x.name,d.name)>=0.72;});
       body+='<div style="padding:6px 0;border-bottom:1px solid #f1f5f9;display:flex;gap:8px">';
       body+='<span style="font-size:12px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;flex-shrink:0;min-width:70px">'+m.meta.date+'</span>';
-      body+='<div><div style="font-size:12px;font-weight:500">'+m.meta.title+'</div>';
+      body+='<div><div style="font-size:12px;font-weight:500">'+window._escHTML(m.meta.title)+'</div>';
       if(m.intel.summary)body+='<div style="font-size:14px;color:#64748b;margin-top:2px">'+m.intel.summary.slice(0,150)+'</div>';
       body+='</div></div>';
     });
@@ -25038,7 +25038,7 @@ function _dossierExportHTML(d){
     linkedOpps.forEach(function(o){
       var fy=o.awardDate?getFYInfo(o.awardDate):null;
       body+='<div class="card">';
-      body+='<div style="font-size:13px;font-weight:600">'+o.name+'</div>';
+      body+='<div style="font-size:13px;font-weight:600">'+window._escHTML(o.name)+'</div>';
       body+='<div style="font-size:14px;color:#64748b;margin-top:3px">Stage: '+o.stage+(o.agency?' · '+o.agency:'')+(fy?' · <span class="fy-badge" style="background:#fff7ed;color:#c2410c">'+fy.fullLabel+'</span>':'')+'</div>';
       body+='</div>';
     });
@@ -25218,7 +25218,7 @@ function _workspaceReportHTML(){
       var wpColor=wp.score>=65?'#16a34a':wp.score>=35?'#d97706':'#dc2626';
       body+='<div class="card">';
       body+='<div style="display:flex;justify-content:space-between;align-items:flex-start">';
-      body+='<div style="flex:1"><div style="font-size:13px;font-weight:700">'+o.name+'</div>';
+      body+='<div style="flex:1"><div style="font-size:13px;font-weight:700">'+window._escHTML(o.name)+'</div>';
       body+='<div style="font-size:14px;color:#64748b;margin-top:2px">'+o.stage.toUpperCase()+(o.agency?' · '+o.agency:'')+(fy?' · <span style="background:#fff7ed;color:#c2410c;padding:0 4px;border-radius:3px;font-family:\'IBM Plex Mono\',monospace;font-size:12px">'+fy.fullLabel+(fy.fq===4?' ⚡':'')+'</span>':'')+'</div>';
       if(o.rfpDate||o.awardDate)body+='<div style="font-size:13px;color:#94a3b8;margin-top:3px">'+(o.rfpDate?'RFP: '+o.rfpDate+' · ':'')+( o.awardDate?'Award: '+o.awardDate:'')+'</div>';
       body+='</div>';
@@ -27588,7 +27588,7 @@ function renderDossier(d){
   h+='<span class="ins-tag ins-tag--tier">T'+(d.priority||2)+'</span>';
   if(d.govOrg)h+='<span class="ins-tag ins-tag--gov">'+d.govOrg+'</span>';
   if(d.govType)h+=_govTypeBadge(d.govType);
-  linkedOpps.slice(0,2).forEach(function(o){h+='<span class="ins-tag ins-tag--opp">'+o.name+'</span>';});
+  linkedOpps.slice(0,2).forEach(function(o){h+='<span class="ins-tag ins-tag--opp">'+window._escHTML(o.name)+'</span>';});
   h+='</div></div>';
 
   // Health gauge
@@ -27696,7 +27696,7 @@ function renderDossier(d){
       var pi=(m.intel.keyPeople||[]).find(function(p){return p.name===d.name;});
       var pc2=PC[m.intel.companyPulse]||{b:'#1a1a1a',t:'#6b7280'};
       h+='<div class="ins-mtg-item" onclick="closeNetPanel();goIntelById(\''+m.id+'\')">';
-      h+='<div class="ins-mtg-hdr"><div class="ins-mtg-title">'+m.meta.title+'</div>';
+      h+='<div class="ins-mtg-hdr"><div class="ins-mtg-title">'+window._escHTML(m.meta.title)+'</div>';
       h+='<div style="display:flex;gap:5px;align-items:center"><span class="ins-mtg-pulse" style="background:'+pc2.b+';color:'+pc2.t+';border-color:'+pc2.t+'44">'+(m.intel.companyPulse||'?')+'</span>';
       h+='<span class="ins-mtg-date">'+m.meta.date.slice(5)+'</span></div></div>';
       if(pi&&pi.stance)h+='<div class="ins-mtg-stance">'+pi.stance.slice(0,100)+(pi.stance.length>100?'...':'')+'</div>';
@@ -27787,7 +27787,7 @@ function renderTimeline360(d){
     if(isLast&&sorted.length>1)h+='<span class="ins-tl-badge" style="background:'+healthColor(health)+'22;color:'+healthColor(health)+'">MOST RECENT</span>';
     if(stanceChanged)h+='<span class="ins-tl-badge" style="background:rgba(212,130,58,.12);color:var(--gold)">SHIFT</span>';
     h+='</div>';
-    h+='<div class="ins-tl-title" onclick="closeNetPanel();goIntelById(\''+m.id+'\')">'+m.meta.title+'</div>';
+    h+='<div class="ins-tl-title" onclick="closeNetPanel();goIntelById(\''+m.id+'\')">'+window._escHTML(m.meta.title)+'</div>';
     if(pi&&pi.stance){
       h+='<div class="ins-stance-text" style="color:var(--paper);margin-top:2px">'+pi.stance.slice(0,120)+(pi.stance.length>120?'...':'')+'</div>';
     }
@@ -62292,6 +62292,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.117"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.118"></script>
 </body>
 </html>
