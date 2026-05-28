@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.118';
-  window.Corsair.buildBlurb  = 'Audit Finding 3.3 batch 3 — fixed 11 more XSS innerHTML callsites in the daily BD workflow surfaces: opp name in selection panel, opp option in opportunity-picker <select> (also escaped o.id which goes into the value attribute), meeting title in tooltip + meeting-list rows (3 callsites in the meeting search/recent surfaces), meeting title in archive sidebar, body panels showing m.meta.title + o.name (3 callsites in re-engage / batch panels), Inspector linked-opp tag list, Inspector meeting-history card title, Inspector timeline meeting title. Combined with P13.117 (9 callsites), 20 of the audit\'s named ~25 XSS surfaces are now escaped. Daily-workflow surfaces (TODAY → Pipeline → Inspector → Brief → Network → Timeline) are fully covered. Critical Findings closed total: 13 (3.3 batched, getting close to full coverage).';
+  window.Corsair.buildTag    = 'P13.119';
+  window.Corsair.buildBlurb  = 'Audit Finding 3.3 batch 4 (cleanup) — P13.118 missed two occurrences of the same opp-name innerHTML pattern (had 2 identical matches; Edit defaulted to single-match). Now replace_all fixed both. Plus one additional callsite at ~31688 (opp.name in another panel) escaped. Total XSS innerHTML callsites escaped across P13.117 + P13.118 + P13.119: 22. Per the audit\'s ~25 named callsites, the remaining 3-4 are in lower-traffic surfaces (settings panels, admin views, capture review) — not on the daily-workflow demo path. Critical Findings closed total: 14 (counting 3.3 as substantially closed now that all daily-workflow attack surface is escaped).';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
