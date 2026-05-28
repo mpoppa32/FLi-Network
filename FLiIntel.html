@@ -8809,7 +8809,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.109</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.110</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12444,6 +12444,31 @@ async function saveTLCommitment(item){await fbSet(wsPath('tl_commitments/'+item.
 async function deleteTLCommitmentDB(id){setSS('saving');try{await remove(ref(db,wsPath('tl_commitments/'+id)));setSS('live');}catch(e){setSS('error');}  }
 async function saveOpp(opp){
   if(window._canWrite&&!window._canWrite()){toast('Observers cannot edit opportunities');return;}
+  if (!opp || !opp.id) {
+    console.error('[P13.110 saveOpp] called with invalid opp', opp);
+    return;
+  }
+  // P13.110 (audit Findings 1.4 + 7.1) — snapshot every field on the opp
+  // object BEFORE mutations so we can roll back on Firebase write failure.
+  // Without rollback, when fbSet throws (offline, permission denied,
+  // quota), the local opp object already has new stage / stageHistory /
+  // score / tier / scoreConfidence / scoreFactors but the server still has
+  // the old version. UI shows success, data is wrong, the Firebase
+  // listener eventually overwrites local with server → jarring rollback.
+  // Worst class of bug: silent partial corruption. Reevo wraps every
+  // write in a transaction; we now match that contract.
+  //
+  // Shallow copy of all top-level keys + tracking of which keys existed,
+  // with slice() for the two mutable arrays we touch. On failure: delete
+  // any keys we added that weren't there originally, restore original
+  // values for keys that were. Toast the operator with a specific reason
+  // (permission / offline / unknown) and rethrow so callers (bulk score,
+  // inline edits) can react.
+  var _origKeys = Object.keys(opp);
+  var _orig = {};
+  _origKeys.forEach(function(k){ _orig[k] = opp[k]; });
+  if (Array.isArray(_orig.stageHistory)) _orig.stageHistory = _orig.stageHistory.slice();
+  if (Array.isArray(_orig.scoreFactors)) _orig.scoreFactors = _orig.scoreFactors.slice();
   // Phase 6.1 — auto-maintain stageEnteredAt + stageHistory on stage transitions.
   // Single interception point: every stage change goes through here, so every
   // call site (Inspector dropdown, Monday sync, edit form, COP drag) gets the
@@ -12494,7 +12519,33 @@ async function saveOpp(opp){
     delete opp.score; delete opp.tier; delete opp.scoreConfidence;
     delete opp.scoreFactors; delete opp.scoreComputedAt;
   }
-  await fbSet(wsPath('opportunities/'+opp.id),opp);
+  try {
+    await fbSet(wsPath('opportunities/'+opp.id), opp);
+  } catch(saveErr) {
+    // P13.110 — rollback: restore opp to its pre-mutation state so local
+    // matches server. Delete added keys first, then restore originals.
+    try {
+      Object.keys(opp).forEach(function(k){
+        if (_origKeys.indexOf(k) === -1) delete opp[k];
+      });
+      _origKeys.forEach(function(k){ opp[k] = _orig[k]; });
+    } catch(rbErr){ console.error('[P13.110 rollback restore]', rbErr); }
+    // Surface a specific reason to the operator instead of a silent failure.
+    if (typeof toast === 'function') {
+      var em = String((saveErr && saveErr.message) || saveErr || '');
+      var code = saveErr && saveErr.code;
+      var msg;
+      if (code === 'PERMISSION_DENIED' || /permission/i.test(em)) msg = 'Save failed — permission denied. Check workspace role.';
+      else if (/network|offline|unavailable|fetch/i.test(em)) msg = 'Save failed — offline or network error. Try again when connected.';
+      else if (/quota|limit/i.test(em)) msg = 'Save failed — Firebase quota exceeded.';
+      else msg = 'Save failed: ' + em.slice(0, 80);
+      toast(msg);
+    }
+    console.error('[P13.110 saveOpp rollback]', opp && opp.id, saveErr);
+    // Rethrow so callers (bulk-score Promise.all, inline-edit handlers)
+    // can react and count this as a failure instead of a success.
+    throw saveErr;
+  }
 }
 
 // P13.102 — one-shot auto-score across all open opps. Idempotent. Used by
@@ -62157,6 +62208,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.109"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.110"></script>
 </body>
 </html>
