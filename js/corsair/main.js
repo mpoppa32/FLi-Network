@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.111';
-  window.Corsair.buildBlurb  = 'Audit Finding 1.7 — saveOpp closed-pursuit branch used strict opp.stage === "won"/"lost". An import from Monday/CSV with capital W ("Won"), all caps ("WON"), or trailing whitespace ("won ") bypassed the clear, leaving closed deals with an active rank polluting the score-sorted Pipeline. Same problem in _computeOppScore (toLowerCase but no trim) and _bulkAutoScorePipeline filter. All three callsites now normalize via String(stage||"").toLowerCase().trim() before comparing. Small fix, high paranoia value — defense BD imports from Excel pipelines do drop trailing spaces on stage labels routinely. Adversarial audit Day 2 — sixth critical pure-code fix shipped.';
+  window.Corsair.buildTag    = 'P13.112';
+  window.Corsair.buildBlurb  = 'Audit Finding 6.1 — FLiIntel.js (20,510 lines of dead code, never referenced by any <script src> in the live HTML) moved to _archived/FLiIntel.legacy.js with a README documenting that nothing here is loaded and operators should not copy patterns back without re-verifying. Was a parallel implementation from a prior architecture phase: duplicate wsPath, duplicate Firebase imports, duplicate save functions, plus a meeting→opp link block at the dead-file line 5818 that the live saveMeeting was actually missing until P13.107 brought equivalent logic into the inline tree. A future engineer finding the file via the tree would have assumed it was active, edited it, and shipped a no-op fix. Now the trap is closed. Critical Findings closed total: 9 (across 7 tags, P13.106-P13.112).';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {
