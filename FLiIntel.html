@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.129</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.130</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12415,10 +12415,10 @@ function initAttendeeAutocomplete(inputId){
       var ini=e.name.split(' ').map(function(x){return x[0];}).join('').slice(0,2).toUpperCase();
       var sub=(e.role?e.role:e.type)+(e.org?' @ '+e.org:'');
       var dot=e.type==='company'?'◈':'◉';
-      return '<div class="att-suggest-item" data-name="'+e.name+'">'
+      return '<div class="att-suggest-item" data-name="'+window._escHTML(e.name)+'">'
         +'<div class="att-suggest-avatar">'+dot+'</div>'
-        +'<div><div style="font-size:13px;font-weight:500">'+e.name+'</div>'
-        +(sub?'<div style="font-size:13px;color:var(--t2)">'+sub+'</div>':'')
+        +'<div><div style="font-size:13px;font-weight:500">'+window._escHTML(e.name)+'</div>'
+        +(sub?'<div style="font-size:13px;color:var(--t2)">'+window._escHTML(sub)+'</div>':'')
         +'</div></div>';
     }).join('');
     box.style.display='block';
@@ -26783,11 +26783,10 @@ async function showMembers(){
         return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.15);border-radius:var(--rsm);margin-bottom:5px">'
           +'<span style="font-size:14px;flex-shrink:0">✉</span>'
           +'<div style="flex:1;min-width:0">'
-          +'<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+inv.email+'</div>'
-          +'<div style="font-size:13px;color:var(--t3)">'+(inv.role||'Member')+(sentDate?' · Invited '+sentDate:'')+(inv.invitedBy?' · by '+inv.invitedBy:'')+'</div>'
+          +'<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+window._escHTML(inv.email)+'</div>'
+          +'<div style="font-size:13px;color:var(--t3)">'+window._escHTML(inv.role||'Member')+(sentDate?' · Invited '+sentDate:'')+(inv.invitedBy?' · by '+window._escHTML(inv.invitedBy):'')+'</div>'
           +'</div>'
-          +'<button data-email="'+inv.email+'" data-role="'+(inv.role||'Member')+'" data-wsname="'+currentWs.name+'" onclick="window._resendInvite(this)" '+  'style="padding:3px 8px;border:1px solid rgba(59,130,246,.3);border-radius:var(--rsm);background:transparent;color:var(--blue);font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;flex-shrink:0;margin-right:4px">Resend</button>'
-          +'style="padding:3px 8px;border:1px solid rgba(59,130,246,.3);border-radius:var(--rsm);background:transparent;color:var(--blue);font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;flex-shrink:0;margin-right:4px">Resend</button>'
+          +'<button data-email="'+window._escHTML(inv.email)+'" data-role="'+window._escHTML(inv.role||'Member')+'" data-wsname="'+window._escHTML(currentWs.name)+'" onclick="window._resendInvite(this)" style="padding:3px 8px;border:1px solid rgba(59,130,246,.3);border-radius:var(--rsm);background:transparent;color:var(--blue);font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;flex-shrink:0;margin-right:4px">Resend</button>'
           +'<button data-wsid="'+currentWsId+'" data-ekey="'+inv.email.replace(/\./ ,'_')+'" onclick="window._cancelInvite(this.dataset.wsid,this.dataset.ekey,this)" '
           +'style="padding:3px 8px;border:1px solid rgba(239,68,68,.3);border-radius:var(--rsm);background:transparent;color:var(--red);font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif;flex-shrink:0">Cancel</button>'
           +'</div>';
@@ -28578,9 +28577,9 @@ window.onPathSearch=function(){
   res.innerHTML=hits.map(function(n){
     var c=nc(n);
     return '<div class="att-suggest-item" onclick="runPathFinder(\''+n.id+'\')">'
-      +'<div class="att-suggest-avatar" style="color:'+c+';border-color:'+c+'22">'+n.name.slice(0,2).toUpperCase()+'</div>'
-      +'<div><div style="font-size:13px;font-weight:500">'+n.name+'</div>'
-      +'<div style="font-size:13px;color:var(--t2)">'+n.type+(n.role?' · '+n.role:'')+'</div></div></div>';
+      +'<div class="att-suggest-avatar" style="color:'+c+';border-color:'+c+'22">'+window._escHTML(n.name.slice(0,2).toUpperCase())+'</div>'
+      +'<div><div style="font-size:13px;font-weight:500">'+window._escHTML(n.name)+'</div>'
+      +'<div style="font-size:13px;color:var(--t2)">'+n.type+(n.role?' · '+window._escHTML(n.role):'')+'</div></div></div>';
   }).join('');
   res.style.display='block';
 };
@@ -40846,8 +40845,8 @@ function _renderNetIntelPanel() {
     return '<div class="net-t1-item" onclick="window._panelFocusNode(' + JSON.stringify(n.id) + ')">' +
       '<div style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;box-shadow:0 0 6px ' + dotColor + '"></div>' +
       '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:12px;font-weight:600;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (n.name||'') + '</div>' +
-        '<div style="font-size:13px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (n.org||n.role||'') + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:' + color + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + window._escHTML(n.name||'') + '</div>' +
+        '<div style="font-size:13px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + window._escHTML(n.org||n.role||'') + '</div>' +
       '</div>' +
       '<div style="text-align:right;flex-shrink:0">' +
         '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--t3)">' + daysStr + '</div>' +
@@ -41240,7 +41239,7 @@ function renderCaptureView() {
         + (item.meta.attendees.length > 3 ? ' +' + (item.meta.attendees.length-3) : '')
       : (item.fromName || '');
     var matched = item.matchedNodeId ? '<span style="color:var(--green);font-size:13px">✓ Matched to entity graph</span>' : '<span style="color:var(--t3);font-size:13px">No entity match</span>';
-    var oppMatch = item.oppId ? '<span style="margin-left:8px;color:var(--gold);font-size:13px">⬡ ' + (item.oppName||'Opportunity linked') + '</span>' : '';
+    var oppMatch = item.oppId ? '<span style="margin-left:8px;color:var(--gold);font-size:13px">⬡ ' + window._escHTML(item.oppName||'Opportunity linked') + '</span>' : '';
 
     return '<div style="background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);padding:18px 20px;display:flex;align-items:flex-start;gap:16px">' +
       '<div style="flex:1;min-width:0">' +
@@ -62391,6 +62390,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.129"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.130"></script>
 </body>
 </html>
