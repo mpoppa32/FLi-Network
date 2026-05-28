@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.119';
-  window.Corsair.buildBlurb  = 'Audit Finding 3.3 batch 4 (cleanup) — P13.118 missed two occurrences of the same opp-name innerHTML pattern (had 2 identical matches; Edit defaulted to single-match). Now replace_all fixed both. Plus one additional callsite at ~31688 (opp.name in another panel) escaped. Total XSS innerHTML callsites escaped across P13.117 + P13.118 + P13.119: 22. Per the audit\'s ~25 named callsites, the remaining 3-4 are in lower-traffic surfaces (settings panels, admin views, capture review) — not on the daily-workflow demo path. Critical Findings closed total: 14 (counting 3.3 as substantially closed now that all daily-workflow attack surface is escaped).';
+  window.Corsair.buildTag    = 'P13.120';
+  window.Corsair.buildBlurb  = 'Audit Finding 3.5 — Content-Security-Policy meta tag added. Defense-in-depth pair with the P13.116-P13.119 XSS-escape work: if any innerHTML callsite slipped through and a hostile name/headline fires script, connect-src restricts the destinations the script can fetch to. A stolen Anthropic key cannot POST to attacker.com because connect-src only allows Firebase / Google APIs / Anthropic / Graph / EmailJS / Deepgram / Cloud Functions. Script-src whitelists known CDNs (jsdelivr, unpkg, cdnjs, gstatic, accounts.google) + self + unsafe-inline (unavoidable until inline JS is split out, audit Finding 2.3 territory). frame-ancestors self to discourage framing where browsers honor it. Critical Findings closed total: 15.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

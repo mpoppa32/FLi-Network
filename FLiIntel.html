@@ -2,6 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<!-- P13.120 (audit Finding 3.5) — Content-Security-Policy defense-in-depth.
+     Pairs with the XSS-escape work in P13.116-P13.119: if any innerHTML
+     callsite slipped through and a hostile name/headline fires script,
+     connect-src restricts WHERE that script can exfiltrate to. Stolen
+     keys cannot POST to attacker.com because the only fetch destinations
+     allowed are this app's own backends.
+     'unsafe-inline' for script-src is unavoidable until inline JS is
+     extracted (audit Finding 2.3 territory) — Corsair has hundreds of
+     inline <script> blocks and onclick handlers. The connect-src
+     restriction is the real security win regardless.
+     Note: frame-ancestors and X-Frame-Options can only be enforced via
+     real HTTP headers, not meta tags. GitHub Pages doesn't allow custom
+     headers, so framing protection is best-effort via frame-ancestors
+     here (modern browsers honor it in meta in some contexts). -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://unpkg.com https://cdn.jsdelivr.net https://www.gstatic.com https://accounts.google.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com data:;
+  img-src 'self' data: blob: https:;
+  connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.firebaseapp.com https://*.googleapis.com https://api.anthropic.com https://graph.microsoft.com https://api.emailjs.com https://api.deepgram.com https://*.cloudfunctions.net https://raw.githubusercontent.com;
+  frame-src 'self' https://*.firebaseapp.com https://accounts.google.com;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'self';
+">
   <meta name="description" content="Corsair — defense capture operating system for defense technology teams.">
   <meta property="og:title" content="Corsair">
   <meta property="og:description" content="Every relationship mapped. Every signal surfaced. Every contract within reach.">
@@ -8809,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.119</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.120</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -62292,6 +62319,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.119"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.120"></script>
 </body>
 </html>
