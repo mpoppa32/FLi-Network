@@ -10,9 +10,16 @@
 
 import { google, Auth } from "googleapis";
 
+// P13.150 — added userinfo.email + userinfo.profile so captureOAuthCallback
+// can fetch the connected Google account's email at grant time. Without
+// these, Google's userinfo endpoint returns 403 and connectedEmail writes
+// as empty string, defeating P13.149's outbound-tagging fix. Both scopes
+// are non-sensitive — no Google verification required.
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
 function readGoogleConfig(): { clientId: string; clientSecret: string; redirectUri: string } {
