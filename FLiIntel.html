@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.143</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.144</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9705,9 +9705,15 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
         <div id="cooling-strip-body" style="display:none;overflow-y:auto;max-height:280px;padding:0 8px 8px"></div>
       </div>
     </div>
-    <div class="net-toolbar">
+    <div class="net-toolbar" style="overflow-x:auto">
       <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style="flex-shrink:0;opacity:.4"><circle cx="6" cy="6" r="5" stroke="#e2e8f4" stroke-width="1.5"/><line x1="10" y1="10" x2="13" y2="13" stroke="#e2e8f4" stroke-width="1.5" stroke-linecap="round"/></svg>
       <input class="search-inp" id="net-search" placeholder="Search nodes..." oninput="onNetSearch()" onblur="setTimeout(hideNetSearch,200)">
+      <div class="ntb-sep"></div>
+      <!-- P13.144 — Path button moved here (was buried at position #21 of
+           26 in the toolbar, pushed off-screen on most laptop viewports).
+           Operators need to find warm-intro chains constantly; surfacing
+           this front-of-toolbar makes it discoverable. -->
+      <button class="nb" id="path-btn-primary" onclick="togglePathFinder()" style="color:var(--purple);border-color:rgba(139,92,246,.5);background:rgba(139,92,246,.08);font-weight:700">⇢ Path Finder</button>
       <div class="ntb-sep"></div>
       <!-- INTEL OVERLAY MODES -->
       <div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--t3);letter-spacing:.08em;white-space:nowrap">OVERLAY</div>
@@ -13447,6 +13453,15 @@ function connectWorkspace(){
     // P13.138 — Nudge Engine reads pendingCapture from sibling module
     window.pendingCapture = pendingCapture;
     _updateCaptureBadge();
+    // P13.144 — re-render the inbox grid so approved/discarded items
+    // disappear immediately instead of waiting for a manual view switch.
+    // Only re-renders when the capture view is currently visible.
+    try {
+      var capView = document.getElementById('capture-view');
+      if (capView && capView.style.display !== 'none' && typeof renderCaptureView === 'function') {
+        renderCaptureView();
+      }
+    } catch(e) { console.warn('[P13.144 capture re-render]', e); }
     // Re-render nudge column when new matched captures land. Brief's own
     // render flow handles the full surface; this keeps the awaiting-reply
     // column fresh between full-brief paints.
@@ -39130,6 +39145,13 @@ window._showAutoCaptureSetup = function() {
     document.body.appendChild(modal);
   }
   modal.style.display = 'flex';
+  // P13.144 — refresh the OAuth grant state every time the modal opens
+  // so the Connect/Disconnect button swaps to match reality. Without this
+  // the buttons stay in their default (Connect visible / Disconnect hidden)
+  // state even when a grant is active.
+  setTimeout(function(){
+    if (window._refreshAutoCaptureStatus) window._refreshAutoCaptureStatus();
+  }, 40);
 };
 
 window._renderAutoCaptureSetup = function() {
@@ -39189,10 +39211,21 @@ window._renderAutoCaptureSetup = function() {
   h += '      <span style="font-size:12px;color:var(--t2)" id="gcal-status-text">Calendar — not connected</span>';
   h += '    </div>';
   h += '  </div>';
-  h += '  <div style="display:flex;gap:8px">';
-  h += '    <button onclick="window._connectGoogleAutoCapture()" style="flex:1;padding:10px;background:rgba(66,133,244,.12);border:1px solid rgba(66,133,244,.4);border-radius:var(--rsm);color:#4285f4;font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px">🔗 Connect Google Account</button>';
+  h += '  <div style="display:flex;gap:8px;flex-wrap:wrap">';
+  h += '    <button onclick="window._connectGoogleAutoCapture()" id="autocap-connect-btn" style="flex:1;min-width:200px;padding:10px;background:rgba(66,133,244,.12);border:1px solid rgba(66,133,244,.4);border-radius:var(--rsm);color:#4285f4;font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif;display:flex;align-items:center;justify-content:center;gap:8px">🔗 Connect Google Account</button>';
+  // P13.144 — Disconnect button. Shown alongside Connect so the operator
+  // can switch which Google account is feeding the workspace. Workflow:
+  // (1) Disconnect → clears users/{uid}/captureAuth/google (next sync
+  // skips with "no-auth"). (2) Click Connect → Google account chooser
+  // appears in the popup. (3) Pick the right account. If the wrong
+  // account auto-selects, sign out of it in google.com first.
+  h += '    <button onclick="window._disconnectAutoCapture()" id="autocap-disconnect-btn" style="display:none;padding:10px 16px;background:transparent;border:1px solid rgba(239,68,68,.4);border-radius:var(--rsm);color:var(--red);font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif" title="Clear the current Google grant so you can connect a different account">✕ Disconnect</button>';
   h += '    <button onclick="window._testAutoCapture()" id="autocap-test-btn" style="padding:10px 18px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--rsm);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:\'Outfit\',sans-serif">⚡ Test Now</button>';
   h += '  </div>';
+  // P13.144 — explainer for switching accounts.
+  h += '  <div style="font-size:12px;color:var(--t3);margin-top:10px;line-height:1.5">' +
+       '<strong style="color:var(--t2)">Switching Google accounts:</strong> click Disconnect, then click Connect. In the Google account chooser, pick the account you want syncing. If Chrome auto-selects the wrong one, sign out of it on google.com first, then retry.' +
+       '</div>';
   h += '  <div id="autocap-test-result" style="font-size:14px;color:var(--t2);margin-top:10px;display:none"></div>';
   h += '</div>';
 
@@ -39272,6 +39305,11 @@ window._refreshAutoCaptureStatus = async function() {
   var gcalDot = document.getElementById('gcal-dot');
   var gcalTxt = document.getElementById('gcal-status-text');
   if (!gmailDot) return;
+  // P13.144 — toggle Connect vs Disconnect button visibility based on
+  // actual grant state so the operator never sees "Disconnect" when
+  // nothing is connected (or vice versa).
+  var connectBtn = document.getElementById('autocap-connect-btn');
+  var disconnectBtn = document.getElementById('autocap-disconnect-btn');
   if (tokens && tokens.access_token) {
     var expiry = tokens.expiry_date ? new Date(tokens.expiry_date).toLocaleDateString() : 'connected';
     gmailDot.style.background = 'var(--green)';
@@ -39282,11 +39320,51 @@ window._refreshAutoCaptureStatus = async function() {
     gcalDot.style.boxShadow = '0 0 6px var(--green)';
     gcalTxt.textContent = 'Calendar — connected';
     gcalTxt.style.color = 'var(--green)';
+    if (connectBtn) connectBtn.style.display = 'none';
+    if (disconnectBtn) disconnectBtn.style.display = 'block';
   } else {
     gmailDot.style.background = 'var(--t3)';
     gmailTxt.textContent = 'Gmail — not connected';
     gcalDot.style.background = 'var(--t3)';
     gcalTxt.textContent = 'Calendar — not connected';
+    if (connectBtn) connectBtn.style.display = 'flex';
+    if (disconnectBtn) disconnectBtn.style.display = 'none';
+  }
+};
+
+// P13.144 — disconnect handler. Clears the captureAuth/google node so the
+// next captureHourly sync skips with "no-auth". Operator can then click
+// Connect again and pick a different Google account in the OAuth popup.
+// Optionally also revokes the token with Google (so the user has to
+// re-consent rather than silent-grant) — important when switching from
+// a personal to a work account.
+window._disconnectAutoCapture = async function() {
+  if (!currentUser || !currentUser.uid) { toast('Sign in first'); return; }
+  if (!confirm('Disconnect Google sync?\n\nThis stops Gmail + Calendar capture for THIS workspace until you reconnect. Any items already in the inbox stay there. After disconnecting you can Connect again with a different Google account.')) return;
+  var btn = document.getElementById('autocap-disconnect-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Disconnecting…'; }
+  try {
+    // Pull the refresh token first so we can revoke at Google.
+    var snap = await get(ref(db, 'users/' + currentUser.uid + '/captureAuth/google'));
+    var tok = snap.val() || {};
+    var refresh = tok.refreshToken || '';
+    // Revoke at Google (best-effort; failure doesn't block the local clear).
+    if (refresh) {
+      try {
+        await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(refresh), { method: 'POST' });
+      } catch(revErr) {
+        console.warn('[P13.144 oauth revoke] failed (continuing with local clear):', revErr);
+      }
+    }
+    // Clear the local node — next sync will skip with "no-auth".
+    await fbRemove(ref(db, 'users/' + currentUser.uid + '/captureAuth/google'));
+    toast('✓ Disconnected — click Connect to grant a new account');
+    if (window._refreshAutoCaptureStatus) window._refreshAutoCaptureStatus();
+  } catch(e) {
+    console.error('[P13.144 disconnect] failed', e);
+    toast('Disconnect failed: ' + ((e && e.message) || 'unknown'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✕ Disconnect'; }
   }
 };
 
@@ -62742,6 +62820,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.143"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.144"></script>
 </body>
 </html>
