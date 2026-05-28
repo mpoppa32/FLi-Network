@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.131</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.132</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12500,6 +12500,42 @@ async function saveMeeting(m){
       // disappearing into a successful-looking meeting save.
       try { await saveOpp(opp); }
       catch(scoreErr){ console.error('[P13.107 saveOpp re-score on meeting log]', scoreErr); }
+      // P13.132 Day 7 (Sales Motion #4 from reconciliation audit) —
+      // meeting-driven stage-advance CTA. If gates for the linked opp's
+      // current stage are all satisfied AND a non-terminal next stage
+      // exists, prompt the operator at the moment they're most engaged
+      // with the deal (just finished logging). This closes the engagement
+      // → action loop the audit flagged: meeting logging becomes deal-
+      // driving instead of data-entry. Silent no-op if gates aren't
+      // satisfied — operator still has to do that work in the dossier.
+      try {
+        var pipelineModMtg = window.Corsair && window.Corsair.pipeline;
+        if (pipelineModMtg && typeof pipelineModMtg.validateAdvance === 'function' && typeof pipelineModMtg.index === 'function') {
+          var curIdx = pipelineModMtg.index(opp.stage);
+          var stagesArr = pipelineModMtg.stages || [];
+          if (curIdx >= 0 && curIdx < stagesArr.length - 1) {
+            var nextS = stagesArr[curIdx + 1];
+            // Skip CTA if next is terminal (won is gate-required normally,
+            // lost is a different decision — operator drops via dossier).
+            if (nextS && nextS.key !== 'won' && nextS.key !== 'lost') {
+              var checkV = pipelineModMtg.validateAdvance(opp, opp.stage, nextS.key);
+              if (checkV.ok) {
+                var safeOppIdMtg = String(opp.id).replace(/'/g, '&#39;');
+                var safeOppName = window._escHTML ? window._escHTML(opp.name || 'this pursuit') : String(opp.name || 'this pursuit');
+                var safeNextLbl = window._escHTML ? window._escHTML(nextS.label || nextS.key) : String(nextS.label || nextS.key);
+                toast(
+                  '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+                  '<span>✓ Meeting saved · <strong style="color:var(--gold)">' + safeOppName + '</strong> ready for ' + safeNextLbl + '</span>' +
+                  '<button onclick="window._advancePursuitStage&amp;&amp;window._advancePursuitStage(\'' + safeOppIdMtg + '\');var _t=document.getElementById(\'toast\');if(_t)_t.classList.remove(\'show\')" ' +
+                  'style="padding:5px 12px;background:var(--gold);border:none;border-radius:4px;color:#070d18;font-weight:600;cursor:pointer;font-family:IBM Plex Sans,sans-serif;font-size:13px;letter-spacing:.02em">Advance →</button>' +
+                  '</div>',
+                  9000
+                );
+              }
+            }
+          }
+        }
+      } catch(advErr) { console.warn('[P13.132 Day 7 advance CTA]', advErr); }
     }
   }
 }
@@ -62407,6 +62443,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.131"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.132"></script>
 </body>
 </html>

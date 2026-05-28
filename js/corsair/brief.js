@@ -167,18 +167,39 @@ window.renderDailyBrief = function() {
         var _t = Date.parse(String(o.nextActionDate) + 'T00:00:00');
         if (!isNaN(_t)) naTs = _t;
       }
+      // P13.132 Day 7 — flag opps where current-stage gates are satisfied
+      // so they get a READY badge. Operator already did the qualification
+      // work; surfacing the stuck-but-ready state turns the stale column
+      // into an advance-this-now list when applicable.
+      var staleReady = false;
+      var pipeS = (window.Corsair && window.Corsair.pipeline) ? window.Corsair.pipeline : null;
+      if (pipeS && typeof pipeS.validateAdvance === 'function' && typeof pipeS.index === 'function') {
+        var curIdxS = pipeS.index(o.stage);
+        var stagesS = pipeS.stages || [];
+        if (curIdxS >= 0 && curIdxS < stagesS.length - 1) {
+          var nextSS = stagesS[curIdxS + 1];
+          if (nextSS && nextSS.key !== 'won' && nextSS.key !== 'lost') {
+            var vS = pipeS.validateAdvance(o, o.stage, nextSS.key);
+            staleReady = !!(vS && vS.ok);
+          }
+        }
+      }
       stale.push({
         id: o.id, name: o.name || 'Pursuit', stage: stg.toUpperCase(),
         days: days2 === 9999 ? null : days2,
         health: health,
         nextAction: o.nextAction || '',
         nextActionDate: o.nextActionDate || '',
-        nextActionTs: naTs
+        nextActionTs: naTs,
+        ready: staleReady
       });
     }
   }
   // CRM P0.4: sort by nextActionDate ascending (nulls last), then health ascending
+  // P13.132 Day 7: ready-to-advance opps float to the top — operator did the
+  // qualification work; surface the highest-leverage move first.
   stale.sort(function(a, b) {
+    if (a.ready !== b.ready) return a.ready ? -1 : 1;
     var ta = a.nextActionTs == null ? Number.MAX_SAFE_INTEGER : a.nextActionTs;
     var tb = b.nextActionTs == null ? Number.MAX_SAFE_INTEGER : b.nextActionTs;
     if (ta !== tb) return ta - tb;
@@ -417,7 +438,11 @@ window.renderDailyBrief = function() {
                (naDelta ? '<span style="flex-shrink:0;color:' + (s.nextActionTs != null && s.nextActionTs < nowMs ? '#ff6464' : 'var(--gold)') + '">' + naDelta + '</span>' : '') +
                '</div>';
     }
-    var headRow = '<span class="brief-item-title">' + pill + s.name + '</span>' +
+    // P13.132 Day 7 — READY badge when gates are clear. Inline in the title row
+    // so it sits next to the name. Operator scans the column and the gold pip
+    // signals "this one's ready to move."
+    var readyBadge = s.ready ? '<span class="brief-ready-badge" title="All exit-criteria gates checked — ready to advance" style="display:inline-block;padding:1px 6px;margin-right:6px;background:rgba(212,130,58,.18);border:1px solid rgba(212,130,58,.55);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;vertical-align:middle">READY</span>' : '';
+    var headRow = '<span class="brief-item-title">' + pill + readyBadge + s.name + '</span>' +
                   '<span class="brief-item-meta" style="display:flex;align-items:center;gap:6px">' + scoreChip + '<span>' + (s.days == null ? 'never' : s.days + 'd · ' + s.stage) + '</span></span>';
     if (naLine) {
       return '<div class="brief-item" style="flex-direction:column;align-items:stretch;gap:0" onclick="if(window.selectOpp)window.selectOpp(\'' + s.id + '\')">' +
@@ -464,14 +489,37 @@ window.renderDailyBrief = function() {
       if (!pipe.isStageStuck(ao)) continue;
       var dis = (typeof pipe.daysInStage === 'function') ? pipe.daysInStage(ao) : 0;
       var lim = (typeof pipe.ageLimit === 'function') ? pipe.ageLimit(ao.stage) : 0;
-      aged.push({ id: ao.id, name: ao.name || '(unnamed)', stage: ao.stage, days: dis, limit: lim, over: dis - lim });
+      // P13.132 Day 7 — same READY signal on aged column. Aged opps where
+      // gates are clear are the highest-priority items in the morning brief:
+      // they're past stage age limit AND ready to advance — operator has no
+      // excuse left.
+      var agedReady = false;
+      if (typeof pipe.validateAdvance === 'function' && typeof pipe.index === 'function') {
+        var curIdxA = pipe.index(ao.stage);
+        var stagesA = pipe.stages || [];
+        if (curIdxA >= 0 && curIdxA < stagesA.length - 1) {
+          var nextSA = stagesA[curIdxA + 1];
+          if (nextSA && nextSA.key !== 'won' && nextSA.key !== 'lost') {
+            var vA = pipe.validateAdvance(ao, ao.stage, nextSA.key);
+            agedReady = !!(vA && vA.ok);
+          }
+        }
+      }
+      aged.push({ id: ao.id, name: ao.name || '(unnamed)', stage: ao.stage, days: dis, limit: lim, over: dis - lim, ready: agedReady });
     }
-    aged.sort(function(a, b) { return b.over - a.over; }); // most over first
+    // Sort: ready opps first (operator can advance immediately), then by
+    // most-over-limit. Closes the stuck-ready signal at the top of the
+    // column so the highest-leverage moves are unmistakable.
+    aged.sort(function(a, b) {
+      if (a.ready !== b.ready) return a.ready ? -1 : 1;
+      return b.over - a.over;
+    });
   }
   _renderCol('brief-aged-list', 'brief-aged-count', aged, function(a) {
     var safeName = (a.name || '').replace(/\'/g, '');
+    var readyBadgeA = a.ready ? '<span class="brief-ready-badge" title="All exit-criteria gates checked — ready to advance" style="display:inline-block;padding:1px 6px;margin-right:6px;background:rgba(212,130,58,.18);border:1px solid rgba(212,130,58,.55);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;vertical-align:middle">READY</span>' : '';
     return '<div class="brief-item" onclick="if(window.selectOpp)window.selectOpp(\'' + a.id + '\')">' +
-           '<span class="brief-item-title">' + a.name + '</span>' +
+           '<span class="brief-item-title">' + readyBadgeA + a.name + '</span>' +
            '<span class="brief-item-meta">' + a.days + 'd · ' + a.stage + ' (+' + a.over + 'd)</span></div>';
   }, 'No pursuits stuck past their stage aging threshold. Stalled opps will surface here so you can unstick them.');
 
