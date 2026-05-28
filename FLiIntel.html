@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.144</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.145</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -39357,7 +39357,10 @@ window._disconnectAutoCapture = async function() {
       }
     }
     // Clear the local node — next sync will skip with "no-auth".
-    await fbRemove(ref(db, 'users/' + currentUser.uid + '/captureAuth/google'));
+    // P13.145 — fbRemove takes a path STRING, not a DatabaseReference.
+    // Previous call passed `ref(db, ...)` which made fbRemove internally
+    // do `ref(db, refObj)` (invalid usage) and Firebase threw.
+    await fbRemove('users/' + currentUser.uid + '/captureAuth/google');
     toast('✓ Disconnected — click Connect to grant a new account');
     if (window._refreshAutoCaptureStatus) window._refreshAutoCaptureStatus();
   } catch(e) {
@@ -62820,6 +62823,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.144"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.145"></script>
 </body>
 </html>
