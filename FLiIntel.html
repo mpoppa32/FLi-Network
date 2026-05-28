@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.134</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.135</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10349,9 +10349,13 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       </select>
       <button onclick="window._accSaveCurrentView&&window._accSaveCurrentView()" title="Save current filters + sort as a named view" style="padding:11px 14px;border:1px solid var(--gold);border-radius:6px;background:transparent;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">+ Save</button>
       <select id="accounts-sort" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
+        <!-- P13.135 Day 3 — default sort = recent activity. Audit Critical #3
+             (Account Tracking): "Where do I stand with this customer?" gets
+             answered fastest when most-active orgs float to the top. Pipeline $
+             demoted to second. -->
+        <option value="recent" selected>Sort: Most recent touch</option>
         <option value="pipeline">Sort: Pipeline $</option>
         <option value="health">Sort: Health (worst first)</option>
-        <option value="recent">Sort: Most recent touch</option>
         <option value="stale">Sort: Most decayed</option>
         <option value="status">Sort: Status (workflow)</option>
         <option value="owner">Sort: Owner (A→Z)</option>
@@ -41370,6 +41374,11 @@ function _accBuildRollup(org){
   var closedWins = 0;
   var totalPipeline = 0;
   var weightedPipeline = 0;
+  // P13.135 Day 3 — stage distribution for the org card badge. Audit
+  // Critical #3 asked for visible stage distribution on Accounts so the
+  // operator can see "3 in Pre-RFP / 2 in Proposal / 1 in Submitted" at a
+  // glance without opening each opp.
+  var stageDist = {};
   for (var i = 0; i < allOpps.length; i++){
     var o = allOpps[i];
     if (!o) continue;
@@ -41381,6 +41390,7 @@ function _accBuildRollup(org){
       continue;
     }
     openOpps.push(o);
+    stageDist[stg] = (stageDist[stg] || 0) + 1;
     var v = Number(o.value || o.contractValue || 0);
     totalPipeline += v;
     var p = Number(o.winProb || o.pWin || 0);
@@ -41424,6 +41434,15 @@ function _accBuildRollup(org){
   else if (fieldsFilled < 3 || commsCold)            health = 'yellow';
   else                                               health = 'green';
 
+  // P13.135 Day 3 — T1 coverage flag. Audit Critical #3 prescribed flagging
+  // accounts with no Tier-1 coverage so the operator can see at a glance
+  // which orgs need an exec relationship lift. priority === 1 is the T1
+  // marker on person nodes.
+  var hasT1 = false;
+  for (var t1i = 0; t1i < people.length; t1i++){
+    if (people[t1i] && Number(people[t1i].priority) === 1) { hasT1 = true; break; }
+  }
+
   return {
     org: org,
     people: people,
@@ -41439,7 +41458,9 @@ function _accBuildRollup(org){
     poc: poc,
     statusMeta: _accStatusMeta(org.accountStatus),
     health: health,
-    fieldsFilled: fieldsFilled
+    fieldsFilled: fieldsFilled,
+    stageDist: stageDist,
+    hasT1: hasT1
   };
 }
 
@@ -41810,7 +41831,7 @@ window._renderAccountsView = function(){
   var ownerFilter  = (document.getElementById('accounts-owner-filter')||{}).value || '';
   var healthFilter = (document.getElementById('accounts-health-filter')||{}).value || '';
   var searchQ = ((document.getElementById('accounts-search')||{}).value || '').toLowerCase().trim();
-  var sortBy = (document.getElementById('accounts-sort')||{}).value || 'pipeline';
+  var sortBy = (document.getElementById('accounts-sort')||{}).value || 'recent';
 
   // P13.4: load saved views (once per render — cheap RTDB read)
   if (window._accLoadSavedViews) window._accLoadSavedViews();
@@ -41934,10 +41955,45 @@ window._renderAccountsView = function(){
       return '<option value="' + _accEsc(m.uid) + '">' + _accEsc(m.name || m.email || m.uid) + '</option>';
     }).join('');
 
+  // P13.135 Day 3 — stage distribution chips. Map stage keys to labels +
+  // colors via pipeline module so the operator can scan "where are the
+  // active opps with this org concentrated" without opening cards.
+  var _pipelineModAcc = window.Corsair && window.Corsair.pipeline;
+  function _stageChip(stageKey, count) {
+    if (!_pipelineModAcc || typeof _pipelineModAcc.config !== 'function') {
+      return '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);background:rgba(125,118,105,.10);border:1px solid var(--b1);padding:1px 5px;border-radius:2px;letter-spacing:.06em;font-weight:700">' + count + ' ' + stageKey + '</span>';
+    }
+    var cfg = _pipelineModAcc.config(stageKey);
+    var lbl = (cfg && cfg.label) || stageKey;
+    var col = (cfg && cfg.color) || '#7d7669';
+    return '<span title="' + count + ' opp' + (count !== 1 ? 's' : '') + ' in ' + lbl + '" style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:' + col + ';background:rgba(0,0,0,.22);border:1px solid ' + col + '60;padding:1px 6px;border-radius:2px;letter-spacing:.04em;font-weight:700">' + count + ' ' + lbl + '</span>';
+  }
+
   grid.innerHTML = rollups.map(function(r){
     var oppLine = r.openOppCount
       ? '<span style="color:var(--gold);font-weight:700">' + r.openOppCount + ' open</span> · ' + _accFmt$(r.pipeline) + ' pipe · ' + _accFmt$(r.weighted) + ' weighted'
       : '<span style="color:var(--t3)">No open pursuits</span>';
+    // P13.135 Day 3 — build stage distribution row (only when ≥1 open opp).
+    // Sorted by pipeline stage order so visually it reads left-to-right as
+    // the deal lifecycle (awareness → tracking → engaged → ...).
+    var stageDistRow = '';
+    if (r.openOppCount > 0 && r.stageDist) {
+      var stagesOrder = (_pipelineModAcc && _pipelineModAcc.stages) || [];
+      var chips = [];
+      stagesOrder.forEach(function(s) {
+        var cnt = r.stageDist[s.key];
+        if (cnt && cnt > 0 && s.key !== 'won' && s.key !== 'lost') chips.push(_stageChip(s.key, cnt));
+      });
+      if (chips.length) {
+        stageDistRow = '<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px">' + chips.join('') + '</div>';
+      }
+    }
+    // P13.135 Day 3 — T1 coverage pill. Shows when there are people at this
+    // org but none are Tier 1. Surfaces the relationship-coverage gap right
+    // at the chip row so the operator can prioritize an exec lift.
+    var noT1Pill = (r.peopleCount > 0 && !r.hasT1)
+      ? '<span title="No Tier-1 contacts at this org — relationship coverage gap" style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:#fb923c;background:rgba(251,146,60,.10);border:1px solid rgba(251,146,60,.45);padding:2px 8px;border-radius:2px;letter-spacing:.1em;font-weight:700;text-transform:uppercase">NO T1</span>'
+      : '';
     var nextOpp = r.openOpps[0];
     var nextAction = (nextOpp && (nextOpp.nextAction || nextOpp.next_action)) ? '<div style="font-size:14px;color:var(--t2);margin-top:6px;line-height:1.4"><span style="color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.1em">NEXT · </span>' + _accEsc(String((nextOpp.nextAction || nextOpp.next_action)).slice(0,80)) + '</div>' : '';
     // P12.16: health stripe + structured-record state (Owner / Status / POC)
@@ -41972,6 +42028,7 @@ window._renderAccountsView = function(){
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">' +
             _accOrgTypeChip(r.org.type) +
             statusPill +
+            noT1Pill +
             (r.closedWins ? '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--green);letter-spacing:.1em;font-weight:700">' + r.closedWins + ' WON</span>' : '') +
           '</div>' +
           '<div style="font-family:Antonio,sans-serif;font-size:var(--text-xl);font-weight:700;color:var(--text);line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _accEsc(r.org.name) + '</div>' +
@@ -41987,6 +42044,7 @@ window._renderAccountsView = function(){
         '<div><span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.12em;font-weight:700">PIPELINE</span><div style="color:var(--text);font-weight:700;font-size:var(--text-lg);margin-top:3px;font-family:Antonio,sans-serif">' + _accFmt$(r.pipeline) + '</div></div>' +
       '</div>' +
       '<div style="font-size:var(--text-sm);color:var(--t2);margin-top:12px;line-height:var(--leading-snug)">' + oppLine + '</div>' +
+      stageDistRow +
       nextAction +
     '</div>';
   }).join('');
@@ -62443,6 +62501,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.134"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.135"></script>
 </body>
 </html>
