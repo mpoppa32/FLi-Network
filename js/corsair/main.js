@@ -18,8 +18,8 @@ import './table.js';
 (function init(){
   if (typeof window === 'undefined') return;
   window.Corsair = window.Corsair || {};
-  window.Corsair.buildTag    = 'P13.121';
-  window.Corsair.buildBlurb  = 'P13.120 CSP missed hooks.slack.com. _slackNotify (Brief → Slack digest button at P13.72) POSTs to hooks.slack.com which connect-src was blocking. Patched. MCP endpoint remains operator-configured-at-runtime so it cannot be statically whitelisted — power-user feature accepts the trade-off (operator must add their MCP host to CSP if they wire one). Critical Findings closed total: 15 (P13.120 still counted as 3.5 close; this is a regression-fix patch).';
+  window.Corsair.buildTag    = 'P13.122';
+  window.Corsair.buildBlurb  = 'Audit Finding 6.2 batch 1 — replaced 6 silent catch(e){} blocks in Firebase listener post-render paths with logged catches. Targeted the consequential ones the audit named: _updateTicker, _renderTableView, _renderCopForecast, _renderWinLossView (twice — once in opps listener, once in calibration listener, once in demo-heal Promise.all then), _renderInspectorView. If any of these renders threw inside a listener fire, the user saw stale UI forever with no console signal and no toast. Now logged with explicit context ([P13.122 <listener> <fn>]) so render bugs surface in DevTools instead of disappearing. Daily-workflow render paths covered. Remaining ~200 catches in the file are mostly legitimately-silent (localStorage best-effort, browser API best-effort, cleanup paths where failure does not matter). Critical Findings closed total: 16.';
   window.Corsair.modules     = window.Corsair.modules || {};
 
   if (typeof document !== 'undefined') {

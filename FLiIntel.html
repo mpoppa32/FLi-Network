@@ -8836,7 +8836,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.121</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.122</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13253,7 +13253,7 @@ function connectWorkspace(){
     // load) sees "No entities yet" with 0/0/0 counts even though Atlas has
     // 81 contacts. The listener fires after data lands but never tells
     // Inspector to redraw — fixed here with a typeof guard + try/catch.
-    if(typeof window._renderInspectorView === 'function') try { window._renderInspectorView(); } catch(e){}
+    if(typeof window._renderInspectorView === 'function') try { window._renderInspectorView(); } catch(e){ console.error('[P13.122 listener _renderInspectorView]', e); }
     // P9.6: ripple on newly-added nodes
     try {
       var addedNodes = window._detectRippleDeltas('nodes', incoming);
@@ -13340,16 +13340,22 @@ function connectWorkspace(){
     // listener called _updateTicker, so "0 active opps" stuck after first
     // paint until a meeting fired the rebuild. Atlas with 122 opps but a
     // stale ticker said "0 active opps" all day.
-    if(typeof _updateTicker==='function')try{_updateTicker();}catch(e){}
+    // P13.122 (audit Finding 6.2) — these were silent catch(e){} blocks.
+    // If any of these renders threw inside the opportunities listener (DOM
+    // missing, data malformed, sacred-feature render bug), the user saw
+    // stale UI forever with no console signal and no toast. Now logged
+    // with context so render bugs surface during dev + don't disappear
+    // into a successful-looking Firebase save.
+    if(typeof _updateTicker==='function') try{_updateTicker();} catch(e){ console.error('[P13.122 opps listener _updateTicker]', e); }
     renderOppSidebar();
     updateOppSelectors();
     // P13.31 — re-render Table view + Pipeline Forecast + Win/Loss dashboard
     // when opps update so users who landed on those views before the
     // Firebase listener fired see the data populate (was: stuck on
     // "0 of 0 pursuits" if switchView ran first).
-    if(typeof window._renderTableView === 'function') try { window._renderTableView(); } catch(e){}
-    if(typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){}
-    if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){}
+    if(typeof window._renderTableView === 'function') try { window._renderTableView(); } catch(e){ console.error('[P13.122 opps listener _renderTableView]', e); }
+    if(typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){ console.error('[P13.122 opps listener _renderCopForecast]', e); }
+    if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){ console.error('[P13.122 opps listener _renderWinLossView]', e); }
     if(currentOpp){var upd=opportunities.find(function(o){return o.id===currentOpp.id;});if(upd){currentOpp=upd;renderOppDetail(upd);}}
     // 3.11 live reload hook
     if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
@@ -13390,7 +13396,7 @@ function connectWorkspace(){
     // records on load (and any subsequent recordOutcome writes from
     // teammates). Without this, opening Win/Loss before the listener
     // fired stuck on insufficient-data state even when N>=3.
-    if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){}
+    if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){ console.error('[P13.122 calibration listener _renderWinLossView]', e); }
     // P13.36 — auto-heal old demo workspaces that predate P13.24's calibration
     // seeding. If the current workspace is flagged isDemo + has zero cal
     // records + the demo seed is loaded with cal records to write, seed them
@@ -13424,7 +13430,7 @@ function connectWorkspace(){
           writes = writes.concat(closedDemoOpps.map(function(o){ return fbSet(wsPath('opportunities/' + o.id), o); }));
           Promise.all(writes).then(function(){
             console.log('[Corsair] Auto-healed demo workspace ' + currentWsId + ': seeded ' + D.calibration.length + ' calibration records + ' + closedDemoOpps.length + ' closed opps');
-            if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){}
+            if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){ console.error('[P13.122 demo-heal _renderWinLossView]', e); }
           }).catch(function(e){ console.warn('[Corsair] Demo auto-heal write failed:', e); });
         }
       }
@@ -62319,6 +62325,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.121"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.122"></script>
 </body>
 </html>
