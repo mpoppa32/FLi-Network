@@ -621,4 +621,7 @@ window._copSetKanbanFilter = function(mode) {
   try { if (typeof window.renderBoard === 'function') window.renderBoard(); } catch(e){}
   try { if (typeof window._renderCopBoard === 'function') window._renderCopBoard(); } catch(e){}
   try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); } catch(e){}
+  // P13.158 — also re-render the Pipeline tab's Kanban so the chip-row
+  // dropdowns work on that surface too (two parallel renderers).
+  try { if (typeof window._renderKanbanBoard === 'function') window._renderKanbanBoard(); } catch(e){}
 };

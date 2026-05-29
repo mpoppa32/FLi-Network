@@ -8849,7 +8849,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.157</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.158</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9623,6 +9623,8 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       <div id="opp-bulk-bar" style="display:none;position:sticky;bottom:0;z-index:80;background:linear-gradient(180deg,#0d1426,#0a1020);border-top:2px solid var(--gold);box-shadow:0 -8px 24px rgba(0,0,0,.45);padding:14px 24px;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;order:99"></div>
       <!-- P13.2 — Pipeline Forecast panel (collapsible; rendered above Kanban) -->
       <div id="cop-forecast-panel" style="display:none;padding:18px 24px 4px"></div>
+      <!-- P13.158 — Kanban filter chip row (All/Ready/Aged/Sparse + Priority/Tag dropdowns). Sits between Forecast and the board. Populated by _renderKanbanBoard. -->
+      <div id="cop-kanban-chips" style="display:none;padding:6px 24px 4px"></div>
       <!-- CRM P1.12 — Kanban Pipeline Board (drag-to-stage) -->
       <div id="cop-kanban-board" class="cop-kanban" style="display:none"></div>
       <div id="opp-empty" style="margin:24px auto;max-width:740px;padding:24px">
@@ -19998,10 +20000,93 @@ window._renderKanbanBoard=function(){
   var board=document.getElementById('cop-kanban-board');
   if(!board)return;
   if(typeof OPP_STAGES==='undefined'||!Array.isArray(OPP_STAGES))return;
+  // P13.158 — apply the same chip-row filter cop.js uses, so the Pipeline
+  // tab Kanban honors All/Ready/Aged/Sparse + Priority/Tag dropdowns.
+  // Two parallel Kanban renderers existed (this one + cop.js renderCopSection)
+  // and only the latter had chips. Mike's "where is the chip row" question
+  // surfaced the gap on the Pipeline tab view.
+  var _kbFilter = window._copKanbanFilter || 'all';
+  var pipelineMod = (window.Corsair && window.Corsair.pipeline) || {};
+  function _kbMatches(o){
+    if (!o) return false;
+    if (_kbFilter === 'all') return true;
+    if (_kbFilter === 'aged') {
+      return typeof pipelineMod.isStageStuck === 'function' && pipelineMod.isStageStuck(o);
+    }
+    if (_kbFilter === 'sparse') return o.scoreConfidence === 'sparse';
+    if (_kbFilter === 'ready' && typeof pipelineMod.validateAdvance === 'function' && typeof pipelineMod.index === 'function') {
+      var stagesArr = pipelineMod.stages || [];
+      var curIdx = pipelineMod.index(o.stage);
+      if (curIdx < 0 || curIdx >= stagesArr.length - 1) return false;
+      var nextS = stagesArr[curIdx + 1];
+      if (!nextS || nextS.key === 'won' || nextS.key === 'lost') return false;
+      var v = pipelineMod.validateAdvance(o, o.stage, nextS.key);
+      return !!(v && v.ok);
+    }
+    if (_kbFilter.indexOf && _kbFilter.indexOf('priority:') === 0) {
+      var pVal = _kbFilter.slice('priority:'.length);
+      return String(o.mondayPriority || '').trim() === pVal;
+    }
+    if (_kbFilter.indexOf && _kbFilter.indexOf('tag:') === 0) {
+      var tVal = _kbFilter.slice('tag:'.length);
+      var tags = String(o.mondayTags || '').split(',').map(function(t){return t.trim();});
+      return tags.indexOf(tVal) !== -1;
+    }
+    return true;
+  }
+  // Build active-opp distinct values for Priority + Tag dropdowns.
+  var _activeOpps = (opportunities || []).filter(function(o){
+    if (!o) return false;
+    var st = String(o.stage || '').toLowerCase();
+    return st !== 'won' && st !== 'lost' && st !== 'no-bid' && st !== 'no_bid';
+  });
+  var _priorityVals = [];
+  var _tagVals = [];
+  _activeOpps.forEach(function(o){
+    var pv = String(o.mondayPriority || '').trim();
+    if (pv && _priorityVals.indexOf(pv) < 0) _priorityVals.push(pv);
+    var tv = String(o.mondayTags || '').trim();
+    if (tv) tv.split(',').forEach(function(t){
+      var tt = t.trim();
+      if (tt && _tagVals.indexOf(tt) < 0) _tagVals.push(tt);
+    });
+  });
+  // Render chip row into the sibling mount.
+  function _esc(s){return String(s||'').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+  function _chip(mode, label){
+    var active = _kbFilter === mode;
+    var bg = active ? 'rgba(212,130,58,.18)' : 'transparent';
+    var bd = active ? 'var(--gold)' : 'var(--b2)';
+    var fg = active ? 'var(--gold)' : 'var(--t2)';
+    return '<button onclick="window._copSetKanbanFilter&amp;&amp;window._copSetKanbanFilter(\''+mode+'\')" style="padding:5px 10px;border:1px solid '+bd+';border-radius:2px;background:'+bg+';color:'+fg+';font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">'+label+'</button>';
+  }
+  function _dd(prefix, label, options){
+    var current = (_kbFilter.indexOf(prefix + ':') === 0) ? _kbFilter.slice(prefix.length + 1) : '';
+    var opts = '<option value="">' + label + '</option>' + options.map(function(v){
+      var sel = v === current ? ' selected' : '';
+      return '<option value="'+_esc(v)+'"'+sel+'>'+_esc(v)+'</option>';
+    }).join('');
+    var active = !!current;
+    var bg = active ? 'rgba(212,130,58,.18)' : 'transparent';
+    var bd = active ? 'var(--gold)' : 'var(--b2)';
+    var fg = active ? 'var(--gold)' : 'var(--t2)';
+    return '<select onchange="window._copSetKanbanFilter&amp;&amp;window._copSetKanbanFilter(this.value?\''+prefix+':\'+this.value:\'all\')" style="padding:4px 8px;border:1px solid '+bd+';border-radius:2px;background:'+bg+';color:'+fg+';font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer">'+opts+'</select>';
+  }
+  var chipMount = document.getElementById('cop-kanban-chips');
+  if (chipMount) {
+    chipMount.innerHTML = '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+      _chip('all', 'All') + _chip('ready', 'Ready') + _chip('aged', 'Aged') + _chip('sparse', 'Sparse data') +
+      (_priorityVals.length ? _dd('priority', 'Priority', _priorityVals) : '') +
+      (_tagVals.length ? _dd('tag', 'Tag', _tagVals) : '') +
+      '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);letter-spacing:.10em;color:var(--t3);text-transform:uppercase;margin-left:10px">click card → dossier</span>' +
+      '</div>';
+    chipMount.style.display = 'block';
+  }
   var byStage={};
   OPP_STAGES.forEach(function(s){byStage[s.key]=[];});
   (opportunities||[]).forEach(function(o){
     if(!o)return;
+    if(!_kbMatches(o))return; // P13.158 — chip-row filter applies per-card
     var k=o.stage||'awareness';
     if(!byStage[k])byStage[k]=[];
     byStage[k].push(o);
@@ -63022,6 +63107,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.157"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.158"></script>
 </body>
 </html>
