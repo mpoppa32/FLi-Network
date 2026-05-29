@@ -8863,7 +8863,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.166</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.167</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10402,6 +10402,10 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
         <option value="">★ Saved views</option>
       </select>
       <button onclick="window._accSaveCurrentView&&window._accSaveCurrentView()" title="Save current filters + sort as a named view" style="padding:11px 14px;border:1px solid var(--gold);border-radius:6px;background:transparent;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">+ Save</button>
+      <!-- P13.167 — Bulk POC Discovery. Iterates dark orgs (no linked person)
+           and runs Claude web-search per org, persisting candidates so the
+           operator wakes to a triage queue instead of clicking 149 drawers. -->
+      <button onclick="window._atlasBulkPOCDiscovery&&window._atlasBulkPOCDiscovery()" title="Run POC search across every org with no linked decision-makers. Honors the per-workspace Anthropic hourly quota." style="padding:11px 14px;border:1px solid var(--purple);border-radius:6px;background:rgba(139,92,246,.10);color:var(--purple);font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">⌖ Bulk Find POCs</button>
       <select id="accounts-sort" onchange="window._renderAccountsView&&window._renderAccountsView()" style="padding:11px 16px;border:1px solid var(--b1);border-radius:6px;background:var(--s2);color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif;cursor:pointer">
         <!-- P13.135 Day 3 — default sort = recent activity. Audit Critical #3
              (Account Tracking): "Where do I stand with this customer?" gets
@@ -43637,6 +43641,76 @@ function _renderPOCCandidate(c) {
     '</div>';
 }
 
+// P13.167 — Bulk POC Discovery (Sovereign Intelligence audit Lens 2 #3).
+// Iterates dark orgs serially with a between-call gate, calls
+// searchOpenSources per org, persists candidates to /pendingPOCs via the
+// same path _runPOCSearch uses. Honors the per-workspace Anthropic hourly
+// quota — aborts on resource-exhausted with a friendly message. Surfaces
+// progress as toast updates so operator can watch the queue drain.
+window._atlasBulkPOCDiscovery = async function(){
+  if (typeof window.Corsair === 'undefined' || !window.Corsair.poc) {
+    if (typeof toast === 'function') toast('POC module not loaded');
+    return;
+  }
+  var allNodes = window.nodes || [];
+  // Dark = company/government/org node with no existing POCs in workspace.
+  var dark = [];
+  for (var i = 0; i < allNodes.length; i++) {
+    var n = allNodes[i];
+    if (!n || (n.type !== 'company' && n.type !== 'government' && n.type !== 'org')) continue;
+    if (!n.name) continue;
+    var existing = [];
+    try { existing = window.Corsair.poc.findExisting(n.id) || []; } catch(e){}
+    if (existing.length === 0) dark.push(n);
+  }
+  if (!dark.length) {
+    if (typeof toast === 'function') toast('No dark orgs to process — every org already has at least one linked POC');
+    return;
+  }
+  var cap = Math.min(dark.length, 25); // Demo-safe cap; quota is 30/hr default.
+  var confirmMsg = 'Run POC search across ' + dark.length + ' dark org' + (dark.length === 1 ? '' : 's') +
+    '?\n\nThis will use up to ' + cap + ' Anthropic quota credits (workspace cap 30/hr).\n\n' +
+    'Candidates land in /pendingPOCs for each org so they persist across modal close. Review later via Find POCs.';
+  if (!confirm(confirmMsg)) return;
+  var processed = 0, candidatesAdded = 0, errors = 0;
+  var quotaExhausted = false;
+  for (var di = 0; di < dark.length && di < cap && !quotaExhausted; di++) {
+    var org = dark[di];
+    if (typeof toast === 'function') toast('⌖ POC search ' + (di+1) + ' of ' + Math.min(cap, dark.length) + ': ' + (org.name || '').slice(0, 40), 4000);
+    var safeOrgKey = String(org.id).replace(/[#$\[\]/.]/g, '_');
+    try {
+      var found = await window.Corsair.poc.searchOpenSources(org.name, org.type);
+      var ts = Date.now();
+      if (found && found.length && typeof window.fbSet === 'function' && typeof window.wsPath === 'function') {
+        for (var pi = 0; pi < found.length; pi++) {
+          try {
+            var cand = found[pi];
+            var cId = _atlasPocCandidateId(cand);
+            await window.fbSet(window.wsPath('pendingPOCs/' + safeOrgKey + '/' + cId), Object.assign({}, cand, {
+              candidateId: cId, searchedAt: ts, status: 'pending'
+            }));
+            candidatesAdded++;
+          } catch (pe) { /* per-candidate write best-effort */ }
+        }
+        try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/pendingCount'), found.length); } catch(me){}
+      }
+      try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/lastPOCSearchAt'), ts); } catch(me){}
+      processed++;
+    } catch (e) {
+      var msg = (e && e.message) || String(e);
+      if (/quota|resource[ -]exhausted|too many/i.test(msg)) { quotaExhausted = true; }
+      else { errors++; console.warn('[bulkPOC] org failed', org.name, msg); }
+    }
+    // Throttle 2s between calls to respect upstream rate limits.
+    if (di + 1 < dark.length && di + 1 < cap && !quotaExhausted) await new Promise(function(r){ setTimeout(r, 2000); });
+  }
+  var summary = '✓ Bulk POC complete · ' + processed + ' org' + (processed === 1 ? '' : 's') + ' processed · ' + candidatesAdded + ' candidate' + (candidatesAdded === 1 ? '' : 's') + ' surfaced';
+  if (errors) summary += ' · ' + errors + ' failed';
+  if (quotaExhausted) summary += ' · ⚠ Anthropic quota hit — re-run next hour for remaining ' + (dark.length - processed);
+  if (typeof toast === 'function') toast(summary, 9000);
+  if (typeof window._renderAccountsView === 'function') try { window._renderAccountsView(); } catch(e){}
+};
+
 // P13.164 — stable candidate id from name (idempotent). Same person from
 // a re-search overwrites instead of duplicating.
 function _atlasPocCandidateId(c){
@@ -63642,6 +63716,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.166"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.167"></script>
 </body>
 </html>
