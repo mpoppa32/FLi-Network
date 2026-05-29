@@ -8849,7 +8849,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.156</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.157</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -18310,6 +18310,27 @@ window._pwinFrac = function(o){
   return p;
 };
 
+// P13.157 — Set workspace FY target via inline prompt. Stored per-
+// workspace in localStorage so it survives reloads without RTDB write
+// (admin-rules complexity). When set, Forecast COVERAGE tile shows
+// weighted/target ratio. Clearing target (empty / 0) returns to the
+// "+ Set FY target" placeholder.
+window._setFyTarget = function(){
+  var wsId = window.currentWsId || 'default';
+  var key = 'corsair-fy-target-' + wsId;
+  var cur = 0;
+  try { cur = Number(localStorage.getItem(key)) || 0; } catch(e){}
+  var resp = prompt('FY revenue target ($) for this workspace.\n\nUsed to compute pipeline coverage (weighted $ ÷ target). Stored per browser.\n\nCurrent: ' + (cur ? '$' + cur.toLocaleString() : '(not set)') + '\n\nEnter target (or 0 to clear):', cur || '');
+  if (resp == null) return;
+  var n = Number(String(resp).replace(/[^0-9.]/g, '')) || 0;
+  try {
+    if (n > 0) localStorage.setItem(key, String(n));
+    else localStorage.removeItem(key);
+  } catch(e){}
+  try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); } catch(e){}
+  if (typeof toast === 'function') toast(n > 0 ? 'FY target set: $' + n.toLocaleString() : 'FY target cleared');
+};
+
 // P13.155 — Forecast drill: every number on Forecast clicks to its opps.
 // Tile click: switch to opps view + scroll Kanban into view.
 // Funnel row click: switch to opps + scroll the target stage column + flash
@@ -18657,12 +18678,68 @@ window._renderCopForecast = function(){
       : '') +
       // Body (hidden when collapsed)
       (collapsed ? '' :
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px">' +
-          tile('OPEN OPPS', String(totalCount), (autoScoredCount ? autoScoredCount + ' auto-scored · A:' + tierA + ' B:' + tierB + ' C:' + tierC : null) || (unscoredCount ? scoredCount + ' validated · ' + unscoredCount + ' need value/pwin' : null)) +
-          tile('PIPELINE $', _fmt$(totalPipeline), unscoredCount && !totalPipeline ? 'add value + pwin to score' : null) +
-          tile('WEIGHTED $', _fmt$(weightedPipeline), 'value × p(win)') +
-          tile('AVG DEAL', _fmt$(avgDeal), scoredCount ? 'across ' + scoredCount + ' scored' : null) +
-        '</div>' +
+        // P13.157 — Money concentration + Coverage ratio tiles, per
+        // Sovereign View audit Lens 5 (audit High #2 + High #3).
+        // Concentration: smallest N opps that hold ≥80% of weighted
+        // pipeline — the single most important pipeline-health signal a
+        // BD lead needs. Coverage: weighted / fyTarget (per-workspace
+        // localStorage). When target unset, tile becomes a click-to-set
+        // affordance so the framework is visible at demo time even with
+        // no number yet entered.
+        (function(){
+          var concText = '—', concSub = 'set value + pwin on opps';
+          if (weightedPipeline > 0) {
+            var sorted = opps.slice().filter(function(o){
+              var v = Number(o.value || 0);
+              var p = (typeof window._pwinFrac === 'function') ? window._pwinFrac(o) : 0;
+              return v * p > 0;
+            }).map(function(o){
+              var v = Number(o.value || 0);
+              var p = (typeof window._pwinFrac === 'function') ? window._pwinFrac(o) : 0;
+              return v * p;
+            }).sort(function(a,b){ return b - a; });
+            var threshold = weightedPipeline * 0.8;
+            var running = 0, n = 0;
+            for (var i = 0; i < sorted.length; i++) {
+              running += sorted[i];
+              n++;
+              if (running >= threshold) break;
+            }
+            var pct = Math.round((n / Math.max(1, sorted.length)) * 100);
+            concText = 'TOP ' + n;
+            concSub = 'hold 80% of weighted · ' + pct + '% of scored opps';
+          }
+          // Coverage tile — localStorage-backed FY target.
+          var wsId = window.currentWsId || 'default';
+          var fyTarget = 0;
+          try { fyTarget = Number(localStorage.getItem('corsair-fy-target-' + wsId)) || 0; } catch(e){}
+          var coverageTile = '';
+          if (fyTarget > 0 && weightedPipeline > 0) {
+            var ratio = weightedPipeline / fyTarget;
+            var ratioCol = ratio >= 3 ? 'var(--green)' : ratio >= 2 ? 'var(--gold)' : 'var(--red)';
+            var ratioTxt = ratio.toFixed(1) + '× target';
+            var statusTxt = ratio >= 3 ? 'STRONG' : ratio >= 2 ? 'BUILDING' : 'BEHIND';
+            coverageTile = '<div onclick="window._setFyTarget&amp;&amp;window._setFyTarget()" title="Click to update FY target" style="background:var(--s1);border:1px solid var(--b1);border-radius:3px;padding:14px 16px;cursor:pointer;transition:border-color 140ms" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
+              '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.12em;font-weight:700">COVERAGE</div>' +
+              '<div style="font-family:Antonio,sans-serif;font-size:var(--text-2xl);font-weight:700;color:' + ratioCol + ';line-height:1;margin-top:6px">' + ratioTxt + '</div>' +
+              '<div style="font-size:var(--text-xs);color:' + ratioCol + ';margin-top:4px;font-family:IBM Plex Mono,monospace;letter-spacing:.06em">' + statusTxt + ' · vs ' + _fmt$(fyTarget) + '</div>' +
+            '</div>';
+          } else {
+            coverageTile = '<div onclick="window._setFyTarget&amp;&amp;window._setFyTarget()" title="Set an FY revenue target to see weighted/target coverage ratio" style="background:var(--s1);border:1px dashed rgba(212,130,58,.4);border-radius:3px;padding:14px 16px;cursor:pointer" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'rgba(212,130,58,.4)\'">' +
+              '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--gold);letter-spacing:.12em;font-weight:700">COVERAGE</div>' +
+              '<div style="font-family:Antonio,sans-serif;font-size:var(--text-lg);font-weight:700;color:var(--t2);line-height:1.1;margin-top:6px">+ Set FY target</div>' +
+              '<div style="font-size:var(--text-xs);color:var(--t3);margin-top:4px;font-family:IBM Plex Mono,monospace;letter-spacing:.06em">weighted ÷ target</div>' +
+            '</div>';
+          }
+          return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:16px">' +
+            tile('OPEN OPPS', String(totalCount), (autoScoredCount ? autoScoredCount + ' auto-scored · A:' + tierA + ' B:' + tierB + ' C:' + tierC : null) || (unscoredCount ? scoredCount + ' validated · ' + unscoredCount + ' need value/pwin' : null)) +
+            tile('PIPELINE $', _fmt$(totalPipeline), unscoredCount && !totalPipeline ? 'add value + pwin to score' : null) +
+            tile('WEIGHTED $', _fmt$(weightedPipeline), 'value × p(win)') +
+            tile('AVG DEAL', _fmt$(avgDeal), scoredCount ? 'across ' + scoredCount + ' scored' : null) +
+            tile('CONCENTRATION', concText, concSub) +
+            coverageTile +
+          '</div>';
+        })() +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">' +
           '<div>' +
             '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;color:var(--t3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">Close-Month Forecast · Next 6 mo</div>' +
@@ -62945,6 +63022,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.156"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.157"></script>
 </body>
 </html>

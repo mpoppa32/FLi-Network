@@ -152,6 +152,7 @@ window._buildCopData = function() {
     staleCount: stale.length,
     stale: stale.slice(0, 6),
     activeOppsCount: activeOpps.length,
+    activeOpps: activeOpps,
     oppByStage: oppByStage,
     pursuitsByStage: pursuitsByStage,
     stageRollups: stageRollups,
@@ -308,11 +309,46 @@ window.renderCopSection = function() {
       var fg = active ? 'var(--gold)' : 'var(--t2)';
       return '<button onclick="window._copSetKanbanFilter&amp;&amp;window._copSetKanbanFilter(\'' + mode + '\')" style="padding:5px 10px;border:1px solid ' + bd + ';border-radius:2px;background:' + bg + ';color:' + fg + ';font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">' + label + '</button>';
     }
+    // P13.157 — Priority + Tag dropdowns built from distinct values across
+    // the active opp set so the Atlas-imported mondayPriority (121/122 =
+    // "Critical ⚠️") and mondayTags ("defense, sUAS") become operational
+    // cuts. Empty workspace → dropdowns hidden so the chip row stays clean.
+    var _priorityVals = [];
+    var _tagVals = [];
+    (d.activeOpps || []).forEach(function(o){
+      if (!o) return;
+      var pv = String(o.mondayPriority || '').trim();
+      if (pv && _priorityVals.indexOf(pv) < 0) _priorityVals.push(pv);
+      var tv = String(o.mondayTags || '').trim();
+      if (tv) {
+        tv.split(',').forEach(function(t){
+          var tt = t.trim();
+          if (tt && _tagVals.indexOf(tt) < 0) _tagVals.push(tt);
+        });
+      }
+    });
+    function _dropdown(prefix, label, options, currentMode) {
+      var current = (currentMode && currentMode.indexOf(prefix + ':') === 0) ? currentMode.slice(prefix.length + 1) : '';
+      var optsHtml = '<option value="">' + label + '</option>' +
+        options.map(function(v){
+          var sel = v === current ? ' selected' : '';
+          var safe = _copEsc(v);
+          return '<option value="' + safe + '"' + sel + '>' + safe + '</option>';
+        }).join('');
+      var active = !!current;
+      var bg = active ? 'rgba(212,130,58,.18)' : 'transparent';
+      var bd = active ? 'var(--gold)' : 'var(--b2)';
+      var fg = active ? 'var(--gold)' : 'var(--t2)';
+      return '<select onchange="window._copSetKanbanFilter&amp;&amp;window._copSetKanbanFilter(this.value?\'' + prefix + ':\'+this.value:\'all\')" style="padding:4px 8px;border:1px solid ' + bd + ';border-radius:2px;background:' + bg + ';color:' + fg + ';font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer">' + optsHtml + '</select>';
+    }
+
     h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
          _chip('all', 'All') +
          _chip('ready', 'Ready') +
          _chip('aged', 'Aged') +
          _chip('sparse', 'Sparse data') +
+         (_priorityVals.length ? _dropdown('priority', 'Priority', _priorityVals, _filterMode) : '') +
+         (_tagVals.length ? _dropdown('tag', 'Tag', _tagVals, _filterMode) : '') +
          '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);letter-spacing:0.1em;color:var(--t3);text-transform:uppercase;margin-left:10px">click card → dossier</span>' +
          '</div>';
     h += '</div>';
@@ -327,6 +363,16 @@ window.renderCopSection = function() {
       }
       if (_filterMode === 'sparse') {
         return o && o.scoreConfidence === 'sparse';
+      }
+      // P13.157 — Priority / Tag filters drilled from the dropdowns.
+      if (_filterMode.indexOf && _filterMode.indexOf('priority:') === 0) {
+        var pVal = _filterMode.slice('priority:'.length);
+        return String((o && o.mondayPriority) || '').trim() === pVal;
+      }
+      if (_filterMode.indexOf && _filterMode.indexOf('tag:') === 0) {
+        var tVal = _filterMode.slice('tag:'.length);
+        var oTags = String((o && o.mondayTags) || '').split(',').map(function(t){return t.trim();});
+        return oTags.indexOf(tVal) !== -1;
       }
       if (_filterMode === 'ready' && typeof pipelineMod.validateAdvance === 'function' && typeof pipelineMod.index === 'function') {
         var stagesArr = pipelineMod.stages || [];
