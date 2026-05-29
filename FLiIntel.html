@@ -477,6 +477,8 @@ html,body{
   animation:pulse-dot 2s ease-in-out infinite
 }
 @keyframes pulse-dot{0%,100%{opacity:.6}50%{opacity:1}}
+/* P13.161 — JUST ADDED badge pulse on Atlas feed entries < 30s old */
+@keyframes atlasJustAdded{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(212,130,58,.55)}50%{transform:scale(1.04);box-shadow:0 0 0 4px rgba(212,130,58,0)}}
 .daily-strip-item{
   flex:1;min-width:280px;
   display:flex;align-items:center;gap:10px;
@@ -8849,7 +8851,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.160</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.161</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -30883,7 +30885,17 @@ function _atlasFileToEntry(file){
 window._atlasUploadFiles = async function(fileList){
   if (!fileList || !fileList.length) return;
   var MAX = 1024 * 1024 * 1.5; // 1.5MB cap for base64 in RTDB (Firebase Storage upgrade post-demo)
-  var added = 0, skipped = 0, skippedNames = [];
+  // P13.161 — instant acknowledgement on drop zone before any writes start
+  // so the operator sees the drop registered.
+  var zone = document.getElementById('atlas-drop-zone');
+  if (zone) {
+    zone.style.borderColor = 'var(--gold)';
+    zone.style.background = 'rgba(212,130,58,.10)';
+    zone.innerHTML = '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--gold);margin-bottom:4px"><b>Uploading ' + fileList.length + ' file' + (fileList.length === 1 ? '' : 's') + '…</b></div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.06em">writing to feed</div>';
+  }
+  var added = 0, skipped = 0;
+  var addedNames = [], skippedNames = [];
   for (var i = 0; i < fileList.length; i++) {
     var f = fileList[i];
     if (!f) continue;
@@ -30892,12 +30904,26 @@ window._atlasUploadFiles = async function(fileList){
       var entry = await _atlasFileToEntry(f);
       await _atlasWriteEntry(entry);
       added++;
+      addedNames.push(f.name);
     } catch(e) { skipped++; skippedNames.push(f.name); console.warn('[atlas upload]', f.name, e); }
   }
   if (typeof toast === 'function') {
-    var msg = '+ ' + added + ' file' + (added === 1 ? '' : 's') + ' added to Atlas feed';
-    if (skipped) msg += ' · ' + skipped + ' skipped (>1.5MB)';
-    toast(msg);
+    // P13.161 — verbose toast lists filenames; 6s duration. HTML escaped so
+    // filenames with special chars don't break the toast surface.
+    function _ue(s){ return String(s||'').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+    var sample = addedNames.slice(0, 3).map(_ue).join(', ');
+    if (addedNames.length > 3) sample += ' +' + (addedNames.length - 3) + ' more';
+    var html = '';
+    if (added) {
+      html += '<div style="font-weight:700;color:#22c55e;margin-bottom:3px">✓ ' + added + ' file' + (added === 1 ? '' : 's') + ' added to Atlas feed</div>';
+      if (sample) html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.04em;color:var(--bone)">' + sample + '</div>';
+    }
+    if (skipped) {
+      html += '<div style="font-weight:700;color:#ef4444;margin-top:' + (added ? '6px' : '0') + '">' + skipped + ' skipped (>1.5MB)</div>';
+      var sSample = skippedNames.slice(0, 2).map(_ue).join(', ');
+      if (sSample) html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.04em;color:var(--paper-2)">' + sSample + '</div>';
+    }
+    toast(html || 'No files uploaded', 6000);
   }
 };
 window._atlasOnDrop = function(ev){
@@ -31175,6 +31201,13 @@ window.renderAtlasView = function(){
       h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px">';
       h += '<div style="display:flex;align-items:baseline;gap:8px">';
       if (tag) h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:' + tColor + ';text-transform:uppercase">' + _esc(tag) + '</span>';
+      // P13.161 — "JUST ADDED" gold pulsing badge for entries < 30s old so
+      // the operator gets an unmissable visual confirmation when an upload
+      // lands in the feed. Decays naturally on next re-render after 30s.
+      var ageMs = nowTs - (u.ts || 0);
+      if (ageMs >= 0 && ageMs < 30000) {
+        h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:var(--gold);background:rgba(212,130,58,.20);border:1px solid var(--gold);padding:2px 7px;border-radius:2px;text-transform:uppercase;animation:atlasJustAdded 1.4s ease-in-out infinite">JUST ADDED</span>';
+      }
       h += '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.06em">' + _fmtTs(u.ts) + ' &nbsp;·&nbsp; ' + _esc(u.author || 'Unknown') + '</span>';
       h += '</div>';
       h += '<button onclick="window._atlasDeleteUpdate&&window._atlasDeleteUpdate(\'' + _esc(u.id) + '\')" title="Delete this update" style="background:transparent;border:0;color:var(--paper-2);cursor:pointer;font-size:14px;padding:0 4px;opacity:.6">×</button>';
@@ -63401,6 +63434,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.160"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.161"></script>
 </body>
 </html>
