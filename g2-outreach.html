@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>G2 POC Outreach · Atlas</title>
+<style>
+  :root { --bg:#070d18; --s1:#0a1020; --s2:#0d1426; --b1:#1a2236; --gold:#d4823a; --bone:#f4ede0; --paper:#b5ad9f; --paper-2:#7d7669; --green:#22c55e; --red:#ef4444; --amber:#f59e0b; --teal:#5fb3b8; }
+  body { background: var(--bg); color: var(--bone); font-family: IBM Plex Sans, sans-serif; max-width: 1300px; margin: 0 auto; padding: 30px 36px; line-height: 1.55; }
+  h1 { font-family: Anton, sans-serif; font-size: 38px; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 8px; color: var(--gold); }
+  .sub { color: var(--paper-2); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 28px; }
+  .card { background: var(--s1); border: 1px solid var(--b1); border-left: 3px solid var(--gold); border-radius: 3px; padding: 22px 26px; margin-bottom: 20px; }
+  .card-label { font-family: IBM Plex Mono, monospace; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); margin-bottom: 8px; font-weight: 700; }
+  button { padding: 11px 22px; background: rgba(212,130,58,.18); border: 1px solid var(--gold); border-radius: 3px; color: var(--gold); font-family: IBM Plex Mono, monospace; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+  button.primary { background: rgba(34,197,94,.18); border-color: var(--green); color: var(--green); }
+  button.ghost { padding: 5px 10px; font-size: 10px; background: transparent; }
+  .stat-grid { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+  .stat { background: var(--s2); border: 1px solid var(--b1); border-radius: 3px; padding: 14px 18px; min-width: 150px; }
+  .stat-n { font-family: Anton, sans-serif; font-size: 30px; line-height: 1; color: var(--bone); }
+  .stat-l { font-family: IBM Plex Mono, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--paper-2); margin-top: 6px; }
+  .stat.red .stat-n { color: var(--red); }
+  .stat.green .stat-n { color: var(--green); }
+  .stat.gold .stat-n { color: var(--gold); }
+  .org-card { background: var(--s2); border: 1px solid var(--b1); border-radius: 3px; padding: 16px 20px; margin-bottom: 12px; }
+  .org-card.dark { border-left: 3px solid var(--red); }
+  .org-card.has-poc { border-left: 3px solid var(--teal); }
+  .org-card.ready { border-left: 3px solid var(--green); }
+  .org-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .org-name { font-family: Anton, sans-serif; font-size: 22px; color: var(--bone); letter-spacing: -.01em; }
+  .org-meta { font-family: IBM Plex Mono, monospace; font-size: 11px; color: var(--paper-2); letter-spacing: .08em; }
+  .pill { display: inline-block; padding: 3px 8px; border-radius: 2px; font-family: IBM Plex Mono, monospace; font-size: 10px; font-weight: 700; letter-spacing: .10em; margin-right: 4px; }
+  .pill-g1 { background: rgba(212,130,58,.15); color: var(--gold); }
+  .pill-g2 { background: rgba(95,179,184,.18); color: var(--teal); }
+  .pill-active { background: rgba(34,197,94,.18); color: var(--green); }
+  .pill-cold { background: rgba(239,68,68,.15); color: var(--red); }
+  .pill-warm { background: rgba(245,158,11,.15); color: var(--amber); }
+  .org-notes { font-size: 13px; color: var(--paper); line-height: 1.55; margin: 8px 0 12px; }
+  .poc-list { background: var(--s1); border-radius: 2px; padding: 10px 14px; }
+  .poc-row { display: grid; grid-template-columns: 200px 1fr 100px 80px 110px; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(26,34,54,.4); font-size: 13px; }
+  .poc-row:last-child { border-bottom: 0; }
+  .poc-name { font-weight: 600; color: var(--bone); }
+  .poc-role { color: var(--paper); font-size: 12px; }
+  .poc-email { font-family: IBM Plex Mono, monospace; font-size: 11px; color: var(--teal); word-break: break-all; }
+  .poc-email.missing { color: var(--red); font-style: italic; }
+  .last-touch { font-family: IBM Plex Mono, monospace; font-size: 11px; color: var(--paper-2); }
+  .last-touch.never { color: var(--green); font-weight: 700; }
+  .filter-bar { display: flex; gap: 8px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
+  .filter-bar select, .filter-bar input { padding: 8px 12px; background: var(--s2); border: 1px solid var(--b1); color: var(--bone); border-radius: 2px; font-size: 13px; font-family: IBM Plex Sans, sans-serif; }
+  #email-modal { display: none; position: fixed; inset: 0; background: rgba(7,13,24,.85); z-index: 9000; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; }
+  #email-modal.open { display: flex; }
+  .modal-inner { max-width: 760px; width: 100%; background: var(--s1); border: 1px solid var(--gold); border-radius: 3px; padding: 28px 32px; }
+  .modal-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--b1); }
+  .modal-title { font-family: Anton, sans-serif; font-size: 24px; color: var(--gold); }
+  .modal-x { background: transparent; border: 0; color: var(--paper-2); font-size: 26px; cursor: pointer; padding: 0 6px; }
+  label.mlbl { display: block; font-family: IBM Plex Mono, monospace; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--paper-2); margin-top: 16px; margin-bottom: 6px; font-weight: 700; }
+  #email-subject { width: 100%; padding: 10px 14px; background: var(--s2); border: 1px solid var(--b1); color: var(--bone); border-radius: 2px; font-size: 15px; font-family: IBM Plex Sans, sans-serif; box-sizing: border-box; }
+  #email-body { width: 100%; min-height: 280px; padding: 14px; background: var(--s2); border: 1px solid var(--b1); color: var(--bone); border-radius: 2px; font-size: 14px; font-family: IBM Plex Sans, sans-serif; line-height: 1.6; box-sizing: border-box; resize: vertical; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  #auth-status { margin-top: 14px; font-size: 13px; color: var(--paper); }
+</style>
+</head>
+<body>
+<h1>G2 POC Outreach</h1>
+<div class="sub">Drone Dominance Program Gauntlet 2 customers · Atlas hasn't contacted yet</div>
+
+<div class="card" id="auth-card">
+  <div class="card-label">Step 1 · Sign in</div>
+  <button id="signin-btn">Sign in with Google</button>
+  <div id="auth-status"></div>
+</div>
+
+<div class="card" id="stats-card" style="display:none">
+  <div class="card-label">Step 2 · G2 portfolio state</div>
+  <div class="stat-grid" id="stat-grid"></div>
+  <div class="filter-bar">
+    <select id="filter-status">
+      <option value="all">All G2 orgs</option>
+      <option value="ready" selected>Ready to email (has POC + email, no recent contact)</option>
+      <option value="needs-poc">Dark (no POC linked — run ⌖ Find POCs first)</option>
+      <option value="no-email">Has POC but no email (run POC Finder or research)</option>
+      <option value="contacted">Already contacted (in last 30d)</option>
+    </select>
+    <input id="filter-search" placeholder="Search org or POC name…" style="flex:1;min-width:240px">
+  </div>
+</div>
+
+<div id="results"></div>
+
+<div id="email-modal">
+  <div class="modal-inner">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-title">Compose Email</div>
+      <button class="modal-x" onclick="document.getElementById('email-modal').classList.remove('open')">×</button>
+    </div>
+    <label class="mlbl">To</label>
+    <div id="email-to" style="font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--teal);padding:8px 0"></div>
+    <label class="mlbl">Subject</label>
+    <input id="email-subject" type="text">
+    <label class="mlbl">Body</label>
+    <textarea id="email-body"></textarea>
+    <div class="modal-actions">
+      <button class="primary" id="copy-email">Copy to clipboard</button>
+      <button id="mailto-email">Open in mail app</button>
+      <button class="ghost" id="copy-body-only">Copy body only</button>
+    </div>
+    <div id="copy-status" style="margin-top:10px;font-size:12px;color:var(--green)"></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+const FB_CFG = {apiKey:"AIzaSyBQW49mGZbUHkWSZ47FgdoUNaoU-Iv9nVo",authDomain:"fli-network.firebaseapp.com",databaseURL:"https://fli-network-default-rtdb.firebaseio.com",projectId:"fli-network",messagingSenderId:"51164371993",appId:"1:51164371993:web:15855d3506496d67535e88"};
+const WS_ID = "1777435779676";
+const fbApp = initializeApp(FB_CFG);
+const auth = getAuth(fbApp);
+const db = getDatabase(fbApp);
+
+const $ = id => document.getElementById(id);
+function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function escAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
+
+let nodes={}, links=[], meetings=[];
+
+$("signin-btn").addEventListener("click", async () => {
+  $("auth-status").textContent = "Signing in…";
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) {
+    if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user") setTimeout(() => signInWithRedirect(auth, new GoogleAuthProvider()), 800);
+    else $("auth-status").innerHTML = '<span style="color:#ef4444">Error: ' + e.code + " " + e.message + "</span>";
+  }
+});
+getRedirectResult(auth).catch(()=>{});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return;
+  $("auth-status").innerHTML = '<span style="color:#22c55e;font-size:15px;font-weight:700">&#10003; Signed in as <b>' + user.email + '</b> &mdash; loading workspace…</span>';
+  $("signin-btn").textContent = "Reload";
+  await loadAll();
+});
+
+async function loadAll() {
+  const [nSnap, lSnap, mSnap] = await Promise.all([
+    get(ref(db, "workspaces/" + WS_ID + "/nodes")),
+    get(ref(db, "workspaces/" + WS_ID + "/links")),
+    get(ref(db, "workspaces/" + WS_ID + "/meetings"))
+  ]);
+  nodes = nSnap.val() || {};
+  const rawLinks = lSnap.val() || {};
+  links = Object.values(rawLinks).filter(Boolean);
+  const rawMeetings = mSnap.val() || {};
+  meetings = Object.values(rawMeetings).filter(Boolean);
+  render();
+}
+
+function render() {
+  $("stats-card").style.display = "block";
+  const g2Orgs = Object.values(nodes).filter(n => n && Array.isArray(n.customerSegments) && n.customerSegments.includes("DDP-G2"));
+
+  // Build org -> linked persons index from links
+  const personsByOrg = {};
+  for (const l of links) {
+    if (!l || !l.source || !l.target) continue;
+    const a = nodes[l.source], b = nodes[l.target];
+    if (!a || !b) continue;
+    let orgId, personId;
+    if (a.type === "company" || a.type === "government") { if (b.type === "person") { orgId = a.id || l.source; personId = b.id || l.target; } }
+    else if (b.type === "company" || b.type === "government") { if (a.type === "person") { orgId = b.id || l.target; personId = a.id || l.source; } }
+    if (orgId && personId) {
+      if (!personsByOrg[orgId]) personsByOrg[orgId] = new Set();
+      personsByOrg[orgId].add(personId);
+    }
+  }
+
+  // Build person -> last-meeting-ts
+  const lastTouchByPerson = {};
+  for (const m of meetings) {
+    const ts = Number(m.ts || m.date || 0);
+    if (!ts) continue;
+    const attendees = (m.attendees || m.people || []).map(a => typeof a === "string" ? a : (a && a.id)).filter(Boolean);
+    for (const pid of attendees) {
+      if (!lastTouchByPerson[pid] || ts > lastTouchByPerson[pid]) lastTouchByPerson[pid] = ts;
+    }
+  }
+
+  // Classify each G2 org
+  const classified = g2Orgs.map(org => {
+    const orgId = org.id || Object.keys(nodes).find(k => nodes[k] === org);
+    const pIds = personsByOrg[orgId] ? Array.from(personsByOrg[orgId]) : [];
+    const persons = pIds.map(pid => nodes[pid]).filter(Boolean);
+    const withEmail = persons.filter(p => p.email && String(p.email).trim());
+    const NOW = Date.now();
+    const RECENT = 30 * 86400000;
+    const hasRecent = persons.some(p => {
+      const pid = p.id || Object.keys(nodes).find(k => nodes[k] === p);
+      return lastTouchByPerson[pid] && (NOW - lastTouchByPerson[pid]) < RECENT;
+    });
+    let status;
+    if (persons.length === 0) status = "needs-poc";
+    else if (hasRecent) status = "contacted";
+    else if (withEmail.length === 0) status = "no-email";
+    else status = "ready";
+    return { org, orgId, persons, withEmail, status, lastTouchByPerson };
+  });
+
+  const stats = [
+    ["G2 orgs total", classified.length, "gold"],
+    ["READY to email", classified.filter(c => c.status === "ready").length, "green"],
+    ["dark (no POC)", classified.filter(c => c.status === "needs-poc").length, "red"],
+    ["POC but no email", classified.filter(c => c.status === "no-email").length, "gold"],
+    ["already contacted", classified.filter(c => c.status === "contacted").length, ""]
+  ];
+  $("stat-grid").innerHTML = stats.map(s => '<div class="stat ' + s[2] + '"><div class="stat-n">' + s[1] + '</div><div class="stat-l">' + s[0] + '</div></div>').join("");
+
+  function rerender() {
+    const fStatus = $("filter-status").value;
+    const fSearch = $("filter-search").value.toLowerCase().trim();
+    const filtered = classified.filter(c => {
+      if (fStatus !== "all" && c.status !== fStatus) return false;
+      if (fSearch && !c.org.name.toLowerCase().includes(fSearch) && !c.persons.some(p => (p.name||"").toLowerCase().includes(fSearch))) return false;
+      return true;
+    });
+    let html = '<div style="margin-bottom:8px;color:var(--paper-2);font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.10em">Showing ' + filtered.length + ' of ' + classified.length + ' G2 orgs</div>';
+    for (const c of filtered) {
+      const o = c.org;
+      const segPills = (o.customerSegments||[]).map(s => {
+        const cls = s === "DDP-G1" ? "pill-g1" : s === "DDP-G2" ? "pill-g2" : "pill-active";
+        return '<span class="pill ' + cls + '">' + s + '</span>';
+      }).join("");
+      const stagePill = o.accountStatus ? '<span class="pill ' + (o.accountStatus === "prospect" ? "pill-cold" : "pill-warm") + '">' + esc(o.accountStatus.toUpperCase()) + '</span>' : "";
+      const klass = c.status === "needs-poc" ? "dark" : c.status === "ready" ? "ready" : "has-poc";
+      html += '<div class="org-card ' + klass + '">';
+      html += '<div class="org-head"><div><div class="org-name">' + esc(o.name) + '</div><div class="org-meta">' + segPills + stagePill + (o.priority ? '<span class="pill" style="background:rgba(212,130,58,.10);color:var(--gold)">PRIORITY ' + esc(o.priority.toUpperCase()) + '</span>' : "") + (o.accountOwner ? '<span class="org-meta" style="margin-left:8px">owner: ' + esc(o.accountOwner) + '</span>' : "") + '</div></div></div>';
+      if (o.notes) html += '<div class="org-notes">' + esc(o.notes.slice(0, 320)) + (o.notes.length > 320 ? "…" : "") + '</div>';
+      if (c.persons.length === 0) {
+        html += '<div style="color:var(--red);font-family:IBM Plex Mono,monospace;font-size:12px;padding:8px 0">⚠ DARK — no POCs linked. Run ⌖ Find POCs in Atlas first.</div>';
+      } else {
+        html += '<div class="poc-list">';
+        for (const p of c.persons) {
+          const pid = p.id || Object.keys(nodes).find(k => nodes[k] === p);
+          const last = c.lastTouchByPerson[pid];
+          const lastStr = last ? Math.floor((Date.now() - last) / 86400000) + "d ago" : "never";
+          const lastCls = last ? "" : "never";
+          const emailStr = p.email ? esc(p.email) : '<span class="missing">no email on file</span>';
+          const emailCls = p.email ? "" : "missing";
+          html += '<div class="poc-row">';
+          html += '<div><div class="poc-name">' + esc(p.name) + '</div><div class="poc-role">' + esc(p.role || p.title || "—") + '</div></div>';
+          html += '<div class="poc-email ' + emailCls + '">' + emailStr + '</div>';
+          html += '<div class="last-touch ' + lastCls + '">' + lastStr + '</div>';
+          html += '<div>' + (p.isPOC ? '<span class="pill" style="background:rgba(34,197,94,.18);color:var(--green)">POC</span>' : "") + '</div>';
+          html += '<div>' + (p.email ? '<button class="ghost" onclick="window._composeEmail(\'' + escAttr(p.name) + '\',\'' + escAttr(p.email) + '\',\'' + escAttr(o.name) + '\')">✎ Email</button>' : '') + '</div>';
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    $("results").innerHTML = html;
+  }
+
+  $("filter-status").addEventListener("change", rerender);
+  $("filter-search").addEventListener("input", rerender);
+  rerender();
+
+  window._composeEmail = function(pocName, email, orgName) {
+    const c = classified.find(x => x.org.name === orgName);
+    if (!c) return;
+    const o = c.org;
+    const motor = o.primaryMotor || "our high-thrust BLDC motor line";
+    const firstName = pocName.split(/\s+/)[0];
+    const notes = (o.notes || "").slice(0, 300);
+    let hook = "your work at " + orgName;
+    if (/\$\d/.test(notes)) {
+      const m = notes.match(/\$[\d.]+[MBK][^.]*\./i);
+      if (m) hook = "your recent " + m[0].replace(/\.$/, "");
+    } else if (/army|navy|air force|dod|department of war|marine/i.test(notes)) {
+      const m = notes.match(/(US Army|US Navy|US Air Force|US Marine|DoD|Department of War)[^.]*\./i);
+      if (m) hook = m[0].replace(/\.$/, "");
+    }
+    const subject = "Atlas Motors × " + orgName + " — quick conversation";
+    const body = "Hi " + firstName + ",\n\n" +
+      "Saw " + hook + " — congrats on the momentum.\n\n" +
+      "Atlas Motors makes NDAA-compliant BLDC motors for the US drone ecosystem. " +
+      "The " + motor + " specifically would fit a lot of what we've seen on your " +
+      "product line. We're already shipping to Neros, DraganFly, Vector, Auterion, " +
+      "and Global Ordnance — happy to share spec sheets or send a sample kit if " +
+      "useful.\n\n" +
+      "15 minutes next week to compare notes? I can work around your schedule.\n\n" +
+      "Best,\n" +
+      "[Your name]\n" +
+      "Atlas Motors\n";
+    $("modal-title").textContent = "Email to " + pocName + " · " + orgName;
+    $("email-to").textContent = email;
+    $("email-subject").value = subject;
+    $("email-body").value = body;
+    $("email-modal").classList.add("open");
+    $("email-modal").dataset.to = email;
+  };
+}
+
+$("copy-email").addEventListener("click", async () => {
+  const text = "To: " + $("email-modal").dataset.to + "\nSubject: " + $("email-subject").value + "\n\n" + $("email-body").value;
+  try { await navigator.clipboard.writeText(text); $("copy-status").textContent = "✓ Copied full email to clipboard"; setTimeout(() => $("copy-status").textContent = "", 2500); }
+  catch (e) { $("copy-status").textContent = "Copy failed: " + e.message; }
+});
+$("copy-body-only").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("email-body").value); $("copy-status").textContent = "✓ Body copied"; setTimeout(() => $("copy-status").textContent = "", 2500); }
+  catch (e) { $("copy-status").textContent = "Copy failed: " + e.message; }
+});
+$("mailto-email").addEventListener("click", () => {
+  const to = $("email-modal").dataset.to;
+  const subj = encodeURIComponent($("email-subject").value);
+  const body = encodeURIComponent($("email-body").value);
+  window.location.href = "mailto:" + to + "?subject=" + subj + "&body=" + body;
+});
+</script>
+</body>
+</html>
