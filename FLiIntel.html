@@ -479,6 +479,18 @@ html,body{
 @keyframes pulse-dot{0%,100%{opacity:.6}50%{opacity:1}}
 /* P13.161 — JUST ADDED badge pulse on Atlas feed entries < 30s old */
 @keyframes atlasJustAdded{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(212,130,58,.55)}50%{transform:scale(1.04);box-shadow:0 0 0 4px rgba(212,130,58,0)}}
+/* P13.163 chrome calm sweep — drop always-on decoration that adds clutter
+   on every page. The DEFENSE CAPTURE OS subtitle next to the logo + the
+   SALES / BD role pill were brand decoration that competed with the actual
+   workspace identity for attention. Each view's own header carries the
+   contextual information that matters; the top chrome should anchor identity
+   only. Previously hidden only on mobile via media query — now always. */
+.topnav .nav-designation { display: none !important; }
+.topnav #user-role-badge { display: none !important; }
+/* P13.163 — hide rhythm panel (Morning Briefing band) on non-Today views.
+   Body gets class="view-not-today" set by switchView; CSS hides the panel.
+   Today view leaves the class off, panel renders normally. */
+body.view-not-today #corsair-rhythm { display: none !important; }
 .daily-strip-item{
   flex:1;min-width:280px;
   display:flex;align-items:center;gap:10px;
@@ -8851,7 +8863,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.162</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.163</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9074,7 +9086,11 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       </div>
       <div class="rhythm-summary" id="rhythm-summary"></div>
       <div class="rhythm-meta" id="rhythm-meta"></div>
-      <button type="button" onclick="event.stopPropagation();window._slackSendWatchRow&amp;&amp;window._slackSendWatchRow()" title="Post the watch row to your Slack channel" style="padding:6px 12px;border:1px solid rgba(236,178,46,.45);border-radius:2px;background:rgba(74,21,75,.22);color:#ecb22e;font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.1em;text-transform:uppercase;margin-right:8px"># Slack</button>
+      <!-- P13.163 — # Slack post-row button removed from rhythm header.
+           Slack channel config + posting still available via user settings
+           modal. This button was on every page above every view, competing
+           with the actual work surface. -->
+
       <button class="rhythm-toggle" type="button">
         <span class="rhythm-toggle-icon">&#9662;</span>
         <span id="rhythm-toggle-lbl">Collapse</span>
@@ -18068,19 +18084,26 @@ function switchView(v){
     try { window._exitTodayView(); } catch(e){}
   }
 
-  // P13.78 — auto-collapse the sibling Rhythm panel on every non-Today view
-  // so the active view body gets the full vertical space. Today is the
-  // dedicated home for the full watch queue; on other views the panel is
-  // a slim 1-line header strip ("▸ 5 WATCH · click to expand"). User can
-  // still expand by clicking the header — auto-collapse only fires on
-  // view switch, not on user gesture.
+  // P13.78 — auto-collapse the sibling Rhythm panel on every non-Today view.
+  // P13.163 — escalate: hide the Rhythm panel entirely on non-Today views
+  // via body.view-not-today class. Morning briefing belongs on Today (the
+  // dedicated landing). On other views it was a slim "▸ N WATCH" strip
+  // that still added persistent chrome — gone now. The collapse logic
+  // stays as a fallback when the class is somehow not applied.
   if (v !== 'today') {
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.add('view-not-today');
+    }
     var _rPanel = document.getElementById('corsair-rhythm');
     if (_rPanel && !_rPanel.classList.contains('collapsed')) {
       _rPanel.classList.add('collapsed');
       _corsairRhythmCollapsed = true;
       var _rLbl = document.getElementById('rhythm-toggle-lbl');
       if (_rLbl) _rLbl.textContent = 'Expand';
+    }
+  } else {
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.remove('view-not-today');
     }
   }
 
@@ -63433,6 +63456,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.162"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.163"></script>
 </body>
 </html>
