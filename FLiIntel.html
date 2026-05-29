@@ -8863,7 +8863,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.164</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.165</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -43484,15 +43484,33 @@ window.openPOCFinder = function(orgId) {
   _renderPOCSection(safeOrgId, org);
 };
 
-function _renderPOCSection(orgIdRaw, org) {
+async function _renderPOCSection(orgIdRaw, org) {
   var body = document.getElementById('poc-finder-body');
   if (!body) return;
-  var existing = window.Corsair.poc.findExisting(orgIdRaw.replace(/&#39;/g, "'"));
+  var resolvedOrgId = orgIdRaw.replace(/&#39;/g, "'");
+  var existing = window.Corsair.poc.findExisting(resolvedOrgId);
+  // P13.164 — load persisted POC candidates so prior searches survive
+  // modal close + page reload.
+  var persisted = [];
+  try { persisted = await window._loadPersistedPOCs(resolvedOrgId); } catch(e){}
+  var persistedHtml = '';
+  if (persisted && persisted.length) {
+    var rows = persisted.map(function(c){
+      // Mark with kind:'search' so the +Add button renders; tag candidateId
+      // so we can remove after promote.
+      return _renderPOCCandidate(Object.assign({}, c, { kind: 'search' }));
+    }).join('');
+    persistedHtml = '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.14em;color:#5fb3b8;text-transform:uppercase;margin:14px 0 10px;display:flex;align-items:center;justify-content:space-between">' +
+      '<span>Pending from prior search · ' + persisted.length + '</span>' +
+      '<span style="color:var(--t3);font-size:10px">Persisted — survives modal close</span></div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">' + rows + '</div>';
+  }
   var hdr = '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between"><span>In your workspace · ' + existing.length + '</span><span style="color:var(--t3);font-size:10px">Sorted by role weight + affiliation match</span></div>';
   body.innerHTML = hdr +
     (existing.length === 0
       ? '<div style="padding:14px;background:var(--s1);border:1px dashed var(--b2);border-radius:3px;color:var(--t3);font-size:12px;margin-bottom:18px">No person nodes in this workspace match this org by affiliation. Run a web search below to surface candidates from public sources.</div>'
       : '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">' + existing.map(_renderPOCCandidate).join('') + '</div>') +
+    persistedHtml +
     '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--purple);text-transform:uppercase;margin-bottom:10px">From public sources</div>' +
     '<button id="poc-search-btn" onclick="window._runPOCSearch(\'' + orgIdRaw + '\')" style="width:100%;padding:11px;background:rgba(139,92,246,.10);border:1px solid rgba(139,92,246,.5);border-radius:3px;color:var(--purple);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">⌖ Search open sources (Claude · web_search)</button>' +
     '<div id="poc-search-results" style="margin-top:14px"></div>' +
@@ -43533,6 +43551,12 @@ function _renderPOCCandidate(c) {
     '</div>';
 }
 
+// P13.164 — stable candidate id from name (idempotent). Same person from
+// a re-search overwrites instead of duplicating.
+function _atlasPocCandidateId(c){
+  var base = String((c && c.name) || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return 'cand-' + (base || ('anon-' + Math.floor(Math.random() * 100000)));
+}
 window._runPOCSearch = async function(orgIdRaw) {
   var btn = document.getElementById('poc-search-btn');
   var resultsEl = document.getElementById('poc-search-results');
@@ -43549,8 +43573,30 @@ window._runPOCSearch = async function(orgIdRaw) {
   resultsEl.innerHTML = '<div style="padding:12px;color:var(--t3);font-size:12px;font-family:IBM Plex Mono,monospace">Claude is searching .gov leadership pages, company About, press releases, and public LinkedIn profiles…</div>';
   try {
     var found = await window.Corsair.poc.searchOpenSources(org.name, org.type);
+    // P13.164 — persist candidates to /pendingPOCs/{orgId}/{candidateId}
+    // BEFORE rendering so modal close no longer loses intel. Also stamp
+    // orgMeta lastPOCSearchAt + pendingCount so the accounts list can
+    // surface "stale vs fresh vs never searched" per audit Critical #3.
+    var safeOrgKey = String(org.id).replace(/[#$\[\]/.]/g, '_');
+    if (found && found.length && typeof window.fbSet === 'function' && typeof window.wsPath === 'function') {
+      var ts = Date.now();
+      for (var pi = 0; pi < found.length; pi++) {
+        try {
+          var cand = found[pi];
+          var cId = _atlasPocCandidateId(cand);
+          await window.fbSet(window.wsPath('pendingPOCs/' + safeOrgKey + '/' + cId), Object.assign({}, cand, {
+            candidateId: cId, searchedAt: ts, status: 'pending'
+          }));
+        } catch (pe) { console.warn('[POC persist]', pe && pe.message); }
+      }
+      try {
+        await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/lastPOCSearchAt'), ts);
+        await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/pendingCount'), found.length);
+      } catch (me) { /* meta is non-critical */ }
+    }
     if (!found || !found.length) {
       resultsEl.innerHTML = '<div style="padding:12px;background:var(--s1);border:1px dashed var(--b2);border-radius:3px;color:var(--t3);font-size:12px">No solid candidates from public sources. Try a more specific org name or check the .gov leadership page directly.</div>';
+      try { if (typeof window.fbSet === 'function') await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/lastPOCSearchAt'), Date.now()); } catch(e){}
     } else {
       resultsEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px">' + found.map(_renderPOCCandidate).join('') + '</div>';
     }
@@ -43561,6 +43607,28 @@ window._runPOCSearch = async function(orgIdRaw) {
     btn.disabled = false;
     btn.textContent = '⌖ Search open sources (Claude · web_search)';
   }
+};
+// P13.164 — load persisted POC candidates from /pendingPOCs/{orgId}.
+// Uses module-scoped get/ref/db directly (we're inside the same module).
+window._loadPersistedPOCs = async function(orgId) {
+  if (!db || !window.currentWsId) return [];
+  try {
+    var safeOrgKey = String(orgId).replace(/[#$\[\]/.]/g, '_');
+    var snap = await get(ref(db, 'workspaces/' + window.currentWsId + '/pendingPOCs/' + safeOrgKey));
+    var val = snap && snap.val();
+    if (!val) return [];
+    return Object.values(val).filter(function(c){ return c && c.name; });
+  } catch (e) { console.warn('[POC load]', e && e.message); return []; }
+};
+// P13.164 — remove persisted POC candidate after promote so the inbox
+// drains as candidates get adopted as real contacts.
+window._removePersistedPOC = async function(orgId, candidateId) {
+  if (!db || !window.currentWsId) return;
+  try {
+    var safeOrgKey = String(orgId).replace(/[#$\[\]/.]/g, '_');
+    var safeCandKey = String(candidateId).replace(/[#$\[\]/.]/g, '_');
+    await remove(ref(db, 'workspaces/' + window.currentWsId + '/pendingPOCs/' + safeOrgKey + '/' + safeCandKey));
+  } catch (e) { console.warn('[POC remove]', e && e.message); }
 };
 
 window._promotePOCCandidate = async function(candidateJSON) {
@@ -43577,9 +43645,16 @@ window._promotePOCCandidate = async function(candidateJSON) {
   try {
     if (typeof window.fbSet === 'function' && typeof window.wsPath === 'function') {
       await window.fbSet(window.wsPath('nodes/' + shape.id), shape);
+      // P13.164 — drain the persisted-POC inbox so promoted candidates
+      // no longer reappear as "pending from prior search" on next open.
+      var existingOrgId = (window._accountsState && window._accountsState.selectedOrgId) || '';
+      try {
+        if (c.candidateId && existingOrgId && typeof window._removePersistedPOC === 'function') {
+          await window._removePersistedPOC(existingOrgId, c.candidateId);
+        }
+      } catch(rmErr){ /* drain is best-effort */ }
       if (typeof toast === 'function') toast('✓ Added ' + shape.name + ' to workspace');
       // Refresh POC finder so the new contact appears in "In your workspace"
-      var existingOrgId = (window._accountsState && window._accountsState.selectedOrgId) || '';
       if (existingOrgId) {
         var safe = String(existingOrgId).replace(/'/g,'&#39;');
         var orgObj = (window.nodes || []).find(function(n){return String(n.id) === String(existingOrgId);});
@@ -63481,6 +63556,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.164"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.165"></script>
 </body>
 </html>
