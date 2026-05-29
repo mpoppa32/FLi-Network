@@ -8875,7 +8875,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.186</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.187</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13203,27 +13203,46 @@ window._signInRedirect=function(){
   var errEl=document.getElementById('auth-error');if(errEl)errEl.style.display='none';
   if(rBtn){rBtn.disabled=true;rBtn.textContent='Redirecting…';}
   if(mainBtn)mainBtn.disabled=true;
-  // P13.182 — verified failure mode: signInWithRedirect can silently
-  // no-op when the SDK's internal state is corrupted from a prior
-  // PopupOperation assertion (the Promise never rejects, the page never
-  // navigates). 5s nav-timeout surfaces this case + glows the Clear
-  // button so the operator can recover from a known-good clean state.
-  var navTimeout=setTimeout(function(){
-    if(rBtn){rBtn.disabled=false;rBtn.textContent='↗ Use Redirect Sign-In Instead';}
-    if(mainBtn)mainBtn.disabled=false;
-    showAuthError('Redirect did not navigate within 5s (likely SDK state corrupted from a prior popup-blocked attempt). Click "↺ Clear All State & Restart" below.');
-    var cBtn=document.getElementById('auth-clear-restart-btn');
-    if(cBtn){cBtn.style.boxShadow='0 0 0 1px #ef4444, 0 0 16px rgba(239,68,68,.55)';cBtn.style.transform='scale(1.05)';cBtn.style.fontWeight='700';}
-  },5000);
+  // P13.187 — VERIFIED ROOT CAUSE: Firebase SDK 10.7.1's
+  // signInWithRedirect silently fails to navigate on this account's
+  // Chrome (Promise stays pending forever, no error, no rejection).
+  // Manually navigating to the same auth handler URL works perfectly
+  // (tested via MCP — Mike's tab landed on Google's account chooser).
+  //
+  // Strategy: Fire signInWithRedirect FIRST so the SDK gets a chance
+  // to set up its pending state (sessionStorage eventId etc — needed
+  // for getRedirectResult to match the callback on the return trip).
+  // Then a 1.5s fallback checks if navigation happened; if still on
+  // mpoppa32.github.io, manually navigate to the auth handler URL.
+  // Fresh users with a working SDK: SDK navigates, fallback no-ops.
+  // Broken-SDK users (Mike): SDK fails to nav, fallback rescues.
   signInWithRedirect(auth,new GoogleAuthProvider()).catch(function(e){
-    clearTimeout(navTimeout);
-    if(rBtn){rBtn.disabled=false;rBtn.textContent='↗ Use Redirect Sign-In Instead';}
-    if(mainBtn)mainBtn.disabled=false;
-    showAuthError('Redirect sign-in failed ('+e.code+'): '+e.message+'. Click "↺ Clear All State & Restart" below.');
-    var cBtn=document.getElementById('auth-clear-restart-btn');
-    if(cBtn){cBtn.style.boxShadow='0 0 0 1px #ef4444, 0 0 16px rgba(239,68,68,.55)';cBtn.style.transform='scale(1.05)';cBtn.style.fontWeight='700';}
-    console.error('[P13.179] redirect sign-in error:',e);
+    console.error('[P13.187] signInWithRedirect rejected:',e && e.code, e && e.message);
   });
+  setTimeout(function(){
+    if(window.location.hostname==='mpoppa32.github.io'){
+      console.warn('[P13.187] SDK signInWithRedirect did not navigate within 1.5s — using manual fallback');
+      var apiKey='AIzaSyBQW49mGZbUHkWSZ47FgdoUNaoU-Iv9nVo';
+      var authDomain='fli-network.firebaseapp.com';
+      var url='https://'+authDomain+'/__/auth/handler?'+
+        'apiKey='+encodeURIComponent(apiKey)+
+        '&appName='+encodeURIComponent('[DEFAULT]')+
+        '&authType=signInViaRedirect'+
+        '&providerId=google.com'+
+        '&scopes=profile'+
+        '&eventId='+Date.now()+
+        '&v=10.7.1';
+      window.location.assign(url);
+    }
+  },1500);
+  // Belt-and-suspenders error surface if neither SDK nor manual nav fires
+  setTimeout(function(){
+    if(window.location.hostname==='mpoppa32.github.io'){
+      if(rBtn){rBtn.disabled=false;rBtn.textContent='↗ Use Redirect Sign-In Instead';}
+      if(mainBtn)mainBtn.disabled=false;
+      showAuthError('Sign-in navigation did not complete after 6 seconds. Check your network or try chrome://settings/content/all → mpoppa32.github.io → Clear data.');
+    }
+  },6000);
 };
 
 // P13.182 — nuke all browser state + reload. The verified-working pattern:
@@ -64452,6 +64471,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.186"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.187"></script>
 </body>
 </html>
