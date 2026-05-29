@@ -8849,7 +8849,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.159</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.160</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -30761,14 +30761,234 @@ window._corsairToggleRhythm = function(){
 // placeholder + Voice Memos placeholder. Label is workspace name so the
 // surface adapts per customer (Mike's workspace = "Atlas" → header reads
 // "ATLAS"; a future Globex workspace → header reads "GLOBEX").
+// P13.160 — Atlas updates moved from localStorage to RTDB so team members
+// see each other's drops in real time. Drop zone accepts any file type
+// (otter.ai transcripts, screenshots, PDFs, voice memos, random notes),
+// stores the metadata + content (text inline, binary as base64 up to 1.5MB)
+// at /workspaces/{wsId}/atlasUpdates/{id}. AI brief generation reads the
+// feed + dispatches to anthropicProxy for a "where workspace stands today"
+// summary. localStorage stays as offline cache + legacy fallback.
+window._atlasUpdatesCache = window._atlasUpdatesCache || {};
+window._atlasUpdatesListenerWired = window._atlasUpdatesListenerWired || {};
 function _atlasGetUpdates(){
   var wsId = window.currentWsId || 'default';
+  if (window._atlasUpdatesCache[wsId]) return window._atlasUpdatesCache[wsId];
   try { return JSON.parse(localStorage.getItem('corsair-atlas-updates-' + wsId) || '[]') || []; }
   catch(e){ return []; }
 }
 function _atlasSaveUpdates(arr){
+  // localStorage cache only — RTDB writes happen via _atlasWriteEntry below
+  // and propagate back through the onValue listener.
   var wsId = window.currentWsId || 'default';
+  window._atlasUpdatesCache[wsId] = arr;
   try { localStorage.setItem('corsair-atlas-updates-' + wsId, JSON.stringify(arr)); } catch(e){}
+}
+async function _atlasWriteEntry(entry){
+  var wsId = window.currentWsId;
+  if (!wsId || !db) {
+    var arr = _atlasGetUpdates(); arr.unshift(entry); _atlasSaveUpdates(arr);
+    return false;
+  }
+  try {
+    await set(ref(db, 'workspaces/' + wsId + '/atlasUpdates/' + entry.id), entry);
+    return true;
+  } catch(e) {
+    console.warn('[atlas] RTDB write failed, falling back to local:', e && e.message);
+    var arr = _atlasGetUpdates(); arr.unshift(entry); _atlasSaveUpdates(arr);
+    return false;
+  }
+}
+async function _atlasDeleteEntry(id){
+  var wsId = window.currentWsId;
+  if (!wsId || !db) {
+    var arr = _atlasGetUpdates().filter(function(u){ return u.id !== id; });
+    _atlasSaveUpdates(arr);
+    return false;
+  }
+  try {
+    await remove(ref(db, 'workspaces/' + wsId + '/atlasUpdates/' + id));
+    return true;
+  } catch(e) {
+    console.warn('[atlas] RTDB delete failed:', e && e.message);
+    return false;
+  }
+}
+window._atlasSubscribeUpdates = function(){
+  var wsId = window.currentWsId;
+  if (!wsId || !db) return;
+  if (window._atlasUpdatesListenerWired[wsId]) return;
+  try {
+    onValue(ref(db, 'workspaces/' + wsId + '/atlasUpdates'), function(snap){
+      var raw = snap.val() || {};
+      var arr = Object.values(raw).sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+      // One-shot localStorage → RTDB migration on first load of an empty RTDB.
+      if (!arr.length) {
+        try {
+          var legacy = JSON.parse(localStorage.getItem('corsair-atlas-updates-' + wsId) || '[]') || [];
+          if (legacy.length) {
+            legacy.forEach(function(u){
+              if (u && u.id) set(ref(db, 'workspaces/' + wsId + '/atlasUpdates/' + u.id), u).catch(function(){});
+            });
+          }
+        } catch(e){}
+      }
+      window._atlasUpdatesCache[wsId] = arr;
+      try { localStorage.setItem('corsair-atlas-updates-' + wsId, JSON.stringify(arr)); } catch(e){}
+      if (window.activeView === 'atlas' && typeof window.renderAtlasView === 'function') {
+        try { window.renderAtlasView(); } catch(e){}
+      }
+      if (typeof window._renderAtlasTodayWidget === 'function') {
+        try { window._renderAtlasTodayWidget(); } catch(e){}
+      }
+    });
+    window._atlasUpdatesListenerWired[wsId] = true;
+  } catch(e) {
+    console.warn('[atlas] subscribe failed:', e && e.message);
+  }
+};
+// File reader → entry. Text files (text/*, .txt/.md/.json/.csv/.vtt/.srt/.log)
+// store content inline as `text`. Other types base64-encoded under fileData
+// (capped at 1.5MB by caller). Identifies kind for icon + processing routing.
+function _atlasFileToEntry(file){
+  return new Promise(function(resolve, reject){
+    var kind = 'other';
+    var ext = (file.name.match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
+    var isText = /^text\//i.test(file.type || '') || ['txt','md','json','csv','vtt','srt','log','xml','html','tsv'].indexOf(ext) >= 0;
+    if (/^image\//i.test(file.type || '')) kind = 'image';
+    else if (/^audio\//i.test(file.type || '')) kind = 'audio';
+    else if (/^video\//i.test(file.type || '')) kind = 'video';
+    else if (isText) kind = 'text';
+    else if (['pdf','doc','docx','xls','xlsx','ppt','pptx'].indexOf(ext) >= 0) kind = 'doc';
+    var reader = new FileReader();
+    reader.onload = function(){
+      var entry = {
+        id: 'upd-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+        ts: Date.now(),
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        fileKind: kind,
+        author: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'You',
+        authorUid: (window.currentUser && window.currentUser.uid) || ''
+      };
+      if (isText) entry.text = String(reader.result || '').slice(0, 200000);
+      else entry.fileData = String(reader.result || ''); // data URL
+      resolve(entry);
+    };
+    reader.onerror = function(){ reject(new Error('FileReader failed')); };
+    if (isText) reader.readAsText(file);
+    else reader.readAsDataURL(file);
+  });
+}
+window._atlasUploadFiles = async function(fileList){
+  if (!fileList || !fileList.length) return;
+  var MAX = 1024 * 1024 * 1.5; // 1.5MB cap for base64 in RTDB (Firebase Storage upgrade post-demo)
+  var added = 0, skipped = 0, skippedNames = [];
+  for (var i = 0; i < fileList.length; i++) {
+    var f = fileList[i];
+    if (!f) continue;
+    if (f.size > MAX) { skipped++; skippedNames.push(f.name); continue; }
+    try {
+      var entry = await _atlasFileToEntry(f);
+      await _atlasWriteEntry(entry);
+      added++;
+    } catch(e) { skipped++; skippedNames.push(f.name); console.warn('[atlas upload]', f.name, e); }
+  }
+  if (typeof toast === 'function') {
+    var msg = '+ ' + added + ' file' + (added === 1 ? '' : 's') + ' added to Atlas feed';
+    if (skipped) msg += ' · ' + skipped + ' skipped (>1.5MB)';
+    toast(msg);
+  }
+};
+window._atlasOnDrop = function(ev){
+  ev.preventDefault();
+  var zone = document.getElementById('atlas-drop-zone');
+  if (zone) { zone.style.borderColor = ''; zone.style.background = ''; }
+  if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) {
+    window._atlasUploadFiles(ev.dataTransfer.files);
+  }
+};
+window._atlasOnDragOver = function(ev){
+  ev.preventDefault();
+  var zone = document.getElementById('atlas-drop-zone');
+  if (zone) { zone.style.borderColor = 'var(--gold)'; zone.style.background = 'rgba(212,130,58,.10)'; }
+};
+window._atlasOnDragLeave = function(ev){
+  var zone = document.getElementById('atlas-drop-zone');
+  if (zone) { zone.style.borderColor = ''; zone.style.background = ''; }
+};
+window._atlasBrowsePick = function(){
+  var inp = document.getElementById('atlas-file-input');
+  if (inp) inp.click();
+};
+window._atlasOnFilePick = function(ev){
+  if (ev.target && ev.target.files) window._atlasUploadFiles(ev.target.files);
+  ev.target.value = ''; // reset so same file can be re-picked
+};
+// AI Brief: summarize Atlas updates → "Where {workspace} stands today" via
+// anthropicProxy. Recent 20 updates included; text content truncated per
+// entry. Renders in modal so it doesn't disrupt the feed.
+window._atlasGenerateBrief = async function(){
+  if (!window._httpsCallable || !window._fbFunctions) {
+    if (typeof toast === 'function') toast('AI brief unavailable — proxy not loaded');
+    return;
+  }
+  var updates = _atlasGetUpdates();
+  if (!updates.length) {
+    if (typeof toast === 'function') toast('No updates yet — drop a file or add an update first');
+    return;
+  }
+  var wsName = (window.currentWs && window.currentWs.name) || 'this workspace';
+  var btn = document.getElementById('atlas-brief-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'GENERATING...'; }
+  var lines = updates.slice(0, 20).map(function(u){
+    var d = new Date(u.ts).toLocaleString();
+    var who = u.author || 'Unknown';
+    var content = u.text ? String(u.text).slice(0, 4000) : '';
+    if (u.fileName) content = '[file: ' + u.fileName + ' · ' + (u.fileKind || 'file') + ' · ' + Math.round((u.fileSize||0)/1024) + 'KB]' + (content ? '\n' + content : '');
+    return '[' + d + '] ' + who + (u.tag ? ' · #' + u.tag : '') + '\n' + content;
+  }).join('\n\n---\n\n');
+  var system = 'You are summarizing the current operational state of ' + wsName + ' based on internal updates and dropped files from the BD team. Return a focused 200-300 word briefing titled "Where ' + wsName + ' stands today" with three sections:\n1. **What is happening now** — concrete updates from this period\n2. **Tensions / risks** — anything competitive, lost, stalled, or concerning\n3. **Action priorities** — what the BD team should focus on this week\n\nBe terse and concrete. No filler. No bullet padding. Honest about gaps if the data is thin.';
+  try {
+    var fn = window._httpsCallable(window._fbFunctions, 'anthropicProxy');
+    var res = await fn({
+      workspaceId: window.currentWsId,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1200,
+      system: system,
+      messages: [{ role: 'user', content: lines || 'No updates available.' }]
+    });
+    var data = (res && res.data) || {};
+    var content = '';
+    if (Array.isArray(data.content)) {
+      content = data.content.filter(function(b){ return b && b.type === 'text'; }).map(function(b){ return b.text; }).join('\n');
+    }
+    if (!content) content = 'No brief generated.';
+    _atlasShowBrief(wsName, content);
+  } catch(e) {
+    if (typeof toast === 'function') toast('Brief generation failed: ' + (e && e.message || 'unknown'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Generate Brief'; }
+  }
+};
+function _atlasShowBrief(wsName, content){
+  var existing = document.getElementById('atlas-brief-modal');
+  if (existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'atlas-brief-modal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:8000;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px';
+  modal.onclick = function(ev){ if (ev.target === modal) modal.remove(); };
+  var safeWs = String(wsName || 'Workspace').replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
+  var safeContent = (window._escHTML ? window._escHTML(content) : String(content || ''));
+  modal.innerHTML = '<div onclick="event.stopPropagation()" style="background:linear-gradient(180deg,#111b30,#0e1628);border:1px solid var(--gold);border-radius:6px;padding:24px 28px;max-width:760px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.6)">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:12px">' +
+      '<div style="font-family:Anton,sans-serif;font-size:22px;color:var(--gold);letter-spacing:.06em;text-transform:uppercase">Where ' + safeWs + ' Stands Today</div>' +
+      '<button onclick="document.getElementById(\'atlas-brief-modal\').remove()" style="background:transparent;border:1px solid var(--rule);color:var(--paper);font-family:IBM Plex Mono,monospace;font-size:11px;padding:5px 12px;cursor:pointer;border-radius:2px;letter-spacing:.10em">CLOSE</button>' +
+    '</div>' +
+    '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--bone);line-height:1.65;white-space:pre-wrap">' + safeContent + '</div>' +
+    '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--rule);font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.10em">GENERATED BY CLAUDE · FROM ATLAS UPDATES · ' + new Date().toLocaleString() + '</div>' +
+  '</div>';
+  document.body.appendChild(modal);
 }
 // P13.100 — Talking Points: structured editable positioning doc per workspace.
 // 4 fixed sections (Capability / Pricing / Recent Wins / Competitive). Each
@@ -30811,34 +31031,57 @@ window._atlasCancelTalkingPoint = function(){
   window._atlasEditingTpKey = null;
   if (typeof window.renderAtlasView === 'function') window.renderAtlasView();
 };
-window._atlasAddUpdate = function(){
+window._atlasAddUpdate = async function(){
   var text = prompt('What is the latest update for your team?\n\nExamples:\n• "Shipped v2.3 with new red-team scoring — Bryce, mention this on the DARPA call"\n• "Price drop on Tier 2 contracts approved, new sheet attached"\n• "Lost out on Anduril MQ-9 — debrief next Tuesday"\n• "New case study with USSOCOM in hand, available on the shared drive"');
   if (!text || !text.trim()) return;
   var tag = prompt('Tag (optional): product, team, competitive, pricing, win, loss, ops, other\n\nLeave blank for none.');
-  var arr = _atlasGetUpdates();
-  arr.unshift({
+  var entry = {
     id: 'upd-' + Date.now(),
     ts: Date.now(),
     text: text.trim(),
     tag: tag ? tag.trim().toLowerCase() : null,
-    author: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'You'
-  });
-  _atlasSaveUpdates(arr);
+    author: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'You',
+    authorUid: (window.currentUser && window.currentUser.uid) || ''
+  };
+  await _atlasWriteEntry(entry);
   if (typeof toast === 'function') toast('Update added');
+  // Listener re-renders; this is a safety call for the local-fallback case.
   if (window.activeView === 'atlas' && typeof window.renderAtlasView === 'function') window.renderAtlasView();
   if (typeof window._renderAtlasTodayWidget === 'function') window._renderAtlasTodayWidget();
 };
-window._atlasDeleteUpdate = function(id){
+window._atlasDeleteUpdate = async function(id){
   if (!confirm('Delete this update?')) return;
-  var arr = _atlasGetUpdates().filter(function(u){ return u.id !== id; });
-  _atlasSaveUpdates(arr);
+  await _atlasDeleteEntry(id);
   if (typeof toast === 'function') toast('Update deleted');
+  // Listener re-renders; safety call for local-fallback.
   if (window.activeView === 'atlas' && typeof window.renderAtlasView === 'function') window.renderAtlasView();
   if (typeof window._renderAtlasTodayWidget === 'function') window._renderAtlasTodayWidget();
+};
+// P13.160 — Download a file entry's binary content. Triggers browser
+// download from the stored data URL; for text entries, downloads as .txt.
+window._atlasDownloadFile = function(id){
+  var arr = _atlasGetUpdates();
+  var u = arr.find(function(x){ return x.id === id; });
+  if (!u) return;
+  var url, name;
+  if (u.fileData) { url = u.fileData; name = u.fileName || 'file'; }
+  else if (u.text) {
+    var blob = new Blob([u.text], { type: 'text/plain' });
+    url = URL.createObjectURL(blob);
+    name = u.fileName || ('update-' + u.id + '.txt');
+  } else return;
+  var a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  if (url.indexOf('blob:') === 0) setTimeout(function(){ URL.revokeObjectURL(url); }, 500);
 };
 window.renderAtlasView = function(){
   var view = document.getElementById('atlas-view');
   if (!view) return;
+  // P13.160 — wire the RTDB listener on first paint per workspace so team
+  // members see each other's drops without manual refresh.
+  if (typeof window._atlasSubscribeUpdates === 'function') {
+    try { window._atlasSubscribeUpdates(); } catch(e){}
+  }
   var wsName = (window.currentWs && window.currentWs.name) || 'Workspace';
   var safeWsName = String(wsName).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
   var updates = _atlasGetUpdates();
@@ -30878,7 +31121,11 @@ window.renderAtlasView = function(){
   h += '<div style="font-family:Anton,sans-serif;font-size:28px;letter-spacing:.08em;text-transform:uppercase;color:var(--bone);line-height:1">' + safeWsName + '</div>';
   h += '<div style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.14em;color:var(--paper);text-transform:uppercase">Internal updates &nbsp;·&nbsp; talking points &nbsp;·&nbsp; voice memos</div>';
   h += '</div>';
+  // P13.160 — header buttons: Add Update (text) + Generate Brief (AI summary).
+  h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+  h += '<button id="atlas-brief-btn" onclick="window._atlasGenerateBrief&&window._atlasGenerateBrief()" title="Summarize the current state of ' + safeWsName + ' from recent updates via AI" style="display:flex;align-items:center;gap:9px;padding:11px 18px;background:transparent;border:1px solid #5fb3b8;border-radius:3px;color:#5fb3b8;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer">⚡ Generate Brief</button>';
   h += '<button onclick="window._atlasAddUpdate&&window._atlasAddUpdate()" style="display:flex;align-items:center;gap:9px;padding:11px 18px;background:linear-gradient(180deg,rgba(212,130,58,.22),rgba(212,130,58,.10));border:1px solid var(--gold);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;cursor:pointer">+ Add Update</button>';
+  h += '</div>';
   h += '</div>';
   h += '</div>';
   // Body (scrollable)
@@ -30888,6 +31135,14 @@ window.renderAtlasView = function(){
   h += '<span>Updates Feed</span>';
   h += '<span style="font-weight:400;color:var(--paper-2);font-size:10px">' + updates.length + ' total · ' + thisWeekCount + ' this week</span>';
   h += '</div>';
+  // P13.160 — Drop zone (drag + click). Always visible above the feed so
+  // team members have a one-action entry point whether the feed is empty
+  // or populated. Hidden file input is the click-to-browse fallback.
+  h += '<div id="atlas-drop-zone" ondragover="window._atlasOnDragOver(event)" ondragleave="window._atlasOnDragLeave(event)" ondrop="window._atlasOnDrop(event)" onclick="window._atlasBrowsePick()" style="cursor:pointer;padding:16px 22px;margin-bottom:14px;background:rgba(212,130,58,.04);border:2px dashed rgba(212,130,58,.4);border-radius:4px;text-align:center;transition:all .15s ease">';
+  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--bone);margin-bottom:4px"><b>Drop files here</b> or <span style="color:var(--gold);text-decoration:underline">click to browse</span></div>';
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.06em">otter.ai transcripts · screenshots · pdfs · voice memos · notes · anything (1.5MB max for now)</div>';
+  h += '</div>';
+  h += '<input id="atlas-file-input" type="file" multiple style="display:none" onchange="window._atlasOnFilePick(event)" />';
   if (updates.length === 0) {
     h += '<div style="padding:30px 22px;background:linear-gradient(135deg,rgba(212,130,58,.05),rgba(95,179,184,.03));border:1px dashed rgba(212,130,58,.4);border-radius:4px;text-align:center;margin-bottom:30px">';
     h += '<div style="font-family:Antonio,sans-serif;font-size:20px;color:var(--bone);margin-bottom:8px">Drop your first update.</div>';
@@ -30896,8 +31151,25 @@ window.renderAtlasView = function(){
     h += '</div>';
   } else {
     h += '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:30px">';
+    // P13.160 — file-icon helper for upload entries.
+    function _atlasFileIcon(kind){
+      switch (kind) {
+        case 'image': return '🖼';
+        case 'audio': return '🎵';
+        case 'video': return '🎬';
+        case 'doc':   return '📄';
+        case 'text':  return '📝';
+        default:      return '📎';
+      }
+    }
+    function _atlasFmtSize(b){
+      b = Number(b)||0;
+      if (b >= 1024*1024) return (b/(1024*1024)).toFixed(1) + 'MB';
+      if (b >= 1024) return Math.round(b/1024) + 'KB';
+      return b + 'B';
+    }
     updates.forEach(function(u){
-      var tag = u.tag || null;
+      var tag = u.tag || (u.fileKind ? u.fileKind : null);
       var tColor = _tagColor(tag);
       h += '<div style="padding:12px 14px;background:linear-gradient(160deg,rgba(13,20,38,.92),rgba(7,13,24,.96));border:1px solid var(--rule-2);border-left:3px solid ' + tColor + ';border-radius:3px;position:relative;group">';
       h += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px">';
@@ -30907,7 +31179,24 @@ window.renderAtlasView = function(){
       h += '</div>';
       h += '<button onclick="window._atlasDeleteUpdate&&window._atlasDeleteUpdate(\'' + _esc(u.id) + '\')" title="Delete this update" style="background:transparent;border:0;color:var(--paper-2);cursor:pointer;font-size:14px;padding:0 4px;opacity:.6">×</button>';
       h += '</div>';
-      h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--bone);line-height:1.5;white-space:pre-wrap">' + _esc(u.text) + '</div>';
+      // P13.160 — File entry: icon + name + size + download. Image entries
+      // get an inline thumbnail. Text body still renders if present.
+      if (u.fileName) {
+        h += '<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;background:rgba(7,13,24,.45);border:1px solid var(--rule);border-radius:3px;margin-bottom:' + (u.text ? '8px' : '0') + '">';
+        h += '<div style="font-size:24px;flex-shrink:0">' + _atlasFileIcon(u.fileKind) + '</div>';
+        h += '<div style="flex:1;min-width:0">';
+        h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _esc(u.fileName) + '</div>';
+        h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.06em;margin-top:2px">' + _esc(u.fileType || '') + ' &nbsp;·&nbsp; ' + _atlasFmtSize(u.fileSize) + '</div>';
+        h += '</div>';
+        h += '<button onclick="window._atlasDownloadFile&&window._atlasDownloadFile(\'' + _esc(u.id) + '\')" title="Download this file" style="background:transparent;border:1px solid var(--gold);color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.10em;padding:5px 11px;border-radius:2px;cursor:pointer;text-transform:uppercase;flex-shrink:0">⬇ Download</button>';
+        h += '</div>';
+        if (u.fileKind === 'image' && u.fileData) {
+          h += '<div style="margin-top:8px"><img src="' + _esc(u.fileData) + '" alt="' + _esc(u.fileName) + '" style="max-width:100%;max-height:240px;border-radius:3px;border:1px solid var(--rule)" /></div>';
+        }
+      }
+      if (u.text) {
+        h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--bone);line-height:1.5;white-space:pre-wrap' + (u.fileName ? ';margin-top:6px;max-height:200px;overflow-y:auto;padding:6px 10px;background:rgba(7,13,24,.3);border-radius:2px' : '') + '">' + _esc(u.text) + '</div>';
+      }
       h += '</div>';
     });
     h += '</div>';
@@ -63112,6 +63401,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.159"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.160"></script>
 </body>
 </html>
