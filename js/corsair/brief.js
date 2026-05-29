@@ -669,6 +669,27 @@ window.renderDailyBrief = function() {
           }).join('');
         }
       }
+      // P13.173 — Award→opp suggestion chips. Cross-ref signal against
+      // each active pursuit; render chips for customer-activity or
+      // competitor-win matches with one-click action.
+      var oppSuggHtml = '';
+      if (typeof window._detectAwardMatchForOpp === 'function') {
+        var oppSuggs = [];
+        actives.forEach(function(o){
+          var sg = window._detectAwardMatchForOpp(s, o);
+          if (sg) oppSuggs.push(sg);
+        });
+        if (oppSuggs.length) {
+          oppSuggHtml = oppSuggs.slice(0, 2).map(function(item){
+            var col = item.type === 'competitor_win' ? '#ef4444' : '#facc15';
+            var lbl = item.type === 'competitor_win' ? '↗ MARK LOST?' : '↗ REVIEW';
+            var action = item.type === 'competitor_win' ? 'mark_lost' : 'open';
+            var oppNameEsc = String(item.oppName || '').replace(/'/g, '&#39;').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
+            var hintEsc = String(item.hint || '').replace(/"/g, '&quot;');
+            return '<button onclick="event.stopPropagation();window._applyAwardSuggestion(\'' + item.oppId + '\',\'' + action + '\')" title="' + hintEsc + '" style="background:rgba(0,0,0,.22);border:1px solid ' + col + '60;color:' + col + ';font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:2px;cursor:pointer;margin-right:4px;text-transform:uppercase">' + lbl + ' · ' + oppNameEsc.slice(0, 30) + '</button>';
+          }).join('');
+        }
+      }
       return '<div class="brief-item" ' + clickAttr + ' style="cursor:pointer;flex-direction:column;align-items:stretch;gap:3px">' +
         '<div style="display:flex;justify-content:space-between;gap:6px;align-items:center">' +
           '<span class="brief-item-title" style="display:flex;align-items:center;gap:6px">' +
@@ -677,7 +698,7 @@ window.renderDailyBrief = function() {
           '</span>' +
           matchedChip +
         '</div>' +
-        (postureSuggHtml ? '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px">' + postureSuggHtml + '</div>' : '') +
+        (postureSuggHtml || oppSuggHtml ? '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px">' + postureSuggHtml + oppSuggHtml + '</div>' : '') +
       '</div>';
     }).join('');
   })();

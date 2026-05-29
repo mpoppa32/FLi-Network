@@ -8864,7 +8864,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.172</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.173</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -36431,6 +36431,54 @@ window._postureSetContactTrajectory = async function(personId, trajKey) {
   } catch (e) { console.warn('[Posture] save trajectory failed:', e); }
 };
 
+// P13.173 — Award → opp matcher (Sovereign Intelligence audit
+// Connecting Tissue Critical #1: 'OSINT-detected contract award does
+// not update opp score / stage / posture'). Lightweight version uses
+// dailyFeed signal pattern matching since the full /awards pipeline
+// is still cron-warming. Detects contract / award keywords + customer
+// agency or competitor name match. Surfaces one-click suggestions on
+// the Brief OSINT column.
+window._detectAwardMatchForOpp = function(signal, opp){
+  if (!signal || !opp) return null;
+  var st = String(opp.stage || '').toLowerCase();
+  if (st === 'won' || st === 'lost') return null;
+  var text = ((signal.headline || '') + ' ' + (signal.detail || '')).toLowerCase();
+  if (!text) return null;
+  // Award / contract activity keywords
+  if (!/\b(award(ed|s)?|wins?|won|received\s+(a\s+)?contract|contract\s+for|task order|delivery order|ido[cq]|sole[- ]source|recompete|protest sustained|protest denied)\b/.test(text)) return null;
+  // Customer agency or vehicle match
+  var agencyL = String(opp.agency || opp.customer || '').toLowerCase().trim();
+  if (agencyL && agencyL.length > 3 && text.indexOf(agencyL) !== -1) {
+    return { type: 'customer_activity', oppId: opp.id, oppName: opp.name, hint: 'Customer (' + (opp.agency || opp.customer) + ') is actively contracting — review opp position' };
+  }
+  // Competitor field can be string or array
+  var compStr = '';
+  if (Array.isArray(opp.competitors)) compStr = opp.competitors.join(',').toLowerCase();
+  else if (opp.competitors) compStr = String(opp.competitors).toLowerCase();
+  if (opp.adversaryOrg) compStr += ',' + String(opp.adversaryOrg).toLowerCase();
+  var compList = compStr.split(/[,;|]/).map(function(c){ return c.trim(); }).filter(function(c){ return c.length > 3; });
+  for (var ci = 0; ci < compList.length; ci++) {
+    if (text.indexOf(compList[ci]) !== -1) {
+      return { type: 'competitor_win', oppId: opp.id, oppName: opp.name, competitorName: compList[ci], hint: 'Competitor (' + compList[ci] + ') activity — review whether to advance, hold, or mark lost' };
+    }
+  }
+  return null;
+};
+window._applyAwardSuggestion = async function(oppId, action){
+  var opp = (window.opportunities || []).find(function(o){ return String(o.id) === String(oppId); });
+  if (!opp) return;
+  if (action === 'mark_lost' || action === 'mark_won') {
+    if (!confirm((action === 'mark_lost' ? 'Mark ' : 'Mark ') + opp.name + ' as ' + action.replace('mark_', '').toUpperCase() + '?')) return;
+    if (typeof window._setOppStage === 'function') {
+      try { await window._setOppStage(opp.id, action === 'mark_lost' ? 'lost' : 'won'); if (typeof toast === 'function') toast('✓ Opp marked ' + action.replace('mark_', '')); }
+      catch(e){ if (typeof toast === 'function') toast('Stage update failed'); }
+    }
+  } else if (action === 'open') {
+    if (typeof window.selectOpp === 'function') { try { window.selectOpp(opp.id); } catch(e){} }
+    if (typeof window.switchView === 'function') { try { window.switchView('opps'); } catch(e){} }
+  }
+};
+
 // P13.172 — OSINT → Posture transition detection (Sovereign Intelligence
 // audit Lens 4 Critical #1). Scans signal text for transition keywords;
 // when the signal text also contains a workspace person's name, returns
@@ -63887,6 +63935,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.172"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.173"></script>
 </body>
 </html>
