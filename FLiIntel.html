@@ -8875,7 +8875,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.182</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.183</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12112,7 +12112,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, setPersistence, browserSessionPersistence, inMemoryPersistence } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getDatabase, ref, set, get, onValue, remove, query, orderByChild, limitToLast, endBefore, onDisconnect } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
@@ -12127,6 +12127,25 @@ var FB_CFG = {
 };
 var fbApp = initializeApp(FB_CFG);
 var auth = getAuth(fbApp);
+// P13.183 — VERIFIED failure mode in Mike's browser via MCP: calling
+// signInWithRedirect hangs the renderer indefinitely (45s+ timeout).
+// Root cause: Firebase Auth's default indexedDBLocalPersistence tries
+// to write redirect state to IDB before navigating; on Mike's browser
+// the IDB write blocks (Brave Shields / strict-privacy / partitioned
+// storage), and signInWithRedirect never reaches the location.assign
+// step. Switch to sessionStorage-backed persistence — sync write API,
+// no hang risk. Auth state lives in sessionStorage (survives reload
+// in same tab, lost on tab close). Fallback chain: session → in-memory.
+setPersistence(auth, browserSessionPersistence).then(function(){
+  console.log('[P13.183] auth persistence: browserSessionPersistence (IDB bypassed)');
+}).catch(function(e1){
+  console.warn('[P13.183] sessionPersistence failed:', e1.code || e1.message, '— falling back to inMemoryPersistence');
+  setPersistence(auth, inMemoryPersistence).then(function(){
+    console.log('[P13.183] auth persistence: inMemoryPersistence (no storage at all)');
+  }).catch(function(e2){
+    console.warn('[P13.183] inMemoryPersistence also failed:', e2.code || e2.message);
+  });
+});
 var db = getDatabase(fbApp);
 var fbFunctions = getFunctions(fbApp, 'us-central1');
 // Expose to non-module scripts (Phase 8.5 OSINT migration panel uses these)
@@ -64397,6 +64416,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.182"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.183"></script>
 </body>
 </html>
