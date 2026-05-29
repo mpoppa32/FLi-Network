@@ -8864,7 +8864,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.177</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.178</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13160,10 +13160,20 @@ document.getElementById('google-signin-btn').addEventListener('click',function()
       // Popup blocked — fall back to redirect
       showAuthError('Popup was blocked. Redirecting to Google sign-in...');
       setTimeout(function(){signInWithRedirect(auth,new GoogleAuthProvider());},1200);
-    }else if(e.code==='auth/cancelled-by-user'){
+    }else if(e.code==='auth/cancelled-by-user'||e.code==='auth/cancelled-popup-request'){
       showAuthError('Sign in cancelled.');
+    }else if(e.code==='auth/network-request-failed'||e.code==='auth/internal-error'||e.code==='auth/timeout'){
+      // P13.178 — popup channel hit a transient network/internal error
+      // (CORS preflight blip, third-party cookie thrash, intermittent
+      // identitytoolkit reach). Fall back to the redirect flow which
+      // doesn't use the popup postMessage channel and routinely works
+      // when popup mode is flaky. getRedirectResult above completes
+      // the round-trip on the next page load.
+      showAuthError('Popup sign-in failed ('+e.code+'). Switching to redirect…');
+      btn.disabled=true;btn.textContent='Redirecting...';
+      setTimeout(function(){signInWithRedirect(auth,new GoogleAuthProvider());},1200);
     }else{
-      showAuthError('Sign in error ('+e.code+'): '+e.message);
+      showAuthError('Sign in error ('+e.code+'): '+e.message+' — try Ctrl+Shift+R or incognito.');
       console.error('Firebase auth error:',e);
     }
   });
@@ -64307,6 +64317,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.177"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.178"></script>
 </body>
 </html>
