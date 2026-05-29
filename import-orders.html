@@ -126,10 +126,26 @@ async function loadAndPlan() {
       const n = existingNodes[id];
       if (n && n.name) byName[String(n.name).toLowerCase().trim()] = { id, node: n };
     }
+    // 3-tier matcher: exact → prefix-with-space → first-word
+    // Handles "Neros" → "Neros Technologies", "Vector" → "Vector Defense",
+    // "Terra" → "Terra Industries" without hand-coded aliases.
+    function findMatch(shortName) {
+      const key = String(shortName).toLowerCase().trim();
+      if (byName[key]) return byName[key];
+      for (const candKey in byName) {
+        if (candKey.startsWith(key + " ")) return byName[candKey];
+      }
+      if (!key.includes(" ")) {
+        for (const candKey in byName) {
+          if (candKey.split(/\s+/)[0] === key) return byName[candKey];
+        }
+      }
+      return null;
+    }
     plan.match = []; plan.miss = [];
     for (const r of ROLLUPS) {
-      const key = String(r.name).toLowerCase().trim();
-      if (byName[key]) plan.match.push({ rollup: r, existing: byName[key] });
+      const m = findMatch(r.name);
+      if (m) plan.match.push({ rollup: r, existing: m, resolvedName: m.node && m.node.name });
       else plan.miss.push({ rollup: r });
     }
     renderPreview(Object.keys(existingNodes).length);
@@ -160,7 +176,10 @@ function renderPreview(existingCount) {
   let html = "";
   for (const m of plan.match) {
     const r = m.rollup;
-    html += '<tr class="match"><td><span class="pill pill-match">MATCH</span></td><td><b>' + escapeHtml(r.name) + '</b></td><td>' + r.poCount + '</td><td>' + r.lineCount + '</td><td class="num">' + fmt$(r.totalBooked) + '</td><td class="num">' + fmt$(r.totalShipped) + '</td><td class="num">' + fmt$(r.totalPaid) + '</td><td class="num">' + pct(r.blendedGm) + '</td><td style="font-size:11px">' + escapeHtml(r.topSkus) + '</td><td>' + escapeHtml(r.accountOwner||"—") + '</td></tr>';
+    const matchedName = m.resolvedName && m.resolvedName.toLowerCase() !== r.name.toLowerCase()
+      ? '<b>' + escapeHtml(r.name) + '</b> <span style="color:var(--paper-2);font-size:10px">→ ' + escapeHtml(m.resolvedName) + '</span>'
+      : '<b>' + escapeHtml(r.name) + '</b>';
+    html += '<tr class="match"><td><span class="pill pill-match">MATCH</span></td><td>' + matchedName + '</td><td>' + r.poCount + '</td><td>' + r.lineCount + '</td><td class="num">' + fmt$(r.totalBooked) + '</td><td class="num">' + fmt$(r.totalShipped) + '</td><td class="num">' + fmt$(r.totalPaid) + '</td><td class="num">' + pct(r.blendedGm) + '</td><td style="font-size:11px">' + escapeHtml(r.topSkus) + '</td><td>' + escapeHtml(r.accountOwner||"—") + '</td></tr>';
   }
   for (const m of plan.miss) {
     const r = m.rollup;
