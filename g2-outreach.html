@@ -68,8 +68,14 @@
   <div id="auth-status"></div>
 </div>
 
+<div class="card" id="pending-card" style="display:none;border-left-color:var(--teal)">
+  <div class="card-label" style="color:var(--teal)">Step 2 · Pending POCs · Bulk Find candidates (review + send with guessed emails)</div>
+  <div id="pending-stats" style="font-size:13px;color:var(--paper);margin-bottom:12px"></div>
+  <div id="pending-list"></div>
+</div>
+
 <div class="card" id="stats-card" style="display:none">
-  <div class="card-label">Step 2 · G2 portfolio state</div>
+  <div class="card-label">Step 3 · G2 portfolio state</div>
   <div class="stat-grid" id="stat-grid"></div>
   <div class="filter-bar">
     <select id="filter-status">
@@ -91,8 +97,8 @@
       <div class="modal-title" id="modal-title">Compose Email</div>
       <button class="modal-x" onclick="document.getElementById('email-modal').classList.remove('open')">×</button>
     </div>
-    <label class="mlbl">To</label>
-    <div id="email-to" style="font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--teal);padding:8px 0"></div>
+    <label class="mlbl">To (editable — verify guessed addresses before sending)</label>
+    <input id="email-to" type="text" placeholder="recipient@example.com" style="width:100%;padding:10px 14px;background:var(--s2);border:1px solid var(--b1);color:var(--teal);border-radius:2px;font-family:IBM Plex Mono,monospace;font-size:13px;box-sizing:border-box">
     <label class="mlbl">Subject</label>
     <input id="email-subject" type="text">
     <label class="mlbl">Body</label>
@@ -119,9 +125,31 @@ const db = getDatabase(fbApp);
 
 const $ = id => document.getElementById(id);
 function esc(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-function escAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
+function escAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/'/g,"&#39;");}
+function escJS(s){return String(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");}
 
-let nodes={}, links=[], meetings=[];
+// Strip common org-name suffixes then collapse to a guessed .com domain.
+// Used when no email exists — gives operator a starting point to edit.
+function inferOrgDomain(orgName) {
+  if (!orgName) return "";
+  const stripped = String(orgName)
+    .replace(/[\s,.()&-]+(Inc|LLC|Corp|Corporation|Company|Co|Ltd|Limited|Technologies|Technology|Tech|Systems|System|Group|Solutions|Services|Holdings|Industries|Industry|International|Global|Innovations|Innovation|GmbH|AG|SA|BV)\.?\s*$/gi, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase();
+  return stripped ? stripped + ".com" : "";
+}
+function guessEmail(personName, domain) {
+  if (!domain) return "";
+  const parts = String(personName||"").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0].replace(/[^a-z]/g,"") + "@" + domain;
+  const first = parts[0].replace(/[^a-z]/g, "");
+  const last = parts[parts.length - 1].replace(/[^a-z]/g, "");
+  if (!first || !last) return "";
+  return first + "." + last + "@" + domain;
+}
+
+let nodes={}, links=[], meetings=[], pendingPOCs={};
 
 // Use signInWithRedirect directly — matches the main app's P13.186
 // fix that handles Chrome's storage partitioning. Popup mode silently
@@ -154,17 +182,81 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 async function loadAll() {
-  const [nSnap, lSnap, mSnap] = await Promise.all([
+  const [nSnap, lSnap, mSnap, pSnap] = await Promise.all([
     get(ref(db, "workspaces/" + WS_ID + "/nodes")),
     get(ref(db, "workspaces/" + WS_ID + "/links")),
-    get(ref(db, "workspaces/" + WS_ID + "/meetings"))
+    get(ref(db, "workspaces/" + WS_ID + "/meetings")),
+    get(ref(db, "workspaces/" + WS_ID + "/pendingPOCs"))
   ]);
   nodes = nSnap.val() || {};
   const rawLinks = lSnap.val() || {};
   links = Object.values(rawLinks).filter(Boolean);
   const rawMeetings = mSnap.val() || {};
   meetings = Object.values(rawMeetings).filter(Boolean);
+  pendingPOCs = pSnap.val() || {};
+  renderPending();
   render();
+}
+
+function renderPending() {
+  // Flatten pendingPOCs across orgs, resolve org name, infer domain, guess email.
+  const items = [];
+  for (const orgId in pendingPOCs) {
+    const org = nodes[orgId];
+    if (!org || !org.name) continue;
+    const domain = inferOrgDomain(org.name);
+    const candObj = pendingPOCs[orgId];
+    for (const candId in candObj) {
+      const c = candObj[candId];
+      if (!c || !c.name) continue;
+      const guessed = c.email && String(c.email).trim() ? c.email : guessEmail(c.name, domain);
+      items.push({
+        candId, orgId, orgName: org.name,
+        name: c.name, role: c.role || "",
+        confidence: c.confidence || "low",
+        linkedin: c.linkedin || "",
+        sourceUrl: c.sourceUrl || "",
+        email: guessed,
+        emailIsGuess: !(c.email && String(c.email).trim()),
+      });
+    }
+  }
+  if (items.length === 0) {
+    $("pending-card").style.display = "none";
+    return;
+  }
+  $("pending-card").style.display = "block";
+  const orgCount = new Set(items.map(p => p.orgId)).size;
+  $("pending-stats").innerHTML = '<b style="color:var(--teal)">' + items.length + '</b> candidate' + (items.length===1?"":"s") + ' across <b style="color:var(--teal)">' + orgCount + '</b> org' + (orgCount===1?"":"s") + '. Italicized emails are <b style="color:var(--gold)">inferred from <code>first.last@orgdomain.com</code></b> — verify in the modal before sending.';
+  // Group by org
+  const byOrg = {};
+  for (const p of items) {
+    if (!byOrg[p.orgId]) byOrg[p.orgId] = { orgName: p.orgName, items: [] };
+    byOrg[p.orgId].items.push(p);
+  }
+  let html = "";
+  for (const orgId in byOrg) {
+    const o = byOrg[orgId];
+    html += '<div class="org-card has-poc" style="border-left-color:var(--teal)">';
+    html += '<div class="org-head"><div class="org-name">' + esc(o.orgName) + '</div><div class="org-meta">' + o.items.length + ' candidate' + (o.items.length===1?"":"s") + '</div></div>';
+    html += '<div class="poc-list">';
+    for (const p of o.items) {
+      const confColor = p.confidence === "high" ? "var(--green)" : p.confidence === "medium" ? "var(--amber)" : "var(--paper-2)";
+      const liLink = p.linkedin ? '<a href="' + escAttr(p.linkedin) + '" target="_blank" style="color:var(--teal);font-size:11px;text-decoration:none">LinkedIn</a>' : "";
+      const srcLink = p.sourceUrl ? ' <a href="' + escAttr(p.sourceUrl) + '" target="_blank" style="color:var(--paper-2);font-size:11px;text-decoration:none">src</a>' : "";
+      const emailRender = '<span style="' + (p.emailIsGuess ? 'color:var(--gold);font-style:italic' : 'color:var(--teal)') + '">' + esc(p.email || "(no guess)") + '</span>';
+      const btnAttr = "onclick=\"window._composeEmail('" + escJS(p.name) + "','" + escJS(p.email) + "','" + escJS(p.orgName) + "',true)\"";
+      html += '<div class="poc-row">';
+      html += '<div><div class="poc-name">' + esc(p.name) + '</div><div class="poc-role">' + esc(p.role) + '</div></div>';
+      html += '<div class="poc-email">' + emailRender + '</div>';
+      html += '<div class="last-touch" style="color:' + confColor + ';font-weight:700">' + esc((p.confidence||"low").toUpperCase()) + '</div>';
+      html += '<div>' + liLink + srcLink + '</div>';
+      html += '<div>' + (p.email ? '<button class="ghost" ' + btnAttr + '>📧 Email</button>' : '<span style="font-size:10px;color:var(--paper-2)">no domain</span>') + '</div>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+  $("pending-list").innerHTML = html;
 }
 
 function render() {
@@ -262,7 +354,12 @@ function render() {
           html += '<div class="poc-email ' + emailCls + '">' + emailStr + '</div>';
           html += '<div class="last-touch ' + lastCls + '">' + lastStr + '</div>';
           html += '<div>' + (p.isPOC ? '<span class="pill" style="background:rgba(34,197,94,.18);color:var(--green)">POC</span>' : "") + '</div>';
-          html += '<div>' + (p.email ? '<button class="ghost" onclick="window._composeEmail(\'' + escAttr(p.name) + '\',\'' + escAttr(p.email) + '\',\'' + escAttr(o.name) + '\')">✎ Email</button>' : '') + '</div>';
+          const liveEmail = p.email && String(p.email).trim();
+          const liveDomain = liveEmail ? "" : inferOrgDomain(o.name);
+          const liveGuess = liveEmail ? "" : guessEmail(p.name, liveDomain);
+          const liveAddr = liveEmail || liveGuess;
+          const liveIsGuess = !liveEmail;
+          html += '<div>' + (liveAddr ? '<button class="ghost" onclick="window._composeEmail(\'' + escJS(p.name) + '\',\'' + escJS(liveAddr) + '\',\'' + escJS(o.name) + '\',' + (liveIsGuess?"true":"false") + ')">' + (liveIsGuess?"📧 Guess":"✎ Email") + '</button>' : '') + '</div>';
           html += '</div>';
         }
         html += '</div>';
@@ -276,36 +373,39 @@ function render() {
   $("filter-search").addEventListener("input", rerender);
   rerender();
 
-  window._composeEmail = function(pocName, email, orgName) {
-    const c = classified.find(x => x.org.name === orgName);
-    if (!c) return;
-    const firstName = (pocName || "").split(/\s+/)[0] || "[first name]";
-    // Mike's verbatim default outreach template. Only [first name] is
-    // substituted; rest is unchanged so every email reads identical.
-    const subject = "Atlas Motors — NDAA-compliant BLDC motors";
-    const body = "Hi " + firstName + ",\n\n" +
-      "Atlas manufactures NDAA-compliant BLDC motors with allied-nation production.\n\n" +
-      "We make the following standard motors:\n\n" +
-      "3008 1300KV\n" +
-      "3115 900KV\n" +
-      "3530 650KV\n" +
-      "4112 450KV\n\n" +
-      "We will produce 10,000 motors per month by August and are already shipping to customers. We expect to ramp production to 50,000+ motors by Q4.\n\n" +
-      "We'd love to work together!\n\n" +
-      "Please let me know if you're interested in a quote or would like to hop on a call to discuss how Atlas can help you.\n\n" +
-      "Cheers,\n" +
-      "Mike Poppa\n";
-    $("modal-title").textContent = "Email to " + pocName + " · " + orgName;
-    $("email-to").textContent = email;
-    $("email-subject").value = subject;
-    $("email-body").value = body;
-    $("email-modal").classList.add("open");
-    $("email-modal").dataset.to = email;
-  };
+  window._composeEmail = composeEmail;
 }
 
+// Hoisted so both render() (G2 orgs) and renderPending() (Bulk candidates)
+// route through one path. isGuess just tweaks the modal title so Mike
+// knows to verify the address before sending.
+function composeEmail(pocName, email, orgName, isGuess) {
+  const firstName = (pocName || "").split(/\s+/)[0] || "[first name]";
+  // Mike's verbatim default outreach template. Only [first name] is
+  // substituted; rest is unchanged so every email reads identical.
+  const subject = "Atlas Motors — NDAA-compliant BLDC motors";
+  const body = "Hi " + firstName + ",\n\n" +
+    "Atlas manufactures NDAA-compliant BLDC motors with allied-nation production.\n\n" +
+    "We make the following standard motors:\n\n" +
+    "3008 1300KV\n" +
+    "3115 900KV\n" +
+    "3530 650KV\n" +
+    "4112 450KV\n\n" +
+    "We will produce 10,000 motors per month by August and are already shipping to customers. We expect to ramp production to 50,000+ motors by Q4.\n\n" +
+    "We'd love to work together!\n\n" +
+    "Please let me know if you're interested in a quote or would like to hop on a call to discuss how Atlas can help you.\n\n" +
+    "Cheers,\n" +
+    "Mike Poppa\n";
+  $("modal-title").textContent = (isGuess ? "⚠ GUESSED addr · " : "Email to ") + pocName + " · " + orgName;
+  $("email-to").value = email;
+  $("email-subject").value = subject;
+  $("email-body").value = body;
+  $("email-modal").classList.add("open");
+}
+window._composeEmail = composeEmail;
+
 $("copy-email").addEventListener("click", async () => {
-  const text = "To: " + $("email-modal").dataset.to + "\nSubject: " + $("email-subject").value + "\n\n" + $("email-body").value;
+  const text = "To: " + $("email-to").value + "\nSubject: " + $("email-subject").value + "\n\n" + $("email-body").value;
   try { await navigator.clipboard.writeText(text); $("copy-status").textContent = "✓ Copied full email to clipboard"; setTimeout(() => $("copy-status").textContent = "", 2500); }
   catch (e) { $("copy-status").textContent = "Copy failed: " + e.message; }
 });
@@ -314,7 +414,8 @@ $("copy-body-only").addEventListener("click", async () => {
   catch (e) { $("copy-status").textContent = "Copy failed: " + e.message; }
 });
 $("mailto-email").addEventListener("click", () => {
-  const to = $("email-modal").dataset.to;
+  const to = $("email-to").value.trim();
+  if (!to) { $("copy-status").textContent = "Enter a recipient first"; return; }
   const subj = encodeURIComponent($("email-subject").value);
   const body = encodeURIComponent($("email-body").value);
   window.location.href = "mailto:" + to + "?subject=" + subj + "&body=" + body;
