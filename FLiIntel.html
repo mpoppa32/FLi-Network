@@ -8864,7 +8864,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.176</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.177</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13169,7 +13169,41 @@ document.getElementById('google-signin-btn').addEventListener('click',function()
   });
 });
 
-async function loadUserWorkspaces(user){document.body.classList.add('app-active');document.getElementById('auth-screen').style.display='none';var alb=document.getElementById('auth-loading-bar');if(alb)alb.style.display='none';var snap=await get(ref(db,'users/'+user.uid+'/workspaces'));userWorkspaces=snap.val()?Object.values(snap.val()):[];if(userWorkspaces.length===0){showWsPicker(user);}else if(userWorkspaces.length===1){selectWorkspace(userWorkspaces[0].id);}else{showWsPicker(user);}}
+async function loadUserWorkspaces(user){
+  document.body.classList.add('app-active');
+  document.getElementById('auth-screen').style.display='none';
+  var alb=document.getElementById('auth-loading-bar');if(alb)alb.style.display='none';
+  // P13.177 — guard against Firebase RTDB hang (verified failure mode:
+  // long-polling /.lp endpoint returned 503s for ~minutes, leaving this
+  // await unresolved → app-active class set + auth-screen hidden +
+  // main-app not yet shown = black screen. Race against a 20s timeout
+  // so the operator gets a recoverable error surface instead.
+  var snap;
+  try {
+    snap = await Promise.race([
+      get(ref(db,'users/'+user.uid+'/workspaces')),
+      new Promise(function(_,rej){setTimeout(function(){rej(new Error('rtdb-timeout-20s'));},20000);})
+    ]);
+  } catch(rtdbErr) {
+    document.body.classList.remove('app-active');
+    var asEl=document.getElementById('auth-screen');if(asEl)asEl.style.display='flex';
+    var pl=document.getElementById('page-loader');if(pl)pl.style.display='none';
+    var card=document.querySelector('.auth-card');
+    if(card && !document.getElementById('rtdb-timeout-msg')){
+      var em=document.createElement('div');
+      em.id='rtdb-timeout-msg';
+      em.style.cssText='margin-top:18px;padding:12px 14px;background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.4);border-radius:3px;color:#ef4444;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.08em;line-height:1.5;text-align:left';
+      em.innerHTML='WORKSPACE LOAD TIMED OUT &nbsp;·&nbsp; Firebase RTDB unreachable for 20s. Hard-refresh (Ctrl+Shift+R) in ~30s. If persistent, check <a href="https://status.firebase.google.com" target="_blank" rel="noopener" style="color:#ef4444;text-decoration:underline">status.firebase.google.com</a>.';
+      card.appendChild(em);
+    }
+    console.error('[P13.177] loadUserWorkspaces RTDB timeout:', rtdbErr && rtdbErr.message);
+    return;
+  }
+  userWorkspaces=snap.val()?Object.values(snap.val()):[];
+  if(userWorkspaces.length===0){showWsPicker(user);}
+  else if(userWorkspaces.length===1){selectWorkspace(userWorkspaces[0].id);}
+  else{showWsPicker(user);}
+}
 
 function showWsPicker(user){
   document.getElementById('ws-screen').style.display='flex';
@@ -64273,6 +64307,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.176"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.177"></script>
 </body>
 </html>
