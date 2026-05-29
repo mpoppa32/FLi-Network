@@ -8860,6 +8860,13 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            postMessage channel entirely. Use this when popup sign-in
            errors with network-request-failed / popup-blocked / etc. -->
       <button id="google-signin-redirect-btn" onclick="window._signInRedirect&&window._signInRedirect()" title="Use this if popup sign-in is blocked or keeps failing. Signs in via full-page redirect through Google instead of a popup." style="display:block;margin:12px auto 0;padding:7px 14px;background:transparent;border:1px solid rgba(212,130,58,.32);border-radius:3px;color:var(--paper-2);font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;cursor:pointer">↗ Use Redirect Sign-In Instead</button>
+      <!-- P13.182 — last-resort reset. Verified pattern: fire-and-forget
+           deleteDatabase on the Firebase IndexedDB stores (firebaseLocalStorageDb,
+           firebase-heartbeat-database) + clear localStorage/sessionStorage +
+           immediate window.location.replace. Page navigation closes the SDK
+           connections so the queued deletes complete in transit; next load
+           is from clean state with no corrupted PopupOperation cached. -->
+      <button id="auth-clear-restart-btn" onclick="window._nukeAuthAndReload&&window._nukeAuthAndReload()" title="LAST RESORT: clears ALL stored browser state (Firebase IndexedDB + localStorage + sessionStorage) and reloads to a clean slate. Use if sign-in keeps failing with INTERNAL ASSERTION FAILED errors." style="display:block;margin:14px auto 0;padding:7px 14px;background:rgba(239,68,68,.06);border:1px dashed rgba(239,68,68,.5);border-radius:3px;color:#ef4444;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;cursor:pointer">↺ Clear All State &amp; Restart</button>
       <div id="auth-error" style="display:none;margin-top:18px;padding:10px 12px;background:rgba(239,68,68,.08);border-left:2px solid #ef4444;font-size:14px;font-family:'IBM Plex Mono',monospace;color:#ef4444;line-height:1.5;text-align:left;letter-spacing:0.03em"></div>
       <div id="auth-loading-bar" class="auth-loading-bar"></div>
       <!-- P13.104→P13.105 — Watch the self-running tour. Requires sign-in so
@@ -8868,7 +8875,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.181</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.182</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13166,12 +13173,43 @@ window._signInRedirect=function(){
   var errEl=document.getElementById('auth-error');if(errEl)errEl.style.display='none';
   if(rBtn){rBtn.disabled=true;rBtn.textContent='Redirecting…';}
   if(mainBtn)mainBtn.disabled=true;
-  signInWithRedirect(auth,new GoogleAuthProvider()).catch(function(e){
+  // P13.182 — verified failure mode: signInWithRedirect can silently
+  // no-op when the SDK's internal state is corrupted from a prior
+  // PopupOperation assertion (the Promise never rejects, the page never
+  // navigates). 5s nav-timeout surfaces this case + glows the Clear
+  // button so the operator can recover from a known-good clean state.
+  var navTimeout=setTimeout(function(){
     if(rBtn){rBtn.disabled=false;rBtn.textContent='↗ Use Redirect Sign-In Instead';}
     if(mainBtn)mainBtn.disabled=false;
-    showAuthError('Redirect sign-in failed ('+e.code+'): '+e.message+'. Check status.firebase.google.com or refresh.');
+    showAuthError('Redirect did not navigate within 5s (likely SDK state corrupted from a prior popup-blocked attempt). Click "↺ Clear All State & Restart" below.');
+    var cBtn=document.getElementById('auth-clear-restart-btn');
+    if(cBtn){cBtn.style.boxShadow='0 0 0 1px #ef4444, 0 0 16px rgba(239,68,68,.55)';cBtn.style.transform='scale(1.05)';cBtn.style.fontWeight='700';}
+  },5000);
+  signInWithRedirect(auth,new GoogleAuthProvider()).catch(function(e){
+    clearTimeout(navTimeout);
+    if(rBtn){rBtn.disabled=false;rBtn.textContent='↗ Use Redirect Sign-In Instead';}
+    if(mainBtn)mainBtn.disabled=false;
+    showAuthError('Redirect sign-in failed ('+e.code+'): '+e.message+'. Click "↺ Clear All State & Restart" below.');
+    var cBtn=document.getElementById('auth-clear-restart-btn');
+    if(cBtn){cBtn.style.boxShadow='0 0 0 1px #ef4444, 0 0 16px rgba(239,68,68,.55)';cBtn.style.transform='scale(1.05)';cBtn.style.fontWeight='700';}
     console.error('[P13.179] redirect sign-in error:',e);
   });
+};
+
+// P13.182 — nuke all browser state + reload. The verified-working pattern:
+// fire-and-forget deleteDatabase requests (await would block since the SDK
+// has open IDB connections) + immediate location.replace so the page
+// navigates away, the SDK shuts down, the queued deletes complete in
+// transit, and the next page load starts from genuinely empty state.
+// This is the recovery path for the INTERNAL ASSERTION FAILED corruption
+// observed in Firebase SDK 10.7.1 when popup-blocked catches auto-chain.
+window._nukeAuthAndReload=function(){
+  try { localStorage.clear(); sessionStorage.clear(); } catch(e){}
+  try { indexedDB.deleteDatabase('firebaseLocalStorageDb'); } catch(e){}
+  try { indexedDB.deleteDatabase('firebase-heartbeat-database'); } catch(e){}
+  try { indexedDB.deleteDatabase('firestore/[DEFAULT]/main'); } catch(e){}
+  console.log('[P13.182] state nuke fired, reloading clean');
+  window.location.replace(window.location.pathname + '?fresh=' + Date.now());
 };
 
 document.getElementById('google-signin-btn').addEventListener('click',function(){
@@ -64359,6 +64397,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.181"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.182"></script>
 </body>
 </html>
