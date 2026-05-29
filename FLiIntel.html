@@ -8868,7 +8868,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.179</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.180</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13033,21 +13033,21 @@ async function saveEntity(e){var c=Object.assign({},e);delete c.fx;delete c.fy;d
 
 function showAuthError(msg){var el=document.getElementById('auth-error');if(el){el.textContent=msg;el.style.display='block';}}
 
-// P13.123 (audit Finding 2.3) — service worker registration. Caches the
-// 3.4MB HTML + ES module bundle so the second-and-onward load skips the
-// 1.4-1.8s cold parse. First-time visitors still pay the parse cost (no
-// SW to serve from), but every subsequent visit on the same browser
-// loads from the cache. Network-first for HTML so deploys propagate;
-// cache-first for versioned JS modules (?v=buildTag is the invalidation).
-// Cache name keyed by build tag — each deploy gets a fresh cache, the
-// old one is purged on activate.
+// P13.180 — DEMO RELIABILITY: strip the service worker entirely.
+// Original P13.123 SW (network-first HTML + cache-first ?v= modules)
+// was caching stale code across versions for some operators; sign-in
+// failures kept reproducing because the browser kept serving an old
+// SW-controlled FLiIntel.html. Until we re-introduce SW with stricter
+// upgrade discipline, every visit fetches latest from CDN directly.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function() {
-    // Use ./sw.js (relative) so it scopes to /FLi-Network/ on GitHub Pages.
-    navigator.serviceWorker.register('./sw.js')
-      .then(function(reg) { console.log('[SW] registered, scope:', reg.scope); })
-      .catch(function(err) { console.warn('[SW] registration failed:', err && err.message); });
-  });
+  navigator.serviceWorker.getRegistrations().then(function(regs){
+    regs.forEach(function(r){ r.unregister().then(function(ok){ if(ok) console.log('[P13.180] SW unregistered'); }); });
+  }).catch(function(e){ console.warn('[P13.180] SW unregister err:', e && e.message); });
+  if (window.caches) {
+    caches.keys().then(function(keys){
+      keys.forEach(function(k){ if (k.indexOf('corsair-') === 0) caches.delete(k); });
+    }).catch(function(){});
+  }
 }
 
 // P13.117 (audit Finding 3.3) — canonical HTML escape helper exposed on
@@ -13142,10 +13142,17 @@ onAuthStateChanged(auth,function(user){
 setTimeout(function(){var pl2=document.getElementById('page-loader');if(pl2&&pl2.style.display!=='none'){pl2.style.display='none';var as0=document.getElementById('auth-screen');if(as0&&as0.style.display==='none')as0.style.display='flex';}var as=document.getElementById('auth-screen');if(as&&as.style.display!=='none'){var lb=document.getElementById('auth-loading-bar');if(lb)lb.style.animation='none';var btn=document.getElementById('google-signin-btn');if(btn&&!btn.disabled){}}},8000);
 
 // Handle redirect result on page load (for browsers that block popups)
+// P13.180 — verbose logging so we can see the redirect handshake.
+console.log('[P13.180 auth] page-load: about to read redirect result');
 getRedirectResult(auth).then(function(result){
-  if(result&&result.user){/* handled by onAuthStateChanged */}
+  if(result&&result.user){
+    console.log('[P13.180 auth] redirect result: signed in as', result.user.email);
+  } else {
+    console.log('[P13.180 auth] redirect result: null (no pending redirect, or already consumed)');
+  }
 }).catch(function(e){
-  if(e.code!=='auth/no-current-user')showAuthError('Sign in failed: '+e.message);
+  console.error('[P13.180 auth] getRedirectResult error:', e.code, e.message);
+  if(e.code!=='auth/no-current-user')showAuthError('Redirect sign-in error ('+e.code+'): '+e.message+'  ·  Build P13.180 · '+(navigator.userAgent.slice(0,60))+'  ·  Try Ctrl+Shift+R or incognito.');
 });
 
 // P13.179 — direct redirect-flow escape hatch wired to the secondary
@@ -64340,6 +64347,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.179"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.180"></script>
 </body>
 </html>
