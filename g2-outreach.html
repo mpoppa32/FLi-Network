@@ -226,8 +226,16 @@ function renderPending() {
     return;
   }
   $("pending-card").style.display = "block";
+  window._pendingItems = items; // exposed for bulk-open handlers
   const orgCount = new Set(items.map(p => p.orgId)).size;
-  $("pending-stats").innerHTML = '<b style="color:var(--teal)">' + items.length + '</b> candidate' + (items.length===1?"":"s") + ' across <b style="color:var(--teal)">' + orgCount + '</b> org' + (orgCount===1?"":"s") + '. Italicized emails are <b style="color:var(--gold)">inferred from <code>first.last@orgdomain.com</code></b> — verify in the modal before sending.';
+  const bulkBar =
+    '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 8px;padding:12px 14px;background:rgba(34,197,94,.06);border:1px solid var(--green);border-radius:3px">' +
+      '<button class="primary" onclick="window._bulkOpenGmail()" style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.10em;text-transform:uppercase">🚀 Open all ' + items.length + ' in Gmail compose tabs</button>' +
+      '<button onclick="window._bulkOpenMailto()" style="font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.10em;text-transform:uppercase">📨 Open all in default mail app</button>' +
+      '<span id="bulk-status" style="font-size:12px;color:var(--paper-2);font-family:IBM Plex Mono,monospace;letter-spacing:.06em"></span>' +
+    '</div>' +
+    '<div style="font-size:12px;color:var(--paper-2);margin-bottom:14px;line-height:1.5">Each opens a tab with the Atlas template + personalized "Hi {first name}," + guessed email pre-filled. <b style="color:var(--gold)">If Chrome blocks the popups</b>, click the popup icon in the URL bar → "Always allow popups from this site" → click the button again.</div>';
+  $("pending-stats").innerHTML = '<b style="color:var(--teal)">' + items.length + '</b> candidate' + (items.length===1?"":"s") + ' across <b style="color:var(--teal)">' + orgCount + '</b> org' + (orgCount===1?"":"s") + '. Italicized emails are <b style="color:var(--gold)">inferred from <code>first.last@orgdomain.com</code></b> — verify in each compose tab before clicking send.' + bulkBar;
   // Group by org
   const byOrg = {};
   for (const p of items) {
@@ -403,6 +411,59 @@ function composeEmail(pocName, email, orgName, isGuess) {
   $("email-modal").classList.add("open");
 }
 window._composeEmail = composeEmail;
+
+// Build the Atlas template for a given first name. Single source of
+// truth shared between modal-compose and bulk-open paths.
+function _atlasOutreachBody(firstName) {
+  return "Hi " + (firstName || "[first name]") + ",\n\n" +
+    "Atlas manufactures NDAA-compliant BLDC motors with allied-nation production.\n\n" +
+    "We make the following standard motors:\n\n" +
+    "3008 1300KV\n" +
+    "3115 900KV\n" +
+    "3530 650KV\n" +
+    "4112 450KV\n\n" +
+    "We will produce 10,000 motors per month by August and are already shipping to customers. We expect to ramp production to 50,000+ motors by Q4.\n\n" +
+    "We'd love to work together!\n\n" +
+    "Please let me know if you're interested in a quote or would like to hop on a call to discuss how Atlas can help you.\n\n" +
+    "Cheers,\n" +
+    "Mike Poppa\n";
+}
+const _ATLAS_SUBJECT = "Atlas Motors — NDAA-compliant BLDC motors";
+
+// Bulk-open all pending POC compose tabs. Browsers gate window.open
+// on the trusted user gesture — we fire them in a tight loop after
+// the click. If popups are blocked, the operator must allow popups
+// for this site once, then click again.
+window._bulkOpenGmail = function() {
+  const items = (window._pendingItems || []).filter(p => p.email);
+  if (!items.length) { $("bulk-status").textContent = "No candidates with guessable emails."; return; }
+  let opened = 0, blocked = 0;
+  for (const p of items) {
+    const first = (p.name || "").split(/\s+/)[0] || "[first name]";
+    const url = "https://mail.google.com/mail/?view=cm&fs=1&to=" +
+      encodeURIComponent(p.email) +
+      "&su=" + encodeURIComponent(_ATLAS_SUBJECT) +
+      "&body=" + encodeURIComponent(_atlasOutreachBody(first));
+    const w = window.open(url, "_blank");
+    if (w) opened++; else blocked++;
+  }
+  $("bulk-status").innerHTML = '<b style="color:var(--green)">' + opened + ' tab' + (opened===1?"":"s") + ' opened</b>' + (blocked ? ' · <b style="color:var(--red)">' + blocked + ' blocked by browser (allow popups for this site, then retry)</b>' : ' · go tab by tab and hit Send.');
+};
+
+window._bulkOpenMailto = function() {
+  const items = (window._pendingItems || []).filter(p => p.email);
+  if (!items.length) { $("bulk-status").textContent = "No candidates with guessable emails."; return; }
+  let opened = 0, blocked = 0;
+  for (const p of items) {
+    const first = (p.name || "").split(/\s+/)[0] || "[first name]";
+    const url = "mailto:" + p.email +
+      "?subject=" + encodeURIComponent(_ATLAS_SUBJECT) +
+      "&body=" + encodeURIComponent(_atlasOutreachBody(first));
+    const w = window.open(url, "_blank");
+    if (w) opened++; else blocked++;
+  }
+  $("bulk-status").innerHTML = '<b style="color:var(--green)">' + opened + ' mailto launched</b>' + (blocked ? ' · <b style="color:var(--red)">' + blocked + ' blocked</b>' : '') + ' · your default mail app should handle each.';
+};
 
 $("copy-email").addEventListener("click", async () => {
   const text = "To: " + $("email-to").value + "\nSubject: " + $("email-subject").value + "\n\n" + $("email-body").value;
