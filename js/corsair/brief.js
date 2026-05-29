@@ -535,6 +535,76 @@ window.renderDailyBrief = function() {
     catch (e) { console.warn('[Brief] nudge column render failed', e); }
   }
 
+  // P13.167 — SIGNALS ON PIPELINE column. Promotes OSINT moat from
+  // Today-only callout into the morning Brief. Reuses the same scoring
+  // logic as the TODAY surface: term set from active opp agency/customer/
+  // name/vehicle, hit-count score per dailyFeed signal, top 3 rendered.
+  (function _renderOsintColumn(){
+    var listEl = document.getElementById('brief-osint-list');
+    var countEl = document.getElementById('brief-osint-count');
+    if (!listEl) return;
+    var feed = Array.isArray(window._dailyFeedData) ? window._dailyFeedData : [];
+    var actives = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
+    if (!feed.length || !actives.length) {
+      if (countEl) countEl.textContent = '0';
+      var msg = feed.length
+        ? 'No matches against your active pursuits today.'
+        : 'No OSINT feed pulled yet today. Click Pulse to trigger.';
+      listEl.innerHTML = '<div class="brief-empty">' + msg + '</div>';
+      return;
+    }
+    var terms = new Set();
+    actives.forEach(function(o){
+      [o.agency, o.customerOrg, o.name, o.vehicle].forEach(function(t){
+        if (t && String(t).length > 2 && String(t).toLowerCase() !== 'agency unknown') {
+          terms.add(String(t).toLowerCase().trim());
+        }
+      });
+    });
+    var scored = [];
+    feed.forEach(function(s){
+      if (!s) return;
+      var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
+      var hits = 0;
+      var matched = [];
+      terms.forEach(function(t){ if (t && t.length > 2 && blob.indexOf(t) >= 0) { hits++; matched.push(t); } });
+      if (hits > 0) scored.push({ s: s, hits: hits, matched: matched.slice(0, 2) });
+    });
+    scored.sort(function(a, b){
+      if (b.hits !== a.hits) return b.hits - a.hits;
+      var da = a.s.date ? new Date(a.s.date).getTime() : 0;
+      var db = b.s.date ? new Date(b.s.date).getTime() : 0;
+      return db - da;
+    });
+    if (countEl) countEl.textContent = String(scored.length);
+    if (!scored.length) {
+      listEl.innerHTML = '<div class="brief-empty">No matches against your active pursuits today.</div>';
+      return;
+    }
+    var top = scored.slice(0, 3);
+    listEl.innerHTML = top.map(function(row){
+      var s = row.s;
+      var sev = s.severity || 'info';
+      var sevCol = sev === 'high' ? '#ef4444' : sev === 'med' ? '#f0a560' : sev === 'low' ? '#6ed094' : '#5fb3b8';
+      var headline = (window._escHTML ? window._escHTML(s.headline || '') : String(s.headline || '').replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; })).slice(0, 90);
+      var cat = s.category ? String(s.category).toUpperCase().slice(0, 14) : '';
+      var matchedChip = row.matched.length ? '<span class="brief-item-meta" style="color:' + sevCol + ';font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.06em">' + row.hits + ' hit' + (row.hits === 1 ? '' : 's') + '</span>' : '';
+      var sUrl = s.url && /^https?:\/\//i.test(s.url) ? s.url : null;
+      var clickAttr = sUrl
+        ? 'onclick="window.open(\'' + String(sUrl).replace(/\'/g, '&#39;') + '\',\'_blank\',\'noopener,noreferrer\')"'
+        : 'onclick="if(window.switchView)window.switchView(\'pulse\')"';
+      return '<div class="brief-item" ' + clickAttr + ' style="cursor:pointer;flex-direction:column;align-items:stretch;gap:3px">' +
+        '<div style="display:flex;justify-content:space-between;gap:6px;align-items:center">' +
+          '<span class="brief-item-title" style="display:flex;align-items:center;gap:6px">' +
+            (cat ? '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + sevCol + ';border:1px solid ' + sevCol + '70;background:rgba(0,0,0,.22);padding:1px 5px;border-radius:2px">' + cat + '</span>' : '') +
+            '<span>' + headline + '</span>' +
+          '</span>' +
+          matchedChip +
+        '</div>' +
+      '</div>';
+    }).join('');
+  })();
+
   console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length + ' aged=' + aged.length);
 };
 
