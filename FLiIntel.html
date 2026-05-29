@@ -8875,7 +8875,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.185</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.186</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12112,7 +12112,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { initializeAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, inMemoryPersistence, browserPopupRedirectResolver } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getDatabase, ref, set, get, onValue, remove, query, orderByChild, limitToLast, endBefore, onDisconnect } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
@@ -12145,16 +12145,18 @@ var fbApp = initializeApp(FB_CFG);
 // signs in each fresh page load. The completed sign-in DOES work for
 // the lifetime of the tab — workspace loads, demo runs, all features
 // functional. Acceptable for demo + practice.
-// P13.185 — initializeAuth without an explicit popupRedirectResolver
-// makes signInWithPopup / signInWithRedirect / getRedirectResult ALL
-// reject with auth/argument-error (verified in MCP). getAuth(app)
-// auto-wires browserPopupRedirectResolver; initializeAuth doesn't.
-// Must pass it explicitly when constructing auth this way.
-var auth = initializeAuth(fbApp, {
-  persistence: inMemoryPersistence,
-  popupRedirectResolver: browserPopupRedirectResolver
-});
-console.log('[P13.185] auth: inMemoryPersistence + browserPopupRedirectResolver (IDB bypassed, OAuth wired)');
+// P13.186 — PERMANENT FIX. Restored getAuth default (IndexedDB
+// persistence) so team members sign in once and stay signed in
+// across reloads and tab closes — what they expect from a normal
+// web app. getAuth(app) auto-wires browserPopupRedirectResolver
+// so OAuth works without explicit deps. The IDB hang Mike hit on
+// P13.184 was from a deadlocked firebaseLocalStorageDb left over
+// from many failed sign-in attempts in his session; fresh users +
+// users who click the Clear All State button get a clean IDB and
+// no hang. The main sign-in button now uses signInWithRedirect
+// directly (bypasses popup blockers entirely — see line 13182).
+var auth = getAuth(fbApp);
+console.log('[P13.186] auth: getAuth default (IDB persistence — survives across sessions)');
 var db = getDatabase(fbApp);
 var fbFunctions = getFunctions(fbApp, 'us-central1');
 // Expose to non-module scripts (Phase 8.5 OSINT migration panel uses these)
@@ -13240,9 +13242,34 @@ window._nukeAuthAndReload=function(){
   window.location.replace(window.location.pathname + '?fresh=' + Date.now());
 };
 
+// P13.186 — main sign-in button now uses signInWithRedirect directly,
+// not signInWithPopup. Popup blockers (Brave Shields, Chrome strict,
+// extensions, default-deny configs) were the most common failure mode.
+// Redirect navigates the current tab — no popup, no blocker, no
+// postMessage channel, no INTERNAL ASSERTION FAILED corruption.
+// Delegates to window._signInRedirect (defined above) so popup path
+// stays in the file as a code reference but is no longer wired to UI.
 document.getElementById('google-signin-btn').addEventListener('click',function(){
+  if(window._signInRedirect){ window._signInRedirect(); return; }
+  // Defensive fallback if _signInRedirect somehow isn't defined yet:
   var btn=this;
-  btn.disabled=true;btn.textContent='Signing in...';
+  btn.disabled=true;btn.textContent='Redirecting…';
+  var errEl=document.getElementById('auth-error');
+  if(errEl)errEl.style.display='none';
+  var provider=new GoogleAuthProvider();
+  signInWithRedirect(auth,provider).catch(function(e){
+    btn.disabled=false;btn.textContent='Sign in with Google';
+    showAuthError('Sign in error ('+e.code+'): '+e.message);
+    console.error('Firebase auth error:',e);
+  });
+});
+
+// P13.186 — legacy popup path retained for reference but no longer
+// wired to any visible button. If we need popup back for some browser,
+// expose this as window._signInPopup.
+window._signInPopup = function(){
+  var btn=document.getElementById('google-signin-btn');
+  if(btn){btn.disabled=true;btn.textContent='Signing in...';}
   var errEl=document.getElementById('auth-error');
   if(errEl)errEl.style.display='none';
   var provider=new GoogleAuthProvider();
@@ -13285,7 +13312,7 @@ document.getElementById('google-signin-btn').addEventListener('click',function()
       console.error('Firebase auth error:',e);
     }
   });
-});
+};
 
 async function loadUserWorkspaces(user){
   document.body.classList.add('app-active');
@@ -64425,6 +64452,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.185"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.186"></script>
 </body>
 </html>
