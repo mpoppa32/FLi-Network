@@ -8849,7 +8849,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.154</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.155</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -18295,6 +18295,53 @@ function renderOppSidebar(){
 // #cop-forecast-panel above the Kanban. Collapsible; persists state
 // via localStorage so it stays open or closed across sessions.
 // ═══════════════════════════════════════════════════════════════
+// P13.155 — Canonical pwin → fractional [0,1] helper. Replaces inline
+// `Number(o.pwin != null ? o.pwin : (o.winProb || 0))` reads that the audit
+// found scattered across Forecast / Pipeline sidebar / Accounts grid /
+// _renderWeightedQuarter with subtle drift (Accounts read .pWin not .pwin →
+// always 0; quarter read raw without /100 normalization → potential 100×
+// off). One source of truth. Returns 0 for null/negative/NaN.
+window._pwinFrac = function(o){
+  if (!o) return 0;
+  var p = Number(o.pwin != null ? o.pwin : (o.winProb != null ? o.winProb : (o.pWin || 0)));
+  if (!isFinite(p) || p < 0) return 0;
+  if (p > 1) p = p / 100;
+  if (p > 1) p = 1;
+  return p;
+};
+
+// P13.155 — Forecast drill: every number on Forecast clicks to its opps.
+// Tile click: switch to opps view + scroll Kanban into view.
+// Funnel row click: switch to opps + scroll the target stage column + flash
+// it briefly so the operator sees which slice they drilled to.
+window._drillFromForecast = function(target){
+  try {
+    if (typeof window.switchView === 'function') window.switchView('opps');
+  } catch(e){ /* fall through */ }
+  // Defer DOM lookup so switchView's render finishes.
+  setTimeout(function(){
+    var sel = null;
+    if (target && target.indexOf && target.indexOf('stage:') === 0) {
+      var key = target.slice(6);
+      sel = document.querySelector('.cop-kanban-col[data-stage="' + key + '"]');
+    }
+    if (!sel) sel = document.querySelector('.cop-kanban') || document.getElementById('cop-forecast-panel');
+    if (!sel) return;
+    try { sel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(e){ sel.scrollIntoView(); }
+    if (target && target.indexOf && target.indexOf('stage:') === 0) {
+      // Brief gold-edge flash so the operator visually confirms the drill.
+      var prevShadow = sel.style.boxShadow;
+      var prevTrans = sel.style.transition;
+      sel.style.transition = 'box-shadow 200ms ease';
+      sel.style.boxShadow = '0 0 0 2px var(--gold), 0 0 18px rgba(212,130,58,.45)';
+      setTimeout(function(){
+        sel.style.boxShadow = prevShadow || '';
+        setTimeout(function(){ sel.style.transition = prevTrans || ''; }, 250);
+      }, 1400);
+    }
+  }, 60);
+};
+
 window._renderCopForecast = function(){
   var panel = document.getElementById('cop-forecast-panel');
   if (!panel) return;
@@ -18510,9 +18557,10 @@ window._renderCopForecast = function(){
   var maxMonthly = Math.max.apply(null, months.map(function(m){return m.pipe;}).concat([1]));
   var maxStage = Math.max.apply(null, stages.map(function(s){return byStage[s].value;}).concat([1]));
 
-  // Top tile row
-  var tile = function(label, value, sub){
-    return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:3px;padding:14px 16px">' +
+  // Top tile row — P13.155 every tile clicks to drill the Kanban.
+  var tile = function(label, value, sub, drillTarget){
+    var t = drillTarget || 'open';
+    return '<div onclick="window._drillFromForecast&amp;&amp;window._drillFromForecast(\'' + t + '\')" title="Click to drill into these opps in the Kanban" style="background:var(--s1);border:1px solid var(--b1);border-radius:3px;padding:14px 16px;cursor:pointer;transition:border-color 140ms" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.12em;font-weight:700">' + label + '</div>' +
       '<div style="font-family:Antonio,sans-serif;font-size:var(--text-2xl);font-weight:700;color:var(--text);line-height:1;margin-top:6px">' + value + '</div>' +
       (sub ? '<div style="font-size:var(--text-xs);color:var(--t3);margin-top:4px;font-family:IBM Plex Mono,monospace;letter-spacing:.06em">' + sub + '</div>' : '') +
@@ -18556,7 +18604,7 @@ window._renderCopForecast = function(){
     } else {
       convChip = '<div style="min-width:60px;flex-shrink:0"></div>';
     }
-    return '<div style="display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px dashed rgba(125,118,105,.12)">' +
+    return '<div onclick="window._drillFromForecast&amp;&amp;window._drillFromForecast(\'stage:' + s + '\')" title="Click to drill into ' + (stageLabels[s]||s) + ' opps" style="display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px dashed rgba(125,118,105,.12);cursor:pointer" onmouseover="this.style.background=\'rgba(212,130,58,.06)\'" onmouseout="this.style.background=\'transparent\'">' +
       '<div style="width:120px;font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);color:var(--t2);letter-spacing:.08em;font-weight:700;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + (stageLabels[s]||s) + '">' + (stageLabels[s]||s) + '</div>' +
       '<div style="flex:1;position:relative;height:20px;background:rgba(125,118,105,.06);border-radius:2px;overflow:hidden">' +
         '<div style="position:absolute;top:0;bottom:0;left:0;width:' + pct + '%;background:rgba(91,143,196,.25)"></div>' +
@@ -18640,10 +18688,36 @@ window._renderCopForecast = function(){
             var chip = window._dealScoreChip(o);
             var v = Number(o.value || 0);
             var vTxt = v >= 1e6 ? '$' + (v/1e6).toFixed(1) + 'M' : (v >= 1e3 ? '$' + (v/1e3).toFixed(0) + 'K' : (v ? '$' + v : '—'));
+            // P13.155 — "why this rank" sub-line: top factor + days-in-stage
+            // + lead. Operator sees the reason without clicking. Pulled from
+            // _dealScoreBreakdown (already computed for the rank above) +
+            // stageEnteredAt + captureLead.
+            var reasonBits = [];
+            try {
+              var b = (typeof window._dealScoreBreakdown === 'function') ? window._dealScoreBreakdown(o) : null;
+              if (b && b.factors && b.factors.length) {
+                var topF = b.factors.slice().sort(function(a,c){
+                  return (c.score / (c.max || 1)) - (a.score / (a.max || 1));
+                })[0];
+                if (topF && topF.score > 0) {
+                  reasonBits.push('TOP: ' + String(topF.label).toUpperCase() + ' ' + topF.score + '/' + topF.max);
+                }
+              }
+              if (o.stageEnteredAt) {
+                var sd = Math.floor((Date.now() - Number(o.stageEnteredAt)) / 86400000);
+                if (sd >= 0) reasonBits.push(sd + 'D IN STAGE');
+              }
+              var ldName = o.captureLead || o.lead || '';
+              if (ldName) reasonBits.push('LEAD: ' + String(ldName).toUpperCase().replace(/[<>&"]/g,''));
+            } catch(rbErr){ /* swallow, sub-line is decorative */ }
+            var reasonLine = reasonBits.length
+              ? '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:rgba(212,130,58,.8);letter-spacing:.08em;margin-top:3px;font-weight:600">' + reasonBits.join(' · ') + '</div>'
+              : '';
             return '<div onclick="window.selectOpp&&window.selectOpp(\'' + String(o.id).replace(/\'/g,"\\'") + '\')" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--b1);border-radius:3px;background:var(--s1);margin-bottom:6px;cursor:pointer;transition:border-color 140ms" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
               '<div style="flex:1;min-width:0">' +
                 '<div style="font-size:var(--text-sm);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + String(o.name||'(unnamed)').replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + '</div>' +
                 '<div style="font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);color:var(--t3);letter-spacing:.06em;margin-top:2px">' + (o.agency||'').toString().toUpperCase().replace(/[<>&"]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}) + ' · ' + String(o.stage||'').toUpperCase() + ' · ' + vTxt + '</div>' +
+                reasonLine +
               '</div>' +
               chip +
             '</div>';
@@ -20091,7 +20165,7 @@ function _renderOppList(q){
   var pwSum = 0, pwCount = 0;
   filtered.forEach(function(o){
     var v = typeof _parseVal === 'function' ? _parseVal(o.value) : 0;
-    if (o.stage === 'won')  { wonCount++;  wonValue += v;  weightedValue += v; return; }
+    if (o.stage === 'won')  { wonCount++;  wonValue += v; return; }
     if (o.stage === 'lost') { lostCount++; return; }
     activeCount++;
     totalValue += v;
@@ -37148,8 +37222,12 @@ function _renderWeightedQuarter(q) {
     return ts >= quarterStart && ts <= quarterEnd;
   });
 
+  // P13.155 — use _pwinFrac so quarter weighted normalizes pwin>1 → /100
+  // and matches Forecast totals. Prior code read `o.pwin` raw; any opp
+  // stored as `40` instead of `0.4` produced a 100× off quarter weighted.
+  var _qPwin = (typeof window._pwinFrac === 'function') ? window._pwinFrac : function(o){ return Number(o.pwin || 0); };
   var totalValue = opps.reduce(function(s, o) { return s + Number(o.value || 0); }, 0);
-  var weighted   = opps.reduce(function(s, o) { return s + Number(o.value || 0) * Number(o.pwin || 0); }, 0);
+  var weighted   = opps.reduce(function(s, o) { return s + Number(o.value || 0) * _qPwin(o); }, 0);
 
   var body = '';
   body += '<div class="pipeline-query-kpis">';
@@ -37161,10 +37239,11 @@ function _renderWeightedQuarter(q) {
   if (opps.length === 0) {
     body += '<div class="pipeline-query-empty">No active pursuits with award date in Q' + q + ' ' + year + '.</div>';
   } else {
-    opps.sort(function(a, b) { return Number(b.value || 0) * Number(b.pwin || 0) - Number(a.value || 0) * Number(a.pwin || 0); });
+    opps.sort(function(a, b) { return Number(b.value || 0) * _qPwin(b) - Number(a.value || 0) * _qPwin(a); });
     opps.slice(0, 10).forEach(function(o) {
-      var pwinPct = Math.round(Number(o.pwin || 0) * 100);
-      var w = Math.round(Number(o.value || 0) * Number(o.pwin || 0));
+      var _pf = _qPwin(o);
+      var pwinPct = Math.round(_pf * 100);
+      var w = Math.round(Number(o.value || 0) * _pf);
       body += _pipelineQueryRow(o, '$' + (o.value ? Number(o.value).toLocaleString() : '?') + ' · ' + pwinPct + '% pwin · weighted $' + w.toLocaleString());
     });
     if (opps.length > 10) {
@@ -41537,8 +41616,10 @@ function _accBuildRollup(org){
     stageDist[stg] = (stageDist[stg] || 0) + 1;
     var v = Number(o.value || o.contractValue || 0);
     totalPipeline += v;
-    var p = Number(o.winProb || o.pWin || 0);
-    if (p > 1) p = p/100;
+    // P13.155 — canonical alias chain via _pwinFrac. Prior code read
+    // (winProb || pWin) — canonical field is `pwin`, so this returned 0
+    // on every opp and Accounts weighted never matched Forecast weighted.
+    var p = (typeof window._pwinFrac === 'function') ? window._pwinFrac(o) : 0;
     weightedPipeline += v * p;
   }
 
@@ -62845,6 +62926,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.154"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.155"></script>
 </body>
 </html>

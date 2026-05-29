@@ -355,7 +355,7 @@ window.renderCopSection = function() {
         roll.weighted += Number(cc.value || 0) * Number(cc.pwin || 0);
       }
 
-      h += '<div class="cop-kanban-col">';
+      h += '<div class="cop-kanban-col" data-stage="' + _copEsc(s.key) + '">';
       h += '<div class="cop-kanban-col-head">';
       h += '<div class="cop-kanban-col-title"><span class="cop-kanban-col-dot" style="background:' + s.color + '"></span>' + _copEsc(s.label) + '</div>';
       h += '<div class="cop-kanban-col-count">' + roll.count + '</div>';
