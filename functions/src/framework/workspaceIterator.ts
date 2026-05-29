@@ -3,51 +3,39 @@
 // Per framework spec Part Three: scheduled jobs iterate across all
 // approved workspaces and invoke the source's syncDelta per workspace.
 //
-// Approval criteria per framework spec:
+// P13.164 — the original gate read `migrations/8.5.1` as an RTDB key. RTDB
+// forbids dots in keys; the read THREW on every call, so every OSINT cron
+// silently failed for every workspace. The framework never produced data
+// in production. Approval is now config-only:
 //   - workspace exists
-//   - Phase 8.5.1 migration has completed (completedAt set, validation passed)
-//   - workspace's source is enabled (no `disabled: true` flag)
+//   - /workspaces/{ws}/sources/{source}/config exists
+//   - cfg.disabled !== true
 //
-// Per FIQ-6 (LOCKED): per-invocation cache only; no cross-invocation persistence.
+// Enrollment = writing the source config. Operator opt-out = setting
+// disabled:true. Per-invocation cache only (FIQ-6 LOCKED).
 
-import { db, listWorkspaceIds, migrationPath, sourcePath } from "./rtdb";
+import { db, listWorkspaceIds, sourcePath } from "./rtdb";
 import { Logger } from "./logger";
 
 export interface WorkspaceApprovalState {
   workspaceId: string;
-  migrationComplete: boolean;
+  migrationComplete: boolean; // kept for backward compat; mirrors hasConfig
   sourceEnabled: boolean;
   hasConfig: boolean;
   reason: string | null;
 }
 
 /**
- * Read the migration + source-enabled state for one workspace + source.
+ * Read the source-enabled state for one workspace + source.
+ *
+ * P13.164: dropped the legacy 8.5.1 migration check — its RTDB key path
+ * was invalid (dots) so the read always threw. Approval is now just
+ * "config exists + not disabled".
  */
 async function checkWorkspaceApproval(
   workspaceId: string,
   source: string
 ): Promise<WorkspaceApprovalState> {
-  // 1. Migration complete?
-  const migSnap = await db
-    .ref(migrationPath(workspaceId, "8.5.1"))
-    .once("value");
-  const mig = migSnap.val() as { completedAt?: number; validationResult?: string } | null;
-  const migrationComplete = Boolean(
-    mig && mig.completedAt && mig.validationResult === "pass"
-  );
-
-  if (!migrationComplete) {
-    return {
-      workspaceId,
-      migrationComplete: false,
-      sourceEnabled: false,
-      hasConfig: false,
-      reason: "8.5.1 migration not complete",
-    };
-  }
-
-  // 2. Source config exists?
   const cfgSnap = await db
     .ref(sourcePath(workspaceId, source, "config"))
     .once("value");
@@ -56,14 +44,13 @@ async function checkWorkspaceApproval(
   if (!hasConfig) {
     return {
       workspaceId,
-      migrationComplete: true,
+      migrationComplete: false,
       sourceEnabled: false,
       hasConfig: false,
       reason: `source config not initialized for ${source}`,
     };
   }
 
-  // 3. Source disabled? (explicit operator opt-out)
   const cfg = (cfgSnap.val() as { disabled?: boolean }) ?? {};
   const sourceEnabled = !cfg.disabled;
 

@@ -8863,7 +8863,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.163</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.164</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -45179,6 +45179,31 @@ window._renderExternalIntelligence = function(brief) {
   var anyItems = false;
   var order = ['pursuit', 'adversary', 'customer', 'capability', 'context'];
 
+  // P13.164 — staleness banner per Sovereign Intelligence audit Lens 5
+  // Critical #2. Brief 6+ days old previously rendered identically to a
+  // 6-minute-old Brief; operator had no way to know synthesis hadn't run.
+  // Now: <36h silent, 36-168h gold warning, >168h red CRITICAL.
+  (function _briefStalenessBanner(){
+    if (!brief.generatedAt) return;
+    var ageMs = Date.now() - Number(brief.generatedAt);
+    var ageHours = Math.round(ageMs / (60 * 60 * 1000));
+    var ageDays = Math.round(ageMs / (24 * 60 * 60 * 1000));
+    if (ageHours < 36) return;
+    var critical = ageHours > 168;
+    var ageLabel = ageDays >= 2 ? (ageDays + ' day' + (ageDays === 1 ? '' : 's')) : (ageHours + 'h');
+    var color = critical ? '#ef4444' : '#facc15';
+    var bg = critical ? 'rgba(239,68,68,.10)' : 'rgba(250,204,21,.10)';
+    var border = critical ? 'rgba(239,68,68,.55)' : 'rgba(250,204,21,.55)';
+    var label = critical ? 'CRITICAL · OSINT pipeline may be broken' : 'STALE BRIEF';
+    var body = critical
+      ? 'Last synthesis was ' + ageLabel + ' ago. The OSINT cron has not run — every signal you see below is from before that point. <b>Treat as historical data, not current intelligence.</b>'
+      : 'Brief last synthesized ' + ageLabel + ' ago — server cron has not fired since. Newer events may not be reflected below.';
+    h += '<div style="margin:0 0 14px;padding:11px 14px;background:' + bg + ';border:1px solid ' + border + ';border-left:3px solid ' + color + ';border-radius:3px">' +
+      '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:' + color + ';text-transform:uppercase;letter-spacing:.14em;font-weight:700;margin-bottom:4px">⚠ ' + label + '</div>' +
+      '<div style="font-family:\'IBM Plex Sans\',sans-serif;font-size:13px;color:var(--bone);line-height:1.5">' + body + '</div>' +
+    '</div>';
+  })();
+
   // v1.18 (Adversary Activity Rollup): render a compact card listing the
   // top adversaries by activity weight in this Brief window. Active
   // adversaries first, then archived; rendered only when the server-side
@@ -63456,6 +63481,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.163"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.164"></script>
 </body>
 </html>

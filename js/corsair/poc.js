@@ -33,17 +33,23 @@
 //   window.Corsair.poc.addCandidateAsContact(c)   → adds Person node to ws
 
 const ROLE_PRIORITY_DEFENSE = [
-  // Roles in defense capture that map to "decision-maker" — the higher
-  // the entry, the higher the ranking. Match against role/title string
+  // P13.164 — re-ranked per Sovereign Intelligence audit Lens 2: mission-
+  // mapping roles (PM/KO/PEO/SAE/MDA/Acquisition Executive) outrank generic
+  // C-suite in agency contexts. CEO dropped 95→88 so PM/KO/PEO beat the
+  // C-suite default. SAE / Acquisition Executive / Senior Procurement
+  // Executive / MDA / TPOC added at 92 — they were defaulting to 30,
+  // ranked behind random "manager".
+  // Higher entry = higher ranking. Match against role/title string
   // (lowercased, contains-match).
-  { match: ['ceo', 'chief executive'], score: 95 },
-  { match: ['cto', 'chief technology', 'chief technical'], score: 90 },
-  { match: ['cfo', 'chief financial'], score: 85 },
   { match: ['program manager', 'pm '], score: 95 },
+  { match: ['sae', 'acquisition executive', 'senior procurement', 'mda', 'milestone decision', 'tpoc'], score: 92 },
   { match: ['contracting officer', 'ko', 'cor ', 'contracting officer rep'], score: 90 },
   { match: ['program executive', 'peo'], score: 90 },
+  { match: ['ceo', 'chief executive'], score: 88 },
+  { match: ['cto', 'chief technology', 'chief technical'], score: 86 },
+  { match: ['cfo', 'chief financial'], score: 84 },
   { match: ['technical director', 'technical lead', 'engineering director'], score: 80 },
-  { match: ['vp ', 'vice president'], score: 80 },
+  { match: ['vp ', 'vice president'], score: 78 },
   { match: ['director'], score: 70 },
   { match: ['chief'], score: 70 },
   { match: ['lead'], score: 55 },
