@@ -5758,7 +5758,8 @@ input[type="url"], textarea, select {
 }
 .posture-contacts-row {
   display: grid;
-  grid-template-columns: 14px minmax(140px, 1.5fr) minmax(110px, 1.2fr) 110px 110px 50px 40px;
+  /* P13.171 — added trajectory column (dropdown + evidence edit button) between Path and Last */
+  grid-template-columns: 60px minmax(140px, 1.5fr) minmax(110px, 1.2fr) 110px 110px 130px 50px 40px;
   gap: 10px;
   align-items: center;
   padding: 9px 6px;
@@ -8863,7 +8864,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.170</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.171</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -36272,13 +36273,14 @@ window._renderPostureContactsTable = function(pursuit) {
 
   h += '<div class="posture-contacts-table">';
 
-  // Header row
+  // Header row — P13.171 added Trajectory column
   h += '<div class="posture-contacts-row posture-contacts-head">'
     +   '<div></div>'
     +   '<div>Contact</div>'
     +   '<div>Role · Org</div>'
     +   '<div>Position</div>'
     +   '<div>Path</div>'
+    +   '<div>Trajectory</div>'
     +   '<div style="text-align:right">Last</div>'
     +   '<div style="text-align:right">Tells</div>'
     + '</div>';
@@ -36329,12 +36331,33 @@ window._renderPostureContactsTable = function(pursuit) {
 
     var roleOrgMeta = (role || '') + ((role && org) ? ' · ' : '') + (org || '');
 
+    // P13.171 — trajectory dropdown + evidence badge. Replaces the
+    // read-only dot with: dot + small select. ↗ badge inline when
+    // posture.trajectoryEvidence.sourceUrl is set, clicks open the URL.
+    var trajOptions = '<option value="">—</option>';
+    var TRAJ_LOCAL = (postureMod.TRAJECTORY_TAXONOMY || [
+      { key: 'rising', label: 'Rising' },
+      { key: 'falling', label: 'Falling' },
+      { key: 'repositioning', label: 'Repositioning' },
+      { key: 'stable', label: 'Stable' }
+    ]);
+    TRAJ_LOCAL.forEach(function(t){
+      var sel = (t.key === trajKey) ? ' selected' : '';
+      trajOptions += '<option value="' + t.key + '"' + sel + '>' + t.label + '</option>';
+    });
+    var evidence = posture.trajectoryEvidence;
+    var evidenceBadge = '';
+    if (evidence && evidence.sourceUrl) {
+      var evTitle = (evidence.headline ? String(evidence.headline).replace(/"/g,'&quot;') + ' · ' : '') + 'Click to open source';
+      evidenceBadge = ' <a href="' + String(evidence.sourceUrl).replace(/"/g,'&quot;') + '" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" title="' + evTitle + '" style="color:var(--gold);text-decoration:none;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.06em;border:1px solid rgba(212,130,58,.4);background:rgba(212,130,58,.10);padding:0 4px;border-radius:2px;margin-left:4px">↗ EV</a>';
+    }
     h += '<div class="posture-contacts-row posture-contacts-row-clickable" onclick="window._postureMaybeToggleRow(event,\'' + safePersonId + '\',\'' + safePid + '\')">';
-    h +=   '<div title="Trajectory: ' + trajKey + '"><span class="traj-dot" style="background:' + trajCol + '"></span></div>';
+    h +=   '<div title="Trajectory: ' + trajKey + (evidence && evidence.headline ? ' · evidence: ' + String(evidence.headline) : '') + '"><span class="traj-dot" style="background:' + trajCol + '"></span>' + evidenceBadge + '</div>';
     h +=   '<div class="contact-name" onclick="event.stopPropagation();window.openEntityInspector(\'' + safePersonId + '\')" title="Open dossier">' + name + '</div>';
     h +=   '<div class="contact-meta" title="' + roleOrgMeta + '">' + roleOrgMeta + '</div>';
     h +=   '<div><select onclick="event.stopPropagation()" onchange="window._postureSetContactPosition(\'' + safePersonId + '\',\'' + safePid + '\',this.value)">' + posOptions + '</select></div>';
     h +=   '<div><select onclick="event.stopPropagation()" onchange="window._postureSetContactPath(\'' + safePersonId + '\',this.value)">' + pathOptions + '</select></div>';
+    h +=   '<div style="display:flex;gap:3px;align-items:center"><select title="Trajectory" onclick="event.stopPropagation()" onchange="window._postureSetContactTrajectory(\'' + safePersonId + '\',this.value)">' + trajOptions + '</select><button title="Edit evidence URL — supports the trajectory read with a source" onclick="event.stopPropagation();window._postureEditTrajectoryEvidence(\'' + safePersonId + '\')" style="background:transparent;border:1px solid var(--b2);color:' + (evidence && evidence.sourceUrl ? 'var(--gold)' : 'var(--t3)') + ';font-family:IBM Plex Mono,monospace;font-size:10px;padding:1px 4px;border-radius:2px;cursor:pointer;line-height:1.2">' + (evidence && evidence.sourceUrl ? '✎' : '+') + '</button></div>';
     h +=   '<div class="last-touch">' + lastTouchTxt + '</div>';
     h +=   '<div class="tells-count' + (tellsN > 0 ? ' has-tells' : '') + '" id="posture-tells-count-' + safePersonId + '">' + tellsN + '</div>';
     h += '</div>';
@@ -36387,6 +36410,62 @@ window._postureSetContactPath = async function(personId, pathKey) {
   try {
     if (typeof window.saveNode === 'function') await window.saveNode(node);
   } catch (e) { console.warn('[Posture] save path failed:', e); }
+};
+
+// P13.171 — Sovereign Intelligence audit Lens 4: trajectory was consumed
+// by Brief scoring (v1.15) but had no UI setter. Operators could not
+// actually set trajectory from the Posture surface — the dot was
+// read-only and the data flowed from manual node edits elsewhere.
+// Now the contact row dropdown writes trajectory, and an optional
+// trajectoryEvidence { sourceUrl, headline, dateAdded } can be attached
+// so the operator can answer 'how do I know X is rising?' with a click.
+window._postureSetContactTrajectory = async function(personId, trajKey) {
+  var node = (window.nodes || []).find(function(n) { return String(n.id) === String(personId); });
+  if (!node) return;
+  node.posture = node.posture || {};
+  if (trajKey) node.posture.trajectory = trajKey;
+  else if (node.posture.trajectory) delete node.posture.trajectory;
+  node.posture.lastUpdated = Date.now();
+  try {
+    if (typeof window.saveNode === 'function') await window.saveNode(node);
+  } catch (e) { console.warn('[Posture] save trajectory failed:', e); }
+};
+
+// P13.171 — attach / clear evidence on a person's trajectory read. Stored
+// as posture.trajectoryEvidence = { sourceUrl, headline, dateAdded, addedBy }.
+// Rendered as ↗ badge inline next to the trajectory dot. Click opens URL.
+window._postureEditTrajectoryEvidence = async function(personId) {
+  var node = (window.nodes || []).find(function(n) { return String(n.id) === String(personId); });
+  if (!node) return;
+  node.posture = node.posture || {};
+  var existing = node.posture.trajectoryEvidence || {};
+  var url = prompt('Evidence URL — source that supports the trajectory read (.gov leadership page, press release, news article, SEC filing, etc.):\n\n(leave blank to clear)', existing.sourceUrl || '');
+  if (url === null) return; // cancelled
+  url = url.trim();
+  if (!url) {
+    if (node.posture.trajectoryEvidence) delete node.posture.trajectoryEvidence;
+  } else {
+    if (!/^https?:\/\//i.test(url)) { if (typeof toast === 'function') toast('URL must start with http:// or https://'); return; }
+    var headline = prompt('Optional short headline (50 chars max) to hover-display next to the badge:', existing.headline || '');
+    if (headline === null) headline = existing.headline || '';
+    node.posture.trajectoryEvidence = {
+      sourceUrl: url,
+      headline: String(headline || '').slice(0, 80),
+      dateAdded: new Date().toISOString(),
+      addedBy: (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'operator'
+    };
+  }
+  node.posture.lastUpdated = Date.now();
+  try {
+    if (typeof window.saveNode === 'function') await window.saveNode(node);
+    if (typeof toast === 'function') toast(url ? '✓ Trajectory evidence saved' : 'Trajectory evidence cleared');
+    // Re-render the posture surface if visible
+    if (typeof window._renderPostureSurface === 'function') try { window._renderPostureSurface(); } catch(e){}
+    if (typeof window._renderEntityInspector === 'function' && window._currentInspectorEntity) try {
+      var content = document.getElementById('entity-inspector-content');
+      if (content) content.innerHTML = window._renderEntityInspector(window._currentInspectorEntity);
+    } catch(e){}
+  } catch (e) { console.warn('[Posture] save evidence failed:', e); if (typeof toast === 'function') toast('Save failed: ' + (e.message || 'unknown')); }
 };
 
 // Phase 7.5.2 Step 3d — Contact row expansion.
@@ -63751,6 +63830,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.170"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.171"></script>
 </body>
 </html>
