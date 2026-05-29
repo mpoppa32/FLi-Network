@@ -42,6 +42,25 @@ export interface BriefItem {
   pinned?: boolean;
   /** v1.2: pinned timestamp for sort stability */
   pinnedAt?: number;
+  /** P13.170 — trust layer (Sovereign Intelligence audit Critical #6).
+   *  Per-item confidence in the extraction or match. 0-1 scale. Pulled
+   *  from signal.attrs.confidence / outcomeConfidence / matchConfidence
+   *  or award.matchConfidence or opp.reconciliation.matchConfidence.
+   *  Client renders "CONF 0.65" chip when below 0.85. Distinguishes
+   *  high-confidence verified USAspending from 0.6-confidence DoD News
+   *  scrape so the operator can weight Brief signals honestly. */
+  confidence?: number | null;
+  /** P13.170 — freshness layer (audit Critical #7). When the source
+   *  data was last refreshed (signal.source.refreshedAt or
+   *  award.source.refreshedAt). Operator sees "data as of Nh ago"
+   *  below subtitle. Critical for distinguishing fresh signals from
+   *  stale ones especially when cron lag varies by plugin. */
+  dataAsOf?: number | null;
+  /** P13.170 — parse depth (audit High). secEdgar / DoD News set this
+   *  to 'shallow' when deep extraction failed and only metadata
+   *  remains. Client renders "metadata only" chip so operator knows
+   *  the summary is from raw fields, not LLM-extracted detail. */
+  parseStatus?: "deep" | "shallow" | "failed" | null;
 }
 
 /** v1.2: per-item operator feedback persisted across Brief regenerations. */
@@ -575,6 +594,14 @@ function signalToItem(signal: Signal, category: BriefItem["category"]): BriefIte
     title = signal.type.replace(/_/g, " ");
     subtitle = String((attrs.summary as string) || (attrs.title as string) || "");
   }
+  // P13.170 — confidence / dataAsOf / parseStatus surfaced from attrs +
+  // source. Plumbing data already computed by parsers but previously
+  // dropped at Brief construction.
+  const rawConf = (attrs.confidence ?? attrs.outcomeConfidence ?? attrs.matchConfidence ?? attrs.extractionConfidence) as number | undefined;
+  const confidence = typeof rawConf === "number" && rawConf >= 0 && rawConf <= 1 ? rawConf : null;
+  const dataAsOf = signal.source.refreshedAt || signal.source.fetchedAt || null;
+  const rawParse = attrs.parseStatus as string | undefined;
+  const parseStatus = (rawParse === "deep" || rawParse === "shallow" || rawParse === "failed") ? rawParse : null;
   return {
     id: signal.id,
     kind: "signal",
@@ -585,10 +612,20 @@ function signalToItem(signal: Signal, category: BriefItem["category"]): BriefIte
     source: sourceName,
     link,
     entityId: signal.id,
+    confidence,
+    dataAsOf,
+    parseStatus,
   };
 }
 
 function awardToItem(award: Award, category: BriefItem["category"]): BriefItem {
+  // P13.170 — surface award match confidence + freshness. matchConfidence
+  // < 0.85 typically means a DoD News scrape that hasn't been reconciled
+  // against the authoritative USAspending record yet. Lives on
+  // award.reconciliation per types/awards.ts:75.
+  const recon = award.reconciliation;
+  const matchConfidence = recon && typeof recon.matchConfidence === "number" ? recon.matchConfidence : null;
+  const provisional = award.lifecycleState === "provisional";
   return {
     id: award.id,
     kind: "award",
@@ -596,24 +633,34 @@ function awardToItem(award: Award, category: BriefItem["category"]): BriefItem {
     occurredAt: award.awardedAt || award.lastModifiedAt,
     title: award.primeUei || award.piid,
     subtitle: `$${award.obligated?.toLocaleString() || "?"} · NAICS ${award.naics}` +
-      (award.lifecycleState === "expiring" ? " · expiring" : ""),
+      (award.lifecycleState === "expiring" ? " · expiring" : "") +
+      (provisional ? " · provisional" : ""),
     source: "USAspending",
     link: award.source?.url ?? null,
     entityId: award.id,
+    confidence: matchConfidence,
+    dataAsOf: award.source?.refreshedAt || award.source?.fetchedAt || null,
   };
 }
 
 function opportunityToItem(opp: Opportunity, category: BriefItem["category"]): BriefItem {
+  // P13.170 — surface reconciliation confidence on opp items. matchMethod
+  // 'fuzzy' with confidence < 0.85 means a soft-match that may be wrong.
+  const recon = opp.reconciliation;
+  const reconConfidence = recon && typeof recon.matchConfidence === "number" ? recon.matchConfidence : null;
   return {
     id: opp.id,
     kind: "opportunity",
     category,
     occurredAt: opp.samgovPostedDate || (typeof opp.stageEnteredAt === "number" ? opp.stageEnteredAt : Date.now()),
     title: opp.name,
-    subtitle: (opp.agency || "") + (opp.samgovBaseType ? " · " + opp.samgovBaseType : ""),
+    subtitle: (opp.agency || "") + (opp.samgovBaseType ? " · " + opp.samgovBaseType : "") +
+      (recon && recon.matchMethod === "fuzzy" ? " · fuzzy-matched" : ""),
     source: "SAM.gov",
     link: opp.samgovUiLink ?? null,
     entityId: opp.id,
+    confidence: reconConfidence,
+    dataAsOf: (recon && recon.samgovMatchedAt) || opp.samgovPostedDate || null,
   };
 }
 

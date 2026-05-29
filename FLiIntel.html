@@ -8863,7 +8863,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.169</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.170</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -45686,6 +45686,34 @@ window._renderExternalIntelligence = function(brief) {
       var pinChip = it.pinned
         ? '<span title="Pinned by operator" style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--gold);border:1px solid var(--gold);padding:0 4px;border-radius:2px;margin-left:5px">▼ pinned</span>'
         : '';
+      // P13.170 — trust chips (Sovereign Intelligence audit Critical #6 + #7).
+      // Render CONF + AS OF + PARSE when present on the BriefItem (populated
+      // server-side from signal.attrs / award.matchConfidence / opp.recon).
+      var confChip = '';
+      if (typeof it.confidence === 'number' && it.confidence >= 0 && it.confidence <= 1 && it.confidence < 0.85) {
+        var confPct = Math.round(it.confidence * 100);
+        var confCol = it.confidence < 0.65 ? '#ef4444' : '#f0a560';
+        confChip = '<span title="Source extraction or match confidence — below 0.85 means provisional. Verify before acting." style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:' + confCol + ';border:1px solid ' + confCol + '60;background:rgba(0,0,0,.18);padding:0 4px;border-radius:2px;margin-left:5px;letter-spacing:.04em">CONF ' + (confPct / 100).toFixed(2) + '</span>';
+      }
+      var staleChip = '';
+      if (typeof it.dataAsOf === 'number' && it.dataAsOf > 0) {
+        var ageHours = Math.round((Date.now() - it.dataAsOf) / (60 * 60 * 1000));
+        if (ageHours >= 24) {
+          var ageDays = Math.round(ageHours / 24);
+          var staleCol = ageDays > 7 ? '#ef4444' : ageDays > 3 ? '#facc15' : 'var(--t3)';
+          var ageLabel = ageDays >= 2 ? ageDays + 'd' : ageHours + 'h';
+          staleChip = '<span title="Data as of ' + new Date(it.dataAsOf).toLocaleString() + ' — source last refreshed " style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:' + staleCol + ';border:1px solid ' + staleCol + '60;padding:0 4px;border-radius:2px;margin-left:5px;letter-spacing:.04em">AS OF ' + ageLabel + ' AGO</span>';
+        }
+      }
+      var parseChip = '';
+      if (it.parseStatus === 'shallow' || it.parseStatus === 'failed') {
+        var psCol = it.parseStatus === 'failed' ? '#ef4444' : '#f0a560';
+        var psLbl = it.parseStatus === 'failed' ? 'PARSE FAILED' : 'METADATA ONLY';
+        var psTitle = it.parseStatus === 'failed'
+          ? 'Deep parse failed — title + subtitle are from raw metadata only, no extracted detail.'
+          : 'Shallow parse — only basic fields extracted. LLM summary unavailable.';
+        parseChip = '<span title="' + psTitle + '" style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:' + psCol + ';border:1px solid ' + psCol + '60;background:rgba(0,0,0,.18);padding:0 4px;border-radius:2px;margin-left:5px;letter-spacing:.04em">' + psLbl + '</span>';
+      }
       // v1.2: actions menu (dismiss / pin / snooze)
       // v1.3: + Pursue action for Award-kind items (any award, not just Recompete)
       var actionsMenu = '<span class="brief-item-actions" style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:var(--t3);white-space:nowrap;display:inline-flex;gap:4px;margin-left:6px">';
@@ -45742,7 +45770,7 @@ window._renderExternalIntelligence = function(brief) {
       h += '<div style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:14px;line-height:1.4;' + rowBorder + '">';
       h += '  <span style="color:' + meta.color + ';font-weight:700;font-size:13px;line-height:1">' + meta.glyph + '</span>';
       h += '  <div style="flex:1;min-width:0">';
-      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:13px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + trailChips + dedupChip + pinChip + '</div>';
+      h += '    <div style="font-family:\'IBM Plex Mono\',monospace;font-size:13px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:.05em">' + (it.title || '').replace(/</g,'&lt;') + scoreBadge + trailChips + dedupChip + pinChip + confChip + staleChip + parseChip + '</div>';
       h += '    <div style="color:var(--t2);font-size:14px">' + (it.subtitle || '').replace(/</g,'&lt;') + '</div>';
       h += keyFact;
       h += '  </div>';
@@ -63723,6 +63751,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.169"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.170"></script>
 </body>
 </html>
