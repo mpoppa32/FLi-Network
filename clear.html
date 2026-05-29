@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas — Clearing browser state</title>
+<style>
+  body { background: #070d18; color: #f4ede0; font-family: 'IBM Plex Mono', monospace; padding: 60px 40px; max-width: 720px; margin: 0 auto; line-height: 1.6; }
+  h1 { color: #d4823a; font-family: 'Anton', sans-serif; font-size: 38px; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 8px; }
+  .sub { color: #b5ad9f; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; margin-bottom: 28px; }
+  #log { background: #0a1020; border: 1px solid #1a2236; border-left: 3px solid #d4823a; padding: 18px 22px; border-radius: 3px; font-size: 13px; line-height: 1.8; }
+  .ok { color: #22c55e; }
+  .err { color: #ef4444; }
+  .working { color: #d4823a; }
+  .done { background: rgba(34,197,94,.10); border-left-color: #22c55e; }
+  a { color: #d4823a; }
+</style>
+</head>
+<body>
+<h1>Atlas Reset</h1>
+<div class="sub">Standalone state-clearing page · runs outside Firebase context</div>
+<div id="log">Initializing…</div>
+
+<script>
+// This page deliberately does NOT import Firebase. With no Firebase
+// SDK running, there are no open IndexedDB connections to firebaseLocalStorageDb,
+// so indexedDB.deleteDatabase can complete cleanly (vs hanging when called
+// from inside FLiIntel.html, where Firebase has the IDB open).
+
+(async function(){
+  var log = document.getElementById('log');
+  var lines = [];
+  function append(text, cls){
+    lines.push('<div class="' + (cls||'') + '">' + text + '</div>');
+    log.innerHTML = lines.join('');
+  }
+
+  append('▸ Starting state clear…', 'working');
+
+  // 1. Unregister service workers
+  try {
+    if ('serviceWorker' in navigator) {
+      var regs = await navigator.serviceWorker.getRegistrations();
+      for (var i = 0; i < regs.length; i++) await regs[i].unregister();
+      append('✓ Service workers unregistered: ' + regs.length, 'ok');
+    }
+  } catch(e) { append('⚠ SW unregister error: ' + e.message, 'err'); }
+
+  // 2. Delete CacheStorage
+  try {
+    if (window.caches) {
+      var keys = await caches.keys();
+      for (var j = 0; j < keys.length; j++) await caches.delete(keys[j]);
+      append('✓ Caches deleted: ' + keys.length, 'ok');
+    }
+  } catch(e) { append('⚠ Caches delete error: ' + e.message, 'err'); }
+
+  // 3. Clear localStorage + sessionStorage
+  try { localStorage.clear(); append('✓ localStorage cleared', 'ok'); } catch(e) { append('⚠ localStorage: ' + e.message, 'err'); }
+  try { sessionStorage.clear(); append('✓ sessionStorage cleared', 'ok'); } catch(e) { append('⚠ sessionStorage: ' + e.message, 'err'); }
+
+  // 4. Delete IndexedDB databases (Firebase + Corsair related).
+  // This is the critical step — with no Firebase loaded on this page,
+  // there are no open connections, so deleteDatabase completes properly.
+  try {
+    var dbs = [];
+    if (indexedDB.databases) {
+      dbs = await indexedDB.databases().catch(function(){ return []; });
+    } else {
+      // Fallback for browsers without indexedDB.databases() — try known names
+      dbs = [{name:'firebaseLocalStorageDb'},{name:'firebase-heartbeat-database'},{name:'firestore/[DEFAULT]/main'}];
+    }
+    var deleted = [];
+    var blocked = [];
+    for (var k = 0; k < dbs.length; k++) {
+      var dbName = dbs[k].name;
+      if (!dbName) continue;
+      // Delete anything firebase- or corsair- related
+      if (!/firebase|corsair|firestore/i.test(dbName)) continue;
+      await new Promise(function(resolve){
+        var req = indexedDB.deleteDatabase(dbName);
+        var timer = setTimeout(function(){ blocked.push(dbName + ' (timeout)'); resolve(); }, 4000);
+        req.onsuccess = function(){ clearTimeout(timer); deleted.push(dbName); resolve(); };
+        req.onerror   = function(){ clearTimeout(timer); blocked.push(dbName + ' (err)'); resolve(); };
+        req.onblocked = function(){ clearTimeout(timer); blocked.push(dbName + ' (blocked)'); resolve(); };
+      });
+    }
+    append('✓ IndexedDB deleted: ' + (deleted.join(', ') || 'none found'), 'ok');
+    if (blocked.length) append('⚠ Could not delete: ' + blocked.join(', '), 'err');
+  } catch(e) { append('⚠ IDB delete error: ' + e.message, 'err'); }
+
+  // 5. Confirm IDB is empty for firebase
+  try {
+    var after = await indexedDB.databases().catch(function(){ return []; });
+    var fbLeft = after.filter(function(d){ return /firebase/i.test(d.name); });
+    if (fbLeft.length === 0) {
+      append('✓ Verified: no Firebase IDB remaining', 'ok');
+    } else {
+      append('⚠ Still present: ' + fbLeft.map(function(d){return d.name;}).join(', '), 'err');
+    }
+  } catch(e){}
+
+  log.classList.add('done');
+  append('▸ Redirecting to Atlas sign-in in 2 seconds…', 'working');
+  append('<a href="./FLiIntel.html?postclear=' + Date.now() + '">Tap here if it does not redirect automatically</a>', '');
+  setTimeout(function(){
+    window.location.replace('./FLiIntel.html?postclear=' + Date.now());
+  }, 2000);
+})();
+</script>
+</body>
+</html>
