@@ -8864,7 +8864,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.175</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.176</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9152,6 +9152,10 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
         </button>
       </div>
     </div>
+    <!-- P13.176 "Where Atlas Stands" narrative — 3-sentence synthesized
+         executive snapshot (STANDING · WORLD · GAPS). Renders at top of
+         Today landing. Filled by _renderTodayNarrative each render. -->
+    <div id="today-narrative" style="margin:14px 32px 0;padding:18px 22px;background:linear-gradient(135deg,rgba(212,130,58,.07),rgba(95,179,184,.04));border:1px solid rgba(212,130,58,.32);border-left:3px solid var(--gold);border-radius:3px"></div>
     <div id="today-rhythm-host" style="flex:1;overflow:auto;padding:0;background:var(--bg)">
       <!-- The sibling #corsair-rhythm panel is moved here by renderTodayView() and back on exit -->
     </div>
@@ -31533,6 +31537,106 @@ window._renderAtlasTodayWidget = function(){
 // the today-view host. Reuses the same element (and all its event wiring,
 // snooze handlers, Slack buttons) — no duplicate render. On exit, the
 // panel is moved back to its sibling slot in #main-app.
+// ── P13.176 "Where Atlas Stands" narrative ─────────────────────
+// Template-driven 3-sentence executive snapshot. Deterministic
+// derivation from window.opportunities + nodes + _dailyFeedData +
+// _accBuildRollup. No AI call (always works, no API dependency).
+window._renderTodayNarrative = function(){
+  var host = document.getElementById('today-narrative');
+  if (!host) return;
+  function fmtMoney(v){
+    if (!v || v <= 0) return '$0';
+    if (v >= 1e9) return '$' + (v/1e9).toFixed(1) + 'B';
+    if (v >= 1e6) return '$' + (v/1e6).toFixed(0) + 'M';
+    if (v >= 1e3) return '$' + Math.round(v/1e3) + 'k';
+    return '$' + Math.round(v);
+  }
+  // STANDING — active pursuits + weighted pipeline + agencies + top stages
+  var ops = (window.opportunities || []).filter(function(o){
+    var s = String((o && o.stage) || '').toLowerCase();
+    return o && s && s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
+  });
+  var pipeline = 0, weighted = 0;
+  var agencies = new Set();
+  var stageCounts = {};
+  ops.forEach(function(o){
+    var v = Number(o.value || o.contractValue || 0);
+    var p = (typeof window._pwinFrac === 'function') ? window._pwinFrac(o) : Number(o.pwin || 0);
+    pipeline += v;
+    weighted += v * p;
+    if (o.agency) agencies.add(String(o.agency).toLowerCase().trim());
+    var st = String(o.stage || '').toUpperCase() || 'UNSET';
+    stageCounts[st] = (stageCounts[st] || 0) + 1;
+  });
+  var sortedStages = Object.keys(stageCounts).map(function(k){return [k, stageCounts[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0, 3);
+  var stageStr = sortedStages.map(function(s){return s[1] + ' ' + s[0];}).join(' · ');
+  var s1 = '<b>' + ops.length + '</b> active pursuits across <b>' + agencies.size + '</b> agencies · <b>' + fmtMoney(weighted) + '</b> weighted (' + fmtMoney(pipeline) + ' total)' + (stageStr ? ' · ' + stageStr : '');
+  // WORLD — signal counts this week
+  var weekAgo = Date.now() - 7*86400000;
+  var signals = window._dailyFeedData || [];
+  var weekly = signals.filter(function(s){
+    var ts = s && s.date ? new Date(s.date).getTime() : 0;
+    return ts > weekAgo;
+  });
+  var sevHi = 0, sevMed = 0, matched = 0;
+  weekly.forEach(function(s){
+    if (s.severity === 'HIGH') sevHi++;
+    else if (s.severity === 'MED') sevMed++;
+    if (Array.isArray(s.networkMatches) && s.networkMatches.length) matched++;
+  });
+  var s2;
+  if (weekly.length === 0) {
+    s2 = 'No intel feed this week — click <span style="text-decoration:underline;cursor:pointer;color:var(--gold)" onclick="window.switchView&amp;&amp;window.switchView(\'pulse\')">Pulse</span> to run a fresh pull.';
+  } else {
+    var sevPart = sevHi ? ' (' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') + ')' : (sevMed ? ' (' + sevMed + ' MED)' : '');
+    var matchPart = matched ? ' — <b>' + matched + '</b> touched your network' : '';
+    s2 = 'This week: <b>' + weekly.length + '</b> intel signals' + sevPart + matchPart + '.';
+  }
+  // GAPS — POC coverage across BD-target orgs
+  var nodes = window.nodes || [];
+  var oppNames = new Set();
+  (window.opportunities || []).forEach(function(o){ if (o && o.name) oppNames.add(String(o.name).toLowerCase()); });
+  function isBd(n){ return n && (n.bdTarget || (n.name && oppNames.has(String(n.name).toLowerCase()))); }
+  var dark = 0, mapped = 0, t1Count = 0, totalBd = 0;
+  if (typeof _accBuildRollup === 'function') {
+    for (var i = 0; i < nodes.length; i++){
+      var n = nodes[i];
+      if (!n || (n.type !== 'company' && n.type !== 'government')) continue;
+      if (!isBd(n)) continue;
+      totalBd++;
+      try {
+        var r = _accBuildRollup(n);
+        if (r.peopleCount === 0) dark++;
+        else if (r.peopleCount >= 3) mapped++;
+        if (r.hasT1) t1Count++;
+      } catch(e){}
+    }
+  }
+  var pctMapped = totalBd ? Math.round((mapped/totalBd) * 100) : 0;
+  var s3;
+  if (totalBd === 0) {
+    s3 = 'No BD-target orgs tagged yet — tag primes + customers in the Network to populate coverage.';
+  } else {
+    s3 = '<b>' + pctMapped + '%</b> POC coverage · <b>' + dark + '</b> dark orgs need relationships · <b>' + t1Count + '</b> with Tier-1';
+    if (dark > 0) s3 += ' — open the <span style="text-decoration:underline;cursor:pointer;color:#22c55e" onclick="window.switchView&amp;&amp;window.switchView(\'coverage\')">Coverage Matrix</span> to triage';
+    s3 += '.';
+  }
+  var ts = new Date().toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  var html = '';
+  html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.18em;color:var(--gold);text-transform:uppercase">Where Atlas Stands</div>';
+  html += '<div style="display:flex;gap:8px;align-items:center">';
+  html += '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.08em">' + ts + '</span>';
+  html += '<button onclick="window._renderTodayNarrative&amp;&amp;window._renderTodayNarrative()" title="Regenerate from current workspace data" style="padding:4px 10px;background:transparent;border:1px solid rgba(212,130,58,.32);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.1em;cursor:pointer;text-transform:uppercase">↻ Refresh</button>';
+  html += '</div></div>';
+  html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14.5px;line-height:1.7;color:var(--bone)">';
+  html += '<div style="margin-bottom:7px"><span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2);letter-spacing:.16em;font-weight:700;margin-right:10px">STANDING</span>' + s1 + '.</div>';
+  html += '<div style="margin-bottom:7px"><span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2);letter-spacing:.16em;font-weight:700;margin-right:10px">WORLD</span>' + s2 + '</div>';
+  html += '<div><span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2);letter-spacing:.16em;font-weight:700;margin-right:10px">GAPS</span>' + s3 + '</div>';
+  html += '</div>';
+  host.innerHTML = html;
+};
+
 window.renderTodayView = function(){
   var host = document.getElementById('today-rhythm-host');
   var panel = document.getElementById('corsair-rhythm');
@@ -31550,6 +31654,8 @@ window.renderTodayView = function(){
   if (meta) {
     meta.textContent = new Date().toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
   }
+  // P13.176 — render Where Atlas Stands narrative card
+  try { window._renderTodayNarrative && window._renderTodayNarrative(); } catch(e){}
   // P13.92 (Day 5) — Quick Start callout for first-time users on this
   // workspace. Renders ONCE (until dismissed) above the rhythm host.
   // Explains the 4 primary actions + points at Pipeline for the unscored
@@ -64167,6 +64273,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.175"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.176"></script>
 </body>
 </html>
