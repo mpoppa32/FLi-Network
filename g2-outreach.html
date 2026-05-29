@@ -123,15 +123,28 @@ function escAttr(s){return String(s||"").replace(/&/g,"&amp;").replace(/"/g,"&qu
 
 let nodes={}, links=[], meetings=[];
 
-$("signin-btn").addEventListener("click", async () => {
-  $("auth-status").textContent = "Signing in…";
-  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) {
-    if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user") setTimeout(() => signInWithRedirect(auth, new GoogleAuthProvider()), 800);
-    else $("auth-status").innerHTML = '<span style="color:#ef4444">Error: ' + e.code + " " + e.message + "</span>";
-  }
+// Use signInWithRedirect directly — matches the main app's P13.186
+// fix that handles Chrome's storage partitioning. Popup mode silently
+// hangs on some configs; redirect navigates current tab cleanly.
+$("signin-btn").addEventListener("click", () => {
+  $("auth-status").innerHTML = '<span style="color:var(--gold)">Redirecting to Google sign-in…</span>';
+  $("signin-btn").disabled = true;
+  signInWithRedirect(auth, new GoogleAuthProvider()).catch(e => {
+    $("signin-btn").disabled = false;
+    $("auth-status").innerHTML = '<span style="color:#ef4444">Sign-in error (' + e.code + '): ' + e.message + ' — try Ctrl+Shift+R or incognito.</span>';
+  });
+  // Belt-and-suspenders: if redirect doesn't navigate within 4s,
+  // surface that to the user so they know to refresh or retry.
+  setTimeout(() => {
+    if (window.location.hostname === "mpoppa32.github.io" && !$("signin-btn").textContent.includes("Reload")) {
+      $("auth-status").innerHTML = '<span style="color:#ef4444">Redirect did not navigate within 4s. Click <a href="' + window.location.pathname + '?retry=' + Date.now() + '" style="color:#d4823a">here to retry</a> or open the page in incognito.</span>';
+      $("signin-btn").disabled = false;
+    }
+  }, 4000);
 });
-getRedirectResult(auth).catch(()=>{});
+getRedirectResult(auth).then(result => {
+  if (result && result.user) console.log("[g2-outreach] redirect result: signed in");
+}).catch(e => console.warn("[g2-outreach] getRedirectResult err:", e.code, e.message));
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return;
@@ -266,30 +279,22 @@ function render() {
   window._composeEmail = function(pocName, email, orgName) {
     const c = classified.find(x => x.org.name === orgName);
     if (!c) return;
-    const o = c.org;
-    const motor = o.primaryMotor || "our high-thrust BLDC motor line";
-    const firstName = pocName.split(/\s+/)[0];
-    const notes = (o.notes || "").slice(0, 300);
-    let hook = "your work at " + orgName;
-    if (/\$\d/.test(notes)) {
-      const m = notes.match(/\$[\d.]+[MBK][^.]*\./i);
-      if (m) hook = "your recent " + m[0].replace(/\.$/, "");
-    } else if (/army|navy|air force|dod|department of war|marine/i.test(notes)) {
-      const m = notes.match(/(US Army|US Navy|US Air Force|US Marine|DoD|Department of War)[^.]*\./i);
-      if (m) hook = m[0].replace(/\.$/, "");
-    }
-    const subject = "Atlas Motors × " + orgName + " — quick conversation";
+    const firstName = (pocName || "").split(/\s+/)[0] || "[first name]";
+    // Mike's verbatim default outreach template. Only [first name] is
+    // substituted; rest is unchanged so every email reads identical.
+    const subject = "Atlas Motors — NDAA-compliant BLDC motors";
     const body = "Hi " + firstName + ",\n\n" +
-      "Saw " + hook + " — congrats on the momentum.\n\n" +
-      "Atlas Motors makes NDAA-compliant BLDC motors for the US drone ecosystem. " +
-      "The " + motor + " specifically would fit a lot of what we've seen on your " +
-      "product line. We're already shipping to Neros, DraganFly, Vector, Auterion, " +
-      "and Global Ordnance — happy to share spec sheets or send a sample kit if " +
-      "useful.\n\n" +
-      "15 minutes next week to compare notes? I can work around your schedule.\n\n" +
-      "Best,\n" +
-      "[Your name]\n" +
-      "Atlas Motors\n";
+      "Atlas manufactures NDAA-compliant BLDC motors with allied-nation production.\n\n" +
+      "We make the following standard motors:\n\n" +
+      "3008 1300KV\n" +
+      "3115 900KV\n" +
+      "3530 650KV\n" +
+      "4112 450KV\n\n" +
+      "We will produce 10,000 motors per month by August and are already shipping to customers. We expect to ramp production to 50,000+ motors by Q4.\n\n" +
+      "We'd love to work together!\n\n" +
+      "Please let me know if you're interested in a quote or would like to hop on a call to discuss how Atlas can help you.\n\n" +
+      "Cheers,\n" +
+      "Mike Poppa\n";
     $("modal-title").textContent = "Email to " + pocName + " · " + orgName;
     $("email-to").textContent = email;
     $("email-subject").value = subject;
