@@ -18,6 +18,58 @@
 //   window.renderDailyBrief
 //   window.Corsair.brief.*
 
+// P13.169 — NEW-since-last-read delta marker. Baseline = column counts at
+// last session close (persisted to localStorage). On every render this
+// session, "current count - baseline" is shown as a +N gold chip when
+// positive. Baseline only updates on beforeunload, so deltas hold stable
+// across re-renders during a single session.
+var _briefBaselineCounts = null;
+var _BRIEF_BUCKETS = ['decay','stale','upcoming','commit','coverage','aged','nudge','osint'];
+function _briefBaselineLoad() {
+  if (_briefBaselineCounts !== null) return _briefBaselineCounts;
+  var wsId = (window.currentWsId) || 'default';
+  try {
+    _briefBaselineCounts = JSON.parse(localStorage.getItem('corsair-brief-baseline-' + wsId) || '{}') || {};
+  } catch(e){ _briefBaselineCounts = {}; }
+  return _briefBaselineCounts;
+}
+function _briefMarkDeltas() {
+  var baseline = _briefBaselineLoad();
+  _BRIEF_BUCKETS.forEach(function(b){
+    var el = document.getElementById('brief-' + b + '-count');
+    if (!el) return;
+    var raw = String(el.textContent || el.innerText || '0').replace(/\s.*$/, '');
+    var current = parseInt(raw, 10) || 0;
+    var last = baseline[b];
+    if (last != null && current > last) {
+      var delta = current - last;
+      // Only re-render the span body if it doesn't already carry a +N.
+      if (el.querySelector && !el.querySelector('.brief-new-chip')) {
+        el.innerHTML = current + ' <span class="brief-new-chip" style="color:var(--gold);background:rgba(212,130,58,.18);border:1px solid rgba(212,130,58,.55);padding:1px 5px;border-radius:2px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;margin-left:4px;text-transform:uppercase">+' + delta + ' NEW</span>';
+      }
+    }
+  });
+}
+// Persist current counts as new baseline on session close. Listens once.
+(function(){
+  if (typeof window === 'undefined' || window._briefBaselineUnloadWired) return;
+  window._briefBaselineUnloadWired = true;
+  window.addEventListener('beforeunload', function(){
+    try {
+      var wsId = (window.currentWsId) || 'default';
+      var counts = {};
+      _BRIEF_BUCKETS.forEach(function(b){
+        var el = document.getElementById('brief-' + b + '-count');
+        if (el) {
+          var raw = String(el.textContent || el.innerText || '0').replace(/\s.*$/, '');
+          counts[b] = parseInt(raw, 10) || 0;
+        }
+      });
+      localStorage.setItem('corsair-brief-baseline-' + wsId, JSON.stringify(counts));
+    } catch(e){}
+  });
+})();
+
 window.renderDailyBrief = function() {
   var card = document.getElementById('brief-card');
   if (!card) return;
@@ -604,6 +656,9 @@ window.renderDailyBrief = function() {
       '</div>';
     }).join('');
   })();
+
+  // P13.169 — apply NEW delta chips on column counts AFTER all renders.
+  try { _briefMarkDeltas(); } catch (deltaErr) { console.warn('[Brief] delta marker failed', deltaErr); }
 
   console.log('[Brief] 7.1/7.3 rendered: decay=' + decay.length + ' stale=' + stale.length + ' upcoming=' + upcoming.length + ' commits=' + commitDue.length + ' coverage=' + coverage.length + ' aged=' + aged.length);
 };
