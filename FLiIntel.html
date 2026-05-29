@@ -8864,7 +8864,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.173</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.174</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -16909,6 +16909,21 @@ window.pullDailyFeed = async function() {
   // Persist to Firebase
   _saveDailyFeedToFirebase(today, signals);
 
+  // P13.174 — OSINT→Signals adapter: write each signal to /signals/{id}
+  // so briefSynthesisNightly + scoring matrix see real data, then
+  // fire-and-forget the brief synth so Brief view reflects this pull.
+  _persistFeedAsSignals(signals).then(function(n) {
+    if (n > 0) {
+      toast(n + ' signals → /signals; synthesizing brief…');
+      try {
+        var c = httpsCallable(fbFunctions, 'triggerBriefSynthesis');
+        c({ workspaceId: currentWsId, windowHours: 24 }).catch(function(e) {
+          console.warn('[adapter] auto-synth failed:', e);
+        });
+      } catch (e) { console.warn('[adapter] synth callable threw:', e); }
+    }
+  });
+
   // Render
   _renderDailyFeed(signals);
 
@@ -17144,6 +17159,68 @@ async function _loadDailyFeedFromFirebase(dateStr) {
     var val = snap.val();
     return val ? val.signals || [] : null;
   } catch (e) { return null; }
+}
+
+// ── P13.174 OSINT→Signals adapter ─────────────────────────────────
+// Bridges Claude-pulled dailyFeed signals into /signals/{id} so
+// briefSynthesisNightly + 25-axis scoring consume real data.
+function _strHash32(str) {
+  var h = 5381, i = (str || '').length;
+  while (i) h = (h * 33) ^ str.charCodeAt(--i);
+  return (h >>> 0).toString(36);
+}
+
+function _dailyFeedToSignalEntity(s) {
+  var sigType = (s.category === 'policy') ? 'policy_signal' : 'analysis_publication';
+  var sigId = 'df_' + _strHash32((s.headline || '') + '|' + (s.date || ''));
+  var subjectIds = [];
+  if (Array.isArray(s.networkMatches)) {
+    s.networkMatches.forEach(function(m) { if (m && m.id) subjectIds.push(m.id); });
+  }
+  var occurredAt = s.date ? new Date(s.date).getTime() : Date.now();
+  if (isNaN(occurredAt)) occurredAt = Date.now();
+  var blob = ((s.headline || '') + ' ' + (s.detail || '')).toLowerCase();
+  var isLeadership = /\b(named|appointed|nominated|confirmed|elevated|promoted|joined as|new ceo|new cfo|new director|stepping down|resigned|departed)\b/.test(blob);
+  var conf = s.severity === 'HIGH' ? 0.85 : s.severity === 'MED' ? 0.70 : 0.55;
+  var nowMs = Date.now();
+  return {
+    id: sigId,
+    type: sigType,
+    subjectIds: subjectIds,
+    occurredAt: occurredAt,
+    attrs: {
+      headline: s.headline || '',
+      detail: s.detail || '',
+      title: s.headline || '',
+      summary: (s.headline || '') + (s.detail ? ' — ' + s.detail : ''),
+      category: s.category || null,
+      severity: s.severity || 'LOW',
+      confidence: conf,
+      parseStatus: 'deep',
+      isLeadershipAnnouncement: isLeadership || null
+    },
+    source: {
+      system: 'daily_feed',
+      externalId: s.id || sigId,
+      url: s.url || null,
+      fetchedAt: nowMs,
+      refreshedAt: nowMs,
+      hash: null
+    }
+  };
+}
+
+async function _persistFeedAsSignals(signals) {
+  if (!signals || !signals.length || !currentWsId) return 0;
+  var n = 0;
+  var writes = signals.map(function(s) {
+    try {
+      var entity = _dailyFeedToSignalEntity(s);
+      return fbSet(wsPath('signals/' + entity.id), entity).then(function() { n++; });
+    } catch (e) { console.warn('[adapter] map/write failed:', e); return Promise.resolve(); }
+  });
+  try { await Promise.all(writes); } catch (e) { console.warn('[adapter] batch failed:', e); }
+  return n;
 }
 
 // ── Load today's feed on workspace connect ───────────────────────
@@ -63935,6 +64012,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.173"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.174"></script>
 </body>
 </html>
