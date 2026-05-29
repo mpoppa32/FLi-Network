@@ -8863,7 +8863,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.165</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.166</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -21159,6 +21159,68 @@ function renderOppDetail(opp){
   h+='</div></div>';
 
   h+=pipelineH;
+
+  // ── P13.165 — Decision-Makers panel (Sovereign Intelligence Lens 2 #4) ──
+  // Surfaces POCs for this opp's agency: resolves opp.agency → org node →
+  // window.Corsair.poc.findExisting → top 5 ranked. Closes the 0/122 opp
+  // POC alignment gap by computing on the fly from agency-text match
+  // instead of requiring a schema migration. Click row → entity inspector.
+  (function _renderOppPOCs(){
+    if (typeof window.Corsair === 'undefined' || !window.Corsair.poc) return;
+    var oppAgency = String(opp.agency || opp.customer || '').toLowerCase().trim();
+    var agencyDisplay = opp.agency || opp.customer || opp.name || '';
+    var orgNode = null;
+    if (oppAgency) {
+      var nodes_ = window.nodes || [];
+      // First try exact name; fall back to contains-match either direction.
+      for (var oi = 0; oi < nodes_.length; oi++) {
+        var n = nodes_[oi];
+        if (!n || (n.type !== 'company' && n.type !== 'government' && n.type !== 'org')) continue;
+        var nn = String(n.name || '').toLowerCase().trim();
+        if (!nn) continue;
+        if (nn === oppAgency) { orgNode = n; break; }
+        if (!orgNode && (nn.indexOf(oppAgency) !== -1 || oppAgency.indexOf(nn) !== -1)) orgNode = n;
+      }
+    }
+    var pocs = orgNode ? (window.Corsair.poc.findExisting(orgNode.id) || []) : [];
+    var top = pocs.slice(0, 5);
+    var hasOrg = !!orgNode;
+    var orgIdEsc = orgNode ? String(orgNode.id).replace(/'/g,"\\'") : '';
+    var agencyEsc = (window._escHTML ? window._escHTML(agencyDisplay) : String(agencyDisplay).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }));
+    h += '<div class="cop-detail-pocs" style="margin:14px 18px 0;padding:14px 16px;background:linear-gradient(160deg,rgba(13,20,38,.92),rgba(7,13,24,.96));border:1px solid var(--rule-2);border-left:3px solid #5fb3b8;border-radius:3px">';
+    h +=   '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:' + (top.length ? '10' : '0') + 'px">';
+    h +=     '<div style="display:flex;align-items:baseline;gap:14px">';
+    h +=       '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase">Decision-Makers</div>';
+    h +=       '<div style="font-family:Anton,sans-serif;font-size:22px;line-height:1;color:#5fb3b8">' + top.length + '</div>';
+    h +=       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.06em">at ' + agencyEsc + (pocs.length > top.length ? ' · +' + (pocs.length - top.length) + ' more' : '') + '</div>';
+    h +=     '</div>';
+    if (hasOrg) {
+      h +=   '<button onclick="window.openPOCFinder&amp;&amp;window.openPOCFinder(\'' + orgIdEsc + '\')" title="Find more decision-makers via Claude web search" style="background:rgba(139,92,246,.10);border:1px solid rgba(139,92,246,.45);color:var(--purple);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;padding:5px 11px;border-radius:2px;cursor:pointer">⌖ Find POCs</button>';
+    }
+    h +=   '</div>';
+    if (top.length) {
+      h += '<div style="display:flex;flex-direction:column;gap:5px">';
+      for (var pi = 0; pi < top.length; pi++) {
+        var c = top[pi];
+        var name = (window._escHTML ? window._escHTML(c.name || '(unnamed)') : String(c.name || '').replace(/[<>&]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]; }));
+        var role = (window._escHTML ? window._escHTML(c.role || '') : String(c.role || '').replace(/[<>&]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]; }));
+        var confCol = c.confidence === 'high' ? 'var(--green)' : c.confidence === 'medium' ? '#facc15' : '#fb923c';
+        var pidEsc = String(c.personId || '').replace(/'/g,'&#39;');
+        h += '<div onclick="window.openEntityInspector&amp;&amp;window.openEntityInspector(\'' + pidEsc + '\')" style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(7,13,24,.45);border:1px solid var(--b1);border-radius:2px;cursor:pointer" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
+          '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:' + confCol + ';border:1px solid ' + confCol + '70;background:rgba(0,0,0,.22);padding:1px 6px;border-radius:2px;text-transform:uppercase">' + (c.confidence || 'low') + '</span>' +
+          '<span style="font-size:13px;color:var(--text);font-weight:600">' + name + '</span>' +
+          (role ? '<span style="font-size:12px;color:var(--t2)">· ' + role + '</span>' : '') +
+          '<span style="margin-left:auto;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.08em">OPEN ▸</span>' +
+        '</div>';
+      }
+      h += '</div>';
+    } else if (hasOrg) {
+      h += '<div style="font-size:12px;color:var(--t3);line-height:1.5;font-family:IBM Plex Sans,sans-serif">No POCs in workspace yet — click <b style="color:var(--purple)">Find POCs</b> to surface candidates from public sources (Claude · web_search).</div>';
+    } else {
+      h += '<div style="font-size:12px;color:var(--t3);line-height:1.5;font-family:IBM Plex Sans,sans-serif">No org node matches <b style="color:var(--bone)">' + agencyEsc + '</b>. Add an org with that name to unlock POC matching.</div>';
+    }
+    h += '</div>';
+  })();
 
   // ── P13.87 (Day 3a) — Brief Synthesis / Intel Score panel ──
   // Surfaces the deal-score breakdown (Stage / Win prob / Touch recency / Stage
@@ -43358,6 +43420,30 @@ window._openAccountDetail = function(orgId){
         '<!-- P13.139 — Phase 2A POC Finder. Composes workspace person nodes affiliated with this org + Claude web-search candidates from public sources. Doctrine: surfaces candidates with source + confidence; operator confirms each one. Never auto-injects. -->' +
         '<button onclick="window.openPOCFinder&amp;&amp;window.openPOCFinder(\'' + _accEsc(r.org.id) + '\')" title="Find decision-makers — composes workspace data + Claude web search across public sources (.gov leadership pages, company About, press releases, LinkedIn)" style="background:rgba(139,92,246,.10);border:1px solid rgba(139,92,246,.45);color:var(--purple);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 10px;border-radius:2px;cursor:pointer">⌖ Find POCs</button>' +
       '</div>' +
+      // P13.165 — auto-render top-3 in-workspace POCs inline (Sovereign Intelligence audit Lens 2 #5)
+      // Surfaces decision-makers BEFORE the operator clicks Find POCs. If none, render the doctrine prompt.
+      (function _accTopPOCChipRow(){
+        if (typeof window.Corsair === 'undefined' || !window.Corsair.poc) return '';
+        try {
+          var top3 = (window.Corsair.poc.findExisting(r.org.id) || []).slice(0, 3);
+          if (!top3.length) return '';
+          var rowsHtml = top3.map(function(c){
+            var confCol = c.confidence === 'high' ? 'var(--green)' : c.confidence === 'medium' ? '#facc15' : '#fb923c';
+            var pidEsc = String(c.personId || '').replace(/'/g,'&#39;');
+            var nameEsc = _accEsc(c.name || '(unnamed)');
+            var roleEsc = _accEsc(c.role || '');
+            return '<div onclick="window.openEntityInspector&amp;&amp;window.openEntityInspector(\'' + pidEsc + '\')" title="Open dossier · ' + (c.role || 'role unknown') + '" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(7,13,24,.45);border:1px solid var(--b1);border-radius:2px;cursor:pointer;flex:1;min-width:200px" onmouseover="this.style.borderColor=\'#5fb3b8\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
+              '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:' + confCol + ';border:1px solid ' + confCol + '70;background:rgba(0,0,0,.22);padding:1px 5px;border-radius:2px;text-transform:uppercase">' + (c.confidence || 'low') + '</span>' +
+              '<span style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + nameEsc + '</span>' +
+              (roleEsc ? '<span style="font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + roleEsc + '</span>' : '') +
+            '</div>';
+          }).join('');
+          return '<div style="margin:0 0 14px;padding:10px 12px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.22);border-left:3px solid #5fb3b8;border-radius:3px">' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:6px">Top decision-makers in workspace</div>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:6px">' + rowsHtml + '</div>' +
+          '</div>';
+        } catch (e) { return ''; }
+      })() +
       peopleRows +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px">Recent Meetings</div>' +
       mtgRows +
@@ -63556,6 +63642,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.165"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.166"></script>
 </body>
 </html>
