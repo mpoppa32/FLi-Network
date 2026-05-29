@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas Orders Master → Corsair</title>
+<style>
+  :root { --bg:#070d18; --s1:#0a1020; --s2:#0d1426; --b1:#1a2236; --gold:#d4823a; --bone:#f4ede0; --paper:#b5ad9f; --paper-2:#7d7669; --green:#22c55e; --red:#ef4444; --amber:#f59e0b; }
+  body { background: var(--bg); color: var(--bone); font-family: IBM Plex Sans, sans-serif; max-width: 1200px; margin: 0 auto; padding: 30px 36px; line-height: 1.55; }
+  h1 { font-family: Anton, sans-serif; font-size: 36px; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 8px; color: var(--gold); }
+  .sub { color: var(--paper-2); font-size: 13px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 28px; }
+  .card { background: var(--s1); border: 1px solid var(--b1); border-left: 3px solid var(--gold); border-radius: 3px; padding: 22px 26px; margin-bottom: 20px; }
+  .card-label { font-family: IBM Plex Mono, monospace; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); margin-bottom: 8px; font-weight: 700; }
+  button { padding: 11px 22px; background: rgba(212,130,58,.18); border: 1px solid var(--gold); border-radius: 3px; color: var(--gold); font-family: IBM Plex Mono, monospace; font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: rgba(34,197,94,.18); border-color: var(--green); color: var(--green); }
+  button.danger { background: rgba(239,68,68,.10); border-color: var(--red); color: var(--red); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 12px; border-bottom: 1px solid var(--b1); text-align: left; vertical-align: top; }
+  th { background: var(--s2); color: var(--paper-2); font-family: IBM Plex Mono, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+  td.num { text-align: right; font-family: IBM Plex Mono, monospace; }
+  tr.match { background: rgba(95,179,184,.05); }
+  tr.miss  { background: rgba(239,68,68,.07); }
+  .pill { display: inline-block; padding: 2px 7px; border-radius: 2px; font-family: IBM Plex Mono, monospace; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+  .pill-match { background: rgba(95,179,184,.18); color: #5fb3b8; }
+  .pill-miss  { background: rgba(239,68,68,.18); color: var(--red); }
+  #log { background: var(--s2); border: 1px solid var(--b1); border-radius: 2px; padding: 14px 18px; font-family: IBM Plex Mono, monospace; font-size: 11px; max-height: 280px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; }
+  .ok { color: var(--green); } .err { color: var(--red); } .work { color: var(--gold); }
+  .stat-grid { display: flex; gap: 18px; flex-wrap: wrap; margin: 16px 0; }
+  .stat { background: var(--s2); border: 1px solid var(--b1); border-radius: 3px; padding: 14px 18px; min-width: 160px; }
+  .stat-n { font-family: Anton, sans-serif; font-size: 30px; line-height: 1; color: var(--bone); }
+  .stat-l { font-family: IBM Plex Mono, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--paper-2); margin-top: 6px; }
+  .summary { font-size: 14px; color: var(--paper); margin: 14px 0; line-height: 1.6; }
+  .summary b { color: var(--bone); }
+</style>
+</head>
+<body>
+<h1>Atlas Orders Master → Corsair</h1>
+<div class="sub">Per-customer rollup of every PO line from Orders Master · 7 customers · 19 lines · ~$260k booked</div>
+
+<div class="card" id="auth-card">
+  <div class="card-label">Step 1 · Sign in</div>
+  <div class="summary">Workspace: <b>1777435779676</b> (Atlas). Same Google account that owns the workspace.</div>
+  <button id="signin-btn">Sign in with Google</button>
+  <div id="auth-status" style="margin-top:14px;font-size:13px;color:var(--paper)"></div>
+</div>
+
+<div class="card" id="preview-card" style="display:none">
+  <div class="card-label">Step 2 · Preview match against existing customer org nodes</div>
+  <div class="summary" id="preview-summary">Loading…</div>
+  <div class="stat-grid" id="stat-grid"></div>
+  <div style="overflow-x:auto;border:1px solid var(--b1);border-radius:2px;margin-top:10px">
+    <table id="preview-table">
+      <thead><tr>
+        <th>Match</th><th>Customer</th><th>POs</th><th>Lines</th><th class="num">Booked</th><th class="num">Shipped</th><th class="num">Paid</th><th class="num">GM%</th><th>Top SKUs</th><th>Owner</th>
+      </tr></thead>
+      <tbody id="preview-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" id="import-card" style="display:none">
+  <div class="card-label">Step 3 · Commit</div>
+  <div class="summary">Patches financial-rollup fields onto matched org nodes: <b>totalBooked, totalShipped, totalPaid, totalGp, blendedGm, poCount, lineCount, firstPoDate, lastPoDate, topSkus, productLines, qtyTotal, ndaaCompliant, isActiveCustomer=true, accountStatus="customer"</b>. Also backfills <b>accountOwner</b> from Orders when missing on the existing org. Linked people / meetings / signals / Pipeline tab fields (notes, customerSegments, priority, stage, motors) are <b>untouched</b>.</div>
+  <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
+    <button class="primary" id="commit-btn">Commit Orders Rollup</button>
+    <button class="danger" id="dryrun-btn">Re-run Preview (Dry)</button>
+  </div>
+  <div id="log" style="margin-top:14px"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+const FB_CFG = {
+  apiKey: "AIzaSyBQW49mGZbUHkWSZ47FgdoUNaoU-Iv9nVo",
+  authDomain: "fli-network.firebaseapp.com",
+  databaseURL: "https://fli-network-default-rtdb.firebaseio.com",
+  projectId: "fli-network",
+  messagingSenderId: "51164371993",
+  appId: "1:51164371993:web:15855d3506496d67535e88"
+};
+const WS_ID = "1777435779676";
+const fbApp = initializeApp(FB_CFG);
+const auth = getAuth(fbApp);
+const db = getDatabase(fbApp);
+
+const ROLLUPS = [{"name":"DraganFly","accountOwner":"Tom Baron","poCount":3,"lineCount":4,"totalBooked":24212,"totalShipped":632,"totalPaid":0,"totalGp":15500,"blendedGm":0.6401784239220222,"qtyTotal":228,"productLines":["Standard Motor"],"topSkus":"ATL-4112-450KV-N (120u), ATL-3008-1300KV-N (100u), ATL-4112-450KV-C (8u)","stages":{"Shipped":1,"PO Received":3},"firstPoDate":1778544000000,"lastPoDate":1779667200000,"ndaaCompliant":{"yes":3,"no":1},"isActiveCustomer":true,"accountStatus":"customer"},{"name":"Neros","accountOwner":"Tom Baron","poCount":1,"lineCount":4,"totalBooked":1218,"totalShipped":0,"totalPaid":0,"totalGp":783,"blendedGm":0.6428571428571429,"qtyTotal":12,"productLines":["Standard Motor"],"topSkus":"ATL-3008-1300KV-N (3u), ATL-3115-900KV-N (3u), ATL-3530-650KV-N (3u)","stages":{"PO Received":4},"firstPoDate":1779408000000,"lastPoDate":1779408000000,"ndaaCompliant":{"yes":4,"no":0},"isActiveCustomer":true,"accountStatus":"customer"},{"name":"Vector","accountOwner":"Mike Poppa","poCount":1,"lineCount":3,"totalBooked":16580,"totalShipped":0,"totalPaid":0,"totalGp":9880,"blendedGm":0.5958986731001207,"qtyTotal":220,"productLines":["Standard Motor"],"topSkus":"ATL-3115-900KV-N (100u), ATL-2207-xxxKV-N (100u), ATL-4112-450KV-N (20u)","stages":{"PO Received":3},"firstPoDate":null,"lastPoDate":null,"ndaaCompliant":{"yes":3,"no":0},"isActiveCustomer":true,"accountStatus":"customer"},{"name":"Auterion","accountOwner":"Bryce McDonald","poCount":1,"lineCount":2,"totalBooked":4560,"totalShipped":0,"totalPaid":0,"totalGp":3060,"blendedGm":0.6710526315789473,"qtyTotal":40,"productLines":["Standard Motor"],"topSkus":"ATL-3115-900KV-N (20u), ATL-4112-450KV-N (20u)","stages":{"Quote":2},"firstPoDate":null,"lastPoDate":null,"ndaaCompliant":{"yes":2,"no":0},"isActiveCustomer":true,"accountStatus":"customer"},{"name":"Global Ordnance","accountOwner":"Bryce McDonald","poCount":1,"lineCount":2,"totalBooked":208000,"totalShipped":0,"totalPaid":0,"totalGp":133000,"blendedGm":0.6394230769230769,"qtyTotal":2000,"productLines":["Standard Motor"],"topSkus":"ATL-3008-1300KV-N (1000u), ATL-4112-450KV-N (1000u)","stages":{"Quote":2},"firstPoDate":null,"lastPoDate":null,"ndaaCompliant":{"yes":2,"no":0},"isActiveCustomer":true,"accountStatus":"customer"},{"name":"Terra","accountOwner":"Tom Baron","poCount":1,"lineCount":3,"totalBooked":4060,"totalShipped":0,"totalPaid":0,"totalGp":2080,"blendedGm":0.5123152709359606,"qtyTotal":60,"productLines":["Standard Motor"],"topSkus":"ATL-3530-650KV-C (20u), ATL-4112-450KV-C (20u), ATL-3115-900KV-C (20u)","stages":{"Quote":3},"firstPoDate":1779580800000,"lastPoDate":1779580800000,"ndaaCompliant":{"yes":0,"no":3},"isActiveCustomer":true,"accountStatus":"customer"},{"name":"Ark Robotics","accountOwner":"Pravardh Mishra","poCount":1,"lineCount":1,"totalBooked":1580,"totalShipped":0,"totalPaid":0,"totalGp":800,"blendedGm":0.5063291139240507,"qtyTotal":20,"productLines":["Standard Motor"],"topSkus":"ATL-4112-450KV-C (20u)","stages":{"PO Received":1},"firstPoDate":1779667200000,"lastPoDate":1779667200000,"ndaaCompliant":{"yes":0,"no":1},"isActiveCustomer":true,"accountStatus":"customer"}];
+const $ = (id) => document.getElementById(id);
+function log(msg, cls) { const el = $("log"); const s = document.createElement("div"); if (cls) s.className = cls; s.textContent = "[" + new Date().toLocaleTimeString() + "] " + msg; el.appendChild(s); el.scrollTop = el.scrollHeight; }
+function fmt$(n) { if (!n) return "—"; if (n >= 1e6) return "$" + (n/1e6).toFixed(1) + "M"; if (n >= 1e3) return "$" + Math.round(n/1e3) + "k"; return "$" + Math.round(n); }
+function pct(n) { return (n*100).toFixed(1) + "%"; }
+function escapeHtml(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+let plan = { match: [], miss: [] };
+let existingNodes = {};
+
+$("signin-btn").addEventListener("click", async () => {
+  $("auth-status").textContent = "Signing in…";
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) {
+    if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user") {
+      $("auth-status").textContent = "Popup blocked, switching to redirect…";
+      setTimeout(() => signInWithRedirect(auth, new GoogleAuthProvider()), 800);
+    } else $("auth-status").innerHTML = '<span style="color:#ef4444">Error: ' + e.code + " " + e.message + "</span>";
+  }
+});
+getRedirectResult(auth).catch(()=>{});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return;
+  $("auth-status").innerHTML = '<span style="color:#22c55e;font-size:16px;font-weight:700">&#10003; Signed in as <b>' + user.email + '</b> &mdash; loading workspace below&hellip;</span>';
+  $("signin-btn").textContent = "Reload workspace";
+  await loadAndPlan();
+});
+
+async function loadAndPlan() {
+  $("preview-card").style.display = "block";
+  $("preview-summary").textContent = "Loading existing workspace nodes…";
+  try {
+    const snap = await get(ref(db, "workspaces/" + WS_ID + "/nodes"));
+    existingNodes = snap.val() || {};
+    const byName = {};
+    for (const id in existingNodes) {
+      const n = existingNodes[id];
+      if (n && n.name) byName[String(n.name).toLowerCase().trim()] = { id, node: n };
+    }
+    plan.match = []; plan.miss = [];
+    for (const r of ROLLUPS) {
+      const key = String(r.name).toLowerCase().trim();
+      if (byName[key]) plan.match.push({ rollup: r, existing: byName[key] });
+      else plan.miss.push({ rollup: r });
+    }
+    renderPreview(Object.keys(existingNodes).length);
+    $("import-card").style.display = "block";
+  } catch (e) {
+    $("preview-summary").innerHTML = '<span style="color:#ef4444">Load failed: ' + e.message + "</span>";
+  }
+}
+
+function renderPreview(existingCount) {
+  const totalBooked = ROLLUPS.reduce((s,r) => s + (r.totalBooked||0), 0);
+  const totalShipped = ROLLUPS.reduce((s,r) => s + (r.totalShipped||0), 0);
+  const totalPaid = ROLLUPS.reduce((s,r) => s + (r.totalPaid||0), 0);
+  const blendedGm = totalBooked > 0 ? (ROLLUPS.reduce((s,r) => s + (r.totalGp||0), 0) / totalBooked) : 0;
+  const stats = [
+    ["existing nodes", existingCount],
+    ["customers in rollup", ROLLUPS.length],
+    ["matched to existing", plan.match.length],
+    ["NO MATCH (warn)", plan.miss.length],
+    ["total booked", fmt$(totalBooked)],
+    ["total shipped", fmt$(totalShipped)],
+    ["total paid", fmt$(totalPaid)],
+    ["blended GM%", pct(blendedGm)]
+  ];
+  $("stat-grid").innerHTML = stats.map(s => '<div class="stat"><div class="stat-n">' + s[1] + '</div><div class="stat-l">' + s[0] + '</div></div>').join("");
+  $("preview-summary").innerHTML = "Workspace has <b>" + existingCount + "</b> nodes. Orders Master rolls up <b>" + ROLLUPS.length + "</b> customers → <b>" + plan.match.length + "</b> will UPDATE matched orgs, <b>" + plan.miss.length + "</b> have no matching node (orgs that bought from Atlas but weren't in Pipeline — flag and decide).";
+  const tbody = $("preview-tbody");
+  let html = "";
+  for (const m of plan.match) {
+    const r = m.rollup;
+    html += '<tr class="match"><td><span class="pill pill-match">MATCH</span></td><td><b>' + escapeHtml(r.name) + '</b></td><td>' + r.poCount + '</td><td>' + r.lineCount + '</td><td class="num">' + fmt$(r.totalBooked) + '</td><td class="num">' + fmt$(r.totalShipped) + '</td><td class="num">' + fmt$(r.totalPaid) + '</td><td class="num">' + pct(r.blendedGm) + '</td><td style="font-size:11px">' + escapeHtml(r.topSkus) + '</td><td>' + escapeHtml(r.accountOwner||"—") + '</td></tr>';
+  }
+  for (const m of plan.miss) {
+    const r = m.rollup;
+    html += '<tr class="miss"><td><span class="pill pill-miss">NO MATCH</span></td><td><b>' + escapeHtml(r.name) + '</b></td><td>' + r.poCount + '</td><td>' + r.lineCount + '</td><td class="num">' + fmt$(r.totalBooked) + '</td><td class="num">' + fmt$(r.totalShipped) + '</td><td class="num">' + fmt$(r.totalPaid) + '</td><td class="num">' + pct(r.blendedGm) + '</td><td style="font-size:11px">' + escapeHtml(r.topSkus) + '</td><td>' + escapeHtml(r.accountOwner||"—") + '</td></tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+$("dryrun-btn").addEventListener("click", () => loadAndPlan());
+
+$("commit-btn").addEventListener("click", async () => {
+  if (!confirm("Commit " + plan.match.length + " customer financial rollups to Atlas workspace? (" + plan.miss.length + " misses will NOT be written.)")) return;
+  $("commit-btn").disabled = true;
+  $("dryrun-btn").disabled = true;
+  log("Starting " + plan.match.length + " updates…", "work");
+  let ok = 0, fail = 0;
+  for (const m of plan.match) {
+    try {
+      const r = m.rollup;
+      const ex = m.existing.node;
+      const patch = {
+        isActiveCustomer: true,
+        accountStatus: "customer",
+        totalBooked: r.totalBooked,
+        totalShipped: r.totalShipped,
+        totalPaid: r.totalPaid,
+        totalGp: r.totalGp,
+        blendedGm: r.blendedGm,
+        poCount: r.poCount,
+        lineCount: r.lineCount,
+        qtyTotal: r.qtyTotal,
+        topSkus: r.topSkus,
+        productLines: r.productLines,
+        stageMix: r.stages,
+        ndaaCompliant: r.ndaaCompliant
+      };
+      if (r.firstPoDate) patch.firstPoDate = r.firstPoDate;
+      if (r.lastPoDate)  patch.lastPoDate  = r.lastPoDate;
+      if (r.accountOwner && !ex.accountOwner) patch.accountOwner = r.accountOwner;
+      await update(ref(db, "workspaces/" + WS_ID + "/nodes/" + m.existing.id), patch);
+      ok++;
+      log("UPDATE: " + r.name + " — " + r.poCount + " POs, $" + Math.round(r.totalBooked) + " booked", "ok");
+    } catch (e) { fail++; log("FAIL " + m.rollup.name + ": " + e.message, "err"); }
+  }
+  log("DONE — " + ok + " ok, " + fail + " failed", fail ? "err" : "ok");
+});
+</script>
+</body>
+</html>
