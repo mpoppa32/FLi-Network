@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.192</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.193</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12424,6 +12424,11 @@ async function fbSet(path,data){setSS('saving');try{await set(ref(db,path),data)
 // P13.139 — expose for POC promote + future sibling modules that need
 // to write workspace-scoped data without re-implementing the path helper.
 window.fbSet = fbSet;
+// P13.193 — fbGet exposed so bulk POC runner can read orgMeta to
+// implement skip-if-recently-searched logic without duplicating
+// the module-scoped get/ref/db plumbing.
+async function fbGet(path){try{return await get(ref(db,path));}catch(e){console.warn('[fbGet]',path,e&&e.message);return null;}}
+window.fbGet = fbGet;
 async function fbRemove(path){setSS('saving');try{await remove(ref(db,path));setSS('live');}catch(e){setSS('error');throw e;}}
 function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
 window.wsPath = wsPath;
@@ -44385,43 +44390,91 @@ function _renderPOCCandidate(c) {
     '</div>';
 }
 
-// P13.167 — Bulk POC Discovery (Sovereign Intelligence audit Lens 2 #3).
-// Iterates dark orgs serially with a between-call gate, calls
-// searchOpenSources per org, persists candidates to /pendingPOCs via the
-// same path _runPOCSearch uses. Honors the per-workspace Anthropic hourly
-// quota — aborts on resource-exhausted with a friendly message. Surfaces
-// progress as toast updates so operator can watch the queue drain.
-window._atlasBulkPOCDiscovery = async function(){
+// P13.193 — Bulk POC Discovery, rebuilt for the massive outreach push.
+// Changes vs P13.167:
+//  · Prioritized order — DDP-G1, then DDP-G2, then ACTIVE, then drone-
+//    tagged orgs, then other bdTarget orgs. Within each tier, untouched
+//    orgs come before stale ones (>7d since last search).
+//  · Skip-if-recent — orgs with lastPOCSearchAt within 7d are dropped
+//    so re-running picks up exactly where a quota-stopped run left off.
+//  · No per-run cap — runs until the workspace Anthropic quota throws
+//    resource-exhausted, then surfaces the wait-and-retry message.
+//  · Persistent progress banner — fixed-position card stays visible the
+//    whole run (replaces the 4s vanishing toast) with live N/M + found
+//    + current org name. Operator can close it; runner keeps going.
+window._atlasBulkPOCDiscovery = async function(opts){
+  opts = opts || {};
   if (typeof window.Corsair === 'undefined' || !window.Corsair.poc) {
     if (typeof toast === 'function') toast('POC module not loaded');
     return;
   }
+  var RECENT_MS = 7 * 86400000;
+  var now = Date.now();
+
+  // Load orgMeta once so the skip-recent filter is single-query.
+  var orgMeta = {};
+  if (typeof window.fbGet === 'function' && typeof window.wsPath === 'function') {
+    try {
+      var omSnap = await window.fbGet(window.wsPath('orgMeta'));
+      orgMeta = (omSnap && omSnap.val()) || {};
+    } catch(e){}
+  }
+
+  var TIER_LABELS = { 1: 'G1', 2: 'G2', 3: 'Active', 4: 'Drone', 5: 'BD-target' };
   var allNodes = window.nodes || [];
-  // Dark = company/government/org node with no existing POCs in workspace.
-  var dark = [];
+  var queue = [];
+
   for (var i = 0; i < allNodes.length; i++) {
     var n = allNodes[i];
     if (!n || (n.type !== 'company' && n.type !== 'government' && n.type !== 'org')) continue;
     if (!n.name) continue;
     var existing = [];
     try { existing = window.Corsair.poc.findExisting(n.id) || []; } catch(e){}
-    if (existing.length === 0) dark.push(n);
+    if (existing.length > 0) continue;
+    var safeKey = String(n.id).replace(/[#$\[\]/.]/g, '_');
+    var lastAt = orgMeta[safeKey] && orgMeta[safeKey].lastPOCSearchAt;
+    if (!opts.force && lastAt && (now - lastAt) < RECENT_MS) continue;
+    var segs = Array.isArray(n.customerSegments) ? n.customerSegments : [];
+    var probe = ((n.name || '') + ' ' + (n.notes || '') + ' ' + (n.category || '') + ' ' + (Array.isArray(n.tags) ? n.tags.join(' ') : '')).toLowerCase();
+    var isDrone = /\b(drone|uav|uas|quadcopter|multirotor|small unmanned)\b/.test(probe);
+    var tier = 99;
+    if (segs.indexOf('DDP-G1') >= 0) tier = 1;
+    else if (segs.indexOf('DDP-G2') >= 0) tier = 2;
+    else if (segs.indexOf('ACTIVE') >= 0) tier = 3;
+    else if (isDrone) tier = 4;
+    else if (n.bdTarget) tier = 5;
+    else continue;
+    queue.push({ node: n, tier: tier, safeKey: safeKey });
   }
-  if (!dark.length) {
-    if (typeof toast === 'function') toast('No dark orgs to process — every org already has at least one linked POC');
+
+  if (!queue.length) {
+    if (typeof toast === 'function') toast('No queued orgs — all G1/G2/Active/drone/BD-target either have linked POCs or were searched in the last 7 days. Pass {force:true} to override.', 8000);
     return;
   }
-  var cap = Math.min(dark.length, 25); // Demo-safe cap; quota is 30/hr default.
-  var confirmMsg = 'Run POC search across ' + dark.length + ' dark org' + (dark.length === 1 ? '' : 's') +
-    '?\n\nThis will use up to ' + cap + ' Anthropic quota credits (workspace cap 30/hr).\n\n' +
-    'Candidates land in /pendingPOCs for each org so they persist across modal close. Review later via Find POCs.';
-  if (!confirm(confirmMsg)) return;
-  var processed = 0, candidatesAdded = 0, errors = 0;
-  var quotaExhausted = false;
-  for (var di = 0; di < dark.length && di < cap && !quotaExhausted; di++) {
-    var org = dark[di];
-    if (typeof toast === 'function') toast('⌖ POC search ' + (di+1) + ' of ' + Math.min(cap, dark.length) + ': ' + (org.name || '').slice(0, 40), 4000);
-    var safeOrgKey = String(org.id).replace(/[#$\[\]/.]/g, '_');
+
+  queue.sort(function(a, b){ return a.tier - b.tier; });
+  var byTier = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+  queue.forEach(function(q){ byTier[q.tier]++; });
+  var breakdown = Object.keys(byTier).filter(function(k){ return byTier[k] > 0; })
+    .map(function(k){ return '  · ' + TIER_LABELS[k] + ': ' + byTier[k]; }).join('\n');
+
+  var confirmMsg = 'Run POC search across ' + queue.length + ' orgs in priority order:\n\n' + breakdown +
+    '\n\nRuns until the workspace Anthropic quota stops it (cap raised to 200/hr if you set it).\nPersistent banner shows progress. Re-run any time — orgs searched in the last 7d are skipped automatically.';
+  if (!opts.skipConfirm && !confirm(confirmMsg)) return;
+
+  window._bulkPocCancel = false;
+  _bulkPocShowBanner(queue.length);
+
+  var processed = 0, candidatesAdded = 0, errors = 0, quotaExhausted = false;
+  for (var di = 0; di < queue.length && !quotaExhausted; di++) {
+    if (window._bulkPocCancel) break;
+    var item = queue[di];
+    var org = item.node;
+    var safeOrgKey = item.safeKey;
+    _bulkPocUpdateBanner({
+      done: processed, errors: errors, found: candidatesAdded,
+      total: queue.length, currentLabel: '[' + TIER_LABELS[item.tier] + '] ' + org.name
+    });
     try {
       var found = await window.Corsair.poc.searchOpenSources(org.name, org.type);
       var ts = Date.now();
@@ -44445,15 +44498,60 @@ window._atlasBulkPOCDiscovery = async function(){
       if (/quota|resource[ -]exhausted|too many/i.test(msg)) { quotaExhausted = true; }
       else { errors++; console.warn('[bulkPOC] org failed', org.name, msg); }
     }
-    // Throttle 2s between calls to respect upstream rate limits.
-    if (di + 1 < dark.length && di + 1 < cap && !quotaExhausted) await new Promise(function(r){ setTimeout(r, 2000); });
+    if (di + 1 < queue.length && !quotaExhausted && !window._bulkPocCancel) {
+      await new Promise(function(r){ setTimeout(r, 2000); });
+    }
   }
-  var summary = '✓ Bulk POC complete · ' + processed + ' org' + (processed === 1 ? '' : 's') + ' processed · ' + candidatesAdded + ' candidate' + (candidatesAdded === 1 ? '' : 's') + ' surfaced';
-  if (errors) summary += ' · ' + errors + ' failed';
-  if (quotaExhausted) summary += ' · ⚠ Anthropic quota hit — re-run next hour for remaining ' + (dark.length - processed);
-  if (typeof toast === 'function') toast(summary, 9000);
+  _bulkPocFinishBanner({
+    done: processed, found: candidatesAdded, errors: errors,
+    total: queue.length, quotaExhausted: quotaExhausted,
+    cancelled: !!window._bulkPocCancel
+  });
   if (typeof window._renderAccountsView === 'function') try { window._renderAccountsView(); } catch(e){}
 };
+
+function _bulkPocShowBanner(total) {
+  var existing = document.getElementById('bulk-poc-banner');
+  if (existing) existing.remove();
+  var div = document.createElement('div');
+  div.id = 'bulk-poc-banner';
+  div.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;background:linear-gradient(135deg,#0a1020 0%,#0d1426 100%);border:1px solid #8b5cf6;border-left:4px solid #8b5cf6;color:#f4ede0;padding:14px 22px;border-radius:4px;font-family:IBM Plex Sans,sans-serif;font-size:13px;box-shadow:0 10px 28px rgba(0,0,0,.65);min-width:520px;max-width:92vw';
+  div.innerHTML =
+    '<div style="display:flex;align-items:center;gap:14px;justify-content:space-between">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="color:#8b5cf6;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin-bottom:5px">⌖ BULK POC DISCOVERY</div>' +
+        '<div id="bulk-poc-status" style="font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.04em">Queued ' + total + ' orgs · searching…</div>' +
+      '</div>' +
+      '<button id="bulk-poc-cancel" style="background:transparent;border:1px solid #7d7669;color:#7d7669;padding:7px 12px;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;cursor:pointer;border-radius:2px;text-transform:uppercase">Cancel</button>' +
+    '</div>';
+  document.body.appendChild(div);
+  document.getElementById('bulk-poc-cancel').addEventListener('click', function(){
+    window._bulkPocCancel = true;
+    var s = document.getElementById('bulk-poc-status');
+    if (s) s.innerHTML = '<span style="color:#f59e0b">Cancelling after current org…</span>';
+  });
+}
+
+function _bulkPocUpdateBanner(s) {
+  var el = document.getElementById('bulk-poc-status');
+  if (!el) return;
+  el.innerHTML = '<span style="color:#22c55e;font-weight:700">' + s.done + '</span>/<span style="color:#5fb3b8">' + s.total + '</span> processed · ' +
+    '<span style="color:#d4823a;font-weight:700">' + s.found + '</span> candidates · ' +
+    (s.errors ? '<span style="color:#ef4444">' + s.errors + ' err</span> · ' : '') +
+    '<span style="color:#b5ad9f">' + String(s.currentLabel || '').slice(0, 68) + '</span>';
+}
+
+function _bulkPocFinishBanner(s) {
+  var el = document.getElementById('bulk-poc-status');
+  if (!el) return;
+  var headline = (s.cancelled ? '✗ Cancelled · ' : '✓ Complete · ') +
+    s.done + '/' + s.total + ' searched · ' + s.found + ' candidates surfaced';
+  if (s.errors) headline += ' · ' + s.errors + ' errors';
+  if (s.quotaExhausted) headline += ' · ⚠ quota hit — wait for next hour and re-run (orgs already done will be skipped)';
+  el.innerHTML = '<span style="color:#22c55e;font-weight:700">' + headline + '</span><br><span style="color:#b5ad9f;font-size:11px">Review in g2-outreach.html → Pending POCs · 🚀 Open all in Gmail compose tabs</span>';
+  var btn = document.getElementById('bulk-poc-cancel');
+  if (btn) btn.textContent = 'Close';
+}
 
 // P13.164 — stable candidate id from name (idempotent). Same person from
 // a re-search overwrites instead of duplicating.
@@ -64488,6 +64586,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.192"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.193"></script>
 </body>
 </html>
