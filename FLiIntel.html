@@ -8849,7 +8849,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.155</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.156</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9196,11 +9196,11 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
               <div class="brief-col-list" id="brief-decay-list"><div class="brief-empty">Loading T1/T2 contacts going cold…</div></div>
             </div>
             <div class="brief-col" data-bucket="stale">
-              <div class="brief-col-hdr"><span>STALE PURSUITS</span><span class="brief-count" id="brief-stale-count">0</span></div>
+              <div class="brief-col-hdr" style="cursor:pointer" onclick="if(window.switchView)window.switchView('opps')" title="Open Pipeline to see all pursuits"><span>STALE PURSUITS</span><span class="brief-count" id="brief-stale-count">0</span></div>
               <div class="brief-col-list" id="brief-stale-list"><div class="brief-empty">Loading pursuits with no recent meeting…</div></div>
             </div>
             <div class="brief-col" data-bucket="upcoming">
-              <div class="brief-col-hdr"><span>UPCOMING 7d</span><span class="brief-count" id="brief-upcoming-count">0</span></div>
+              <div class="brief-col-hdr" style="cursor:pointer" onclick="if(window.switchView)window.switchView('intel')" title="Open Intel view for upcoming meetings + deadlines"><span>UPCOMING 7d</span><span class="brief-count" id="brief-upcoming-count">0</span></div>
               <div class="brief-col-list" id="brief-upcoming-list"><div class="brief-empty">Loading next 7 days…</div></div>
             </div>
             <div class="brief-col" data-bucket="commit">
@@ -9209,12 +9209,12 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
             </div>
             <!-- 7.3: Weak Coverage column -->
             <div class="brief-col" data-bucket="coverage">
-              <div class="brief-col-hdr"><span>WEAK COVERAGE</span><span class="brief-count" id="brief-coverage-count">0</span></div>
+              <div class="brief-col-hdr" style="cursor:pointer" onclick="if(window.switchView)window.switchView('accounts')" title="Open Accounts grid to see all coverage scores"><span>WEAK COVERAGE</span><span class="brief-count" id="brief-coverage-count">0</span></div>
               <div class="brief-col-list" id="brief-coverage-list"><div class="brief-empty">Loading account coverage check…</div></div>
             </div>
             <!-- Phase 6.7: Aged in Stage column (pursuits past their stage aging threshold) -->
             <div class="brief-col" data-bucket="aged">
-              <div class="brief-col-hdr"><span>AGED IN STAGE</span><span class="brief-count" id="brief-aged-count">0</span></div>
+              <div class="brief-col-hdr" style="cursor:pointer" onclick="if(window.switchView){window.switchView('opps');setTimeout(function(){if(window._copSetKanbanFilter)window._copSetKanbanFilter('aged');},80);}" title="Open Pipeline filtered to aged opps"><span>AGED IN STAGE</span><span class="brief-count" id="brief-aged-count">0</span></div>
               <div class="brief-col-list" id="brief-aged-list"><div class="brief-empty">Loading stage velocity check…</div></div>
             </div>
             <!-- P13.138 — Nudge Engine Phase 1B. Surfaces accounts/contacts
@@ -35304,6 +35304,25 @@ window.openEntityInspector = function(entityId) {
   var entity = window.getEntity(entityId);
   if (!entity) {
     if (typeof toast === 'function') toast('Entity not found in graph');
+    return;
+  }
+  // P13.156 — unify opp dossier. The legacy COP Kanban path routed clicks
+  // through selectOpp → renderOppDetail (rich card with capture lead,
+  // meeting log w/ pulse dots, risks, RFP analyzer, teaming, agency intel).
+  // The Inspector / Graph / Recent path routed through this function and
+  // rendered the lightweight connections-by-type view, losing all that
+  // depth. Operator saw two different dossiers for the same opp depending
+  // on entry point. Now: every opp click delegates to selectOpp + opps view.
+  if (entity.type === 'opportunity') {
+    // Close any open Entity Inspector modal so we don't stack surfaces.
+    var _eiModal = document.getElementById('entity-inspector-modal');
+    if (_eiModal && _eiModal.style.display !== 'none') _eiModal.style.display = 'none';
+    if (typeof window.switchView === 'function') {
+      try { window.switchView('opps'); } catch(e){}
+    }
+    setTimeout(function(){
+      try { if (typeof window.selectOpp === 'function') window.selectOpp(entityId); } catch(e){}
+    }, 60);
     return;
   }
   window._currentInspectorEntity = entity;
@@ -62926,6 +62945,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.155"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.156"></script>
 </body>
 </html>

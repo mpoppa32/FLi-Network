@@ -461,7 +461,9 @@ window.renderDailyBrief = function() {
   _renderCol('brief-commit-list', 'brief-commit-count', commitDue, function(c) {
     var when = c.days <= 0 ? 'overdue' : c.days === 1 ? 'tomorrow' : 'in ' + c.days + 'd';
     var ownerStr = c.owner ? ' · ' + String(c.owner).slice(0, 14) : '';
-    return '<div class="brief-item">' +
+    // P13.156 — commit rows now drill to the commitments panel (no per-id
+    // detail surface exists yet — opens the full open-commits view).
+    return '<div class="brief-item" onclick="if(window.openCommitPanel)window.openCommitPanel()" style="cursor:pointer" title="Open commitments panel">' +
            '<span class="brief-item-title">' + c.title.slice(0, 60) + ownerStr + '</span>' +
            '<span class="brief-item-meta">' + when + '</span></div>';
   }, 'No commitments coming due. Open commits with deadlines surface here.');
@@ -469,7 +471,9 @@ window.renderDailyBrief = function() {
     var pillKlass = c.status === 'dark' ? 'health-cold' : c.status === 'sparse' ? 'health-cold' : 'health-warm';
     var pillTxt = c.status === 'dark' ? 'DARK' : String(c.score);
     var pill = '<span class="health-pill ' + pillKlass + '" title="' + c.factors.engagedRecent + '/' + (c.factors.oppCount * 2) + ' coverage · ' + c.factors.peopleAtOrg + ' contacts · ' + c.factors.oppCount + ' opps">' + pillTxt + '</span>';
-    return '<div class="brief-item">' +
+    // P13.156 — coverage rows now drill to the org's Entity Inspector dossier.
+    var safeId = String(c.id || '').replace(/\'/g, '');
+    return '<div class="brief-item" onclick="if(window.openEntityInspector)window.openEntityInspector(\'' + safeId + '\')" style="cursor:pointer" title="Open this account in the Inspector">' +
            '<span class="brief-item-title">' + pill + c.name + '</span>' +
            '<span class="brief-item-meta">' + c.factors.oppCount + ' opp' + (c.factors.oppCount === 1 ? '' : 's') + '</span></div>';
   }, 'All pursued accounts have adequate contact coverage. Orgs with too few engaged contacts surface here.');
