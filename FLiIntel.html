@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.221</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.222</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32185,6 +32185,34 @@ window._atlasComputeCatches = function() {
     }
   } catch(e){}
 
+  // G. Unscored pipeline — when active opps lack value + pwin, the forecast
+  // is dark and every money-weighted Catch (concentration, stale-$) starves.
+  // On a cold pipeline this is the single highest-leverage move, so it scores
+  // proportional to the unscored fraction: a fully-unscored pipeline tops the
+  // list; as the operator scores, it recedes and real Catches take over.
+  try {
+    var activeForScore = opps_.filter(function(o) {
+      var s = String((o && o.stage) || '').toLowerCase();
+      return o && s && s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
+    });
+    var unscored = activeForScore.filter(function(o) {
+      var v = Number(o.value || o.contractValue || 0);
+      var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+      return v <= 0 && p <= 0;
+    }).length;
+    if (activeForScore.length >= 4 && unscored >= 5) {
+      var frac = unscored / activeForScore.length;
+      candidates.push({
+        kind: 'pattern',
+        title: unscored + ' of ' + activeForScore.length + ' pursuits unscored',
+        evidence: 'Forecast is dark — no value or p(win) on ' + Math.round(frac * 100) + '% of active pipeline. Bulk Score lights it up in one paste.',
+        source: 'SCORE PIPELINE',
+        score: 60 + Math.round(frac * 40),
+        click: 'bulk-score'
+      });
+    }
+  } catch(e){}
+
   // Dedupe by entityId — same entity in multiple sources keeps highest score
   var byEntity = new Map();
   candidates.forEach(function(c) {
@@ -32241,6 +32269,8 @@ window._renderTodayCatches = function() {
     } else if (c.click === 'pulse') {
       if (c.clickUrl) clickJs = "window.open('" + String(c.clickUrl).replace(/'/g, "\\'") + "','_blank','noopener')";
       else clickJs = "window.switchView&&window.switchView('pulse')";
+    } else if (c.click === 'bulk-score') {
+      clickJs = "window.switchView&&window.switchView('cop');setTimeout(function(){window._openBulkScoreModal&&window._openBulkScoreModal()},300)";
     } else if (c.clickView) {
       clickJs = "window.switchView&&window.switchView('" + String(c.clickView).replace(/'/g, "\\'") + "')";
     }
@@ -66441,6 +66471,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.221"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.222"></script>
 </body>
 </html>
