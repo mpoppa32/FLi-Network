@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.230</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.231</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9024,6 +9024,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
           <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">See patterns · measure progress</div>
           <button class="tools-menu-item" data-view="timeline" onclick="window._toolsMenuSelect('timeline')"><span style="color:#38bdf8;width:18px;display:inline-block">⏱</span><span>Timeline</span><span class="tm-meta">commitments over time</span></button>
           <button class="tools-menu-item" data-view="rhythm" onclick="window._toolsMenuSelect('rhythm')"><span style="color:#fb923c;width:18px;display:inline-block">∿</span><span>Rhythm (full)</span><span class="tm-meta">agentic loop · expanded view</span></button>
+          <button class="tools-menu-item" data-view="reckoning" onclick="window._toolsMenuSelect('reckoning')"><span style="color:var(--gold);width:18px;display:inline-block">◆</span><span>The Reckoning</span><span class="tm-meta">money truth · weighted · concentration · coverage</span></button>
           <button class="tools-menu-item" data-view="bdperf" onclick="window._toolsMenuSelect('bdperf')"><span style="color:#fb923c;width:18px;display:inline-block">📊</span><span>BD Stats</span><span class="tm-meta">pipeline analytics</span></button>
           <button class="tools-menu-item" data-view="winloss" onclick="window._toolsMenuSelect('winloss')"><span style="color:var(--gold);width:18px;display:inline-block">🏆</span><span>Win/Loss Analysis</span><span class="tm-meta">closed deals · model calibration</span></button>
           <button class="tools-menu-item" data-view="trends" onclick="window._toolsMenuSelect('trends')"><span style="color:#5fb3b8;width:18px;display:inline-block">📈</span><span>Trends &amp; Leaderboard</span><span class="tm-meta">win-rate · capture-lead · velocity</span></button>
@@ -11218,6 +11219,8 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
 </div>
 
 <!-- WIN/LOSS VIEW — P13.23: closed-deal analytics + model calibration dashboard -->
+<!-- P13.231 Block 5 / The Reckoning — money-truth surface (Moment 7). Rendered by _renderReckoningView. -->
+<div id="reckoning-view" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg)"></div>
 <div id="winloss-view" data-surface="light" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--text)">
   <div style="padding:20px 26px 14px;border-bottom:1px solid rgba(26,34,54,.5);display:flex;align-items:flex-start;justify-content:space-between;flex-shrink:0;background:linear-gradient(180deg,var(--s1),var(--bg));gap:14px;flex-wrap:wrap">
     <div>
@@ -13621,7 +13624,7 @@ function _relocateViewsIntoMainApp(){
   // very same new-view-checklist bug that bit P12.8 (Accounts). They
   // rendered far below the viewport and switching to them showed a blank
   // screen. Adding them to the relocator now.
-  ['today-view','atlas-view','team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view','coverage-view','drone-view','outreach-view','winloss-view','trends-view','table-view','pulse-view'].forEach(function(id){
+  ['today-view','atlas-view','team-view','bdperf-view','capture-view','sbir-view','rfi-view','library-view','vehicles-view','comp-view','teaming-view','inspector-view','rhythm-view','accounts-view','coverage-view','drone-view','outreach-view','winloss-view','trends-view','reckoning-view','table-view','pulse-view'].forEach(function(id){
     var el = document.getElementById(id);
     if(el && el.parentElement !== mainApp){ mainApp.appendChild(el); }
   });
@@ -18608,7 +18611,7 @@ async function wireListeners(){
 }
 
 // ── VIEW REGISTRY — all switchable view container IDs (suffix '-view') ──
-var _CORSAIR_VIEWS=['today','atlas','intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts','coverage','drone','outreach','winloss','trends'];
+var _CORSAIR_VIEWS=['today','atlas','intel','opps','network','timeline','pulse','team','bdperf','sbir','rfi','comp','teaming','library','vehicles','capture','inspector','rhythm','posture','table','accounts','coverage','drone','outreach','winloss','trends','reckoning'];
 
 // Map mode aliases → underlying view IDs
 var _CORSAIR_MODE_ALIAS={'graph':'network','cop':'opps','brief':'today'};
@@ -18733,6 +18736,7 @@ function switchView(v){
   if(v==='outreach'&&window._renderOutreachQueueView)window._renderOutreachQueueView();
   if(v==='winloss'&&window._renderWinLossView)window._renderWinLossView();
   if(v==='trends'&&window._renderTrendsView)window._renderTrendsView();
+  if(v==='reckoning'&&window._renderReckoningView)window._renderReckoningView();
   if(window._onViewSwitch)window._onViewSwitch(v);
   if(v==='rfi')renderRfiView();
   if(v==='comp')renderCompView();
@@ -44768,6 +44772,98 @@ window._droneOpenAllLinkedIn = function() {
 // Render the Drone Universe view. Pulls drone-classified orgs, computes
 // DARK/SPARSE/MAPPED band via _accBuildRollup, attaches pending-POC counts
 // from the primed cache, surfaces LinkedIn org URL on every row.
+// P13.231 (Block 5 / The Reckoning — Moment 7) — the money-truth surface.
+// Composes what was scattered across bdperf/trends/winloss into one Monday
+// read: weighted pipeline, won/lost/no-bid, concentration, coverage, top
+// pursuits. Point-in-time v1; week-over-week deltas arrive with the weekly
+// snapshot foundation (Block 5B). Spine: the operator sees Atlas as a whole
+// organism and decides where to invest next week. Numbers tell the truth —
+// every figure is computed deterministically from live workspace data.
+window._renderReckoningView = function() {
+  var view = document.getElementById('reckoning-view');
+  if (!view) return;
+  function fmt$(v){ if(!v||v<=0)return '$0'; if(v>=1e9)return '$'+(v/1e9).toFixed(1)+'B'; if(v>=1e6)return '$'+(v/1e6).toFixed(1)+'M'; if(v>=1e3)return '$'+Math.round(v/1e3)+'k'; return '$'+Math.round(v); }
+  function esc(s){ return String(s==null?'':s).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
+  var pwinFrac = (typeof window._pwinFrac==='function') ? window._pwinFrac : function(o){ return Number((o&&o.pwin)||0); };
+  var opps = window.opportunities || [];
+  var active=[], won=[], lost=[], nobid=[];
+  opps.forEach(function(o){ if(!o)return; var s=String(o.stage||'').toLowerCase(); if(s==='won')won.push(o); else if(s==='lost')lost.push(o); else if(s==='no-bid'||s==='no_bid')nobid.push(o); else if(s)active.push(o); });
+  var totalPipe=0, weighted=0, byCust={}, byAgency={};
+  active.forEach(function(o){ var v=Number(o.value||o.contractValue||0); var w=v*pwinFrac(o); totalPipe+=v; weighted+=w; if(w>0){ if(o.customerOrg){var c=String(o.customerOrg).trim(); if(c)byCust[c]=(byCust[c]||0)+w;} if(o.agency){var a=String(o.agency).trim(); if(a&&a.toLowerCase()!=='agency unknown')byAgency[a]=(byAgency[a]||0)+w;} } });
+  var wonVal=won.reduce(function(s,o){return s+Number(o.value||o.contractValue||0);},0);
+  function top3(map){ return Object.keys(map).map(function(k){return [k,map[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0,3); }
+  var custTop=top3(byCust), agencyTop=top3(byAgency);
+  var conc = (custTop.length && (!agencyTop.length || custTop[0][1]>=agencyTop[0][1])) ? {label:'customer',rows:custTop} : {label:'agency',rows:agencyTop};
+  var topShare = (conc.rows.length && weighted>0) ? Math.round(conc.rows[0][1]/weighted*100) : 0;
+  // Coverage across BD-target orgs (same basis as Where Atlas Stands)
+  var nodes = window.nodes || [];
+  var oppNames = new Set(); opps.forEach(function(o){ if(o&&o.name)oppNames.add(String(o.name).toLowerCase()); });
+  function isBd(n){ return n && (n.bdTarget || (n.name && oppNames.has(String(n.name).toLowerCase()))); }
+  var dark=0, sparse=0, mapped=0, totalBd=0;
+  if (typeof _accBuildRollup==='function'){
+    for(var i=0;i<nodes.length;i++){ var n=nodes[i]; if(!n||(n.type!=='company'&&n.type!=='government'))continue; if(!isBd(n))continue; totalBd++; try{ var r=_accBuildRollup(n); if(r.peopleCount===0)dark++; else if(r.peopleCount>=3)mapped++; else sparse++; }catch(e){} }
+  }
+  var coveragePct = totalBd ? Math.round(mapped/totalBd*100) : 0;
+  var topPursuits = active.map(function(o){ return {o:o, w:Number(o.value||o.contractValue||0)*pwinFrac(o)}; }).sort(function(a,b){return b.w-a.w;}).slice(0,6);
+  var ts = new Date().toLocaleString('en-US',{weekday:'long',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+
+  var tile = function(label,val,sub,color){ color=color||'var(--text)'; return '<div style="background:var(--s2);border:1px solid var(--b1);border-radius:3px;padding:16px 18px">'+
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);letter-spacing:.14em;font-weight:700;text-transform:uppercase">'+label+'</div>'+
+    '<div style="font-family:Antonio,sans-serif;font-size:30px;font-weight:700;color:'+color+';margin-top:6px;line-height:1">'+val+'</div>'+
+    (sub?'<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);margin-top:5px;letter-spacing:.04em">'+sub+'</div>':'')+
+  '</div>'; };
+
+  var h = '';
+  h += '<div style="padding:22px 32px 16px;border-bottom:1px solid var(--rule);background:linear-gradient(180deg,rgba(212,130,58,.04),transparent)">';
+  h += '<div style="font-family:Anton,sans-serif;font-size:28px;letter-spacing:.08em;text-transform:uppercase;color:var(--bone);line-height:1">The Reckoning</div>';
+  h += '<div style="margin-top:7px;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.10em;color:var(--paper-2);text-transform:uppercase">How Atlas actually stands &middot; '+esc(ts)+'</div>';
+  h += '</div>';
+  h += '<div style="flex:1;overflow-y:auto;padding:22px 32px 80px">';
+  // Money tiles
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:22px">';
+  h += tile('WEIGHTED PIPELINE', fmt$(weighted), active.length+' active pursuits', 'var(--gold)');
+  h += tile('TOTAL PIPELINE', fmt$(totalPipe), 'unweighted');
+  h += tile('WON', fmt$(wonVal), won.length+' deal'+(won.length===1?'':'s'), '#22c55e');
+  h += tile('LOST / NO-BID', String(lost.length+nobid.length), lost.length+' lost · '+nobid.length+' no-bid', '#ef4444');
+  h += '</div>';
+  // Concentration
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Money Concentration</div>';
+  if (conc.rows.length && weighted>0){
+    h += '<div style="margin-bottom:6px;font-size:13px;color:var(--t2)">Top '+esc(conc.label)+' carries <b style="color:'+(topShare>=40?'#f0a560':'var(--text)')+'">'+topShare+'%</b> of weighted pipeline'+(topShare>=40?' — <span style="color:#f0a560">concentration risk</span>':'')+'.</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:22px">';
+    conc.rows.forEach(function(row){ var pct=weighted?Math.round(row[1]/weighted*100):0; h += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--s1);border:1px solid var(--b1);border-radius:2px">'+
+      '<div style="flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(row[0])+'</div>'+
+      '<div style="width:120px;height:7px;background:var(--s3);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:var(--gold)"></div></div>'+
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper);width:84px;text-align:right">'+fmt$(row[1])+' · '+pct+'%</div>'+
+    '</div>'; });
+    h += '</div>';
+  } else {
+    h += '<div style="margin-bottom:22px;padding:14px;background:var(--s1);border:1px dashed var(--b2);border-radius:3px;color:var(--t3);font-size:13px">No weighted pipeline yet — score pursuits (value + p(win)) to see where the money concentrates.</div>';
+  }
+  // Coverage
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Coverage</div>';
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px">';
+  h += tile('MAPPED', String(mapped), coveragePct+'% of '+totalBd+' BD-target orgs', '#22c55e');
+  h += tile('SPARSE', String(sparse), '1-2 contacts', '#f0a560');
+  h += tile('DARK', String(dark), 'no relationship yet', '#ef4444');
+  h += '</div>';
+  // Top pursuits
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Top Pursuits by Weighted Value</div>';
+  if (topPursuits.length){
+    h += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:18px">';
+    topPursuits.forEach(function(tp){ var o=tp.o; var oidEsc=String(o.id).replace(/'/g,"\\'"); h += '<div onclick="window.switchView&&window.switchView(\'opps\');setTimeout(function(){window.selectOpp&&window.selectOpp(\''+oidEsc+'\')},120)" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;cursor:pointer" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">'+
+      '<div style="flex:1;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(o.name||'Pursuit')+'</div>'+
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em">'+esc(String(o.stage||'').toUpperCase())+'</div>'+
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--gold);width:70px;text-align:right">'+fmt$(tp.w)+'</div>'+
+    '</div>'; });
+    h += '</div>';
+  } else { h += '<div style="margin-bottom:18px;color:var(--t3);font-size:13px">No active pursuits.</div>'; }
+  // Honest note on deltas
+  h += '<div style="padding:12px 14px;background:rgba(95,179,184,.05);border:1px solid rgba(95,179,184,.2);border-left:3px solid #5fb3b8;border-radius:3px;font-size:12px;color:var(--t2);line-height:1.5">Week-over-week deltas — what accelerated, what stalled, where coverage moved — light up once weekly snapshots accumulate (the platform captures one each week from here).</div>';
+  h += '</div>';
+  view.innerHTML = h;
+};
+
 window._renderDroneUniverse = function() {
   var grid = document.getElementById('drone-grid');
   var empty = document.getElementById('drone-empty');
@@ -66755,6 +66851,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.230"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.231"></script>
 </body>
 </html>
