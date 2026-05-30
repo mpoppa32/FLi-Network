@@ -8899,7 +8899,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.217</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.218</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32513,7 +32513,20 @@ window.renderTodayView = function(){
     // Remove any existing callout (re-render hygiene)
     var existing = document.getElementById('today-quickstart-callout');
     if (existing) existing.remove();
-    if (!dismissed && hostP && hostP.parentElement) {
+    // P13.218 — after the first view, the Quick Start auto-collapses to a
+    // thin strip (Simplicity: a daily operator shouldn't see a how-to box
+    // every morning). _quickstartExpand sets the force flag + re-renders.
+    var seenKey = 'corsair-quickstart-seen-' + (window.currentWsId || 'default');
+    var qsSeen = false; try { qsSeen = localStorage.getItem(seenKey) === '1'; } catch(e){}
+    var qsForce = (window._quickstartForceExpand === true);
+    if (!dismissed && hostP && hostP.parentElement && qsSeen && !qsForce) {
+      var stripC = document.createElement('div');
+      stripC.id = 'today-quickstart-callout';
+      stripC.style.cssText = 'margin:0 22px 14px;padding:9px 16px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid var(--gold);border-radius:2px;display:flex;align-items:center;justify-content:space-between;gap:10px';
+      stripC.innerHTML = '<span onclick="window._quickstartExpand&&window._quickstartExpand()" style="cursor:pointer;flex:1;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase"><span style="display:inline-block;width:10px;margin-right:6px">&#9656;</span>Quick Start &middot; 5 min to wired-in</span>' +
+        '<button onclick="(function(){try{localStorage.setItem(\'' + wsKey + '\',\'1\');}catch(e){}var c=document.getElementById(\'today-quickstart-callout\');if(c)c.remove();})()" title="Dismiss &middot; won\'t show again" style="background:transparent;border:0;color:var(--paper-2);font-size:16px;cursor:pointer;line-height:1;padding:2px 6px;flex-shrink:0">&times;</button>';
+      hostP.parentElement.insertBefore(stripC, hostP);
+    } else if (!dismissed && hostP && hostP.parentElement) {
       var ops = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
       var unscored = ops.filter(function(o){
         var v = Number(o.value || o.contractValue || 0);
@@ -32525,6 +32538,7 @@ window.renderTodayView = function(){
       // P13.189 — sized up for demo visibility.
       callout.style.cssText = 'margin:0 22px 18px;padding:24px 28px;background:linear-gradient(135deg,rgba(212,130,58,.12),rgba(95,179,184,.07));border:1px solid rgba(212,130,58,.40);border-left:5px solid var(--gold);border-radius:3px;position:relative';
       var h = '';
+      h += '<button onclick="window._quickstartCollapse&&window._quickstartCollapse()" title="Collapse to a strip" style="position:absolute;top:13px;right:44px;background:transparent;border:0;color:var(--paper-2);font-size:15px;cursor:pointer;line-height:1;padding:2px 6px">&#9652;</button>';
       h += '<button onclick="(function(){try{localStorage.setItem(\'' + wsKey + '\',\'1\');}catch(e){}var c=document.getElementById(\'today-quickstart-callout\');if(c)c.remove();})()" title="Dismiss · won\'t show again" style="position:absolute;top:10px;right:12px;background:transparent;border:0;color:var(--paper-2);font-size:22px;cursor:pointer;line-height:1;padding:2px 6px">×</button>';
       h += '<div style="font-family:IBM Plex Mono,monospace;font-size:14px;font-weight:700;letter-spacing:.20em;color:var(--gold);text-transform:uppercase;margin-bottom:14px">Quick Start &nbsp;·&nbsp; 5 min to wired-in</div>';
       h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:' + (unscored > 0 ? '12px' : '0') + '">';
@@ -32556,6 +32570,10 @@ window.renderTodayView = function(){
       callout.innerHTML = h;
       // Insert BEFORE the rhythm host so it's the first thing below the action bar
       hostP.parentElement.insertBefore(callout, hostP);
+      // P13.218 — mark seen so the next render shows the collapsed strip; clear
+      // the one-shot force-expand flag.
+      try { localStorage.setItem(seenKey, '1'); } catch(e){}
+      window._quickstartForceExpand = false;
     }
   } catch(e){ console.warn('[P13.92 quickstart callout] failed:', e); }
   // P13.96 — ATLAS latest-update widget. Renders only when updates exist.
@@ -32781,6 +32799,12 @@ window._toggleTodayIntel = function(){
     try { window._loadExternalIntelligence && window._loadExternalIntelligence(); } catch(e){}
   }
 };
+
+// P13.218 — Quick Start expand/collapse. _quickstartExpand sets a one-shot
+// force flag and re-renders Today (idempotent — guarded relocations); the
+// quickstart block then builds the full callout instead of the strip.
+window._quickstartExpand = function(){ window._quickstartForceExpand = true; try { window.renderTodayView && window.renderTodayView(); } catch(e){} };
+window._quickstartCollapse = function(){ window._quickstartForceExpand = false; try { window.renderTodayView && window.renderTodayView(); } catch(e){} };
 
 // CRM P0.3 — Daily Brief Card collapse + persist
 window._corsairApplyBriefCollapsed = function(){
@@ -66348,6 +66372,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.217"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.218"></script>
 </body>
 </html>
