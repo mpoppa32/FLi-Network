@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.207</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.208</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -44163,9 +44163,38 @@ window._renderDroneUniverse = function() {
 // transition. Step 3 (the sweep) takes the longest — persistent purple
 // banner shows live N/M. Skip-confirm flags chained through so dialogs
 // don't break the chain.
+// P13.208 — persistent sync-state pill anchored top-right of viewport
+// so operator ALWAYS sees whether a sync is running, even when the
+// purple bulk-POC banner is off-screen or covered by browser chrome.
+function _atlasSyncPillShow(text) {
+  var pill = document.getElementById('atlas-sync-pill');
+  if (!pill) {
+    pill = document.createElement('div');
+    pill.id = 'atlas-sync-pill';
+    pill.style.cssText = 'position:fixed;top:14px;right:14px;z-index:999998;background:linear-gradient(135deg,rgba(34,197,94,.95),rgba(95,179,184,.92));color:#fff;padding:8px 14px;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;box-shadow:0 4px 12px rgba(0,0,0,.4);display:flex;align-items:center;gap:8px;cursor:default';
+    pill.innerHTML = '<span style="width:8px;height:8px;border-radius:50%;background:#fff;animation:atlas-sync-pulse 1.2s infinite"></span><span id="atlas-sync-pill-text">Sync running</span>';
+    if (!document.getElementById('atlas-sync-pill-style')) {
+      var st = document.createElement('style');
+      st.id = 'atlas-sync-pill-style';
+      st.textContent = '@keyframes atlas-sync-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }';
+      document.head.appendChild(st);
+    }
+    document.body.appendChild(pill);
+  }
+  var t = document.getElementById('atlas-sync-pill-text');
+  if (t && text) t.textContent = text;
+}
+function _atlasSyncPillHide() {
+  var pill = document.getElementById('atlas-sync-pill');
+  if (pill) pill.remove();
+}
+
 window._atlasRunFullSync = async function() {
-  if (!confirm('Run full sync now?\n\n  1. Monday.com pull (if API key configured)\n  2. Re-classify every org as drone / non-drone\n  3. Sweep technical-buy POCs across drone-only (runs until quota — banner shows progress)\n\n~25-50 min wall-clock total at 200/hr quota. Walk away after kicking off — banners show progress. Outreach Queue populates when step 3 completes.')) return;
+  // P13.208 — confirm() dialog removed. Operator clicks the button =
+  // intent to sync. The dialog was friction; if operator wants to
+  // abort, the persistent pill + banner both have Cancel buttons.
   var t0 = Date.now();
+  _atlasSyncPillShow('Sync · Step 1/3 Monday');
   // STEP 1 — Monday pull
   if (typeof window._mondayRunSync === 'function') {
     if (typeof toast === 'function') toast('⌖ Run full sync · Step 1/3: Monday.com pull…', 5000);
@@ -44176,20 +44205,25 @@ window._atlasRunFullSync = async function() {
   }
   // STEP 2 — Classify drones
   if (typeof window._atlasBulkClassifyDrones !== 'function') {
+    _atlasSyncPillHide();
     if (typeof toast === 'function') toast('✗ Run full sync aborted — classifier function not loaded', 6000);
     return;
   }
+  _atlasSyncPillShow('Sync · Step 2/3 Classify');
   if (typeof toast === 'function') toast('⌖ Step 2/3: Re-classifying drones…', 4000);
   try { await window._atlasBulkClassifyDrones({skipConfirm: true}); }
-  catch(e) { console.warn('[full sync] classify failed:', e && e.message); if (typeof toast === 'function') toast('✗ Classify failed: ' + (e && e.message), 6000); return; }
+  catch(e) { _atlasSyncPillHide(); console.warn('[full sync] classify failed:', e && e.message); if (typeof toast === 'function') toast('✗ Classify failed: ' + (e && e.message), 6000); return; }
   // STEP 3 — Sweep tech-buy POCs (drone only)
   if (typeof window._atlasBulkPOCDiscovery !== 'function') {
+    _atlasSyncPillHide();
     if (typeof toast === 'function') toast('✗ Run full sync aborted — sweep function not loaded', 6000);
     return;
   }
+  _atlasSyncPillShow('Sync · Step 3/3 Sweep POCs');
   if (typeof toast === 'function') toast('⌖ Step 3/3: Tech-buy POC sweep starting — purple banner shows live N/M (~25-50 min)', 8000);
   try { await window._atlasBulkPOCDiscovery({droneOnly:true, roleTargeted:true, skipConfirm:true}); }
-  catch(e) { console.warn('[full sync] sweep failed:', e && e.message); if (typeof toast === 'function') toast('✗ Sweep failed: ' + (e && e.message), 6000); return; }
+  catch(e) { _atlasSyncPillHide(); console.warn('[full sync] sweep failed:', e && e.message); if (typeof toast === 'function') toast('✗ Sweep failed: ' + (e && e.message), 6000); return; }
+  _atlasSyncPillHide();
   var dt = Math.round((Date.now() - t0) / 60000);
   if (typeof toast === 'function') toast('✓ Full sync complete in ~' + dt + ' min · open 📤 Outreach Queue to start sending', 12000);
 };
@@ -45731,7 +45765,7 @@ function _bulkPocShowBanner(total) {
   if (existing) existing.remove();
   var div = document.createElement('div');
   div.id = 'bulk-poc-banner';
-  div.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;background:linear-gradient(135deg,#0a1020 0%,#0d1426 100%);border:1px solid #8b5cf6;border-left:4px solid #8b5cf6;color:#f4ede0;padding:14px 22px;border-radius:4px;font-family:IBM Plex Sans,sans-serif;font-size:13px;box-shadow:0 10px 28px rgba(0,0,0,.65);min-width:520px;max-width:92vw';
+  div.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:999997;background:linear-gradient(135deg,#0a1020 0%,#0d1426 100%);border:1px solid #8b5cf6;border-left:4px solid #8b5cf6;color:#f4ede0;padding:14px 22px;border-radius:4px;font-family:IBM Plex Sans,sans-serif;font-size:13px;box-shadow:0 10px 28px rgba(0,0,0,.65);min-width:520px;max-width:92vw';
   div.innerHTML =
     '<div style="display:flex;align-items:center;gap:14px;justify-content:space-between">' +
       '<div style="flex:1;min-width:0">' +
@@ -65802,6 +65836,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.207"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.208"></script>
 </body>
 </html>
