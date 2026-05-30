@@ -245,6 +245,204 @@ async function searchOpenSources(orgName, orgType) {
   });
 }
 
+// P13.196 — Phase 2: role-targeted technical-buy POC sweep for the
+// drone outreach push. Distinct from searchOpenSources (which targets
+// generic defense BD — PM/KO/PEO/SAE). This one targets the people
+// who decide to incorporate Atlas motors into a drone platform: CTO,
+// VP Engineering, Chief Engineer, Director of Propulsion / Hardware /
+// Platforms, technical procurement.
+//
+// Also captures TWO things searchOpenSources doesn't:
+//   1. anchorEmail — one verified email at the org to anchor format
+//      inference (so we can infer first.last@ vs flast@ pattern for
+//      candidates whose direct email isn't published)
+//   2. orgInbox — a general inbox (info@/sales@/contact@/partnerships@)
+//      so EVERY org has at least one outreach path, even if no
+//      individual technical decision-maker is publicly findable.
+//
+// Returns { individualPOCs, anchorEmail, orgInbox } so the runner can
+// persist each into the right shape — individuals → /pendingPOCs,
+// anchor + orgInbox → /orgMeta.
+async function searchTechnicalDecisionMakers(orgName, orgType) {
+  if (!orgName) return { individualPOCs: [], anchorEmail: null, orgInbox: null };
+  if (!window._fbFunctions || !window._httpsCallable) {
+    throw new Error('AI proxy unavailable — Firebase Functions SDK not loaded.');
+  }
+  if (!window.currentWsId) {
+    throw new Error('No workspace selected.');
+  }
+  const system = 'You are a defense BD intelligence analyst with web search access. Atlas Motors needs to identify the TECHNICAL DECISION-MAKERS at this drone company — the people who would decide to incorporate Atlas\'s NDAA-compliant BLDC motors into the company\'s drone platform.\n\n' +
+    'CRITICAL: target ONLY the technical buy roles. NOT generic C-suite. NOT marketing or sales contacts. The roles that hold the propulsion / motor incorporation decision.\n\n' +
+    'Target roles, in priority order:\n' +
+    '  1. CTO / Chief Technology Officer / Chief Technical Officer\n' +
+    '  2. VP / SVP / Director of Engineering\n' +
+    '  3. Chief Engineer / Principal Engineer\n' +
+    '  4. Director / VP of Propulsion / Powertrain\n' +
+    '  5. Director / VP of Hardware / Hardware Engineering\n' +
+    '  6. Director / VP of Platforms / Vehicles / Air Vehicles\n' +
+    '  7. Head of Product (hardware-focused — not consumer/marketing product)\n' +
+    '  8. Co-founder with a technical title (Co-founder/CTO, Co-founder/Chief Engineer)\n' +
+    '  9. Director of Technical Procurement / Supply Chain (components / motors)\n\n' +
+    'Sources to use, in order:\n' +
+    '  · Company Engineering / Leadership / Team / About pages on the company website\n' +
+    '  · Public LinkedIn profiles\n' +
+    '  · Engineering bylines on the company blog or technical press releases\n' +
+    '  · Conference speaker bios (AUVSI Xponential, DoD events, AIAA)\n' +
+    '  · SEC 10-K and proxy filings for public companies\n\n' +
+    'Doctrine:\n' +
+    '  · PUBLIC PROFESSIONAL INFORMATION ONLY. No login-required sources. No paid databases. No breach data. No inferred guesses dressed as facts.\n' +
+    '  · Every candidate MUST have a verifiable sourceUrl where their name + technical role appears on the open web.\n' +
+    '  · Direct emails: capture ONLY when a "Contact me" link or published address exists. Never fabricate. Empty email is fine.\n' +
+    '  · Confidence: "high" = name+role on the org\'s OWN official Engineering/Leadership page. "medium" = press release, public LinkedIn that the person controls, SEC filing. "low" = third-party mention (news coverage, org-chart sites).\n' +
+    '  · FEWER STRONG > MORE WEAK. Three high-confidence technical candidates with verifiable sources beats eight low-confidence guesses.\n\n' +
+    'ALSO capture (independent of the technical POCs):\n' +
+    '  · anchorEmail — ONE verified email at this org with the person\'s name and role. Used downstream to infer the company\'s email format (first.last@, flast@, first@) so we can guess emails for the technical POCs whose direct email wasn\'t public. Common anchors: CEO, PR contact, investor relations email — anything whose address is published on the company website. Leave null if no verified email anywhere on the public site.\n' +
+    '  · orgInbox — the company\'s general public inbox. Check the Contact page, footer, About page. Common patterns: info@orgdomain.com, sales@, contact@, partnerships@, hello@, press@. Capture as fallback so every org has at least one outreach path. Leave null only if no general inbox is published anywhere public.';
+  const user = 'Target drone company: ' + orgName + '\n\n' +
+    'Use web_search to find official sources. Return ONLY a JSON object in this exact shape, no preamble, no markdown fence:\n\n' +
+    '{\n' +
+    '  "individualPOCs": [\n' +
+    '    {"name":"Jane Smith","role":"CTO","sourceUrl":"https://acme.com/leadership","sourceLabel":"Acme leadership page","confidence":"high","email":"","linkedin":"https://linkedin.com/in/janesmith"}\n' +
+    '  ],\n' +
+    '  "anchorEmail": {"address":"john.doe@acme.com","name":"John Doe","role":"CEO","sourceUrl":"https://acme.com/contact"},\n' +
+    '  "orgInbox": {"address":"info@acme.com","type":"general","sourceUrl":"https://acme.com/contact"}\n' +
+    '}\n\n' +
+    'individualPOCs: up to 8, ordered by role priority above. anchorEmail / orgInbox: each may be null if not publicly findable. If you find ZERO technical decision-makers but DO find an orgInbox, return an empty individualPOCs array and the inbox — that\'s the fallback path Atlas needs so no drone company is left without a contact route.';
+
+  const callable = window._httpsCallable(window._fbFunctions, 'anthropicProxy');
+  const result = await callable({
+    workspaceId: window.currentWsId,
+    model: 'claude-sonnet-4-6',
+    max_tokens: 3000,
+    system: system,
+    messages: [{ role: 'user', content: user }],
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }],
+  });
+  const data = (result && result.data) || {};
+  const blocks = data.content || [];
+  let jsonText = '';
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i] && blocks[i].type === 'text' && blocks[i].text) { jsonText = String(blocks[i].text).trim(); break; }
+  }
+  if (!jsonText) return { individualPOCs: [], anchorEmail: null, orgInbox: null };
+  jsonText = jsonText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+  let parsed;
+  try { parsed = JSON.parse(jsonText); }
+  catch (e) {
+    console.warn('[poc-tech] LLM returned non-JSON:', jsonText.slice(0, 200));
+    return { individualPOCs: [], anchorEmail: null, orgInbox: null };
+  }
+  const indiv = Array.isArray(parsed.individualPOCs) ? parsed.individualPOCs.slice(0, 8) : [];
+  const shaped = indiv.map(function(p, ix) {
+    const conf = (p.confidence === 'high' || p.confidence === 'medium' || p.confidence === 'low') ? p.confidence : 'low';
+    const roleScore = _scoreRoleTechnicalBuy(p.role || '');
+    return {
+      id: 'poc-tech-' + Date.now() + '-' + ix,
+      kind: 'tech-search',
+      personId: null,
+      name: _safeStr(p.name),
+      role: _safeStr(p.role),
+      org: orgName,
+      email: _safeStr(p.email),
+      linkedin: _safeStr(p.linkedin),
+      sourceUrl: _safeStr(p.sourceUrl),
+      source: _safeStr(p.sourceLabel || 'Public web') + ' (Claude · web_search · technical-buy)',
+      confidence: conf,
+      roleTier: 'technical-buy',
+      emailTier: p.email ? 'verified' : '',
+      score: Math.min(roleScore, 80),
+    };
+  });
+  return {
+    individualPOCs: shaped,
+    anchorEmail: parsed.anchorEmail && parsed.anchorEmail.address ? {
+      address: _safeStr(parsed.anchorEmail.address),
+      name: _safeStr(parsed.anchorEmail.name),
+      role: _safeStr(parsed.anchorEmail.role),
+      sourceUrl: _safeStr(parsed.anchorEmail.sourceUrl),
+    } : null,
+    orgInbox: parsed.orgInbox && parsed.orgInbox.address ? {
+      address: _safeStr(parsed.orgInbox.address),
+      type: _safeStr(parsed.orgInbox.type || 'general'),
+      sourceUrl: _safeStr(parsed.orgInbox.sourceUrl),
+    } : null,
+  };
+}
+
+// P13.196 — score a role string for technical-buy fit. Higher = better
+// match to the motor-incorporation decision. Lower-scored roles fall
+// through to general defense-BD scoring elsewhere.
+function _scoreRoleTechnicalBuy(role) {
+  const r = String(role || '').toLowerCase();
+  if (/\b(chief technology|chief technical|cto)\b/.test(r)) return 95;
+  if (/\b(chief engineer|principal engineer)\b/.test(r)) return 92;
+  if (/\b(vp|vice president|svp|director) (of )?(propulsion|powertrain)\b/.test(r)) return 92;
+  if (/\b(vp|vice president|svp|director) (of )?(engineering|engr)\b/.test(r)) return 90;
+  if (/\b(vp|vice president|svp|director) (of )?(hardware|hw engineering)\b/.test(r)) return 88;
+  if (/\b(vp|vice president|svp|director|head) (of )?(platforms?|vehicles?|air vehicles?|aircraft)\b/.test(r)) return 86;
+  if (/\b(head|director) (of )?(product)\b/.test(r) && /hardware|platform|vehicle/.test(r)) return 82;
+  if (/\bco-?founder\b/.test(r) && /technical|cto|engineer|chief|technology/.test(r)) return 80;
+  if (/\b(director|vp) (of )?(procurement|supply chain|sourcing)\b/.test(r) && /technical|component|hardware/.test(r)) return 78;
+  if (/\b(engineering manager|engineering lead)\b/.test(r)) return 65;
+  return 35;
+}
+
+// P13.196 — infer the email format pattern from a verified anchor.
+// Pattern strings used downstream:
+//   "first.last" → john.doe@x.com
+//   "flast"      → jdoe@x.com
+//   "first_last" → john_doe@x.com
+//   "firstlast"  → johndoe@x.com
+//   "first"      → john@x.com
+//   "lastfirst"  → doejohn@x.com
+//   "f.last"     → j.doe@x.com
+// Returns null if no confident pattern match (operator can override).
+function inferEmailFormat(anchorAddress, anchorName) {
+  if (!anchorAddress || !anchorName) return null;
+  const at = anchorAddress.indexOf('@');
+  if (at < 0) return null;
+  const local = anchorAddress.slice(0, at).toLowerCase().replace(/[^a-z0-9._]/g, '');
+  const parts = String(anchorName).toLowerCase().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return null;
+  const first = parts[0].replace(/[^a-z]/g, '');
+  const last = parts[parts.length - 1].replace(/[^a-z]/g, '');
+  if (!first || !last) return null;
+  if (local === first + '.' + last) return 'first.last';
+  if (local === first[0] + last) return 'flast';
+  if (local === first + last) return 'firstlast';
+  if (local === first + '_' + last) return 'first_last';
+  if (local === first) return 'first';
+  if (local === last + first) return 'lastfirst';
+  if (local === first[0] + '.' + last) return 'f.last';
+  if (local === last) return 'last';
+  if (local === last + '.' + first) return 'last.first';
+  return null;
+}
+
+// P13.196 — apply a format pattern to a name + domain to produce a
+// best-guess email. Used downstream when format is known from an
+// anchor and a candidate has no direct email.
+function applyEmailFormat(pattern, personName, domain) {
+  if (!pattern || !personName || !domain) return '';
+  const parts = String(personName).toLowerCase().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  const first = (parts[0] || '').replace(/[^a-z]/g, '');
+  const last = (parts[parts.length - 1] || '').replace(/[^a-z]/g, '');
+  if (!first) return '';
+  switch (pattern) {
+    case 'first.last': return last ? first + '.' + last + '@' + domain : '';
+    case 'flast':      return last ? first[0] + last + '@' + domain : '';
+    case 'firstlast':  return last ? first + last + '@' + domain : '';
+    case 'first_last': return last ? first + '_' + last + '@' + domain : '';
+    case 'first':      return first + '@' + domain;
+    case 'lastfirst':  return last ? last + first + '@' + domain : '';
+    case 'f.last':     return last ? first[0] + '.' + last + '@' + domain : '';
+    case 'last':       return last ? last + '@' + domain : '';
+    case 'last.first': return last ? last + '.' + first + '@' + domain : '';
+  }
+  return '';
+}
+
 // Promote a candidate to a Person node in the workspace. Caller does
 // the actual addNode call; this just shapes the payload so it matches
 // the existing schema.
@@ -267,9 +465,13 @@ if (typeof window !== 'undefined') {
   window.Corsair.poc = {
     findExisting: findExisting,
     searchOpenSources: searchOpenSources,
+    searchTechnicalDecisionMakers: searchTechnicalDecisionMakers,
+    inferEmailFormat: inferEmailFormat,
+    applyEmailFormat: applyEmailFormat,
     shapeCandidateForWorkspace: shapeCandidateForWorkspace,
     scoreRoleDefense: _scoreRoleDefense,
+    scoreRoleTechnicalBuy: _scoreRoleTechnicalBuy,
   };
 }
 
-export { findExisting, searchOpenSources, shapeCandidateForWorkspace };
+export { findExisting, searchOpenSources, searchTechnicalDecisionMakers, inferEmailFormat, applyEmailFormat, shapeCandidateForWorkspace };

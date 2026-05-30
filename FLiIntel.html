@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.195</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.196</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10557,7 +10557,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button onclick="window._atlasBulkClassifyDrones&&window._atlasBulkClassifyDrones()" title="Re-run drone classifier across every org (DDP segment, Monday tags, name allowlist, keyword regex). Operator-overridden orgs are preserved." style="padding:9px 14px;border:1px solid #8b5cf6;border-radius:6px;background:rgba(139,92,246,.10);color:#8b5cf6;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer">⌖ Classify all</button>
-      <button onclick="window._atlasBulkPOCDiscovery&&window._atlasBulkPOCDiscovery({droneOnly:true})" title="Run POC search across drone-classified orgs only" style="padding:9px 14px;border:1px solid #22c55e;border-radius:6px;background:rgba(34,197,94,.10);color:#22c55e;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer">⌖ Sweep POCs (drone only)</button>
+      <button onclick="window._atlasBulkPOCDiscovery&&window._atlasBulkPOCDiscovery({droneOnly:true,roleTargeted:true})" title="Run role-targeted technical-buy POC search across drone-classified orgs: CTO, VP Engineering, Director of Propulsion / Hardware / Platforms. Also captures company email format anchor + general inbox fallback so every org gets a contact path." style="padding:9px 14px;border:1px solid #22c55e;border-radius:6px;background:rgba(34,197,94,.10);color:#22c55e;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer">⌖ Sweep technical-buy POCs (drone)</button>
       <button onclick="window._droneOpenAllLinkedIn&&window._droneOpenAllLinkedIn()" title="Open the LinkedIn company page for every drone org in this filter" style="padding:9px 14px;border:1px solid #5fb3b8;border-radius:6px;background:rgba(95,179,184,.10);color:#5fb3b8;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer">🔗 Open all LinkedIn pages</button>
       <select id="drone-band-filter" onchange="window._renderDroneUniverse&&window._renderDroneUniverse()" style="padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--text);font-size:13px;font-family:IBM Plex Sans,sans-serif"><option value="">All bands</option><option value="DARK">DARK only</option><option value="SPARSE">SPARSE only</option><option value="MAPPED">MAPPED only</option></select>
       <select id="drone-source-filter" onchange="window._renderDroneUniverse&&window._renderDroneUniverse()" style="padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--text);font-size:13px;font-family:IBM Plex Sans,sans-serif"><option value="">Any classifier source</option><option value="DDP">DDP segment</option><option value="Active">Active customer</option><option value="Monday tag">Monday tag</option><option value="keyword">Keyword match</option><option value="allowlist">Known prime</option><option value="operator">Operator override</option></select>
@@ -44810,8 +44810,20 @@ window._atlasBulkPOCDiscovery = async function(opts){
       total: queue.length, currentLabel: '[' + TIER_LABELS[item.tier] + '] ' + org.name
     });
     try {
-      var found = await window.Corsair.poc.searchOpenSources(org.name, org.type);
       var ts = Date.now();
+      var found, anchorEmail = null, orgInbox = null;
+      // P13.196 — roleTargeted route uses searchTechnicalDecisionMakers
+      // (technical-buy roles: CTO / VP Eng / Director Propulsion / etc.)
+      // and captures the anchor email + general inbox for downstream
+      // format inference + guaranteed-contact-path fallback.
+      if (opts.roleTargeted && typeof window.Corsair.poc.searchTechnicalDecisionMakers === 'function') {
+        var techResult = await window.Corsair.poc.searchTechnicalDecisionMakers(org.name, org.type);
+        found = techResult.individualPOCs || [];
+        anchorEmail = techResult.anchorEmail;
+        orgInbox = techResult.orgInbox;
+      } else {
+        found = await window.Corsair.poc.searchOpenSources(org.name, org.type);
+      }
       if (found && found.length && typeof window.fbSet === 'function' && typeof window.wsPath === 'function') {
         for (var pi = 0; pi < found.length; pi++) {
           try {
@@ -44824,6 +44836,26 @@ window._atlasBulkPOCDiscovery = async function(opts){
           } catch (pe) { /* per-candidate write best-effort */ }
         }
         try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/pendingCount'), found.length); } catch(me){}
+      }
+      // P13.196 — persist anchor + orgInbox + inferred format so the
+      // outreach surface can render fallback rows + format-confirmed
+      // email guesses for candidates whose direct email wasn't public.
+      if (anchorEmail && anchorEmail.address) {
+        try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/anchorEmail'), anchorEmail); } catch(ae){}
+        if (window.Corsair.poc.inferEmailFormat) {
+          var fmt = window.Corsair.poc.inferEmailFormat(anchorEmail.address, anchorEmail.name);
+          if (fmt) {
+            try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/emailFormat'), fmt); } catch(fe){}
+          }
+        }
+        var atIx = anchorEmail.address.indexOf('@');
+        if (atIx > 0) {
+          var dom = anchorEmail.address.slice(atIx + 1).toLowerCase();
+          try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/companyDomain'), dom); } catch(de){}
+        }
+      }
+      if (orgInbox && orgInbox.address) {
+        try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/orgInbox'), orgInbox); } catch(oe){}
       }
       try { await window.fbSet(window.wsPath('orgMeta/' + safeOrgKey + '/lastPOCSearchAt'), ts); } catch(me){}
       processed++;
@@ -64920,6 +64952,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.195"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.196"></script>
 </body>
 </html>

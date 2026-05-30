@@ -74,6 +74,12 @@
   <div id="pending-list"></div>
 </div>
 
+<div class="card" id="fallback-card" style="display:none;border-left-color:#8b5cf6">
+  <div class="card-label" style="color:#8b5cf6">Step 2b · Fallback inboxes · drone orgs with no individual technical-buy POC (general info@/sales@/contact@ only)</div>
+  <div id="fallback-stats" style="font-size:13px;color:var(--paper);margin-bottom:12px"></div>
+  <div id="fallback-list"></div>
+</div>
+
 <div class="card" id="stats-card" style="display:none">
   <div class="card-label">Step 3 · G2 portfolio state</div>
   <div class="stat-grid" id="stat-grid"></div>
@@ -149,7 +155,31 @@ function guessEmail(personName, domain) {
   return first + "." + last + "@" + domain;
 }
 
-let nodes={}, links=[], meetings=[], pendingPOCs={};
+let nodes={}, links=[], meetings=[], pendingPOCs={}, orgMeta={};
+
+// P13.196 — apply the verified email format (inferred from anchor) to a
+// name + domain. Mirrors poc.js applyEmailFormat — duplicated here
+// since g2-outreach.html runs outside the corsair bundle.
+function applyFormat(pattern, personName, domain) {
+  if (!pattern || !personName || !domain) return "";
+  const parts = String(personName).toLowerCase().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  const first = (parts[0] || "").replace(/[^a-z]/g, "");
+  const last = (parts[parts.length - 1] || "").replace(/[^a-z]/g, "");
+  if (!first) return "";
+  switch (pattern) {
+    case "first.last": return last ? first + "." + last + "@" + domain : "";
+    case "flast":      return last ? first[0] + last + "@" + domain : "";
+    case "firstlast":  return last ? first + last + "@" + domain : "";
+    case "first_last": return last ? first + "_" + last + "@" + domain : "";
+    case "first":      return first + "@" + domain;
+    case "lastfirst":  return last ? last + first + "@" + domain : "";
+    case "f.last":     return last ? first[0] + "." + last + "@" + domain : "";
+    case "last":       return last ? last + "@" + domain : "";
+    case "last.first": return last ? last + "." + first + "@" + domain : "";
+  }
+  return "";
+}
 
 // Use signInWithRedirect directly — matches the main app's P13.186
 // fix that handles Chrome's storage partitioning. Popup mode silently
@@ -182,11 +212,12 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 async function loadAll() {
-  const [nSnap, lSnap, mSnap, pSnap] = await Promise.all([
+  const [nSnap, lSnap, mSnap, pSnap, oSnap] = await Promise.all([
     get(ref(db, "workspaces/" + WS_ID + "/nodes")),
     get(ref(db, "workspaces/" + WS_ID + "/links")),
     get(ref(db, "workspaces/" + WS_ID + "/meetings")),
-    get(ref(db, "workspaces/" + WS_ID + "/pendingPOCs"))
+    get(ref(db, "workspaces/" + WS_ID + "/pendingPOCs")),
+    get(ref(db, "workspaces/" + WS_ID + "/orgMeta"))
   ]);
   nodes = nSnap.val() || {};
   const rawLinks = lSnap.val() || {};
@@ -194,30 +225,53 @@ async function loadAll() {
   const rawMeetings = mSnap.val() || {};
   meetings = Object.values(rawMeetings).filter(Boolean);
   pendingPOCs = pSnap.val() || {};
+  orgMeta = oSnap.val() || {};
   renderPending();
+  renderFallbackInboxes();
   render();
 }
 
 function renderPending() {
-  // Flatten pendingPOCs across orgs, resolve org name, infer domain, guess email.
+  // Flatten pendingPOCs across orgs. P13.196 — email resolution tiers:
+  //   1. verified — Claude returned a direct email from a public source
+  //   2. inferred — orgMeta has emailFormat from a verified anchor,
+  //      applied to candidate's name + companyDomain
+  //   3. guessed  — naive first.last@inferred-domain fallback (pre-P13.196)
+  // Tier surfaces visibly so the operator knows where to verify.
   const items = [];
   for (const orgId in pendingPOCs) {
     const org = nodes[orgId];
     if (!org || !org.name) continue;
-    const domain = inferOrgDomain(org.name);
+    const meta = orgMeta[orgId] || {};
+    const verifiedDomain = (meta.companyDomain || "").toLowerCase();
+    const inferredFormat = meta.emailFormat || "";
+    const naiveDomain = verifiedDomain || inferOrgDomain(org.name);
     const candObj = pendingPOCs[orgId];
     for (const candId in candObj) {
       const c = candObj[candId];
       if (!c || !c.name) continue;
-      const guessed = c.email && String(c.email).trim() ? c.email : guessEmail(c.name, domain);
+      let email = "", emailTier = "";
+      if (c.email && String(c.email).trim()) {
+        email = String(c.email).trim();
+        emailTier = "verified";
+      } else if (inferredFormat && verifiedDomain) {
+        email = applyFormat(inferredFormat, c.name, verifiedDomain);
+        if (email) emailTier = "inferred";
+      }
+      if (!email) {
+        email = guessEmail(c.name, naiveDomain);
+        emailTier = email ? "guessed" : "";
+      }
       items.push({
         candId, orgId, orgName: org.name,
         name: c.name, role: c.role || "",
         confidence: c.confidence || "low",
+        roleTier: c.roleTier || "",
         linkedin: c.linkedin || "",
         sourceUrl: c.sourceUrl || "",
-        email: guessed,
-        emailIsGuess: !(c.email && String(c.email).trim()),
+        email,
+        emailTier,
+        emailIsGuess: emailTier !== "verified",
       });
     }
   }
@@ -254,10 +308,21 @@ function renderPending() {
       const confColor = p.confidence === "high" ? "var(--green)" : p.confidence === "medium" ? "var(--amber)" : "var(--paper-2)";
       const liLink = p.linkedin ? '<a href="' + escAttr(p.linkedin) + '" target="_blank" style="color:var(--teal);font-size:11px;text-decoration:none">LinkedIn</a>' : "";
       const srcLink = p.sourceUrl ? ' <a href="' + escAttr(p.sourceUrl) + '" target="_blank" style="color:var(--paper-2);font-size:11px;text-decoration:none">src</a>' : "";
-      const emailRender = '<span style="' + (p.emailIsGuess ? 'color:var(--gold);font-style:italic' : 'color:var(--teal)') + '">' + esc(p.email || "(no guess)") + '</span>';
+      const tierBadge = p.emailTier === "verified"
+        ? '<span style="background:rgba(34,197,94,.18);color:var(--green);padding:1px 6px;border-radius:2px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;margin-right:6px">VERIFIED</span>'
+        : p.emailTier === "inferred"
+          ? '<span style="background:rgba(95,179,184,.18);color:var(--teal);padding:1px 6px;border-radius:2px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;margin-right:6px" title="Format pattern confirmed by an anchor email at this org">INFERRED</span>'
+          : p.emailTier === "guessed"
+            ? '<span style="background:rgba(212,130,58,.15);color:var(--gold);padding:1px 6px;border-radius:2px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;margin-right:6px" title="Naive first.last@guessed-domain — verify before sending">GUESSED</span>'
+            : '';
+      const roleTierBadge = p.roleTier === "technical-buy"
+        ? '<span style="background:rgba(139,92,246,.18);color:#8b5cf6;padding:1px 5px;border-radius:2px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;margin-left:6px" title="Targeted as a technical-buy role for motor-incorporation decisions">TECH-BUY</span>'
+        : "";
+      const emailColor = p.emailTier === "verified" ? "color:var(--green)" : p.emailTier === "inferred" ? "color:var(--teal)" : "color:var(--gold);font-style:italic";
+      const emailRender = tierBadge + '<span style="' + emailColor + '">' + esc(p.email || "(no guess)") + '</span>';
       const btnAttr = "onclick=\"window._composeEmail('" + escJS(p.name) + "','" + escJS(p.email) + "','" + escJS(p.orgName) + "',true)\"";
       html += '<div class="poc-row">';
-      html += '<div><div class="poc-name">' + esc(p.name) + '</div><div class="poc-role">' + esc(p.role) + '</div></div>';
+      html += '<div><div class="poc-name">' + esc(p.name) + roleTierBadge + '</div><div class="poc-role">' + esc(p.role) + '</div></div>';
       html += '<div class="poc-email">' + emailRender + '</div>';
       html += '<div class="last-touch" style="color:' + confColor + ';font-weight:700">' + esc((p.confidence||"low").toUpperCase()) + '</div>';
       html += '<div>' + liLink + srcLink + '</div>';
@@ -470,6 +535,76 @@ window._bulkOpenMailto = function() {
 // Bulk-open LinkedIn profiles for all candidates that had one returned
 // from Claude web search. Profile URLs aren't guessable (LinkedIn slugs
 // are user-chosen), so candidates without a linkedin field are skipped.
+// P13.196 — Fallback inboxes: drone orgs where Claude found NO individual
+// technical-buy POC but DID find the company's general inbox (info@,
+// sales@, contact@, partnerships@). Renders a row per org so every drone
+// company has at least one outreach path. Bulk-open at the section
+// header for one-click multi-tab launches.
+function renderFallbackInboxes() {
+  const card = $("fallback-card");
+  if (!card) return;
+  const rows = [];
+  for (const orgId in orgMeta) {
+    const meta = orgMeta[orgId];
+    if (!meta || !meta.orgInbox || !meta.orgInbox.address) continue;
+    const hasIndividual = pendingPOCs[orgId] && Object.keys(pendingPOCs[orgId]).length > 0;
+    if (hasIndividual) continue;
+    const org = nodes[orgId];
+    if (!org || !org.name) continue;
+    rows.push({
+      orgId, orgName: org.name,
+      inboxAddress: meta.orgInbox.address,
+      inboxType: meta.orgInbox.type || "general",
+      inboxSourceUrl: meta.orgInbox.sourceUrl || ""
+    });
+  }
+  if (rows.length === 0) { card.style.display = "none"; return; }
+  card.style.display = "block";
+  window._fallbackRows = rows;
+  $("fallback-stats").innerHTML =
+    '<b style="color:#8b5cf6">' + rows.length + '</b> drone org' + (rows.length===1?"":"s") +
+    ' with general inbox but no individual POC. ' +
+    '<button onclick="window._bulkOpenFallbackInboxes()" style="margin-left:10px;padding:6px 12px;background:rgba(139,92,246,.18);border:1px solid #8b5cf6;color:#8b5cf6;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">🚀 Open all in Gmail compose tabs</button>' +
+    '<span id="fallback-status" style="margin-left:12px;font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2)"></span>';
+  rows.sort((a, b) => a.orgName.localeCompare(b.orgName));
+  let html = '';
+  for (const r of rows) {
+    const srcLink = r.inboxSourceUrl
+      ? '<a href="' + escAttr(r.inboxSourceUrl) + '" target="_blank" style="color:var(--paper-2);font-size:11px;text-decoration:none">src</a>'
+      : '';
+    const btnAttr = "onclick=\"window._composeEmail('Team','" + escJS(r.inboxAddress) + "','" + escJS(r.orgName) + "',false)\"";
+    html += '<div class="org-card has-poc" style="border-left-color:#8b5cf6">';
+    html += '<div class="org-head"><div class="org-name">' + esc(r.orgName) + '</div><div class="org-meta"><span class="pill" style="background:rgba(139,92,246,.18);color:#8b5cf6">' + esc(r.inboxType.toUpperCase()) + ' INBOX</span></div></div>';
+    html += '<div class="poc-list">';
+    html += '<div class="poc-row">';
+    html += '<div><div class="poc-name">Company inbox</div><div class="poc-role">No individual technical-buy POC found</div></div>';
+    html += '<div class="poc-email"><span style="color:#8b5cf6">' + esc(r.inboxAddress) + '</span></div>';
+    html += '<div class="last-touch never">never</div>';
+    html += '<div>' + srcLink + '</div>';
+    html += '<div><button class="ghost" ' + btnAttr + '>📧 Email</button></div>';
+    html += '</div>';
+    html += '</div></div>';
+  }
+  $("fallback-list").innerHTML = html;
+}
+
+window._bulkOpenFallbackInboxes = function() {
+  const rows = window._fallbackRows || [];
+  if (!rows.length) return;
+  let opened = 0, blocked = 0;
+  for (const r of rows) {
+    const body = _atlasOutreachBody("Team");
+    const url = "https://mail.google.com/mail/?view=cm&fs=1&to=" +
+      encodeURIComponent(r.inboxAddress) +
+      "&su=" + encodeURIComponent(_ATLAS_SUBJECT) +
+      "&body=" + encodeURIComponent(body);
+    const w = window.open(url, "_blank");
+    if (w) opened++; else blocked++;
+  }
+  const status = $("fallback-status");
+  if (status) status.innerHTML = '<b style="color:var(--green)">' + opened + ' opened</b>' + (blocked ? ' · <b style="color:var(--red)">' + blocked + ' blocked (allow popups)</b>' : '');
+};
+
 window._bulkOpenLinkedIn = function() {
   const items = (window._pendingItems || []).filter(p => p.linkedin);
   if (!items.length) { $("bulk-status").textContent = "No candidates have a LinkedIn URL on file."; return; }
