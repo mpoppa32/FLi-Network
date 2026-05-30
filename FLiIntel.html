@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.210</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.211</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -44745,18 +44745,30 @@ window._renderOutreachQueueView = async function() {
           '<button onclick="document.getElementById(\'outreach-stage-filter\').value=\'dormant\';window._renderOutreachQueueView()" style="padding:6px 12px;background:rgba(239,68,68,.18);border:1px solid #ef4444;color:#ef4444;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Filter dormant</button>' +
         '</div>';
     }
+    // P13.211 — stat strip restructured as discrete labeled chips so
+    // numbers can't get visually disambiguated when the flex layout
+    // wraps. Each chip is one block with the number ABOVE the label,
+    // and the chip itself has a background so the boundary is clear.
+    function _chip(num, lbl, color) {
+      return '<div style="display:inline-flex;flex-direction:column;align-items:center;padding:6px 12px;border-radius:3px;background:rgba(125,118,105,.10);border:1px solid rgba(125,118,105,.25);min-width:56px">' +
+        '<span style="color:' + color + ';font-weight:700;font-size:18px;font-family:Antonio,sans-serif;line-height:1">' + num + '</span>' +
+        '<span style="color:var(--paper-2);font-size:9px;font-family:IBM Plex Mono,monospace;letter-spacing:.08em;text-transform:uppercase;margin-top:3px">' + lbl + '</span>' +
+      '</div>';
+    }
     strip.style.display = 'block';
     strip.style.flexDirection = 'column';
     strip.style.alignItems = 'stretch';
     strip.innerHTML =
       actionableBanner +
-      '<div style="display:flex;gap:18px;flex-wrap:wrap"><span style="color:#5fb3b8;font-weight:700">' + counts.total + '</span> targets · ' +
-      '<span style="color:#d4823a;font-weight:700">' + (counts.cold||0) + '</span> cold · ' +
-      '<span style="color:#7d7669;font-weight:700">' + (counts['sent-recent']||0) + '</span> sent &lt;' + thr.awaitingDays + 'd · ' +
-      '<span style="color:#f59e0b;font-weight:700">' + (counts.awaiting||0) + '</span> awaiting · ' +
-      '<span style="color:#22c55e;font-weight:700">' + (counts.replied||0) + '</span> replied · ' +
-      '<span style="color:#5fb3b8;font-weight:700">' + ((counts['post-meeting']||0) + (counts['post-demo']||0)) + '</span> post-touch · ' +
-      '<span style="color:#ef4444;font-weight:700">' + (counts.dormant||0) + '</span> dormant</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:stretch">' +
+        _chip(counts.total, 'Targets', '#5fb3b8') +
+        _chip(counts.cold||0, 'Cold', '#d4823a') +
+        _chip(counts['sent-recent']||0, 'Sent ' + thr.awaitingDays + 'd', '#7d7669') +
+        _chip(counts.awaiting||0, 'Awaiting', '#f59e0b') +
+        _chip(counts.replied||0, 'Replied', '#22c55e') +
+        _chip((counts['post-meeting']||0) + (counts['post-demo']||0), 'Post-touch', '#5fb3b8') +
+        _chip(counts.dormant||0, 'Dormant', '#ef4444') +
+      '</div>' +
       sweepDiag;
   }
 
@@ -65895,6 +65907,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.210"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.211"></script>
 </body>
 </html>
