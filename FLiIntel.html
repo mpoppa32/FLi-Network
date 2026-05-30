@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.206</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.207</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -44666,6 +44666,39 @@ window._renderOutreachQueueView = async function() {
     var thr = window._atlasOutreachThresholds || { awaitingDays:7, dormantDays:60 };
     var staleCount = (counts.awaiting||0) + (counts.dormant||0);
     var actionableBanner = '';
+
+    // P13.207 — inline diagnostic so 'why is sync bringing nothing' is
+    // self-answering. Walks drone orgs, counts how many were searched
+    // within the 7d skip filter, computes the queue size the next sweep
+    // would process. Plus most recent sync timestamp + quota counter.
+    var SEVEN_D = 7 * 86400000;
+    var droneTotal = 0, droneSearched = 0, droneRecentlySearched = 0, lastSearchAt = 0;
+    for (var di = 0; di < allNodes.length; di++) {
+      var dn = allNodes[di];
+      if (!dn || (dn.type !== 'company' && dn.type !== 'government' && dn.type !== 'org')) continue;
+      if (typeof window._atlasIsDroneCompany !== 'function') break;
+      if (!window._atlasIsDroneCompany(dn).is) continue;
+      droneTotal++;
+      var dKey = String(dn.id).replace(/[#$\[\]/.]/g, '_');
+      var dMeta = orgMeta[dKey];
+      if (dMeta && dMeta.lastPOCSearchAt) {
+        droneSearched++;
+        if ((NOW - dMeta.lastPOCSearchAt) < SEVEN_D) droneRecentlySearched++;
+        if (dMeta.lastPOCSearchAt > lastSearchAt) lastSearchAt = dMeta.lastPOCSearchAt;
+      }
+    }
+    var queueSize = droneTotal - droneRecentlySearched;
+    var lastSearchStr = lastSearchAt ? Math.floor((NOW - lastSearchAt) / 60000) + ' min ago' : 'never';
+    var sweepDiag =
+      '<div style="grid-column:1/-1;padding:8px 14px;margin-top:6px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.3);border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper);letter-spacing:.04em;display:flex;gap:14px;flex-wrap:wrap;align-items:center;width:100%;box-sizing:border-box">' +
+        '<span style="color:#5fb3b8;font-weight:700;letter-spacing:.10em;text-transform:uppercase">Sweep state</span>' +
+        '<span><b style="color:#8b5cf6">' + droneTotal + '</b> drone orgs</span>' +
+        '<span><b style="color:var(--text)">' + droneSearched + '</b> ever searched</span>' +
+        '<span><b style="color:var(--gold)">' + droneRecentlySearched + '</b> searched in last 7d (skipped)</span>' +
+        '<span style="color:' + (queueSize > 0 ? '#22c55e' : '#7d7669') + ';font-weight:700">→ ' + queueSize + ' in next sweep queue</span>' +
+        '<span style="margin-left:auto;color:var(--paper-2)">Last sync: ' + lastSearchStr + '</span>' +
+      '</div>';
+
     // P13.198 — prominent stale-outreach banner. Shown only when targets
     // actually need follow-up. Quick-action buttons filter the queue.
     if (staleCount > 0) {
@@ -44679,15 +44712,18 @@ window._renderOutreachQueueView = async function() {
         '</div>';
     }
     strip.style.display = 'block';
+    strip.style.flexDirection = 'column';
+    strip.style.alignItems = 'stretch';
     strip.innerHTML =
       actionableBanner +
-      '<span style="color:#5fb3b8;font-weight:700">' + counts.total + '</span> targets · ' +
+      '<div style="display:flex;gap:18px;flex-wrap:wrap"><span style="color:#5fb3b8;font-weight:700">' + counts.total + '</span> targets · ' +
       '<span style="color:#d4823a;font-weight:700">' + (counts.cold||0) + '</span> cold · ' +
       '<span style="color:#7d7669;font-weight:700">' + (counts['sent-recent']||0) + '</span> sent &lt;' + thr.awaitingDays + 'd · ' +
       '<span style="color:#f59e0b;font-weight:700">' + (counts.awaiting||0) + '</span> awaiting · ' +
       '<span style="color:#22c55e;font-weight:700">' + (counts.replied||0) + '</span> replied · ' +
       '<span style="color:#5fb3b8;font-weight:700">' + ((counts['post-meeting']||0) + (counts['post-demo']||0)) + '</span> post-touch · ' +
-      '<span style="color:#ef4444;font-weight:700">' + (counts.dormant||0) + '</span> dormant';
+      '<span style="color:#ef4444;font-weight:700">' + (counts.dormant||0) + '</span> dormant</div>' +
+      sweepDiag;
   }
 
   if (filtered.length === 0) {
@@ -65766,6 +65802,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.206"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.207"></script>
 </body>
 </html>
