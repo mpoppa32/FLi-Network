@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.197</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.198</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -44121,33 +44121,58 @@ window._atlasSkipPerson = async function(targetId, label) {
   if (typeof window._renderOutreachQueueView === 'function') window._renderOutreachQueueView();
 };
 
+// P13.198 — workspace-tunable thresholds. Loaded from
+// /workspaces/{wsId}/settings/outreachThresholds on first queue render;
+// defaults applied if absent. Operator can write via RTDB console paste
+// (admin-only by Firebase rules, same gate as anthropicHourlyQuota).
+window._atlasOutreachThresholds = window._atlasOutreachThresholds || {
+  postDemoDays: 14,
+  postMeetingDays: 7,
+  awaitingDays: 7,   // cold → awaiting (needs follow-up) at this age
+  dormantDays: 60    // awaiting → dormant at this age
+};
+
+window._atlasLoadOutreachThresholds = async function() {
+  if (typeof window.fbGet !== 'function' || typeof window.wsPath !== 'function') return;
+  try {
+    var snap = await window.fbGet(window.wsPath('settings/outreachThresholds'));
+    var val = snap && snap.val();
+    if (val && typeof val === 'object') {
+      window._atlasOutreachThresholds = Object.assign({
+        postDemoDays: 14, postMeetingDays: 7, awaitingDays: 7, dormantDays: 60
+      }, val);
+    }
+  } catch(e) { /* defaults already set */ }
+};
+
 // Compute the cycle stage for a target. Stage rules in priority order:
-//   post-demo: any meeting in last 14d tagged demo (or title contains 'demo')
-//   post-meeting: any meeting in last 7d
+//   post-demo: any meeting in last postDemoDays days tagged demo
+//   post-meeting: any meeting in last postMeetingDays days
 //   replied: a reply-marker record exists
 //   cold: zero outreach + zero meetings
-//   dormant: last outreach >60d ago
-//   awaiting: last outreach 7-60d ago
-//   sent-recent: last outreach <7d ago
+//   dormant: last outreach >dormantDays days ago
+//   awaiting: last outreach awaitingDays..dormantDays days ago — needs follow-up
+//   sent-recent: last outreach <awaitingDays days ago — still in window
 window._atlasComputeCycleStage = function(targetId, meetingsForPerson, NOW) {
   NOW = NOW || Date.now();
+  var thr = window._atlasOutreachThresholds || { postDemoDays:14, postMeetingDays:7, awaitingDays:7, dormantDays:60 };
   var outreachRecs = (window._atlasOutreachIndex && window._atlasOutreachIndex[targetId]) || [];
   var meetings = (meetingsForPerson || []).slice().sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
   for (var i = 0; i < meetings.length; i++) {
     var m = meetings[i];
     if (!m || !m.ts) continue;
-    if (NOW - m.ts > 14 * 86400000) break;
+    if (NOW - m.ts > thr.postDemoDays * 86400000) break;
     if (m.kind === 'demo' || /\bdemo\b/i.test(String(m.title || '') + ' ' + String(m.notes || ''))) return 'post-demo';
   }
-  if (meetings.length && meetings[0].ts && (NOW - meetings[0].ts) < 7 * 86400000) return 'post-meeting';
+  if (meetings.length && meetings[0].ts && (NOW - meetings[0].ts) < thr.postMeetingDays * 86400000) return 'post-meeting';
   for (var ri = 0; ri < outreachRecs.length; ri++) {
     if (outreachRecs[ri].targetKind === 'reply-marker') return 'replied';
   }
   var sent = outreachRecs.filter(function(r){ return r.targetKind !== 'reply-marker' && r.sentAt; });
   if (sent.length === 0) return 'cold';
   var age = NOW - (sent[0].sentAt || 0);
-  if (age > 60 * 86400000) return 'dormant';
-  if (age > 7 * 86400000) return 'awaiting';
+  if (age > thr.dormantDays * 86400000) return 'dormant';
+  if (age > thr.awaitingDays * 86400000) return 'awaiting';
   return 'sent-recent';
 };
 
@@ -44191,6 +44216,10 @@ window._renderOutreachQueueView = async function() {
   if (!list) return;
 
   if (!window._atlasOutreachIndex) await window._atlasLoadOutreach();
+  if (typeof window._atlasLoadOutreachThresholds === 'function' && !window._atlasOutreachThresholdsLoaded) {
+    window._atlasOutreachThresholdsLoaded = true;
+    await window._atlasLoadOutreachThresholds();
+  }
 
   // Prime pendingPOCs + orgMeta if not already cached.
   var pendingPOCs = window._atlasPendingPOCsAll || null;
@@ -44331,10 +44360,27 @@ window._renderOutreachQueueView = async function() {
   window._atlasOutreachQueueTargets = filtered;
 
   if (strip) {
+    var thr = window._atlasOutreachThresholds || { awaitingDays:7, dormantDays:60 };
+    var staleCount = (counts.awaiting||0) + (counts.dormant||0);
+    var actionableBanner = '';
+    // P13.198 — prominent stale-outreach banner. Shown only when targets
+    // actually need follow-up. Quick-action buttons filter the queue.
+    if (staleCount > 0) {
+      actionableBanner =
+        '<div style="grid-column:1/-1;padding:10px 14px;background:linear-gradient(90deg,rgba(245,158,11,.12),rgba(239,68,68,.10));border:1px solid #f59e0b;border-radius:3px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px;width:100%;box-sizing:border-box">' +
+          '<span style="font-size:18px">🔔</span>' +
+          '<span style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;color:#f59e0b">FOLLOW-UP DUE</span>' +
+          '<span style="color:var(--text);font-size:13px"><b style="color:#f59e0b">' + (counts.awaiting||0) + '</b> awaiting (' + thr.awaitingDays + 'd+ no reply) · <b style="color:#ef4444">' + (counts.dormant||0) + '</b> dormant (' + thr.dormantDays + 'd+ cold)</span>' +
+          '<button onclick="document.getElementById(\'outreach-stage-filter\').value=\'awaiting\';window._renderOutreachQueueView()" style="margin-left:auto;padding:6px 12px;background:rgba(245,158,11,.20);border:1px solid #f59e0b;color:#f59e0b;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Filter awaiting</button>' +
+          '<button onclick="document.getElementById(\'outreach-stage-filter\').value=\'dormant\';window._renderOutreachQueueView()" style="padding:6px 12px;background:rgba(239,68,68,.18);border:1px solid #ef4444;color:#ef4444;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Filter dormant</button>' +
+        '</div>';
+    }
+    strip.style.display = 'block';
     strip.innerHTML =
+      actionableBanner +
       '<span style="color:#5fb3b8;font-weight:700">' + counts.total + '</span> targets · ' +
       '<span style="color:#d4823a;font-weight:700">' + (counts.cold||0) + '</span> cold · ' +
-      '<span style="color:#7d7669;font-weight:700">' + (counts['sent-recent']||0) + '</span> sent &lt;7d · ' +
+      '<span style="color:#7d7669;font-weight:700">' + (counts['sent-recent']||0) + '</span> sent &lt;' + thr.awaitingDays + 'd · ' +
       '<span style="color:#f59e0b;font-weight:700">' + (counts.awaiting||0) + '</span> awaiting · ' +
       '<span style="color:#22c55e;font-weight:700">' + (counts.replied||0) + '</span> replied · ' +
       '<span style="color:#5fb3b8;font-weight:700">' + ((counts['post-meeting']||0) + (counts['post-demo']||0)) + '</span> post-touch · ' +
@@ -65404,6 +65450,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.197"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.198"></script>
 </body>
 </html>
