@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.204</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.206</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -18623,7 +18623,7 @@ function switchView(v){
       setTimeout(function(){ try { if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.fitToCluster === 'function') window.DiscoveryEngine3D.fitToCluster(); } catch(e){} }, 1800);
     } }catch(e){}
   }
-  if(v==='today'&&typeof window.renderTodayView==='function'){window.renderTodayView();if(typeof window._renderTodayOrientation==='function')window._renderTodayOrientation();}
+  if(v==='today'&&typeof window.renderTodayView==='function'){window.renderTodayView();if(typeof window._renderTodayOrientation==='function')window._renderTodayOrientation();if(typeof window._atlasMaybeAutoSync==='function')window._atlasMaybeAutoSync();}
   if(v==='atlas'&&typeof window.renderAtlasView==='function')window.renderAtlasView();
   if(v==='intel'&&activeIntelTab==='board')renderBoard();
   if(v==='timeline')renderTimeline();
@@ -32023,9 +32023,12 @@ window._renderTodayOrientation = function() {
   var queueSize = (window._atlasOutreachQueueTargets || []).length;
 
   el.style.display = 'grid';
-  el.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+  el.style.gridTemplateColumns = 'repeat(auto-fit, minmax(240px, 1fr))';
   el.style.gap = '12px';
 
+  // P13.205 — removed g2-outreach tile from orientation strip. The
+  // standalone page is still live as an emergency fallback at the URL
+  // but is no longer promoted in the main daily-loop surface.
   el.innerHTML =
     // Tile 1 — Run full sync
     '<button onclick="window._atlasRunFullSync&&window._atlasRunFullSync()" style="padding:18px 22px;background:linear-gradient(135deg,rgba(34,197,94,.14),rgba(95,179,184,.10));border:1px solid #22c55e;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
@@ -32041,16 +32044,73 @@ window._renderTodayOrientation = function() {
     '</button>' +
     // Tile 3 — Outreach Queue
     '<button onclick="window.switchView&&window.switchView(\'outreach\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(95,179,184,.12),rgba(34,197,94,.06));border:1px solid #5fb3b8;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
-      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#5fb3b8;text-transform:uppercase">📤 Send</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#5fb3b8;text-transform:uppercase">▷ Send</div>' +
       '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' + (queueSize ? '<span style="color:#5fb3b8">' + queueSize + '</span> targets queued' : 'Outreach Queue') + '</div>' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' + pendingCands + ' candidates · ' + pendingOrgs + ' orgs · open →</div>' +
-    '</button>' +
-    // Tile 4 — g2-outreach fallback
-    '<a href="g2-outreach.html" target="_blank" style="padding:18px 22px;background:linear-gradient(135deg,rgba(212,130,58,.12),rgba(212,130,58,.06));border:1px solid var(--gold);border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;text-decoration:none">' +
-      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase">↗ Standalone</div>' +
-      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">g2-outreach.html</div>' +
-      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">Template library · bulk Gmail open · works without sweep</div>' +
-    '</a>';
+    '</button>';
+};
+
+// P13.206 — auto-sync prompt on Today entry. If the last sweep was
+// more than AUTO_SYNC_THRESHOLD_MS ago (or never), surface a banner
+// with an N-second countdown that fires _atlasRunFullSync automatically.
+// Operator can cancel to keep the data stale. This is the client-side
+// approximation of nightly automatic sync until the Cloud Function
+// scheduled job ships in a follow-up session.
+window._atlasMaybeAutoSync = function() {
+  var AUTO_SYNC_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24h
+  var COUNTDOWN_SEC = 30;
+  if (window._atlasAutoSyncShownThisSession) return;
+  window._atlasAutoSyncShownThisSession = true;
+  // Find last sync time from orgMeta cache (or query if cache empty)
+  var checkAndPrompt = function() {
+    var lastAt = 0;
+    var om = window._atlasOrgMetaAll || {};
+    for (var k in om) { if (om[k] && om[k].lastPOCSearchAt && om[k].lastPOCSearchAt > lastAt) lastAt = om[k].lastPOCSearchAt; }
+    var age = lastAt ? (Date.now() - lastAt) : Infinity;
+    if (age < AUTO_SYNC_THRESHOLD_MS) return; // fresh enough
+    if (document.getElementById('auto-sync-banner')) return; // already showing
+    var ageStr = lastAt ? Math.floor(age / 3600000) + ' hours ago' : 'never';
+    var div = document.createElement('div');
+    div.id = 'auto-sync-banner';
+    div.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99998;background:linear-gradient(135deg,rgba(34,197,94,.95),rgba(95,179,184,.92));color:#fff;padding:14px 22px;border-radius:4px;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;box-shadow:0 8px 24px rgba(0,0,0,.6);display:flex;align-items:center;gap:14px;min-width:520px;max-width:92vw';
+    div.innerHTML = '<span style="font-size:16px">⚡</span>' +
+      '<div style="flex:1"><div style="text-transform:uppercase;font-size:11px;letter-spacing:.16em">Data stale</div>' +
+      '<div style="font-weight:400;letter-spacing:.04em;text-transform:none;font-size:13px;margin-top:3px">Last sync: ' + ageStr + '. Auto-syncing in <span id="auto-sync-countdown" style="font-weight:700">' + COUNTDOWN_SEC + '</span>s…</div></div>' +
+      '<button onclick="window._atlasAutoSyncCancel()" style="padding:6px 12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Cancel</button>' +
+      '<button onclick="window._atlasAutoSyncFireNow()" style="padding:6px 12px;background:rgba(255,255,255,.30);border:1px solid #fff;color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Sync now</button>';
+    document.body.appendChild(div);
+    var remain = COUNTDOWN_SEC;
+    var iv = setInterval(function(){
+      remain--;
+      var cd = document.getElementById('auto-sync-countdown');
+      if (cd) cd.textContent = remain;
+      if (remain <= 0) {
+        clearInterval(iv);
+        window._atlasAutoSyncFireNow();
+      }
+    }, 1000);
+    window._atlasAutoSyncInterval = iv;
+  };
+  // If cache is warm, evaluate immediately; otherwise load orgMeta first
+  if (window._atlasOrgMetaAll) {
+    checkAndPrompt();
+  } else if (typeof window.fbGet === 'function' && typeof window.wsPath === 'function') {
+    window.fbGet(window.wsPath('orgMeta')).then(function(snap){
+      window._atlasOrgMetaAll = (snap && snap.val()) || {};
+      checkAndPrompt();
+    }).catch(function(){});
+  }
+};
+
+window._atlasAutoSyncCancel = function() {
+  if (window._atlasAutoSyncInterval) { clearInterval(window._atlasAutoSyncInterval); window._atlasAutoSyncInterval = null; }
+  var b = document.getElementById('auto-sync-banner');
+  if (b) b.remove();
+};
+
+window._atlasAutoSyncFireNow = function() {
+  window._atlasAutoSyncCancel();
+  if (typeof window._atlasRunFullSync === 'function') window._atlasRunFullSync();
 };
 
 window.renderTodayView = function(){
@@ -65706,6 +65766,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.204"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.206"></script>
 </body>
 </html>
