@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.208</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.209</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -45680,6 +45680,38 @@ window._atlasBulkPOCDiscovery = async function(opts){
     '\n\nRuns until the workspace Anthropic quota stops it (cap raised to 200/hr if you set it).\nPersistent banner shows progress. Re-run any time — orgs searched in the last 7d are skipped automatically.';
   if (!opts.skipConfirm && !confirm(confirmMsg)) return;
 
+  // P13.209 — upfront quota check. If the Anthropic counter is at or
+  // above the workspace limit, every searchTechnicalDecisionMakers call
+  // will reject instantly and the banner will flash for ~2s while the
+  // loop blows through all queued orgs without doing real work. Show
+  // a clear quota-exhausted message instead and stop before the loop.
+  if (typeof window.fbGet === 'function' && typeof window.wsPath === 'function') {
+    try {
+      var qSnap = await window.fbGet(window.wsPath('quotas/anthropic/current'));
+      var qVal = (qSnap && qSnap.val()) || {};
+      var sSnap = await window.fbGet(window.wsPath('settings/anthropicHourlyQuota'));
+      var qLimit = Number((sSnap && sSnap.val()) || 30);
+      if (qLimit > 200) qLimit = 200;
+      var hourNow = new Date().toISOString().slice(0,13).replace('T','-');
+      var qCount = (qVal.hourKey === hourNow) ? Number(qVal.count || 0) : 0;
+      if (qCount >= qLimit) {
+        var nextHourMs = (Math.floor(Date.now() / 3600000) + 1) * 3600000;
+        var minToReset = Math.ceil((nextHourMs - Date.now()) / 60000);
+        var msg = '⚠ Anthropic quota exhausted · ' + qCount + '/' + qLimit + ' this UTC hour · resets in ~' + minToReset + ' min. Sweep aborted — no calls will succeed until quota refreshes.';
+        if (typeof toast === 'function') toast(msg, 12000);
+        // Surface in a sticky banner so the operator definitely sees it
+        var existing = document.getElementById('bulk-poc-banner');
+        if (existing) existing.remove();
+        var div = document.createElement('div');
+        div.id = 'bulk-poc-banner';
+        div.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:999997;background:linear-gradient(135deg,rgba(239,68,68,.95),rgba(212,130,58,.92));color:#fff;padding:14px 22px;border-radius:4px;font-family:IBM Plex Sans,sans-serif;font-size:13px;box-shadow:0 10px 28px rgba(0,0,0,.65);min-width:520px;max-width:92vw;display:flex;align-items:center;gap:14px';
+        div.innerHTML = '<span style="font-size:18px">⚠</span><div style="flex:1"><div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase">Anthropic quota exhausted</div><div style="font-size:12px;margin-top:3px">' + qCount + '/' + qLimit + ' calls used this UTC hour · resets in ~' + minToReset + ' min · sweep aborted</div></div><button onclick="document.getElementById(\'bulk-poc-banner\').remove()" style="padding:6px 12px;background:rgba(255,255,255,.20);border:1px solid rgba(255,255,255,.5);color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;cursor:pointer;border-radius:2px">Dismiss</button>';
+        document.body.appendChild(div);
+        return;
+      }
+    } catch(qe) { console.warn('[bulkPOC] quota precheck failed (continuing):', qe && qe.message); }
+  }
+
   window._bulkPocCancel = false;
   _bulkPocShowBanner(queue.length);
 
@@ -65836,6 +65868,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.208"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.209"></script>
 </body>
 </html>
