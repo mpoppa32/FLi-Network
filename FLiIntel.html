@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.227</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.228</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32368,6 +32368,55 @@ window._atlasComputeCatches = function() {
     }
   } catch(e){}
 
+  // I. Posture shift (Block 2 / 2b, finish) — a recent meeting's companyPulse
+  // signals a trajectory change. The AI extraction already reads the pulse;
+  // this surfaces it and ROUTES to the entity dossier so the operator can
+  // confirm the trajectory in the existing operator-tagged Posture UI. Never
+  // auto-writes posture (Doctrine: the platform never decides what the
+  // operator decides — it stages, the operator confirms).
+  try {
+    var PULSE_TRAJ = { accelerating:'rising', building:'rising', stalling:'falling', crisis:'falling', pivoting:'repositioning' };
+    var nodeByName2 = {};
+    (nodes_ || []).forEach(function(n){ if (n && n.name) nodeByName2[String(n.name).toLowerCase().trim()] = n; });
+    var oppById2 = {};
+    (opps_ || []).forEach(function(o){ if (o && o.id != null) oppById2[String(o.id)] = o; });
+    var pulseMtgs = mtgs_.filter(function(m){
+      var mt = (m && m.meta) ? (typeof m.meta.ts === 'number' ? m.meta.ts : Date.parse(String(m.meta.date || ''))) : 0;
+      return mt && (nowMs - mt) <= 21 * DAY && m.intel && m.intel.companyPulse;
+    }).sort(function(a,b){
+      var ta = (a.meta && (typeof a.meta.ts === 'number' ? a.meta.ts : Date.parse(String(a.meta.date||'')))) || 0;
+      var tb = (b.meta && (typeof b.meta.ts === 'number' ? b.meta.ts : Date.parse(String(b.meta.date||'')))) || 0;
+      return tb - ta;
+    });
+    var pEmit = 0;
+    for (var phi = 0; phi < pulseMtgs.length && pEmit < 2; phi++){
+      var pm = pulseMtgs[phi];
+      var pulse = String(pm.intel.companyPulse || '').toLowerCase().trim();
+      var traj = PULSE_TRAJ[pulse];
+      if (!traj) continue; // Steady / unknown — no shift to surface
+      var pmts = (pm.meta && (typeof pm.meta.ts === 'number' ? pm.meta.ts : Date.parse(String(pm.meta.date||'')))) || 0;
+      var pAge = Math.floor((nowMs - pmts) / DAY);
+      var lo = (pm.oppId != null) ? oppById2[String(pm.oppId)] : null;
+      var orgName = lo ? (lo.customerOrg || lo.name || '') : '';
+      if (!orgName && Array.isArray(pm.intel.companies) && pm.intel.companies[0]) orgName = pm.intel.companies[0].name || '';
+      var orgNode = orgName ? nodeByName2[String(orgName).toLowerCase().trim()] : null;
+      var label = orgName || (pm.meta && pm.meta.title) || 'an account';
+      var pcl, parg;
+      if (orgNode){ pcl = 'openEntityInspector'; parg = orgNode.id; }
+      else if (lo){ pcl = 'opp-detail'; parg = lo.id; }
+      else { pcl = 'meeting'; parg = null; }
+      candidates.push({
+        kind: 'posture',
+        entityId: orgNode ? String(orgNode.id) : null,
+        title: label + ' — posture: ' + pm.intel.companyPulse,
+        evidence: 'Meeting read suggests trajectory ' + traj + ' — confirm in the dossier · ' + (pAge === 0 ? 'today' : pAge + 'd ago'),
+        source: 'POSTURE SHIFT', score: (pulse === 'crisis' ? 82 : 74) - Math.min(pAge, 8),
+        click: pcl, clickArg: parg, clickMid: pm.id
+      });
+      pEmit++;
+    }
+  } catch(e){}
+
   // Dedupe by entityId — same entity in multiple sources keeps highest score
   var byEntity = new Map();
   candidates.forEach(function(c) {
@@ -32402,7 +32451,8 @@ window._renderTodayCatches = function() {
     'stale':    '#a78bfa',
     'signal':   '#5fb3b8',
     'pattern':  '#f0a560',
-    'meeting':  '#fb923c'
+    'meeting':  '#fb923c',
+    'posture':  '#a78bfa'
   };
   function _esc(s) {
     return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
@@ -66629,6 +66679,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.227"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.228"></script>
 </body>
 </html>
