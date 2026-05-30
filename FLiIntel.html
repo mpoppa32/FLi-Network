@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.203</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.204</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10602,6 +10602,12 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       <select id="outreach-kind-filter" onchange="window._renderOutreachQueueView&&window._renderOutreachQueueView()" style="padding:7px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--text);font-size:13px;font-family:IBM Plex Sans,sans-serif"><option value="">All contact types</option><option value="person">Linked persons</option><option value="pendingPOC">Pending POC candidates</option><option value="orgInbox">Org inbox fallbacks</option></select>
       <input id="outreach-search" oninput="window._renderOutreachQueueView&&window._renderOutreachQueueView()" type="text" placeholder="Filter by name or org…" style="padding:8px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--text);font-size:13px;font-family:IBM Plex Sans,sans-serif;width:220px">
     </div>
+  </div>
+  <!-- P13.204 — bulk Gmail blast row · matches g2-outreach.html pattern -->
+  <div style="padding:12px 26px;background:var(--s2);border-bottom:1px solid rgba(26,34,54,.5);display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <button onclick="window._atlasOutreachBulkOpenColdGmail&&window._atlasOutreachBulkOpenColdGmail()" title="Open Gmail compose tabs for every COLD target in the current filter — same Atlas template, recipient + 'Hi [first name]' pre-filled. Operator clicks Send in each tab." style="padding:8px 14px;background:rgba(34,197,94,.16);border:1px solid #22c55e;color:#22c55e;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:3px">🚀 Open all COLD in Gmail tabs</button>
+    <button onclick="window._atlasOutreachBulkMarkOpenedAsSent&&window._atlasOutreachBulkMarkOpenedAsSent()" title="Mark every target you just opened as sent. Click AFTER you've actually hit Send in each Gmail tab. Writes one /outreach record per opened target so the cycle transitions COLD → SENT." style="padding:8px 14px;background:rgba(95,179,184,.16);border:1px solid #5fb3b8;color:#5fb3b8;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:3px">✓ Mark all opened as sent</button>
+    <span id="outreach-bulk-status" style="font-size:11px;color:var(--paper-2);font-family:IBM Plex Mono,monospace;letter-spacing:.04em;margin-left:auto"></span>
   </div>
   <div id="outreach-stat-strip" style="padding:12px 26px;background:var(--s1);border-bottom:1px solid rgba(26,34,54,.5);display:flex;gap:18px;flex-wrap:wrap;font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.08em"></div>
   <div style="flex:1;overflow-y:auto;padding:20px 24px 40px">
@@ -44358,6 +44364,60 @@ window._atlasOutreachMarkSentByIdx = function(idx) {
   var t = (window._atlasOutreachQueueTargets || [])[idx];
   if (t) window._atlasMarkOutreachSent(t);
 };
+
+// P13.204 — bulk blast COLD targets through Gmail compose. Matches the
+// g2-outreach.html pattern (opens a tab per recipient, no auto-send).
+// Operator hits Send in each tab. Records which targets were opened so
+// the follow-up ✓ Mark all as sent button can write /outreach records.
+window._atlasOutreachBulkOpenColdGmail = function() {
+  var all = window._atlasOutreachQueueTargets || [];
+  var cold = all.filter(function(t){ return t.stage === 'cold' && t.recipient; });
+  if (!cold.length) {
+    var s = document.getElementById('outreach-bulk-status');
+    if (s) s.textContent = 'No COLD targets in current filter.';
+    return;
+  }
+  if (!confirm('Open ' + cold.length + ' Gmail compose tab' + (cold.length===1?'':'s') + ' for COLD targets?\n\nEach tab will have the Atlas cold first-touch template + recipient pre-filled. You click Send in each. Mark them as sent here after.')) return;
+  var opened = 0, blocked = 0;
+  var openedItems = [];
+  var tpl = window._atlasTemplateForStage('cold');
+  if (!tpl) { alert('Cold template missing from staging engine'); return; }
+  for (var i = 0; i < cold.length; i++) {
+    var t = cold[i];
+    var first = String(t.name || '').split(/\s+/)[0] || '';
+    var url = 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(t.recipient) +
+      '&su=' + encodeURIComponent(tpl.subject) +
+      '&body=' + encodeURIComponent(tpl.body(first));
+    var w = window.open(url, '_blank');
+    if (w) { opened++; openedItems.push(t); } else blocked++;
+  }
+  window._atlasOutreachLastBulkOpened = openedItems;
+  var status = document.getElementById('outreach-bulk-status');
+  if (status) status.innerHTML = '<b style="color:#22c55e">' + opened + ' tab' + (opened===1?'':'s') + ' opened</b>' + (blocked ? ' · <b style="color:#ef4444">' + blocked + ' blocked (allow popups)</b>' : '') + ' · click Send in each, then ✓ Mark all opened as sent.';
+};
+
+// P13.204 — mark every target that was opened in the last bulk blast
+// as sent. Writes /outreach records via the existing _atlasMarkOutreachSent
+// path so the cycle stage transitions cold → sent-recent. Operator
+// invokes AFTER actually hitting Send in each Gmail tab.
+window._atlasOutreachBulkMarkOpenedAsSent = async function() {
+  var items = window._atlasOutreachLastBulkOpened || [];
+  if (!items.length) {
+    var s = document.getElementById('outreach-bulk-status');
+    if (s) s.textContent = 'Nothing opened yet — click 🚀 Open all COLD in Gmail tabs first.';
+    return;
+  }
+  if (!confirm('Mark all ' + items.length + ' opened tabs as sent?\n\nClick only AFTER you have actually hit Send in each Gmail tab. Records each as outreach so the queue transitions cold → sent-recent.')) return;
+  var wrote = 0, errors = 0;
+  for (var i = 0; i < items.length; i++) {
+    try { await window._atlasMarkOutreachSent(items[i]); wrote++; }
+    catch(e) { errors++; }
+  }
+  var status = document.getElementById('outreach-bulk-status');
+  if (status) status.innerHTML = '<b style="color:#22c55e">✓ ' + wrote + ' recorded as sent</b>' + (errors ? ' · <b style="color:#ef4444">' + errors + ' failed</b>' : '') + ' · queue will re-render with stage transitions.';
+  window._atlasOutreachLastBulkOpened = [];
+  if (typeof window._renderOutreachQueueView === 'function') window._renderOutreachQueueView();
+};
 window._atlasOutreachMarkReplyByIdx = function(idx) {
   var t = (window._atlasOutreachQueueTargets || [])[idx];
   if (t) window._atlasMarkReplyReceived(t.targetId, t.orgId, t.name + ' · ' + t.orgName);
@@ -65646,6 +65706,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.203"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.204"></script>
 </body>
 </html>
