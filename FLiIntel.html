@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.212</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.213</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9173,6 +9173,13 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
          executive snapshot (STANDING · WORLD · GAPS). Renders at top of
          Today landing. Filled by _renderTodayNarrative each render. -->
     <div id="today-narrative" style="margin:18px 32px 0;padding:28px 34px;background:linear-gradient(135deg,rgba(212,130,58,.09),rgba(95,179,184,.05));border:1px solid rgba(212,130,58,.36);border-left:5px solid var(--gold);border-radius:3px"></div>
+    <!-- P13.213 "Top Catches" — synthesis layer below the narrative.
+         Surfaces the 3 things the platform got to first today, ranked
+         across awaiting-reply / commitments-due / decay / stale / signal
+         sources. Each card carries reasoning + source + click target.
+         Doctrine: surface + route, never auto-act. Hides when empty
+         (no manufactured urgency). Filled by _renderTodayCatches. -->
+    <div id="today-catches-strip" style="margin:14px 32px 0;display:none"></div>
     <div id="today-rhythm-host" style="flex:1;overflow:auto;padding:0;background:var(--bg)">
       <!-- The sibling #corsair-rhythm panel is moved here by renderTodayView() and back on exit -->
     </div>
@@ -31877,6 +31884,269 @@ window._renderAtlasTodayWidget = function(){
 // Template-driven 3-sentence executive snapshot. Deterministic
 // derivation from window.opportunities + nodes + _dailyFeedData +
 // _accBuildRollup. No AI call (always works, no API dependency).
+// P13.213 — Top-3 Catches synthesis layer. Reads existing source-of-truth
+// inputs (window.nodes / meetings / opportunities / commitments /
+// _dailyFeedData + Corsair.nudge.compute()) and ranks the three things
+// most worth the operator's first 30 seconds today. Renders BELOW Where
+// Atlas Stands as a 3-card strip — narrative provides context, Catches
+// provide action, Brief columns provide depth.
+//
+// Doctrine: every Catch shows its reasoning + source. No artificial
+// urgency. Surface + route, never auto-act. Hides when empty (per
+// Confidence Principle: hide uncertainty when unproductive).
+window._atlasComputeCatches = function() {
+  var DAY = 86400000;
+  var nowMs = Date.now();
+  var nodes_   = window.nodes        || [];
+  var mtgs_    = window.meetings     || [];
+  var opps_    = window.opportunities|| [];
+  var commits_ = window.commitments  || [];
+  var signals_ = window._dailyFeedData || [];
+
+  var candidates = [];
+
+  // A. Awaiting reply — highest base actionability (gated on Gmail capture deploy)
+  try {
+    if (window.Corsair && window.Corsair.nudge && typeof window.Corsair.nudge.compute === 'function') {
+      var nudges = window.Corsair.nudge.compute() || [];
+      nudges.forEach(function(n) {
+        if (n.type === 'awaiting_your_reply' && n.daysSince >= 2) {
+          candidates.push({
+            kind: 'awaiting',
+            entityId: n.entityId,
+            title: n.entityName + ' — waiting on your reply',
+            evidence: n.reasoning,
+            source: 'AWAITING',
+            score: 95 + Math.min(n.daysSince, 14),
+            click: 'openEntityInspector',
+            clickArg: n.entityId
+          });
+        }
+      });
+    }
+  } catch(e){}
+
+  // B. Commitments due in <= 2 days (or overdue within 7d)
+  try {
+    commits_.forEach(function(c) {
+      if (!c || c.done || c.status === 'done' || c.completed) return;
+      var dts = null;
+      if (c.deadline)   { var dt  = Date.parse(String(c.deadline)); if (!isNaN(dt))  dts = dt; }
+      else if (c.dueAt) { var dt2 = Date.parse(String(c.dueAt));    if (!isNaN(dt2)) dts = dt2; }
+      if (dts == null) return;
+      var daysUntil = Math.ceil((dts - nowMs) / DAY);
+      if (daysUntil < -7 || daysUntil > 2) return;
+      var label = c.description || c.text || c.title || 'Commitment';
+      var evidence;
+      if (daysUntil < 0)       evidence = 'Due ' + Math.abs(daysUntil) + 'd ago · overdue';
+      else if (daysUntil === 0) evidence = 'Due today';
+      else                      evidence = 'Due in ' + daysUntil + 'd';
+      candidates.push({
+        kind: 'commit',
+        title: label.length > 80 ? label.slice(0, 78) + '…' : label,
+        evidence: evidence + (c.owner ? ' · ' + c.owner : ''),
+        source: 'DUE',
+        score: daysUntil < 0 ? 90 + Math.min(Math.abs(daysUntil), 7) : 85 - daysUntil * 5,
+        click: 'commitments-panel'
+      });
+    });
+  } catch(e){}
+
+  // C. Decay alerts — T1/T2 contacts cold 30+ days
+  try {
+    var simFn = (typeof window.nameSimilarity === 'function') ? window.nameSimilarity : null;
+    if (simFn) {
+      var people = nodes_.filter(function(n) { return n && n.type === 'person'; });
+      var personByExactName = new Map();
+      people.forEach(function(p) {
+        if (p && p.name) personByExactName.set(String(p.name).toLowerCase().trim(), p);
+      });
+      var lastTsByPerson = new Map();
+      for (var mci = 0; mci < mtgs_.length; mci++) {
+        var mc = mtgs_[mci];
+        var mts = (mc && mc.meta && typeof mc.meta.ts === 'number') ? mc.meta.ts : (mc && typeof mc.ts === 'number' ? mc.ts : null);
+        if (!mts) continue;
+        var atts = [];
+        if (mc.meta && Array.isArray(mc.meta.attendees)) mc.meta.attendees.forEach(function(a){ if (a && a.name) atts.push(a.name); });
+        if (mc.intel && Array.isArray(mc.intel.keyPeople)) mc.intel.keyPeople.forEach(function(p){ if (p && p.name) atts.push(p.name); });
+        var seen = {};
+        atts.forEach(function(an) {
+          var ex = personByExactName.get(String(an).toLowerCase().trim());
+          if (ex && !seen[ex.id]) {
+            seen[ex.id] = true;
+            var prev = lastTsByPerson.get(ex.id);
+            if (prev == null || mts > prev) lastTsByPerson.set(ex.id, mts);
+          }
+        });
+      }
+      people.forEach(function(p) {
+        var ts = lastTsByPerson.get(p.id);
+        if (ts == null) return;
+        var daysSince = Math.floor((nowMs - ts) / DAY);
+        if (daysSince < 30) return;
+        var isT1 = p.tier === 1 || p.priority === 1 || (Array.isArray(p.tags) && p.tags.indexOf('t1') >= 0);
+        var base = isT1 ? 75 : 55;
+        candidates.push({
+          kind: 'decay',
+          entityId: p.id,
+          title: p.name + ' — silent ' + daysSince + 'd',
+          evidence: (p.org || p.govOrg || 'unknown org') + (isT1 ? ' · Tier 1' : '') + ' · last touch ' + daysSince + 'd ago',
+          source: 'DECAY',
+          score: base + Math.min(Math.floor(daysSince/3), 20),
+          click: 'openEntityInspector',
+          clickArg: p.id
+        });
+      });
+    }
+  } catch(e){}
+
+  // D. Stale pursuits in active stage — bonus for late-stage + money weight
+  try {
+    var STAGE_LATE   = { proposal: 1, negotiation: 1, submitted: 1 };
+    var STAGE_ACTIVE = { proposal: 1, negotiation: 1, submitted: 1, award: 1, engaged: 1, rfp: 1 };
+    opps_.forEach(function(o) {
+      if (!o) return;
+      var stg = String(o.stage || '').toLowerCase().trim();
+      if (!STAGE_ACTIVE[stg]) return;
+      var latest = null;
+      var oid = String(o.id);
+      for (var smi = 0; smi < mtgs_.length; smi++) {
+        var sm = mtgs_[smi];
+        if (!sm) continue;
+        if (sm.oppId == null || String(sm.oppId) !== oid) continue;
+        var sts = (sm.meta && typeof sm.meta.ts === 'number') ? sm.meta.ts : (typeof sm.ts === 'number' ? sm.ts : null);
+        if (sts && (latest == null || sts > latest)) latest = sts;
+      }
+      var daysSince = latest == null ? null : Math.floor((nowMs - latest) / DAY);
+      if (daysSince != null && daysSince < 14) return;
+      if (daysSince == null) daysSince = 9999;
+      var isLate = !!STAGE_LATE[stg];
+      var base = isLate ? 75 : 55;
+      var val = Number(o.value || o.contractValue || 0);
+      var moneyBoost = val > 1e6 ? 10 : val > 1e5 ? 5 : 0;
+      var moneyTag = '';
+      if (val >= 1e6) moneyTag = ' · $' + (val/1e6).toFixed(1) + 'M';
+      else if (val >= 1e3) moneyTag = ' · $' + Math.round(val/1e3) + 'k';
+      candidates.push({
+        kind: 'stale',
+        entityId: oid,
+        title: (o.name || 'Pursuit') + ' — stalled ' + (daysSince === 9999 ? '∞' : daysSince + 'd'),
+        evidence: stg.toUpperCase() + ' stage' + moneyTag + ' · ' + (daysSince === 9999 ? 'no meeting on record' : 'no touch in ' + daysSince + 'd'),
+        source: 'STALE',
+        score: base + moneyBoost + Math.min(Math.floor(daysSince/4), 15),
+        click: 'opp-detail',
+        clickArg: oid
+      });
+    });
+  } catch(e){}
+
+  // E. High-severity OSINT signal touching an active pursuit term
+  try {
+    var activeOppTerms = new Set();
+    opps_.forEach(function(o) {
+      if (!o) return;
+      var s = String((o.stage || '').toLowerCase());
+      if (s === 'won' || s === 'lost' || s === 'no-bid' || s === 'no_bid') return;
+      [o.agency, o.customerOrg, o.name, o.vehicle].forEach(function(t) {
+        if (t && String(t).length > 2 && String(t).toLowerCase() !== 'agency unknown') {
+          activeOppTerms.add(String(t).toLowerCase().trim());
+        }
+      });
+    });
+    var weekAgo = nowMs - 7 * DAY;
+    signals_.forEach(function(s) {
+      if (!s) return;
+      var ts = s.date ? new Date(s.date).getTime() : 0;
+      if (ts < weekAgo) return;
+      var sev = String(s.severity || '').toLowerCase();
+      if (sev !== 'high' && sev !== 'hi') return;
+      var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
+      var hit = null;
+      activeOppTerms.forEach(function(t) {
+        if (hit) return;
+        if (t.length > 2 && blob.indexOf(t) >= 0) hit = t;
+      });
+      if (!hit) return;
+      var ageDays = Math.floor((nowMs - ts) / DAY);
+      var hl = String(s.headline || 'OSINT signal');
+      candidates.push({
+        kind: 'signal',
+        title: hl.length > 80 ? hl.slice(0, 78) + '…' : hl,
+        evidence: 'HIGH severity · matches "' + hit + '" · ' + (ageDays === 0 ? 'today' : ageDays + 'd ago') + (s.publisher ? ' · ' + s.publisher : ''),
+        source: 'SIGNAL',
+        score: 80 - Math.min(ageDays, 6) * 2,
+        click: 'pulse',
+        clickUrl: s.url || null
+      });
+    });
+  } catch(e){}
+
+  // Dedupe by entityId — same entity in multiple sources keeps highest score
+  var byEntity = new Map();
+  candidates.forEach(function(c) {
+    if (!c.entityId) return;
+    var prev = byEntity.get(c.entityId);
+    if (!prev || c.score > prev.score) byEntity.set(c.entityId, c);
+  });
+  var deduped = candidates.filter(function(c) {
+    if (!c.entityId) return true;
+    return byEntity.get(c.entityId) === c;
+  });
+
+  deduped.sort(function(a, b) { return b.score - a.score; });
+  return deduped.slice(0, 3);
+};
+
+window._renderTodayCatches = function() {
+  var host = document.getElementById('today-catches-strip');
+  if (!host) return;
+  var catches = [];
+  try { catches = window._atlasComputeCatches() || []; } catch(e) { console.warn('[P13.213 catches] compute failed', e); }
+  if (!catches.length) {
+    host.style.display = 'none';
+    host.innerHTML = '';
+    return;
+  }
+  host.style.display = 'block';
+  var kindColor = {
+    'awaiting': '#22c55e',
+    'commit':   '#ef4444',
+    'decay':    '#facc15',
+    'stale':    '#a78bfa',
+    'signal':   '#5fb3b8'
+  };
+  function _esc(s) {
+    return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
+  }
+  var html = '';
+  html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;gap:10px">';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.20em;color:var(--gold);text-transform:uppercase">▣ Top Catches · ' + catches.length + '</div>';
+  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.10em;text-transform:uppercase">What the platform got to first today</div>';
+  html += '</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">';
+  catches.forEach(function(c) {
+    var col = kindColor[c.kind] || 'var(--gold)';
+    var clickJs = '';
+    if (c.click === 'openEntityInspector' && c.clickArg) {
+      clickJs = "window.openEntityInspector&&window.openEntityInspector('" + String(c.clickArg).replace(/'/g, "\\'") + "')";
+    } else if (c.click === 'opp-detail' && c.clickArg) {
+      clickJs = "window.switchView&&window.switchView('opps');setTimeout(function(){window.selectOpp&&window.selectOpp('" + String(c.clickArg).replace(/'/g, "\\'") + "')},120)";
+    } else if (c.click === 'commitments-panel') {
+      clickJs = "window.openCommitPanel&&window.openCommitPanel()";
+    } else if (c.click === 'pulse') {
+      if (c.clickUrl) clickJs = "window.open('" + String(c.clickUrl).replace(/'/g, "\\'") + "','_blank','noopener')";
+      else clickJs = "window.switchView&&window.switchView('pulse')";
+    }
+    html += '<div onclick="' + clickJs + '" style="padding:14px 16px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:4px solid ' + col + ';border-radius:3px;cursor:pointer;transition:border-color 140ms,background 140ms" onmouseover="this.style.background=\'rgba(7,13,24,.78)\'" onmouseout="this.style.background=\'rgba(7,13,24,.55)\'">';
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:' + col + ';text-transform:uppercase;margin-bottom:6px">' + _esc(c.source) + '</div>';
+    html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;font-weight:600;color:var(--bone);line-height:1.35;margin-bottom:5px">' + _esc(c.title) + '</div>';
+    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper);letter-spacing:.04em;line-height:1.45">' + _esc(c.evidence) + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  host.innerHTML = html;
+};
+
 window._renderTodayNarrative = function(){
   var host = document.getElementById('today-narrative');
   if (!host) return;
@@ -32123,6 +32393,11 @@ window.renderTodayView = function(){
   }
   // P13.176 — render Where Atlas Stands narrative card
   try { window._renderTodayNarrative && window._renderTodayNarrative(); } catch(e){}
+  // P13.213 — render Top-3 Catches synthesis strip immediately below the
+  // narrative. Operator reads narrative for context, sees Catches for
+  // action, Brief columns below for depth. Hides itself when empty so
+  // there's no manufactured urgency on quiet days (Doctrine IV).
+  try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
   // P13.92 (Day 5) — Quick Start callout for first-time users on this
   // workspace. Renders ONCE (until dismissed) above the rhythm host.
   // Explains the 4 primary actions + points at Pipeline for the unscored
@@ -65898,6 +66173,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.212"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.213"></script>
 </body>
 </html>
