@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.224</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.225</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32285,6 +32285,63 @@ window._atlasComputeCatches = function() {
     }
   } catch(e){}
 
+  // H. Meeting signals (Block 2 / The Logging, proactive layer) — surface
+  // what RECENT meetings revealed. The AI extraction already captures
+  // keyPeople[].watchFor + redFlags[] per meeting; they sit buried in the
+  // meeting detail. This routes them proactively as Catches — the Vision's
+  // Moment 3 beat "the platform detects what the meeting reveals... things to
+  // watch for." No new AI pass: zero extra quota, zero risk to extraction.
+  // These are the operator's own business signals, never exploitability reads
+  // (Doctrine: surface influence dynamics, never score humans).
+  try {
+    var RECENT_MS = 21 * DAY;
+    var recentMtgs = mtgs_.filter(function(m){
+      var mt = (m && m.meta) ? (typeof m.meta.ts === 'number' ? m.meta.ts : Date.parse(String(m.meta.date || ''))) : 0;
+      return mt && (nowMs - mt) <= RECENT_MS;
+    }).sort(function(a,b){
+      var ta = (a.meta && (typeof a.meta.ts === 'number' ? a.meta.ts : Date.parse(String(a.meta.date||'')))) || 0;
+      var tb = (b.meta && (typeof b.meta.ts === 'number' ? b.meta.ts : Date.parse(String(b.meta.date||'')))) || 0;
+      return tb - ta;
+    });
+    var emittedMtg = 0;
+    for (var hmi = 0; hmi < recentMtgs.length && emittedMtg < 4; hmi++){
+      var hm = recentMtgs[hmi];
+      var hts = (hm.meta && (typeof hm.meta.ts === 'number' ? hm.meta.ts : Date.parse(String(hm.meta.date||'')))) || 0;
+      var hAge = Math.floor((nowMs - hts) / DAY);
+      var hIntel = hm.intel || {};
+      var hTitle = (hm.meta && hm.meta.title) || 'a meeting';
+      var hMid = hm.id;
+      var rflags = Array.isArray(hIntel.redFlags) ? hIntel.redFlags : [];
+      for (var rfi = 0; rfi < rflags.length && emittedMtg < 4; rfi++){
+        var rftext = rflags[rfi];
+        if (rftext && String(rftext).trim().length > 4){
+          candidates.push({
+            kind: 'meeting',
+            title: 'Red flag — ' + String(rftext).slice(0, 76),
+            evidence: 'Surfaced in "' + hTitle + '" · ' + (hAge === 0 ? 'today' : hAge + 'd ago'),
+            source: 'RED FLAG', score: 84 - Math.min(hAge, 10),
+            click: 'meeting', clickMid: hMid
+          });
+          emittedMtg++;
+        }
+      }
+      var kpeople = Array.isArray(hIntel.keyPeople) ? hIntel.keyPeople : [];
+      for (var kpi = 0; kpi < kpeople.length && emittedMtg < 4; kpi++){
+        var wf = kpeople[kpi] && kpeople[kpi].watchFor;
+        if (wf && String(wf).trim().length > 4){
+          candidates.push({
+            kind: 'meeting',
+            title: (kpeople[kpi].name || 'Contact') + ' — watch: ' + String(wf).slice(0, 64),
+            evidence: 'From "' + hTitle + '" · ' + (hAge === 0 ? 'today' : hAge + 'd ago'),
+            source: 'MEETING WATCH', score: 76 - Math.min(hAge, 10),
+            click: 'meeting', clickMid: hMid
+          });
+          emittedMtg++;
+        }
+      }
+    }
+  } catch(e){}
+
   // Dedupe by entityId — same entity in multiple sources keeps highest score
   var byEntity = new Map();
   candidates.forEach(function(c) {
@@ -32318,7 +32375,8 @@ window._renderTodayCatches = function() {
     'decay':    '#facc15',
     'stale':    '#a78bfa',
     'signal':   '#5fb3b8',
-    'pattern':  '#f0a560'
+    'pattern':  '#f0a560',
+    'meeting':  '#fb923c'
   };
   function _esc(s) {
     return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
@@ -32343,6 +32401,8 @@ window._renderTodayCatches = function() {
       else clickJs = "window.switchView&&window.switchView('pulse')";
     } else if (c.click === 'bulk-score') {
       clickJs = "window.switchView&&window.switchView('cop');setTimeout(function(){window._openBulkScoreModal&&window._openBulkScoreModal()},300)";
+    } else if (c.click === 'meeting' && c.clickMid) {
+      clickJs = "window.switchView&&window.switchView('intel');setTimeout(function(){if(typeof goIntelById==='function')goIntelById('" + String(c.clickMid).replace(/'/g, "\\'") + "')},220)";
     } else if (c.clickView) {
       clickJs = "window.switchView&&window.switchView('" + String(c.clickView).replace(/'/g, "\\'") + "')";
     }
@@ -66543,6 +66603,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.224"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.225"></script>
 </body>
 </html>
