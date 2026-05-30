@@ -8899,7 +8899,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.216</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.217</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9208,6 +9208,20 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
          orientation (context); these tiles are next-actions. Populated
          by _renderTodayOrientation() each render. -->
     <div id="today-orientation" style="margin:18px 32px 0;display:none"></div>
+    <!-- P13.217 INTELLIGENCE — collapsible "lean-back-and-study" section.
+         Holds Workspace Pulse / Adversary Leaderboard / External Intelligence,
+         relocated here from Intel→Log by renderTodayView() and restored on
+         exit (same single-DOM-element pattern as #brief-card). Collapsed by
+         default so the top of Today stays fast (triage); expand to study.
+         First expand fires the lightweight client-side loaders (no Cloud
+         Function triggers, no quota burn). -->
+    <div id="today-intel-section" style="margin:14px 32px 0;display:none">
+      <div id="today-intel-header" onclick="window._toggleTodayIntel&&window._toggleTodayIntel()" title="Workspace intelligence — Pulse, Adversaries, External 24h. Click to expand." style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 16px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid #5fb3b8;border-radius:2px;cursor:pointer;user-select:none">
+        <span style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.18em;color:#5fb3b8;text-transform:uppercase"><span id="today-intel-chevron" style="display:inline-block;width:10px;margin-right:6px">&#9656;</span>Intelligence</span>
+        <span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.10em;text-transform:uppercase">Workspace Pulse &middot; Adversaries &middot; External 24h</span>
+      </div>
+      <div id="today-intel-body" style="display:none;padding-top:12px"></div>
+    </div>
     <div id="today-rhythm-host" style="flex:1;overflow:auto;padding:0;background:var(--bg)">
       <!-- The sibling #corsair-rhythm panel is moved here by renderTodayView() and back on exit -->
     </div>
@@ -32654,6 +32668,49 @@ window.renderTodayView = function(){
       try { window.renderDailyBrief(); } catch(e){}
     }
   } catch(e){ console.warn('[P13.99 brief-on-today] failed:', e); }
+  // P13.217 — relocate the three "lean-back" intelligence cards (Workspace
+  // Pulse, Adversary Leaderboard, External Intelligence) into the collapsible
+  // #today-intel-section, positioned AFTER the brief-card and BEFORE the
+  // rhythm host. Same single-DOM-element move + restore-on-exit pattern as
+  // the brief card. Collapsed by default; data loads on first expand.
+  try {
+    var intelSection = document.getElementById('today-intel-section');
+    var intelBody = document.getElementById('today-intel-body');
+    var hostIS = document.getElementById('today-rhythm-host');
+    if (intelSection && intelBody && hostIS && hostIS.parentElement) {
+      ['adversary-leaderboard-card','workspace-pulse-card','ext-intel-card'].forEach(function(cid){
+        var card = document.getElementById(cid);
+        if (!card) return;
+        if (!card.dataset.origParentId) {
+          card.dataset.origParentId = (card.parentElement && card.parentElement.id) || 'itab-log';
+        }
+        if (card.parentElement !== intelBody) intelBody.appendChild(card);
+      });
+      // Position the section just before the rhythm host. Runs AFTER the
+      // brief relocation, so order ends up: brief-card -> intel-section -> host.
+      if (intelSection.nextSibling !== hostIS) {
+        hostIS.parentElement.insertBefore(intelSection, hostIS);
+      }
+      intelSection.style.display = 'block';
+      // Apply remembered open/closed state (default closed).
+      var intelOpen = false;
+      try { intelOpen = localStorage.getItem('corsair-today-intel-open') === '1'; } catch(e){}
+      var chev = document.getElementById('today-intel-chevron');
+      if (intelOpen) {
+        intelBody.style.display = 'block';
+        if (chev) chev.innerHTML = '&#9662;';
+        if (!intelBody.dataset.loadedOnce) {
+          intelBody.dataset.loadedOnce = '1';
+          try { (window._refreshWorkspacePulse || window._loadWorkspacePulse) && (window._refreshWorkspacePulse || window._loadWorkspacePulse)(); } catch(e){}
+          try { window._loadAdversaryLeaderboard && window._loadAdversaryLeaderboard(); } catch(e){}
+          try { window._loadExternalIntelligence && window._loadExternalIntelligence(); } catch(e){}
+        }
+      } else {
+        intelBody.style.display = 'none';
+        if (chev) chev.innerHTML = '&#9656;';
+      }
+    }
+  } catch(e){ console.warn('[P13.217 intel-on-today] failed:', e); }
   // Refresh rhythm content (in case data changed while user was on another view)
   if (typeof _corsairRenderRhythm === 'function') {
     try { _corsairRenderRhythm(); } catch(e){}
@@ -32693,6 +32750,36 @@ window._exitTodayView = function(){
       }
     }
   } catch(e){ console.warn('[P13.99 brief-exit-today] failed:', e); }
+  // P13.217 — restore the three intelligence cards to their original home
+  // (#itab-log on Intel→Log) so that surface stays intact when visited.
+  try {
+    ['adversary-leaderboard-card','workspace-pulse-card','ext-intel-card'].forEach(function(cid){
+      var card = document.getElementById(cid);
+      if (!card) return;
+      var op = document.getElementById(card.dataset.origParentId || 'itab-log');
+      if (op && card.parentElement !== op) op.appendChild(card);
+    });
+  } catch(e){ console.warn('[P13.217 intel-exit-today] failed:', e); }
+};
+
+// P13.217 — toggle the Today Intelligence section. Lazy-loads the three
+// cards on first expand via the lightweight client-side loaders (NOT
+// _briefMasterRefresh, which triggers Cloud Functions + burns quota).
+// Remembers the open/closed choice per browser.
+window._toggleTodayIntel = function(){
+  var body = document.getElementById('today-intel-body');
+  var chev = document.getElementById('today-intel-chevron');
+  if (!body) return;
+  var willOpen = (body.style.display === 'none' || !body.style.display);
+  body.style.display = willOpen ? 'block' : 'none';
+  if (chev) chev.innerHTML = willOpen ? '&#9662;' : '&#9656;';
+  try { localStorage.setItem('corsair-today-intel-open', willOpen ? '1' : '0'); } catch(e){}
+  if (willOpen && !body.dataset.loadedOnce) {
+    body.dataset.loadedOnce = '1';
+    try { (window._refreshWorkspacePulse || window._loadWorkspacePulse) && (window._refreshWorkspacePulse || window._loadWorkspacePulse)(); } catch(e){}
+    try { window._loadAdversaryLeaderboard && window._loadAdversaryLeaderboard(); } catch(e){}
+    try { window._loadExternalIntelligence && window._loadExternalIntelligence(); } catch(e){}
+  }
 };
 
 // CRM P0.3 — Daily Brief Card collapse + persist
@@ -66261,6 +66348,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.216"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.217"></script>
 </body>
 </html>
