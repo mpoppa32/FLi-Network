@@ -621,6 +621,7 @@ window._bulkOpenGmail = function() {
   const items = (window._pendingItems || []).filter(p => p.email);
   if (!items.length) { $("bulk-status").textContent = "No candidates with guessable emails."; return; }
   let opened = 0, blocked = 0;
+  const openedItems = [];
   for (const p of items) {
     const first = (p.name || "").split(/\s+/)[0] || "[first name]";
     const url = "https://mail.google.com/mail/?view=cm&fs=1&to=" +
@@ -628,9 +629,44 @@ window._bulkOpenGmail = function() {
       "&su=" + encodeURIComponent(_ATLAS_SUBJECT) +
       "&body=" + encodeURIComponent(_atlasOutreachBody(first));
     const w = window.open(url, "_blank");
-    if (w) opened++; else blocked++;
+    if (w) { opened++; openedItems.push(p); } else blocked++;
   }
-  $("bulk-status").innerHTML = '<b style="color:var(--green)">' + opened + ' tab' + (opened===1?"":"s") + ' opened</b>' + (blocked ? ' · <b style="color:var(--red)">' + blocked + ' blocked by browser (allow popups for this site, then retry)</b>' : ' · go tab by tab and hit Send.');
+  window._lastBulkOpened = openedItems;
+  const markBtn = openedItems.length
+    ? ' <button onclick="window._bulkMarkOpenedAsSent()" style="margin-left:10px;padding:5px 10px;background:rgba(34,197,94,.18);border:1px solid var(--green);color:var(--green);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">✓ Mark all ' + openedItems.length + ' as sent (after you Send each)</button>'
+    : '';
+  $("bulk-status").innerHTML = '<b style="color:var(--green)">' + opened + ' tab' + (opened===1?"":"s") + ' opened</b>' + (blocked ? ' · <b style="color:var(--red)">' + blocked + ' blocked by browser (allow popups for this site, then retry)</b>' : ' · go tab by tab and hit Send.') + markBtn;
+};
+
+// P13.197 — after the operator clicks Send in each Gmail compose tab,
+// they come back here and click Mark all as sent. Writes one /outreach
+// record per opened item so the FLiIntel Outreach Queue view knows the
+// stage transitioned (cold → sent-recent). Operator action — never auto.
+window._bulkMarkOpenedAsSent = async function() {
+  const items = window._lastBulkOpened || [];
+  if (!items.length) return;
+  if (!confirm("Mark all " + items.length + " as sent?\n\nOnly click this AFTER you've actually hit Send in each Gmail tab. Records each as outreach in the Atlas Outreach Queue so they transition from COLD → SENT.")) return;
+  const m = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js");
+  const db = m.getDatabase();
+  const uid = auth.currentUser && auth.currentUser.uid || "unknown";
+  let wrote = 0, errors = 0;
+  for (const p of items) {
+    const safeOrgKey = String(p.orgId).replace(/[#$\[\]/.]/g, "_");
+    const candKey = p.candId || "";
+    const targetId = "cand-" + safeOrgKey + "-" + candKey;
+    const outId = "out-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
+    const rec = {
+      targetKind: "pendingPOC", targetId, orgId: p.orgId,
+      recipient: p.email, stage: "cold", templateId: "cold-first-touch",
+      sentAt: Date.now(), by: uid,
+      subject: _ATLAS_SUBJECT,
+      bodyExcerpt: _atlasOutreachBody((p.name || "").split(/\s+/)[0] || "").slice(0, 240)
+    };
+    try { await m.set(m.ref(db, "workspaces/" + WS_ID + "/outreach/" + outId), rec); wrote++; }
+    catch(e) { errors++; console.warn("[bulk mark-sent]", e.message); }
+  }
+  $("bulk-status").innerHTML = '<b style="color:var(--green)">✓ ' + wrote + ' recorded as sent</b>' + (errors ? ' · <b style="color:var(--red)">' + errors + ' failed</b>' : '') + ' · Outreach Queue in Atlas will show them as SENT after refresh.';
+  window._lastBulkOpened = [];
 };
 
 window._bulkOpenMailto = function() {
