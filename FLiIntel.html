@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.229</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.230</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -46078,6 +46078,46 @@ window._openAccountDetail = function(orgId){
   allMeetings.sort(function(a,b){ return Number(b.ts||0) - Number(a.ts||0); });
   var recentMeetings = allMeetings.slice(0, 8);
 
+  // P13.230 (Block 4 piece 2) — pre-read enrichment: posture/trajectory +
+  // OSINT-this-week-on-this-org. Vision Moment 2: the account view shows
+  // "contract trajectory" + "what the OSINT layer caught about their company
+  // this week." Read-only, defensive (renders only when data exists).
+  var _pst = (r.org && r.org.posture) || (org && org.posture) || null;
+  var _orgNmLc = String(r.org.name || '').toLowerCase().trim();
+  var _osintWk = [];
+  if (_orgNmLc.length > 2 && Array.isArray(window._dailyFeedData)) {
+    var _wkAgo = Date.now() - 7 * 86400000;
+    window._dailyFeedData.forEach(function(s){
+      if (!s) return;
+      var sts = s.date ? new Date(s.date).getTime() : 0;
+      if (sts && sts < _wkAgo) return;
+      var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
+      if (blob.indexOf(_orgNmLc) >= 0) _osintWk.push(s);
+    });
+    _osintWk.sort(function(a,b){ return (b.date ? new Date(b.date).getTime() : 0) - (a.date ? new Date(a.date).getTime() : 0); });
+    _osintWk = _osintWk.slice(0, 5);
+  }
+  var _prereadSection = '';
+  if (_pst && (_pst.trajectory || _pst.position)) {
+    var _trajCol = ({ rising:'#22c55e', falling:'#ef4444', repositioning:'#f0a560', stable:'var(--t2)' })[String(_pst.trajectory || '').toLowerCase()] || 'var(--t2)';
+    _prereadSection += '<div style="margin-bottom:14px;padding:10px 12px;background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.22);border-left:3px solid #a78bfa;border-radius:3px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:#a78bfa;text-transform:uppercase;margin-bottom:5px">Posture</div>' +
+      '<div style="font-size:13px;color:var(--text)">' +
+      (_pst.trajectory ? 'Trajectory: <b style="color:' + _trajCol + '">' + _accEsc(_pst.trajectory) + '</b>' : '') +
+      (_pst.position ? (_pst.trajectory ? ' &nbsp;·&nbsp; ' : '') + 'Position: <b>' + _accEsc(_pst.position) + '</b>' : '') +
+      '</div></div>';
+  }
+  if (_osintWk.length) {
+    _prereadSection += '<div style="margin-bottom:14px;padding:10px 12px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.22);border-left:3px solid #5fb3b8;border-radius:3px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:6px">OSINT &middot; this week (' + _osintWk.length + ')</div>' +
+      _osintWk.map(function(s){
+        var hl = _accEsc(String(s.headline || 'signal').slice(0, 90));
+        var dt = s.date ? _accEsc(String(s.date).slice(0, 10)) : '';
+        return '<div style="font-size:12px;color:var(--t2);line-height:1.4;padding:4px 0;border-top:1px solid rgba(95,179,184,.12)">' + (dt ? '<span style="color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:10px">' + dt + '</span> ' : '') + hl + '</div>';
+      }).join('') +
+    '</div>';
+  }
+
   // Header metric tiles
   var metricTile = function(label, val, color){
     color = color || 'var(--text)';
@@ -46196,6 +46236,7 @@ window._openAccountDetail = function(orgId){
     '</div>' +
     '<div style="flex:1;overflow-y:auto;padding:20px 26px 90px">' +
       _accSnapshotSection(r) +
+      _prereadSection +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Open Pursuits</div>' +
       oppRows +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;margin:22px 0 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">People (' + r.peopleCount + ')' +
@@ -66714,6 +66755,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.229"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.230"></script>
 </body>
 </html>
