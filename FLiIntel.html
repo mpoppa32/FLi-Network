@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.201</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.202</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9172,6 +9172,12 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
         </button>
       </div>
     </div>
+    <!-- P13.202 DAILY ORIENTATION — top-of-Today action strip. Reads the
+         current drone universe count + pending POC count + queue state to
+         surface the next-best action on a single visible row. Click any
+         tile to act. Populated by _renderTodayOrientation() each render. -->
+    <div id="today-orientation" style="margin:18px 32px 0;display:none"></div>
+
     <!-- P13.176 "Where Atlas Stands" narrative — 3-sentence synthesized
          executive snapshot (STANDING · WORLD · GAPS). Renders at top of
          Today landing. Filled by _renderTodayNarrative each render. -->
@@ -18560,7 +18566,7 @@ function switchView(v){
       setTimeout(function(){ try { if (window.DiscoveryEngine3D && typeof window.DiscoveryEngine3D.fitToCluster === 'function') window.DiscoveryEngine3D.fitToCluster(); } catch(e){} }, 1800);
     } }catch(e){}
   }
-  if(v==='today'&&typeof window.renderTodayView==='function')window.renderTodayView();
+  if(v==='today'&&typeof window.renderTodayView==='function'){window.renderTodayView();if(typeof window._renderTodayOrientation==='function')window._renderTodayOrientation();}
   if(v==='atlas'&&typeof window.renderAtlasView==='function')window.renderAtlasView();
   if(v==='intel'&&activeIntelTab==='board')renderBoard();
   if(v==='timeline')renderTimeline();
@@ -31919,6 +31925,75 @@ window._renderTodayNarrative = function(){
   html += '<div><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">GAPS</span>' + s3 + '</div>';
   html += '</div>';
   host.innerHTML = html;
+};
+
+// P13.202 — top-of-Today orientation strip. Three tiles: drone universe
+// count + pending POC count, outreach queue size + cold/awaiting split,
+// last sync recency + Run-full-sync trigger. Each tile is a button to
+// the relevant view. Replaces the "I don't know what to do next" gap.
+window._renderTodayOrientation = function() {
+  var el = document.getElementById('today-orientation');
+  if (!el) return;
+  var allNodes = window.nodes || [];
+  var droneOrgs = 0, darkDrone = 0;
+  for (var i = 0; i < allNodes.length; i++) {
+    var n = allNodes[i];
+    if (!n || (n.type !== 'company' && n.type !== 'government' && n.type !== 'org')) continue;
+    if (typeof window._atlasIsDroneCompany !== 'function') break;
+    if (!window._atlasIsDroneCompany(n).is) continue;
+    droneOrgs++;
+  }
+  // pendingPOCs count from cached or fresh read
+  var pendingCands = 0, pendingOrgs = 0;
+  if (window._atlasPendingPOCsAll) {
+    for (var k in window._atlasPendingPOCsAll) {
+      var co = window._atlasPendingPOCsAll[k] || {};
+      var ks = Object.keys(co);
+      if (ks.length) pendingOrgs++;
+      pendingCands += ks.length;
+    }
+  }
+  // last sweep recency from orgMeta cache
+  var lastSearch = 0;
+  if (window._atlasOrgMetaAll) {
+    for (var ok in window._atlasOrgMetaAll) {
+      var m = window._atlasOrgMetaAll[ok] || {};
+      if (m.lastPOCSearchAt && m.lastPOCSearchAt > lastSearch) lastSearch = m.lastPOCSearchAt;
+    }
+  }
+  var lastSearchStr = lastSearch ? Math.floor((Date.now() - lastSearch) / 60000) + ' min ago' : 'never';
+  // outreach queue size (if previously rendered)
+  var queueSize = (window._atlasOutreachQueueTargets || []).length;
+
+  el.style.display = 'grid';
+  el.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+  el.style.gap = '12px';
+
+  el.innerHTML =
+    // Tile 1 — Run full sync
+    '<button onclick="window._atlasRunFullSync&&window._atlasRunFullSync()" style="padding:18px 22px;background:linear-gradient(135deg,rgba(34,197,94,.14),rgba(95,179,184,.10));border:1px solid #22c55e;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#22c55e;text-transform:uppercase">⚡ Sync</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">Run full sync</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">Last: ' + lastSearchStr + ' · Monday → Classify → Tech-buy sweep</div>' +
+    '</button>' +
+    // Tile 2 — Drone Universe
+    '<button onclick="window.switchView&&window.switchView(\'drone\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(167,139,250,.06));border:1px solid #8b5cf6;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#8b5cf6;text-transform:uppercase">⌖ Targets</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600"><span style="color:#8b5cf6">' + droneOrgs + '</span> drone orgs</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">Open Drone Universe →</div>' +
+    '</button>' +
+    // Tile 3 — Outreach Queue
+    '<button onclick="window.switchView&&window.switchView(\'outreach\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(95,179,184,.12),rgba(34,197,94,.06));border:1px solid #5fb3b8;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#5fb3b8;text-transform:uppercase">📤 Send</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' + (queueSize ? '<span style="color:#5fb3b8">' + queueSize + '</span> targets queued' : 'Outreach Queue') + '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' + pendingCands + ' candidates · ' + pendingOrgs + ' orgs · open →</div>' +
+    '</button>' +
+    // Tile 4 — g2-outreach fallback
+    '<a href="g2-outreach.html" target="_blank" style="padding:18px 22px;background:linear-gradient(135deg,rgba(212,130,58,.12),rgba(212,130,58,.06));border:1px solid var(--gold);border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;text-decoration:none">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase">↗ Standalone</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">g2-outreach.html</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">Template library · bulk Gmail open · works without sweep</div>' +
+    '</a>';
 };
 
 window.renderTodayView = function(){
@@ -65520,6 +65595,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.201"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.202"></script>
 </body>
 </html>
