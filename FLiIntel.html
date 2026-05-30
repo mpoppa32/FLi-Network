@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.220</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.221</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -44994,7 +44994,18 @@ window._atlasOutreachBulkOpenColdGmail = function() {
     if (s) s.textContent = 'No COLD targets in current filter.';
     return;
   }
-  if (!confirm('Open ' + cold.length + ' Gmail compose tab' + (cold.length===1?'':'s') + ' for COLD targets?\n\nEach tab will have the Atlas cold first-touch template + recipient pre-filled. You click Send in each. Mark them as sent here after.')) return;
+  // P13.221 — Trust guard at the irreversible bulk moment. Surface email
+  // confidence so the operator never blasts GUESSED-format addresses
+  // unknowingly. (Doctrine: confidence honest; surface uncertainty when
+  // operational — and a 24-tab send is the most operational moment there is.)
+  var _g = cold.filter(function(t){ return t.tier === 'guessed'; }).length;
+  var _v = cold.filter(function(t){ return t.tier === 'verified'; }).length;
+  var _i = cold.filter(function(t){ return t.tier === 'inferred'; }).length;
+  var _warn = 'Open ' + cold.length + ' Gmail compose tab' + (cold.length===1?'':'s') + ' for COLD targets?\n\n' +
+    'Email confidence: ' + _v + ' verified · ' + _i + ' inferred · ' + _g + ' GUESSED\n\n';
+  if (_g) _warn += '⚠ ' + _g + ' use a GUESSED address format (first.last@domain) — they may bounce or reach the wrong person. Consider verifying first, or sending the verified/inferred ones before the guessed.\n\n';
+  _warn += 'Each tab gets the Atlas cold template + recipient pre-filled. You click Send in each. Mark them sent here after.';
+  if (!confirm(_warn)) return;
   var opened = 0, blocked = 0;
   var openedItems = [];
   var tpl = window._atlasTemplateForStage('cold');
@@ -66430,6 +66441,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.220"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.221"></script>
 </body>
 </html>
