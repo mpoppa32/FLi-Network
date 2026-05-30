@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.214</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.215</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32083,6 +32083,62 @@ window._atlasComputeCatches = function() {
     });
   } catch(e){}
 
+  // F. Concentration risk — top agency/customer share of weighted pipeline.
+  // Point-in-time (no week-over-week history needed). This is the
+  // cross-pursuit pattern the Vision names under The Catch: "a pattern
+  // across the pipeline (concentration risk...) that wasn't obvious from
+  // any single view." Surfaces ONE Catch on the single most-concentrated
+  // dimension (agency or customer), only when share >= 40% and the
+  // pipeline is non-trivial (>=4 active opps with weighted value).
+  try {
+    var concActive = opps_.filter(function(o) {
+      var s = String((o && o.stage) || '').toLowerCase();
+      return o && s && s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
+    });
+    if (concActive.length >= 4) {
+      var pwinFrac = (typeof window._pwinFrac === 'function') ? window._pwinFrac : function(o){ return Number((o && o.pwin) || 0); };
+      var totalW = 0, byAgency = {}, byCustomer = {};
+      concActive.forEach(function(o) {
+        var v = Number(o.value || o.contractValue || 0);
+        var w = v * pwinFrac(o);
+        if (!(w > 0)) return;
+        totalW += w;
+        if (o.agency) {
+          var ag = String(o.agency).trim();
+          if (ag && ag.toLowerCase() !== 'agency unknown') byAgency[ag] = (byAgency[ag] || 0) + w;
+        }
+        if (o.customerOrg) {
+          var cu = String(o.customerOrg).trim();
+          if (cu) byCustomer[cu] = (byCustomer[cu] || 0) + w;
+        }
+      });
+      if (totalW > 0) {
+        var _topShare = function(map) {
+          var topK = null, topV = 0;
+          for (var k in map) { if (map[k] > topV) { topV = map[k]; topK = k; } }
+          return topK ? { key: topK, share: topV / totalW } : null;
+        };
+        var agTop = _topShare(byAgency);
+        var cuTop = _topShare(byCustomer);
+        var best = null, dim = '';
+        if (agTop && (!cuTop || agTop.share >= cuTop.share)) { best = agTop; dim = 'agency'; }
+        else if (cuTop) { best = cuTop; dim = 'customer'; }
+        if (best && best.share >= 0.40) {
+          var pct = Math.round(best.share * 100);
+          var wStr = totalW >= 1e6 ? '$' + (totalW/1e6).toFixed(1) + 'M' : '$' + Math.round(totalW/1e3) + 'k';
+          candidates.push({
+            kind: 'pattern',
+            title: best.key + ' — ' + pct + '% of weighted pipeline',
+            evidence: 'Concentration risk · one ' + dim + ' carries ' + pct + '% of ' + wStr + ' weighted · diversify or defend',
+            source: 'CONCENTRATION',
+            score: 60 + Math.min(Math.round((best.share - 0.40) * 100), 25),
+            clickView: 'bdperf'
+          });
+        }
+      }
+    }
+  } catch(e){}
+
   // Dedupe by entityId — same entity in multiple sources keeps highest score
   var byEntity = new Map();
   candidates.forEach(function(c) {
@@ -32115,7 +32171,8 @@ window._renderTodayCatches = function() {
     'commit':   '#ef4444',
     'decay':    '#facc15',
     'stale':    '#a78bfa',
-    'signal':   '#5fb3b8'
+    'signal':   '#5fb3b8',
+    'pattern':  '#f0a560'
   };
   function _esc(s) {
     return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
@@ -32138,6 +32195,8 @@ window._renderTodayCatches = function() {
     } else if (c.click === 'pulse') {
       if (c.clickUrl) clickJs = "window.open('" + String(c.clickUrl).replace(/'/g, "\\'") + "','_blank','noopener')";
       else clickJs = "window.switchView&&window.switchView('pulse')";
+    } else if (c.clickView) {
+      clickJs = "window.switchView&&window.switchView('" + String(c.clickView).replace(/'/g, "\\'") + "')";
     }
     html += '<div onclick="' + clickJs + '" style="padding:14px 16px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:4px solid ' + col + ';border-radius:3px;cursor:pointer;transition:border-color 140ms,background 140ms" onmouseover="this.style.background=\'rgba(7,13,24,.78)\'" onmouseout="this.style.background=\'rgba(7,13,24,.55)\'">';
     html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:' + col + ';text-transform:uppercase;margin-bottom:6px">' + _esc(c.source) + '</div>';
@@ -66175,6 +66234,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.214"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.215"></script>
 </body>
 </html>
