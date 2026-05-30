@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.202</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.203</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12500,6 +12500,57 @@ window.fbSet = fbSet;
 // the module-scoped get/ref/db plumbing.
 async function fbGet(path){try{return await get(ref(db,path));}catch(e){console.warn('[fbGet]',path,e&&e.message);return null;}}
 window.fbGet = fbGet;
+
+// P13.203 — connection-health watchdog. Wraps fbGet to track read
+// latency + runs a 30s heartbeat ping. If any read takes >10s without
+// resolving, OR the heartbeat fails, surfaces a fixed-position banner
+// at top of viewport with a Reload button. This is the fix for today's
+// diagnostic-hang nightmare — the page should TELL you the connection
+// is dead instead of letting promises sit pending forever.
+(function(){
+  if (typeof window === 'undefined' || !window.fbGet) return;
+  var _originalFbGet = window.fbGet;
+  var _lastSuccess = Date.now();
+  var _HANG_MS = 10000;
+  var _HEARTBEAT_MS = 30000;
+  function _show(reason){
+    if (document.getElementById('rtdb-stale-banner')) return;
+    var div = document.createElement('div');
+    div.id = 'rtdb-stale-banner';
+    div.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;background:linear-gradient(135deg,rgba(239,68,68,.95),rgba(212,130,58,.92));color:#fff;padding:12px 22px;border-radius:4px;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;box-shadow:0 8px 24px rgba(0,0,0,.6);display:flex;align-items:center;gap:14px;min-width:480px;max-width:90vw';
+    div.innerHTML = '<span>⚠ Firebase connection stale</span>' +
+      '<span style="font-weight:400;letter-spacing:.04em;text-transform:none;flex:1">' + (reason || 'Reads hanging') + '. Reload to reconnect.</span>' +
+      '<button onclick="location.reload()" style="padding:6px 14px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.5);color:#fff;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;cursor:pointer;border-radius:2px">⟳ Reload</button>' +
+      '<button onclick="document.getElementById(\'rtdb-stale-banner\').remove()" style="padding:6px 10px;background:transparent;border:1px solid rgba(255,255,255,.3);color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.10em;cursor:pointer;border-radius:2px">Dismiss</button>';
+    document.body.appendChild(div);
+  }
+  function _hide(){ var e = document.getElementById('rtdb-stale-banner'); if (e) e.remove(); }
+  window.fbGet = async function(path){
+    var done = false;
+    setTimeout(function(){ if (!done) _show('Read of ' + String(path).slice(0,60) + ' has been pending >10s'); }, _HANG_MS);
+    try {
+      var r = await _originalFbGet(path);
+      done = true;
+      _lastSuccess = Date.now();
+      _hide();
+      return r;
+    } catch (e) { done = true; throw e; }
+  };
+  setInterval(async function(){
+    if (!window.currentWsId || typeof window.wsPath !== 'function') return;
+    var done = false;
+    setTimeout(function(){ if (!done) _show('Heartbeat ping timed out'); }, _HANG_MS);
+    try {
+      await _originalFbGet(window.wsPath('info'));
+      done = true;
+      _lastSuccess = Date.now();
+      _hide();
+    } catch(e) { done = true; }
+  }, _HEARTBEAT_MS);
+  window._rtdbHealth = function(){
+    return { lastSuccess: new Date(_lastSuccess).toISOString(), secondsAgo: Math.floor((Date.now() - _lastSuccess) / 1000), healthy: (Date.now() - _lastSuccess) < _HANG_MS };
+  };
+})();
 async function fbRemove(path){setSS('saving');try{await remove(ref(db,path));setSS('live');}catch(e){setSS('error');throw e;}}
 function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
 window.wsPath = wsPath;
@@ -65595,6 +65646,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.202"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.203"></script>
 </body>
 </html>
