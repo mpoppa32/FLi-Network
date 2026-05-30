@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.194</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.195</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -43700,14 +43700,65 @@ window._atlasIsDroneCompany = function(node) {
   return { is: uniq.length > 0, reasons: uniq };
 };
 
-// Guess a LinkedIn company URL from the org name. Operator clicks open; if
-// LinkedIn lands on search, they fix the slug. Faster than typing.
-window._atlasGuessLinkedInOrgUrl = function(orgName) {
+// Hardcoded LinkedIn slugs for known drone primes whose actual slug
+// differs from a naive name-to-slug guess. Operator-verified entries
+// only — when in doubt, leave out and let the search fallback handle it.
+window._atlasLinkedInSlugMap = {
+  'skydio': 'skydio-inc',
+  'anduril': 'anduril-industries',
+  'shield ai': 'shieldai',
+  'aerovironment': 'aerovironment',
+  'auterion': 'auterion',
+  'draganfly': 'draganfly-inc',
+  'firestorm labs': 'firestormlabs',
+  'firestorm': 'firestormlabs',
+  'parrot': 'parrot',
+  'autel robotics': 'autel-robotics',
+  'red cat': 'red-cat-holdings',
+  'aurora flight sciences': 'aurora-flight-sciences',
+  'martin uav': 'martinuav',
+  'edge autonomy': 'edge-autonomy',
+  'kratos': 'kratos-defense-and-security-solutions',
+  'general atomics': 'general-atomics-aeronautical-systems-inc-',
+  'teledyne flir': 'teledyneflir',
+  'insitu': 'insitu',
+  'quantum systems': 'quantum-systems',
+  'wingcopter': 'wingcopter',
+  'flyability': 'flyability',
+  'percepto': 'percepto',
+  'matternet': 'matternet',
+  'zipline': 'flyzipline',
+  'wing aviation': 'wingaviation',
+  'easy aerial': 'easyaerial',
+  'event 38': 'event-38-unmanned-systems',
+  'sentera': 'sentera-llc',
+  'overwatch aero': 'overwatch-aero',
+  'neros': 'neros-technologies',
+  'vector': 'vectorcontroldynamics',
+  'ark robotics': 'arkrobotics',
+  'terra drone': 'terra-drone-corporation'
+};
+
+// Resolve a LinkedIn URL for an org. Priority:
+//   1. Explicit node.linkedin field if operator-verified
+//   2. Hardcoded slug map for known primes (exact slug — direct page)
+//   3. LinkedIn company-search URL — ALWAYS lands on real results; the
+//      operator clicks the correct match in 1 second
+// The third tier replaces the prior naive slug-guess pattern that was
+// producing blank URLs (when suffix-stripping ate the whole name) or
+// wrong-company URLs (when stripped name happened to collide with
+// another company's slug). Search URL trades 1 click for reliability.
+window._atlasGuessLinkedInOrgUrl = function(orgName, explicitField) {
+  if (explicitField && String(explicitField).trim()) return String(explicitField).trim();
   if (!orgName) return '';
-  var slug = String(orgName).toLowerCase()
-    .replace(/[\s,.()&]+(inc|llc|corp|corporation|company|co|ltd|limited|technologies|technology|tech|systems|system|group|solutions|services|holdings|industries|industry|international|global|innovations|innovation|gmbh|ag|sa|bv|aerospace|aviation|robotics)\.?\s*$/gi, '')
-    .replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
-  return slug ? 'https://www.linkedin.com/company/' + slug : '';
+  var keyLc = String(orgName).toLowerCase().trim();
+  var slugMap = window._atlasLinkedInSlugMap || {};
+  for (var key in slugMap) {
+    if (keyLc.indexOf(key) >= 0) return 'https://www.linkedin.com/company/' + slugMap[key];
+  }
+  // Search fallback — guaranteed real LinkedIn page, filtered to companies
+  // matching this name. One extra click but always correct.
+  return 'https://www.linkedin.com/search/results/companies/?keywords=' + encodeURIComponent(orgName);
 };
 
 // Sweep all orgs · write industryTags+reasons to RTDB · skip operator-locked.
@@ -64869,6 +64920,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.194"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.195"></script>
 </body>
 </html>
