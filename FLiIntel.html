@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.228</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.229</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -45992,6 +45992,38 @@ function _accSnapshotSection(r){
   '</div>';
 }
 
+// P13.229 (Block 4 / The Call Prep) — one-click pre-read for an account.
+// Assembles this account's top contacts + linked opp and fires the existing
+// prep-brief engine (openMeetingPrepBrief), which pulls last conversations,
+// stances, relationship health, and open commitments into a single brief.
+// This is the "assembly" the audit called for: pieces existed; nothing put
+// them one click from "I'm calling this account." Read-only / prep only.
+window._atlasAccountCallPrep = function(orgId){
+  try {
+    var idx = window.CorsairIndex || {};
+    var org = (idx.byId && idx.byId.get && idx.byId.get(String(orgId))) || (window.nodes || []).find(function(n){ return String(n.id) === String(orgId); });
+    if (!org){ if (typeof toast === 'function') toast('Account not found'); return; }
+    var r = (typeof _accBuildRollup === 'function') ? _accBuildRollup(org) : { people: [] };
+    var people = (r.people || []).slice();
+    // Top contacts: POCs first, then the rest; cap 3 (a prep brief on the 3
+    // most relevant people, not the whole org).
+    var pocs = people.filter(function(p){ return p && p.isPOC; });
+    var rest = people.filter(function(p){ return p && !p.isPOC; });
+    var att = pocs.concat(rest).slice(0, 3).map(function(p){ return p.name; }).filter(Boolean).join(', ');
+    if (!att){ if (typeof toast === 'function') toast('No contacts at ' + (org.name || 'this account') + ' yet — add a POC first'); return; }
+    // Linked opp: first open pursuit for this org (best-effort).
+    var on = String(org.name || '').toLowerCase();
+    var opp = (window.opportunities || []).find(function(o){
+      if (!o) return false;
+      var s = String(o.stage || '').toLowerCase(); if (s === 'won' || s === 'lost') return false;
+      return (o.customerOrg && String(o.customerOrg).toLowerCase() === on) || (o.name && on && String(o.name).toLowerCase().indexOf(on) >= 0);
+    });
+    if (typeof window.openMeetingPrepBrief === 'function') {
+      window.openMeetingPrepBrief('', 'Call Prep: ' + (org.name || 'Account'), att, opp ? opp.id : '');
+    }
+  } catch(e){ console.warn('[P13.229 account call-prep]', e); if (typeof toast === 'function') toast('Call Prep failed'); }
+};
+
 window._openAccountDetail = function(orgId){
   var idx = window.CorsairIndex || {};
   var org = (idx.byId && idx.byId.get && idx.byId.get(String(orgId))) || null;
@@ -46150,7 +46182,10 @@ window._openAccountDetail = function(orgId){
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' + _accOrgTypeChip(r.org.type) + _accDecayChip(r.daysSinceTouch) + '</div>' +
           '<div style="font-family:Antonio,sans-serif;font-size:28px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-.01em">' + _accEsc(r.org.name) + '</div>' +
         '</div>' +
-        '<button onclick="window._closeAccountDetail()" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+        '<div style="display:flex;gap:7px;align-items:center;flex-shrink:0">' +
+          (r.peopleCount ? '<button onclick="window._atlasAccountCallPrep(\'' + _accEsc(r.org.id) + '\')" title="One-click pre-read — pulls this account\'s top contacts, last conversations, stances + open commitments into a meeting brief" style="background:rgba(95,179,184,.12);border:1px solid #5fb3b8;color:#5fb3b8;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:7px 13px;border-radius:3px;cursor:pointer;white-space:nowrap">⬡ Call Prep</button>' : '') +
+          '<button onclick="window._closeAccountDetail()" style="background:none;border:1px solid var(--b2);color:var(--t3);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>' +
+        '</div>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">' +
         metricTile('PIPELINE', _accFmt$(r.pipeline), 'var(--gold)') +
@@ -66679,6 +66714,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.228"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.229"></script>
 </body>
 </html>
