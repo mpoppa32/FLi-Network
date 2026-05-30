@@ -25,7 +25,7 @@
 
 'use strict';
 
-var CACHE_VERSION = 'P13.231';
+var CACHE_VERSION = 'P13.232';
 var CACHE_NAME    = 'corsair-' + CACHE_VERSION;
 // Resources to pre-cache on install. Keep this small — just the
 // load-bearing first-paint assets. Lazy-cache everything else as it's

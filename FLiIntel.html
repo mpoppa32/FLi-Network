@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.231</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.232</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32747,6 +32747,11 @@ window.renderTodayView = function(){
   // action, Brief columns below for depth. Hides itself when empty so
   // there's no manufactured urgency on quiet days (Doctrine IV).
   try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
+  // P13.232 (Block 5B) — start weekly snapshots accumulating from normal use
+  // (load the history, then capture this week if not already). Once/session,
+  // idempotent, fire-and-forget — so the Reckoning's week-over-week deltas
+  // and the snapshot-based Catches have data going forward.
+  try { if(!window._atlasSnapStarted){ window._atlasSnapStarted = true; if(window._atlasLoadSnapshots) window._atlasLoadSnapshots(); if(window._atlasCaptureWeeklySnapshot) window._atlasCaptureWeeklySnapshot(); } } catch(e){}
   // P13.92 (Day 5) — Quick Start callout for first-time users on this
   // workspace. Renders ONCE (until dismissed) above the rhythm host.
   // Explains the 4 primary actions + points at Pipeline for the unscored
@@ -44772,6 +44777,69 @@ window._droneOpenAllLinkedIn = function() {
 // Render the Drone Universe view. Pulls drone-classified orgs, computes
 // DARK/SPARSE/MAPPED band via _accBuildRollup, attaches pending-POC counts
 // from the primed cache, surfaces LinkedIn org URL on every row.
+// P13.232 (Block 5B) — weekly snapshot foundation. Captures the workspace's
+// money + coverage metrics once per ISO week to a team-shared RTDB path, so
+// The Reckoning can show week-over-week deltas (what accelerated / stalled /
+// where coverage moved) and the deferred stage-rot / coverage-delta Catches
+// can fire. Idempotent (writes only if this week's key is absent); tiny new
+// path, never touches existing data. Doctrine AP-9 — the platform keeps an
+// honest record of its own state over time.
+window._atlasWeekKey = function(d){
+  d = d || new Date();
+  var dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  var day = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - day);
+  var ys = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  var wk = Math.ceil((((dt - ys) / 86400000) + 1) / 7);
+  return dt.getUTCFullYear() + '-W' + (wk < 10 ? '0' + wk : wk);
+};
+window._atlasComputeReckoningMetrics = function(){
+  var pwinFrac = (typeof window._pwinFrac === 'function') ? window._pwinFrac : function(o){ return Number((o&&o.pwin)||0); };
+  var opps = window.opportunities || [];
+  var active=0, weighted=0, totalPipe=0, wonCount=0, wonVal=0, lostNoBid=0, byCust={}, byAgency={};
+  opps.forEach(function(o){
+    if(!o)return; var s=String(o.stage||'').toLowerCase(); var v=Number(o.value||o.contractValue||0);
+    if(s==='won'){ wonCount++; wonVal+=v; return; }
+    if(s==='lost'||s==='no-bid'||s==='no_bid'){ lostNoBid++; return; }
+    if(!s)return;
+    active++; var w=v*pwinFrac(o); totalPipe+=v; weighted+=w;
+    if(w>0){ if(o.customerOrg){var c=String(o.customerOrg).trim(); if(c)byCust[c]=(byCust[c]||0)+w;} if(o.agency){var a=String(o.agency).trim(); if(a&&a.toLowerCase()!=='agency unknown')byAgency[a]=(byAgency[a]||0)+w;} }
+  });
+  function topv(map){ var t=0; for(var k in map) if(map[k]>t)t=map[k]; return t; }
+  var topShare = weighted>0 ? Math.round(Math.max(topv(byCust),topv(byAgency))/weighted*100) : 0;
+  var nodes=window.nodes||[]; var oppNames=new Set(); opps.forEach(function(o){ if(o&&o.name)oppNames.add(String(o.name).toLowerCase()); });
+  function isBd(n){ return n && (n.bdTarget || (n.name && oppNames.has(String(n.name).toLowerCase()))); }
+  var dark=0, sparse=0, mapped=0, totalBd=0;
+  if(typeof _accBuildRollup==='function'){ for(var i=0;i<nodes.length;i++){ var n=nodes[i]; if(!n||(n.type!=='company'&&n.type!=='government'))continue; if(!isBd(n))continue; totalBd++; try{ var r=_accBuildRollup(n); if(r.peopleCount===0)dark++; else if(r.peopleCount>=3)mapped++; else sparse++; }catch(e){} } }
+  return { weighted:Math.round(weighted), totalPipe:Math.round(totalPipe), active:active, wonCount:wonCount, wonVal:Math.round(wonVal), lostNoBid:lostNoBid, topShare:topShare, dark:dark, sparse:sparse, mapped:mapped, totalBd:totalBd };
+};
+window._atlasSnapshotCache = window._atlasSnapshotCache || null;
+window._atlasLoadSnapshots = async function(){
+  try{
+    if(!window.currentWsId || typeof window.fbGet!=='function' || typeof window.wsPath!=='function') return;
+    var snap = await window.fbGet(window.wsPath('weeklySnapshots'));
+    var v = snap && (typeof snap.val==='function' ? snap.val() : snap);
+    window._atlasSnapshotCache = v || {};
+  }catch(e){ console.warn('[P13.232 load]', e&&e.message); window._atlasSnapshotCache = window._atlasSnapshotCache || {}; }
+};
+window._atlasCaptureWeeklySnapshot = async function(){
+  try{
+    if(!window.currentWsId) return;
+    if(typeof window._canWrite==='function' && !window._canWrite()) return; // observers don't write
+    if(typeof window.fbGet!=='function' || typeof window.fbSet!=='function' || typeof window.wsPath!=='function') return;
+    var wk = window._atlasWeekKey();
+    var snap = await window.fbGet(window.wsPath('weeklySnapshots/'+wk));
+    var has = snap && (typeof snap.exists==='function' ? snap.exists() : (typeof snap.val==='function' ? snap.val()!=null : snap!=null));
+    if(has) return; // idempotent — already captured this week
+    var m = window._atlasComputeReckoningMetrics();
+    if(!m) return;
+    m.weekKey = wk; m.capturedAt = Date.now();
+    await window.fbSet(window.wsPath('weeklySnapshots/'+wk), m);
+    if(window._atlasSnapshotCache) window._atlasSnapshotCache[wk] = m;
+    console.log('[P13.232] weekly snapshot captured', wk);
+  }catch(e){ console.warn('[P13.232 capture]', e&&e.message); }
+};
+
 // P13.231 (Block 5 / The Reckoning — Moment 7) — the money-truth surface.
 // Composes what was scattered across bdperf/trends/winloss into one Monday
 // read: weighted pipeline, won/lost/no-bid, concentration, coverage, top
@@ -44858,8 +44926,34 @@ window._renderReckoningView = function() {
     '</div>'; });
     h += '</div>';
   } else { h += '<div style="margin-bottom:18px;color:var(--t3);font-size:13px">No active pursuits.</div>'; }
-  // Honest note on deltas
-  h += '<div style="padding:12px 14px;background:rgba(95,179,184,.05);border:1px solid rgba(95,179,184,.2);border-left:3px solid #5fb3b8;border-radius:3px;font-size:12px;color:var(--t2);line-height:1.5">Week-over-week deltas — what accelerated, what stalled, where coverage moved — light up once weekly snapshots accumulate (the platform captures one each week from here).</div>';
+  // Week over week (Block 5B) — compare to the most recent PRIOR weekly
+  // snapshot if one exists; otherwise honestly say it's still accumulating.
+  (function(){
+    var cache = window._atlasSnapshotCache || {};
+    var curWk = (typeof window._atlasWeekKey === 'function') ? window._atlasWeekKey() : '';
+    var priorKey = null;
+    Object.keys(cache).forEach(function(k){ if(k && k < curWk && (!priorKey || k > priorKey)) priorKey = k; });
+    var prior = priorKey ? cache[priorKey] : null;
+    if (!prior){
+      h += '<div style="padding:12px 14px;background:rgba(95,179,184,.05);border:1px solid rgba(95,179,184,.2);border-left:3px solid #5fb3b8;border-radius:3px;font-size:12px;color:var(--t2);line-height:1.5">Week-over-week deltas — what accelerated, what stalled, where coverage moved — light up once a prior weekly snapshot exists. The platform captures one each week from here.</div>';
+      return;
+    }
+    function delta(cur, was, fmt, goodUp){
+      var d = cur - (Number(was)||0);
+      if (d === 0) return '<span style="color:var(--t3)">flat</span>';
+      var up = d > 0; var good = goodUp ? up : !up;
+      return '<span style="color:'+(good?'#22c55e':'#ef4444')+'">'+(up?'▲':'▼')+' '+(fmt?fmt(Math.abs(d)):Math.abs(d))+'</span>';
+    }
+    var f$ = function(v){ if(v>=1e6)return '$'+(v/1e6).toFixed(1)+'M'; if(v>=1e3)return '$'+Math.round(v/1e3)+'k'; return '$'+Math.round(v); };
+    h += '<div style="padding:12px 16px;background:var(--s1);border:1px solid var(--b1);border-radius:3px">';
+    h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:10px">Week over week <span style="color:var(--t3);font-weight:400;letter-spacing:.04em">vs '+esc(priorKey)+'</span></div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:20px;font-size:13px;color:var(--text)">';
+    h += '<div>Weighted: '+delta(weighted, prior.weighted, f$, true)+'</div>';
+    h += '<div>Won: '+delta(won.length, prior.wonCount, null, true)+'</div>';
+    h += '<div>Mapped: '+delta(mapped, prior.mapped, null, true)+'</div>';
+    h += '<div>Dark: '+delta(dark, prior.dark, null, false)+'</div>';
+    h += '</div></div>';
+  })();
   h += '</div>';
   view.innerHTML = h;
 };
@@ -66851,6 +66945,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.231"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.232"></script>
 </body>
 </html>
