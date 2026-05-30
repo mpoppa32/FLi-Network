@@ -8884,7 +8884,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.199</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.200</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -44341,9 +44341,30 @@ window._renderOutreachQueueView = async function() {
       if (!cand || !cand.name) continue;
       var candEmail = String(cand.email || '').trim();
       var tier = candEmail ? 'verified' : '';
+      // Tier 2 — Phase 2 anchor-confirmed format applied to name + domain
       if (!candEmail && meta.emailFormat && meta.companyDomain && window.Corsair && window.Corsair.poc && window.Corsair.poc.applyEmailFormat) {
         candEmail = window.Corsair.poc.applyEmailFormat(meta.emailFormat, cand.name, meta.companyDomain);
         if (candEmail) tier = 'inferred';
+      }
+      // P13.200 — Tier 3: naive first.last@guessed-domain fallback. Used
+      // when no anchor format exists (pre-Phase-2 sweeps OR Claude found
+      // no anchor). Mirrors g2-outreach.html guessEmail/inferOrgDomain.
+      // This is what keeps the queue from being empty when there are
+      // pending POCs that just don't have orgMeta enrichment yet.
+      if (!candEmail) {
+        var naiveDom = String(n.name || '')
+          .replace(/[\s,.()&-]+(Inc|LLC|Corp|Corporation|Company|Co|Ltd|Limited|Technologies|Technology|Tech|Systems|System|Group|Solutions|Services|Holdings|Industries|Industry|International|Global|Innovations|Innovation|GmbH|AG|SA|BV)\.?\s*$/gi, '')
+          .replace(/[^a-zA-Z0-9]/g, '')
+          .toLowerCase();
+        if (naiveDom) {
+          var parts = String(cand.name).trim().toLowerCase().split(/\s+/).filter(Boolean);
+          if (parts.length >= 1) {
+            var first = parts[0].replace(/[^a-z]/g, '');
+            var last = parts.length > 1 ? parts[parts.length - 1].replace(/[^a-z]/g, '') : '';
+            if (first && last) { candEmail = first + '.' + last + '@' + naiveDom + '.com'; tier = 'guessed'; }
+            else if (first) { candEmail = first + '@' + naiveDom + '.com'; tier = 'guessed'; }
+          }
+        }
       }
       if (!candEmail) continue;
       targets.push({
@@ -44427,7 +44448,20 @@ window._renderOutreachQueueView = async function() {
 
   if (filtered.length === 0) {
     list.innerHTML = '';
-    if (empty) { empty.style.display = 'block'; empty.textContent = targets.length === 0 ? 'No outreach targets yet. Run ⌖ Sweep technical-buy POCs in Drone Universe to populate the queue.' : 'No targets match current filters.'; }
+    if (empty) {
+      empty.style.display = 'block';
+      if (targets.length === 0) {
+        empty.innerHTML = '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);margin-bottom:10px">No outreach targets in this workspace yet.</div>' +
+          '<div style="font-size:13px;color:var(--t2);margin-bottom:18px;line-height:1.55">Three ways to populate (any one works):</div>' +
+          '<div style="display:flex;flex-direction:column;gap:8px;max-width:560px;margin:0 auto;text-align:left">' +
+            '<button onclick="window._atlasRunFullSync&&window._atlasRunFullSync()" style="padding:12px 18px;background:linear-gradient(90deg,rgba(34,197,94,.15),rgba(95,179,184,.15));border:1px solid #22c55e;color:#22c55e;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;text-align:left">⚡ Run full sync &nbsp;<span style="font-size:11px;color:var(--paper-2);font-weight:400;letter-spacing:.04em;text-transform:none">— Monday → Classify drones → Sweep technical-buy POCs (~25 min)</span></button>' +
+            '<button onclick="window._atlasBulkPOCDiscovery&&window._atlasBulkPOCDiscovery({droneOnly:true,roleTargeted:true})" style="padding:12px 18px;background:rgba(34,197,94,.10);border:1px solid #22c55e;color:#22c55e;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;text-align:left">⌖ Sweep tech-buy POCs (drone only) &nbsp;<span style="font-size:11px;color:var(--paper-2);font-weight:400;letter-spacing:.04em;text-transform:none">— skip Monday + classify, just the sweep</span></button>' +
+            '<a href="g2-outreach.html" target="_blank" style="padding:12px 18px;background:rgba(95,179,184,.10);border:1px solid #5fb3b8;color:#5fb3b8;border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;text-decoration:none;text-align:left;display:block">↗ Open g2-outreach.html &nbsp;<span style="font-size:11px;color:var(--paper-2);font-weight:400;letter-spacing:.04em;text-transform:none">— same Atlas template, works on any existing pending POCs without sweep</span></a>' +
+          '</div>';
+      } else {
+        empty.textContent = 'No targets match current filters.';
+      }
+    }
     return;
   }
   if (empty) empty.style.display = 'none';
@@ -44437,8 +44471,8 @@ window._renderOutreachQueueView = async function() {
   var STAGE_BG = { cold:'rgba(212,130,58,.18)', 'sent-recent':'rgba(125,118,105,.18)', awaiting:'rgba(245,158,11,.18)', replied:'rgba(34,197,94,.18)', 'post-meeting':'rgba(34,197,94,.18)', 'post-demo':'rgba(34,197,94,.18)', dormant:'rgba(239,68,68,.18)' };
   var STAGE_FG = { cold:'#d4823a', 'sent-recent':'#7d7669', awaiting:'#f59e0b', replied:'#22c55e', 'post-meeting':'#22c55e', 'post-demo':'#22c55e', dormant:'#ef4444' };
   var KIND_LBL = { person:'LINKED', pendingPOC:'PENDING', orgInbox:'INBOX' };
-  var TIER_BG = { verified:'rgba(34,197,94,.18)', inferred:'rgba(95,179,184,.18)', fallback:'rgba(167,139,250,.18)' };
-  var TIER_FG = { verified:'#22c55e', inferred:'#5fb3b8', fallback:'#a78bfa' };
+  var TIER_BG = { verified:'rgba(34,197,94,.18)', inferred:'rgba(95,179,184,.18)', guessed:'rgba(212,130,58,.15)', fallback:'rgba(167,139,250,.18)' };
+  var TIER_FG = { verified:'#22c55e', inferred:'#5fb3b8', guessed:'#d4823a', fallback:'#a78bfa' };
 
   var html = '';
   for (var fi = 0; fi < filtered.length; fi++) {
@@ -65488,6 +65522,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.199"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.200"></script>
 </body>
 </html>
