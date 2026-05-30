@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.223</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.224</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13801,6 +13801,11 @@ function connectWorkspace(){
       try{ window._renderTodayNarrative && window._renderTodayNarrative(); }catch(e){}
       try{ window._renderTodayCatches && window._renderTodayCatches(); }catch(e){}
       try{ window._renderTodayOrientation && window._renderTodayOrientation(); }catch(e){}
+    }
+    // P13.224 — live Team Activity feed on the Atlas chamber when a meeting
+    // is logged (incl. a teammate's, arriving via this shared listener).
+    if(activeView==='atlas'){
+      try{ window._atlasRenderActivityFeed && window._atlasRenderActivityFeed(); }catch(e){}
     }
     setSS('live');
     // P9.6: ripple every attendee of any newly-added meeting + the linked opp.
@@ -31782,6 +31787,12 @@ window.renderAtlasView = function(){
   h += '</div>';
   // Body (scrollable)
   h += '<div style="flex:1;overflow-y:auto;padding:20px 32px">';
+  // P13.224 (Block 2 / The Logging, piece 2a) — Team Activity feed: the
+  // chronological "who logged what, when" stream the Vision's team feed
+  // describes ("Mike logs at 4pm; Bryce sees at 4:01"). Leads the team
+  // chamber. Populated by _atlasRenderActivityFeed after innerHTML, and
+  // live-refreshed by the meetings RTDB listener.
+  h += '<div id="atlas-activity-feed" style="margin-bottom:24px"></div>';
   // Updates feed section
   h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:baseline;justify-content:space-between">';
   h += '<span>Updates Feed</span>';
@@ -31907,6 +31918,54 @@ window.renderAtlasView = function(){
   h += '</div>';
   h += '</div>';
   view.innerHTML = h;
+  // P13.224 — populate the Team Activity feed now the shell is in the DOM.
+  try { window._atlasRenderActivityFeed && window._atlasRenderActivityFeed(); } catch(e){}
+};
+
+// P13.224 (Block 2 / The Logging, piece 2a) — Team Activity feed renderer.
+// Chronological "who logged what, when" from the shared meetings collection
+// (each meeting carries loggedBy + loggedByUid). Newest first, capped. This
+// is the literal team feed the Vision names — the Bridge made visible on the
+// team chamber. Click a row to open that meeting. Live-refreshed by the
+// meetings RTDB listener so a teammate's log appears within the minute.
+window._atlasRenderActivityFeed = function(){
+  var host = document.getElementById('atlas-activity-feed');
+  if (!host) return;
+  var mtgs = (window.meetings || []).slice();
+  function _ts(m){
+    if (m && m.meta){ if (typeof m.meta.ts === 'number') return m.meta.ts; if (m.meta.date){ var t = Date.parse(String(m.meta.date)); if (!isNaN(t)) return t; } }
+    if (m && typeof m.ts === 'number') return m.ts;
+    if (m && m.ts){ var t2 = Date.parse(String(m.ts)); if (!isNaN(t2)) return t2; }
+    return 0;
+  }
+  function _esc(s){ return String(s == null ? '' : s).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
+  function _rel(ts){ if (!ts) return ''; var d = Date.now() - ts; if (d < 60000) return 'just now'; if (d < 3600000) return Math.floor(d/60000) + 'm ago'; if (d < 86400000) return Math.floor(d/3600000) + 'h ago'; if (d < 7*86400000) return Math.floor(d/86400000) + 'd ago'; return new Date(ts).toLocaleDateString('en-US', { month:'short', day:'numeric' }); }
+  mtgs.sort(function(a,b){ return _ts(b) - _ts(a); });
+  var top = mtgs.slice(0, 15);
+  var myUid = (window.currentUser && window.currentUser.uid) || null;
+  var header = '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#4fd6e4;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:baseline;justify-content:space-between"><span>&#9670; Team Activity</span><span style="font-weight:400;color:var(--paper-2);font-size:10px">' + mtgs.length + ' meeting' + (mtgs.length===1?'':'s') + ' logged</span></div>';
+  if (!top.length){
+    host.innerHTML = header + '<div style="padding:18px;background:rgba(7,13,24,.4);border:1px dashed var(--rule);border-radius:3px;color:var(--paper-2);font-size:13px;text-align:center">No meetings logged yet — when anyone on the team logs one, it lands here within the minute.</div>';
+    return;
+  }
+  var rows = top.map(function(m){
+    var actor = (m.loggedByUid && myUid && m.loggedByUid === myUid) ? 'You' : (m.loggedBy || 'A teammate');
+    var title = (m.meta && m.meta.title) || 'a meeting';
+    var ts = _ts(m);
+    var att = (m.intel && Array.isArray(m.intel.keyPeople)) ? m.intel.keyPeople.length : ((m.meta && Array.isArray(m.meta.attendees)) ? m.meta.attendees.length : 0);
+    var detail = att ? (att + ' attendee' + (att===1?'':'s')) : '';
+    var ini = String(actor).split(/\s+/).map(function(x){ return x[0]; }).join('').slice(0,2).toUpperCase();
+    var safeMid = String(m.id).replace(/'/g, "\\'");
+    return '<div onclick="switchView(\'intel\');setTimeout(function(){if(typeof goIntelById===\'function\')goIntelById(\'' + safeMid + '\')},200)" style="display:flex;gap:11px;align-items:flex-start;padding:10px 12px;background:rgba(7,13,24,.5);border:1px solid var(--rule);border-left:3px solid #4fd6e4;border-radius:2px;margin-bottom:7px;cursor:pointer" onmouseover="this.style.background=\'rgba(7,13,24,.74)\'" onmouseout="this.style.background=\'rgba(7,13,24,.5)\'">' +
+      '<div style="width:26px;height:26px;border-radius:50%;background:rgba(79,214,228,.16);border:1px solid rgba(79,214,228,.4);color:#5fe6ee;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + _esc(ini) + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4"><b style="color:#5fe6ee">' + _esc(actor) + '</b> logged <b>' + _esc(title) + '</b></div>' +
+        (detail ? '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.04em;margin-top:2px">' + _esc(detail) + '</div>' : '') +
+      '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);white-space:nowrap;flex-shrink:0">' + _rel(ts) + '</div>' +
+    '</div>';
+  }).join('');
+  host.innerHTML = header + rows;
 };
 
 // P13.96 — TODAY widget: small chip showing latest ATLAS update.
@@ -66484,6 +66543,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.223"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.224"></script>
 </body>
 </html>
