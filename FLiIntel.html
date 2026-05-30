@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.226</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.227</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13539,6 +13539,32 @@ async function loadUserWorkspaces(user){
       new Promise(function(_,rej){setTimeout(function(){rej(new Error('rtdb-timeout-20s'));},20000);})
     ]);
   } catch(rtdbErr) {
+    // P13.227 — the realtime get() needs the websocket/long-poll connection,
+    // which flakes intermittently (recurs even right after a clear.html
+    // reset → the wedged-IDB theory alone doesn't explain it; the realtime
+    // transport itself is unreliable in this environment). Before surfacing
+    // the error, fall back to the REST layer, which is healthy whenever the
+    // DB is up (verified: REST returns 401/200 in <0.5s while the realtime
+    // read hangs 20s). Standard Firebase RTDB REST auth via the user's ID
+    // token, HTTPS to Firebase's own endpoint (connect-src allows it).
+    console.warn('[P13.227] realtime workspace read failed (' + (rtdbErr && rtdbErr.message) + ') — trying REST fallback');
+    try {
+      var _tok = await user.getIdToken();
+      var _resp = await Promise.race([
+        fetch('https://fli-network-default-rtdb.firebaseio.com/users/' + user.uid + '/workspaces.json?auth=' + encodeURIComponent(_tok)),
+        new Promise(function(_,rej){setTimeout(function(){rej(new Error('rest-timeout-10s'));},10000);})
+      ]);
+      if (_resp && _resp.ok) {
+        var _restData = await _resp.json();
+        userWorkspaces = _restData ? Object.values(_restData) : [];
+        console.log('[P13.227] REST fallback OK —', userWorkspaces.length, 'workspaces (realtime listeners will reconnect in the background)');
+        if(userWorkspaces.length===0){showWsPicker(user);}
+        else if(userWorkspaces.length===1){selectWorkspace(userWorkspaces[0].id);}
+        else{showWsPicker(user);}
+        return;
+      }
+      console.warn('[P13.227] REST fallback HTTP', _resp && _resp.status);
+    } catch(restErr) { console.warn('[P13.227] REST fallback failed:', restErr && restErr.message); }
     document.body.classList.remove('app-active');
     var asEl=document.getElementById('auth-screen');if(asEl)asEl.style.display='flex';
     var pl=document.getElementById('page-loader');if(pl)pl.style.display='none';
@@ -66603,6 +66629,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.226"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.227"></script>
 </body>
 </html>
