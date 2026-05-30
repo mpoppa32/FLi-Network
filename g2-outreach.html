@@ -228,13 +228,15 @@ function renderPending() {
   $("pending-card").style.display = "block";
   window._pendingItems = items; // exposed for bulk-open handlers
   const orgCount = new Set(items.map(p => p.orgId)).size;
+  const liCount = items.filter(p => p.linkedin).length;
   const bulkBar =
     '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 8px;padding:12px 14px;background:rgba(34,197,94,.06);border:1px solid var(--green);border-radius:3px">' +
       '<button class="primary" onclick="window._bulkOpenGmail()" style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.10em;text-transform:uppercase">🚀 Open all ' + items.length + ' in Gmail compose tabs</button>' +
       '<button onclick="window._bulkOpenMailto()" style="font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.10em;text-transform:uppercase">📨 Open all in default mail app</button>' +
+      '<button onclick="window._bulkOpenLinkedIn()" title="Open every candidate\'s LinkedIn profile in a new tab — for connection-request + intro DM outreach on the side" style="font-family:IBM Plex Mono,monospace;font-size:12px;letter-spacing:.10em;text-transform:uppercase;background:rgba(95,179,184,.18);border:1px solid var(--teal);color:var(--teal)">🔗 Open ' + liCount + ' LinkedIn profile' + (liCount===1?'':'s') + '</button>' +
       '<span id="bulk-status" style="font-size:12px;color:var(--paper-2);font-family:IBM Plex Mono,monospace;letter-spacing:.06em"></span>' +
     '</div>' +
-    '<div style="font-size:12px;color:var(--paper-2);margin-bottom:14px;line-height:1.5">Each opens a tab with the Atlas template + personalized "Hi {first name}," + guessed email pre-filled. <b style="color:var(--gold)">If Chrome blocks the popups</b>, click the popup icon in the URL bar → "Always allow popups from this site" → click the button again.</div>';
+    '<div style="font-size:12px;color:var(--paper-2);margin-bottom:14px;line-height:1.5">Email tabs use the Atlas template + personalized "Hi {first name}," + guessed email. LinkedIn tabs go to each candidate\'s profile so you can fire off a connection request with a short opener. <b style="color:var(--gold)">If Chrome blocks the popups</b>, click the popup icon in the URL bar → "Always allow popups from this site" → click again.</div>';
   $("pending-stats").innerHTML = '<b style="color:var(--teal)">' + items.length + '</b> candidate' + (items.length===1?"":"s") + ' across <b style="color:var(--teal)">' + orgCount + '</b> org' + (orgCount===1?"":"s") + '. Italicized emails are <b style="color:var(--gold)">inferred from <code>first.last@orgdomain.com</code></b> — verify in each compose tab before clicking send.' + bulkBar;
   // Group by org
   const byOrg = {};
@@ -463,6 +465,20 @@ window._bulkOpenMailto = function() {
     if (w) opened++; else blocked++;
   }
   $("bulk-status").innerHTML = '<b style="color:var(--green)">' + opened + ' mailto launched</b>' + (blocked ? ' · <b style="color:var(--red)">' + blocked + ' blocked</b>' : '') + ' · your default mail app should handle each.';
+};
+
+// Bulk-open LinkedIn profiles for all candidates that had one returned
+// from Claude web search. Profile URLs aren't guessable (LinkedIn slugs
+// are user-chosen), so candidates without a linkedin field are skipped.
+window._bulkOpenLinkedIn = function() {
+  const items = (window._pendingItems || []).filter(p => p.linkedin);
+  if (!items.length) { $("bulk-status").textContent = "No candidates have a LinkedIn URL on file."; return; }
+  let opened = 0, blocked = 0;
+  for (const p of items) {
+    const w = window.open(p.linkedin, "_blank");
+    if (w) opened++; else blocked++;
+  }
+  $("bulk-status").innerHTML = '<b style="color:var(--teal)">' + opened + ' LinkedIn tab' + (opened===1?'':'s') + ' opened</b>' + (blocked ? ' · <b style="color:var(--red)">' + blocked + ' blocked (allow popups for this site)</b>' : '') + ' · send a connect request + short opener on each.';
 };
 
 $("copy-email").addEventListener("click", async () => {
