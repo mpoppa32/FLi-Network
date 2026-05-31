@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.235</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.236</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12970,6 +12970,7 @@ async function saveOpp(opp){
     var _prevStage = _prev ? _prev.stage : null;
     if (_prevStage !== opp.stage) {
       var _now = Date.now();
+      var _stageEvt = { id: opp.id, name: opp.name || 'a pursuit', from: _prevStage, to: opp.stage };
       if (_prevStage && _prev && _prev.stageEnteredAt) {
         opp.stageHistory = (opp.stageHistory || _prev.stageHistory || []).slice();
         opp.stageHistory.push({
@@ -13019,6 +13020,16 @@ async function saveOpp(opp){
   }
   try {
     await fbSet(wsPath('opportunities/'+opp.id), opp);
+    // DG-1 (Team Entanglement) — broadcast a genuine stage change to the team
+    // feed after the write succeeds. Skips first-save (no prior stage) and
+    // re-score saves (stage unchanged), so bulk scoring never spams the feed.
+    if (typeof _stageEvt !== 'undefined' && _stageEvt && _stageEvt.from) {
+      try {
+        var _fromLbl = ((window.oppStageConfig && window.oppStageConfig(_stageEvt.from)) || {}).label || _stageEvt.from;
+        var _toLbl = ((window.oppStageConfig && window.oppStageConfig(_stageEvt.to)) || {}).label || _stageEvt.to;
+        window._corsairEmitEvent && window._corsairEmitEvent('opp_stage_changed', _stageEvt.name, 'advanced ' + _stageEvt.name + ' (' + _fromLbl + ' → ' + _toLbl + ')', { view: 'opps', id: _stageEvt.id });
+      } catch(emitErr){}
+    }
   } catch(saveErr) {
     // P13.110 — rollback: restore opp to its pre-mutation state so local
     // matches server. Delete added keys first, then restore originals.
@@ -13233,6 +13244,10 @@ window.updateCommitmentStatus=async function(id,status,note){
   c.closedAt=status!=='open'?new Date().toISOString():null;
   c.closedNote=note||'';
   await saveCommitment(c);
+  // DG-1 (Team Entanglement) — broadcast a commitment close to the team feed.
+  if (status && status !== 'open') {
+    try { window._corsairEmitEvent && window._corsairEmitEvent('commitment_completed', (c.task||'a commitment'), 'marked a commitment ' + status + ': ' + String(c.task||'').slice(0,60), { view:'timeline' }); } catch(e){}
+  }
   toast('Commitment marked '+status);
 };
 
@@ -13840,6 +13855,15 @@ function connectWorkspace(){
     if(activeView==='atlas'){
       try{ window._atlasRenderActivityFeed && window._atlasRenderActivityFeed(); }catch(e){}
     }
+    // DG-7 (Team Entanglement) — a teammate's meeting can move cycle stages,
+    // coverage tiers, and money-view weight. Refresh whichever of these the
+    // operator is currently on so no screen shows stale state after a remote
+    // write. Same activeView-gated, guarded pattern as Today/Atlas above.
+    if(activeView==='outreach'){ try{ window._renderOutreachQueueView && window._renderOutreachQueueView(); }catch(e){} }
+    if(activeView==='drone'){ try{ window._renderDroneUniverse && window._renderDroneUniverse(); }catch(e){} }
+    if(activeView==='coverage'){ try{ window._renderCoverageView && window._renderCoverageView(); }catch(e){} }
+    if(activeView==='reckoning'){ try{ window._renderReckoningView && window._renderReckoningView(); }catch(e){} }
+    if(activeView==='posture'){ try{ window._renderPostureView && window._renderPostureView(); }catch(e){} }
     setSS('live');
     // P9.6: ripple every attendee of any newly-added meeting + the linked opp.
     // Resolves attendee names to person nodes via nameSimilarity (0.72 threshold).
@@ -13875,6 +13899,15 @@ function connectWorkspace(){
             });
           }
         });
+        // DG-7 (Team Entanglement) — if the entity drawer is open on an entity
+        // this newly-added meeting touched, refresh it in place so a teammate's
+        // log updates the dossier the operator is reading without a reopen.
+        try {
+          if (window._currentInspectorEntity && window._currentInspectorEntity.id != null && typeof window._refreshOpenInspector === 'function') {
+            var _openId = String(window._currentInspectorEntity.id);
+            if (rippleIds.some(function(r){ return String(r.id) === _openId; })) window._refreshOpenInspector(_openId);
+          }
+        } catch(e){}
         // Cap and stagger
         var cap = Math.min(8, rippleIds.length);
         for (var ri = 0; ri < cap; ri++){
@@ -14059,6 +14092,12 @@ function connectWorkspace(){
     if(typeof window._renderTableView === 'function') try { window._renderTableView(); } catch(e){ console.error('[P13.122 opps listener _renderTableView]', e); }
     if(typeof window._renderCopForecast === 'function') try { window._renderCopForecast(); } catch(e){ console.error('[P13.122 opps listener _renderCopForecast]', e); }
     if(typeof window._renderWinLossView === 'function') try { window._renderWinLossView(); } catch(e){ console.error('[P13.122 opps listener _renderWinLossView]', e); }
+    // DG-7 (Team Entanglement) — opp scores/stages drive these surfaces; refresh
+    // whichever the operator is currently on so a teammate's pipeline change
+    // doesn't leave a stale screen. Guarded + activeView-gated.
+    if(activeView==='reckoning'){ try{ window._renderReckoningView && window._renderReckoningView(); }catch(e){} }
+    if(activeView==='coverage'){ try{ window._renderCoverageView && window._renderCoverageView(); }catch(e){} }
+    if(activeView==='drone'){ try{ window._renderDroneUniverse && window._renderDroneUniverse(); }catch(e){} }
     if(currentOpp){var upd=opportunities.find(function(o){return o.id===currentOpp.id;});if(upd){currentOpp=upd;renderOppDetail(upd);}}
     // 3.11 live reload hook
     if (window.DiscoveryEngine3D && window.DiscoveryEngine3D.isRunning && window.DiscoveryEngine3D.isRunning()){
@@ -15826,7 +15865,8 @@ window._saveTouchMeeting=async function(opts){
     id:'mtg-'+Date.now(),
     meta:{title:title,date:date,att:att,dur:dur,type:type},
     intel:{summary:notes||'',keyPeople:[],actionItems:[],risks:[],redFlags:[],openQuestions:[],milestones:[],learningInsights:[],followUpTopics:[],companies:[],companyPulse:''},
-    loggedBy:(currentUser&&currentUser.uid)||null,
+    loggedBy:(currentUser&&currentUser.displayName)||null,
+    loggedByUid:(currentUser&&currentUser.uid)||null,
     loggedAt:new Date().toISOString(),
     ts:Date.now(),
     source:'touch'
@@ -29016,7 +29056,7 @@ window.openAddModal=openAddModal;
 function selectAddTier(t){addTier=t;[1,2,3].forEach(function(i){var b=document.getElementById('add-tier-'+i);b.style.cssText='';});var b=document.getElementById('add-tier-'+t);b.style.background='var(--gold)';b.style.color='#0b0d11';b.style.borderColor='var(--gold)';b.style.fontWeight='600';}
 window.selectAddTier=selectAddTier;
 
-async function confirmAddNode(){var name=document.getElementById('add-node-name').value.trim();if(!name){toast('Name required');return;}var type=document.getElementById('add-node-type').value;var org=(type==='company'||type==='government')?'':document.getElementById('add-node-org').value;var govOrgEl=document.getElementById('add-node-govorg');var govOrg=(type==='government'&&govOrgEl)?govOrgEl.value:'';var phoneEl=document.getElementById('add-node-phone');var emailEl=document.getElementById('add-node-email');var phone=(phoneEl&&phoneEl.value)?phoneEl.value.trim():'';var email=(emailEl&&emailEl.value)?emailEl.value.trim():'';var cx=W/2+(Math.random()-.5)*220,cy=H/2+(Math.random()-.5)*220;var node={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),type:type,name:name,role:document.getElementById('add-node-role').value.trim(),org:org,notes:document.getElementById('add-node-notes').value.trim(),priority:addTier,meetings:[],x:cx,y:cy,pinned:true,color:null,created:new Date().toISOString()};node.govOrg=govOrg||null;var govTypeEl=document.getElementById('add-node-govtype');node.govType=(govTypeEl&&govTypeEl.value)?govTypeEl.value:_inferGovType(node.role);if(phone)node.phone=phone;if(email)node.email=email;if(type==='company'||type==='government'){node.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}nodes.push(node);nodeMap.set(node.id,node);if(type==='company'||type==='government')companyByName.set(node.name.toLowerCase(),node);await saveNode(node);closeModal('add-node-modal');switchView('network');renderNetwork();updateFilterTags();updateOrgLegend();document.getElementById('net-empty').style.display='none';setTimeout(function(){openNetPanel(node);},200);if(window._promptAccountFillForNewNode)setTimeout(function(){window._promptAccountFillForNewNode(node);},900);}
+async function confirmAddNode(){var name=document.getElementById('add-node-name').value.trim();if(!name){toast('Name required');return;}var type=document.getElementById('add-node-type').value;var org=(type==='company'||type==='government')?'':document.getElementById('add-node-org').value;var govOrgEl=document.getElementById('add-node-govorg');var govOrg=(type==='government'&&govOrgEl)?govOrgEl.value:'';var phoneEl=document.getElementById('add-node-phone');var emailEl=document.getElementById('add-node-email');var phone=(phoneEl&&phoneEl.value)?phoneEl.value.trim():'';var email=(emailEl&&emailEl.value)?emailEl.value.trim():'';var cx=W/2+(Math.random()-.5)*220,cy=H/2+(Math.random()-.5)*220;var node={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),type:type,name:name,role:document.getElementById('add-node-role').value.trim(),org:org,notes:document.getElementById('add-node-notes').value.trim(),priority:addTier,meetings:[],x:cx,y:cy,pinned:true,color:null,created:new Date().toISOString()};node.govOrg=govOrg||null;var govTypeEl=document.getElementById('add-node-govtype');node.govType=(govTypeEl&&govTypeEl.value)?govTypeEl.value:_inferGovType(node.role);if(phone)node.phone=phone;if(email)node.email=email;if(type==='company'||type==='government'){node.color=PALETTE[colorIdx%PALETTE.length];colorIdx++;}nodes.push(node);nodeMap.set(node.id,node);if(type==='company'||type==='government')companyByName.set(node.name.toLowerCase(),node);await saveNode(node);try{var _cd=type==='person'?('added contact '+node.name+(node.role?' ('+node.role+(node.org?' · '+node.org:'')+')':(node.org?' · '+node.org:''))):('added '+(type==='government'?'agency':'org')+' '+node.name);window._corsairEmitEvent&&window._corsairEmitEvent('contact_added',node.name,_cd,{view:'entity',id:node.id});}catch(e){}closeModal('add-node-modal');switchView('network');renderNetwork();updateFilterTags();updateOrgLegend();document.getElementById('net-empty').style.display='none';setTimeout(function(){openNetPanel(node);},200);if(window._promptAccountFillForNewNode)setTimeout(function(){window._promptAccountFillForNewNode(node);},900);}
 window.confirmAddNode=confirmAddNode;
 
 // P12.18 — Account-fill prompt on new-contact/new-org creation (arc 4/4)
@@ -31513,6 +31553,66 @@ window._atlasSubscribeUpdates = function(){
     console.warn('[atlas] subscribe failed:', e && e.message);
   }
 };
+
+// ── DG-1 (Team Entanglement) — TEAM EVENT STREAM ──────────────────────
+// The Atlas Team Activity feed historically showed only logged meetings.
+// Every other team action — a deal advancing, a contact added, an outreach
+// marked sent, a commitment closed, a posture shift, talking points edited —
+// happened silently on the shared DB, so a teammate had to visit each surface
+// to discover it. This stream makes the platform the communication for ALL of
+// them: each action emits a small event to /workspaces/{wsId}/events, and the
+// feed interleaves events with meetings, newest first.
+//
+// Doctrine: every event shows who + what + when (honest attribution). No
+// manufactured urgency. Fire-and-forget — a failed event write NEVER blocks
+// the underlying save. Meetings are NOT emitted here (they already render from
+// the meetings collection) to avoid double-display. Rules: /events falls under
+// the workspaces/$other wildcard (members read, non-observers write).
+window._teamEvents = window._teamEvents || [];
+window._teamEventsListenerWired = window._teamEventsListenerWired || {};
+
+// Emit a team event. kind: short slug; subject: the entity/thing touched;
+// detail: a one-line human description (rendered after the actor name);
+// deepLink: optional {view, id} to route a click from the feed row.
+window._corsairEmitEvent = function(kind, subject, detail, deepLink){
+  try {
+    var wsId = window.currentWsId;
+    if (!wsId || !db || !window.currentUser) return;
+    if (window._canWrite && !window._canWrite()) return; // observers don't emit
+    var id = 'evt-' + Date.now() + '-' + Math.random().toString(36).slice(2,7);
+    var entry = {
+      id: id,
+      kind: String(kind || 'event'),
+      subject: subject == null ? '' : String(subject),
+      detail:  detail  == null ? '' : String(detail),
+      actor:    window.currentUser.displayName || window.currentUser.email || 'A teammate',
+      actorUid: window.currentUser.uid || null,
+      ts: Date.now(),
+      deepLink: deepLink || null
+    };
+    set(ref(db, 'workspaces/' + wsId + '/events/' + id), entry).catch(function(e){
+      console.warn('[events] emit failed:', e && e.message);
+    });
+  } catch(e){ console.warn('[events] emit threw:', e && e.message); }
+};
+
+// Live subscription — mirrors _atlasSubscribeUpdates. Caches newest-first to
+// window._teamEvents and re-renders the Team Activity feed when on Atlas.
+window._teamEventsSubscribe = function(){
+  var wsId = window.currentWsId;
+  if (!wsId || !db) return;
+  if (window._teamEventsListenerWired[wsId]) return;
+  try {
+    onValue(ref(db, 'workspaces/' + wsId + '/events'), function(snap){
+      var raw = snap.val() || {};
+      window._teamEvents = Object.values(raw).sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+      if (window.activeView === 'atlas' && typeof window._atlasRenderActivityFeed === 'function') {
+        try { window._atlasRenderActivityFeed(); } catch(e){}
+      }
+    });
+    window._teamEventsListenerWired[wsId] = true;
+  } catch(e){ console.warn('[events] subscribe failed:', e && e.message); }
+};
 // File reader → entry. Text files (text/*, .txt/.md/.json/.csv/.vtt/.srt/.log)
 // store content inline as `text`. Other types base64-encoded under fileData
 // (capped at 1.5MB by caller). Identifies kind for icon + processing routing.
@@ -31714,6 +31814,9 @@ window._atlasSaveTalkingPoint = function(){
   tp.updatedTs = Date.now();
   tp.updatedBy = (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'You';
   _atlasSaveTalkingPoints(tp);
+  // DG-1 (Team Entanglement) — broadcast talking-point edits; they drive the
+  // briefing deck, so the team should know when positioning shifts.
+  try { window._corsairEmitEvent && window._corsairEmitEvent('talking_points_edited', key, 'updated the ' + key + ' talking points', { view:'atlas' }); } catch(e){}
   window._atlasEditingTpKey = null;
   if (typeof toast === 'function') toast('Talking points saved');
   if (typeof window.renderAtlasView === 'function') window.renderAtlasView();
@@ -31772,6 +31875,10 @@ window.renderAtlasView = function(){
   // members see each other's drops without manual refresh.
   if (typeof window._atlasSubscribeUpdates === 'function') {
     try { window._atlasSubscribeUpdates(); } catch(e){}
+  }
+  // DG-1 — wire the team event stream so non-meeting actions appear in the feed.
+  if (typeof window._teamEventsSubscribe === 'function') {
+    try { window._teamEventsSubscribe(); } catch(e){}
   }
   var wsName = (window.currentWs && window.currentWs.name) || 'Workspace';
   var safeWsName = String(wsName).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; });
@@ -31974,27 +32081,76 @@ window._atlasRenderActivityFeed = function(){
   }
   function _esc(s){ return String(s == null ? '' : s).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); }
   function _rel(ts){ if (!ts) return ''; var d = Date.now() - ts; if (d < 60000) return 'just now'; if (d < 3600000) return Math.floor(d/60000) + 'm ago'; if (d < 86400000) return Math.floor(d/3600000) + 'h ago'; if (d < 7*86400000) return Math.floor(d/86400000) + 'd ago'; return new Date(ts).toLocaleDateString('en-US', { month:'short', day:'numeric' }); }
-  mtgs.sort(function(a,b){ return _ts(b) - _ts(a); });
-  var top = mtgs.slice(0, 15);
+  var events = (window._teamEvents || []).slice();
   var myUid = (window.currentUser && window.currentUser.uid) || null;
-  var header = '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#4fd6e4;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:baseline;justify-content:space-between"><span>&#9670; Team Activity</span><span style="font-weight:400;color:var(--paper-2);font-size:10px">' + mtgs.length + ' meeting' + (mtgs.length===1?'':'s') + ' logged</span></div>';
+
+  // Event kind -> glyph + accent color. Unknown kinds fall back to a dot.
+  var EVENT_META = {
+    opp_stage_changed:     { icon: '↗', color: '#5fe6ee' },
+    contact_added:         { icon: '+',      color: '#5fb3b8' },
+    outreach_sent_marked:  { icon: '↗', color: '#f0a560' },
+    commitment_completed:  { icon: '✓', color: '#22c55e' },
+    posture_changed:       { icon: '⊚', color: '#a78bfa' },
+    talking_points_edited: { icon: '✎', color: '#5fb3b8' },
+    nudge_dismissed:       { icon: '○', color: '#7d7669' }
+  };
+  function _eventClick(e){
+    var dl = e && e.deepLink;
+    if (!dl || !dl.view) return '';
+    var id = dl.id != null ? String(dl.id).replace(/'/g, "\\'") : '';
+    if (dl.view === 'opps' && id) return "switchView('opps');setTimeout(function(){if(typeof selectOpp==='function')selectOpp('" + id + "')},120)";
+    if (dl.view === 'entity' && id) return "if(typeof openEntityInspector==='function')openEntityInspector('" + id + "')";
+    return "switchView('" + dl.view.replace(/'/g, "\\'") + "')";
+  }
+
+  // Unify meetings + team events into one timeline, newest first.
+  var items = [];
+  mtgs.forEach(function(m){ items.push({ ts: _ts(m), kind: 'meeting', m: m }); });
+  events.forEach(function(e){ if (e) items.push({ ts: e.ts || 0, kind: 'event', e: e }); });
+  items.sort(function(a,b){ return b.ts - a.ts; });
+  var top = items.slice(0, 20);
+
+  var countLbl = mtgs.length + ' meeting' + (mtgs.length===1?'':'s') + (events.length ? ' · ' + events.length + ' update' + (events.length===1?'':'s') : '');
+  var header = '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#4fd6e4;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:baseline;justify-content:space-between"><span>&#9670; Team Activity</span><span style="font-weight:400;color:var(--paper-2);font-size:10px">' + countLbl + '</span></div>';
   if (!top.length){
-    host.innerHTML = header + '<div style="padding:18px;background:rgba(7,13,24,.4);border:1px dashed var(--rule);border-radius:3px;color:var(--paper-2);font-size:13px;text-align:center">No meetings logged yet — when anyone on the team logs one, it lands here within the minute.</div>';
+    host.innerHTML = header + '<div style="padding:18px;background:rgba(7,13,24,.4);border:1px dashed var(--rule);border-radius:3px;color:var(--paper-2);font-size:13px;text-align:center">Nothing yet — when anyone on the team logs a meeting, advances a deal, adds a contact, or sends outreach, it lands here within the minute.</div>';
     return;
   }
-  var rows = top.map(function(m){
-    var actor = (m.loggedByUid && myUid && m.loggedByUid === myUid) ? 'You' : (m.loggedBy || 'A teammate');
-    var title = (m.meta && m.meta.title) || 'a meeting';
-    var ts = _ts(m);
-    var att = (m.intel && Array.isArray(m.intel.keyPeople)) ? m.intel.keyPeople.length : ((m.meta && Array.isArray(m.meta.attendees)) ? m.meta.attendees.length : 0);
-    var detail = att ? (att + ' attendee' + (att===1?'':'s')) : '';
-    var ini = String(actor).split(/\s+/).map(function(x){ return x[0]; }).join('').slice(0,2).toUpperCase();
-    var safeMid = String(m.id).replace(/'/g, "\\'");
-    return '<div onclick="switchView(\'intel\');setTimeout(function(){if(typeof goIntelById===\'function\')goIntelById(\'' + safeMid + '\')},200)" style="display:flex;gap:11px;align-items:flex-start;padding:10px 12px;background:rgba(7,13,24,.5);border:1px solid var(--rule);border-left:3px solid #4fd6e4;border-radius:2px;margin-bottom:7px;cursor:pointer" onmouseover="this.style.background=\'rgba(7,13,24,.74)\'" onmouseout="this.style.background=\'rgba(7,13,24,.5)\'">' +
-      '<div style="width:26px;height:26px;border-radius:50%;background:rgba(79,214,228,.16);border:1px solid rgba(79,214,228,.4);color:#5fe6ee;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + _esc(ini) + '</div>' +
+  var rows = top.map(function(it){
+    var ts = it.ts;
+    if (it.kind === 'meeting'){
+      var m = it.m;
+      var _rawLogger = m.loggedBy || '';
+      var _looksLikeUid = _rawLogger.length > 20 && !/\s/.test(_rawLogger);
+      var actor = (m.loggedByUid && myUid && m.loggedByUid === myUid) ? 'You'
+                : (_rawLogger && !_looksLikeUid) ? _rawLogger : 'A teammate';
+      var isTouch = (m.source === 'touch');
+      var title = (m.meta && m.meta.title) || 'a meeting';
+      var att = (m.intel && Array.isArray(m.intel.keyPeople)) ? m.intel.keyPeople.length : ((m.meta && Array.isArray(m.meta.attendees)) ? m.meta.attendees.length : 0);
+      var detail = att ? (att + ' attendee' + (att===1?'':'s')) : '';
+      var ini = String(actor).split(/\s+/).map(function(x){ return x[0]; }).join('').slice(0,2).toUpperCase();
+      var safeMid = String(m.id).replace(/'/g, "\\'");
+      return '<div onclick="switchView(\'intel\');setTimeout(function(){if(typeof goIntelById===\'function\')goIntelById(\'' + safeMid + '\')},200)" style="display:flex;gap:11px;align-items:flex-start;padding:10px 12px;background:rgba(7,13,24,.5);border:1px solid var(--rule);border-left:3px solid #4fd6e4;border-radius:2px;margin-bottom:7px;cursor:pointer" onmouseover="this.style.background=\'rgba(7,13,24,.74)\'" onmouseout="this.style.background=\'rgba(7,13,24,.5)\'">' +
+        '<div style="width:26px;height:26px;border-radius:50%;background:rgba(79,214,228,.16);border:1px solid rgba(79,214,228,.4);color:#5fe6ee;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + _esc(ini) + '</div>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4"><b style="color:#5fe6ee">' + _esc(actor) + '</b> logged <b>' + _esc(title) + '</b>' + (isTouch ? ' <span style="font-family:IBM Plex Mono,monospace;font-size:8.5px;font-weight:700;letter-spacing:.12em;color:#7d7669;border:1px solid var(--rule-2);padding:1px 5px;border-radius:2px;text-transform:uppercase;vertical-align:middle">quick note</span>' : '') + '</div>' +
+          (detail ? '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.04em;margin-top:2px">' + _esc(detail) + '</div>' : '') +
+        '</div>' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);white-space:nowrap;flex-shrink:0">' + _rel(ts) + '</div>' +
+      '</div>';
+    }
+    // Team event row — non-meeting actions (deal advance, contact, outreach, etc.)
+    var e = it.e;
+    var meta = EVENT_META[e.kind] || { icon: '•', color: '#7d7669' };
+    var actorE = (e.actorUid && myUid && e.actorUid === myUid) ? 'You' : (e.actor || 'A teammate');
+    var line = e.detail || e.subject || 'made an update';
+    var click = _eventClick(e);
+    var clickAttr = click ? ('onclick="' + click.replace(/"/g, '&quot;') + '" ') : '';
+    var hover = click ? ' onmouseover="this.style.background=\'rgba(7,13,24,.74)\'" onmouseout="this.style.background=\'rgba(7,13,24,.5)\'"' : '';
+    return '<div ' + clickAttr + 'style="display:flex;gap:11px;align-items:flex-start;padding:10px 12px;background:rgba(7,13,24,.5);border:1px solid var(--rule);border-left:3px solid ' + meta.color + ';border-radius:2px;margin-bottom:7px;' + (click ? 'cursor:pointer' : '') + '"' + hover + '>' +
+      '<div style="width:26px;height:26px;border-radius:50%;background:rgba(125,118,105,.10);border:1px solid var(--rule-2);font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:' + meta.color + '">' + meta.icon + '</div>' +
       '<div style="flex:1;min-width:0">' +
-        '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4"><b style="color:#5fe6ee">' + _esc(actor) + '</b> logged <b>' + _esc(title) + '</b></div>' +
-        (detail ? '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.04em;margin-top:2px">' + _esc(detail) + '</div>' : '') +
+        '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone);line-height:1.4"><b style="color:' + meta.color + '">' + _esc(actorE) + '</b> ' + _esc(line) + '</div>' +
       '</div>' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);white-space:nowrap;flex-shrink:0">' + _rel(ts) + '</div>' +
     '</div>';
@@ -37418,6 +37574,26 @@ window.openEntityInspector = function(entityId) {
   if (corpBtn) corpBtn.style.display = (entity.type === 'org') ? 'inline-flex' : 'none';
 };
 
+// DG-7 (Team Entanglement) — re-render the open entity drawer in place when
+// the entity it's showing was just changed by a teammate's write (e.g. a new
+// meeting referencing it). Guarded: only fires when the drawer is open AND the
+// affected id matches the entity on screen, so it never flickers during
+// unrelated activity. Re-fetches fresh entity state via getEntity.
+window._refreshOpenInspector = function(affectedId) {
+  var modal = document.getElementById('entity-inspector-modal');
+  if (!modal || modal.style.display === 'none') return;
+  var cur = window._currentInspectorEntity;
+  if (!cur || cur.id == null) return;
+  if (affectedId != null && String(affectedId) !== String(cur.id)) return;
+  var fresh = (typeof window.getEntity === 'function') ? window.getEntity(cur.id) : cur;
+  if (!fresh) return;
+  window._currentInspectorEntity = fresh;
+  var content = document.getElementById('entity-inspector-content');
+  if (content && typeof window._renderEntityInspector === 'function') {
+    try { content.innerHTML = window._renderEntityInspector(fresh); } catch(e){}
+  }
+};
+
 window._inspectorCorpIntelClick = function() {
   if (window._currentInspectorEntity && window._currentInspectorEntity.type === 'org') {
     window.openCorpIntel(window._currentInspectorEntity.id);
@@ -37887,6 +38063,10 @@ window._postureSetContactPosition = async function(personId, pursuitId, position
   node.posture.lastUpdated = Date.now();
   try {
     if (typeof window.saveNode === 'function') await window.saveNode(node);
+    // DG-1 (Team Entanglement) — broadcast the posture read to the team feed.
+    // Position + Trajectory are workspace-shared reads; Path is operator-PRIVATE
+    // (posture.js doctrine) and is intentionally NOT emitted.
+    try { var _pl = positionKey ? (positionKey.charAt(0).toUpperCase()+positionKey.slice(1)) : ''; window._corsairEmitEvent && window._corsairEmitEvent('posture_changed', node.name, (positionKey ? ('set ' + node.name + "'s position to " + _pl) : ('cleared ' + node.name + "'s position")), { view:'entity', id:node.id }); } catch(_e){}
   } catch (e) { console.warn('[Posture] save position failed:', e); }
 };
 
@@ -37918,6 +38098,8 @@ window._postureSetContactTrajectory = async function(personId, trajKey) {
   node.posture.lastUpdated = Date.now();
   try {
     if (typeof window.saveNode === 'function') await window.saveNode(node);
+    // DG-1 (Team Entanglement) — broadcast trajectory reads (workspace-shared).
+    try { var _tl = trajKey ? (trajKey.charAt(0).toUpperCase()+trajKey.slice(1)) : ''; window._corsairEmitEvent && window._corsairEmitEvent('posture_changed', node.name, (trajKey ? ('marked ' + node.name + ' ' + _tl) : ('cleared ' + node.name + "'s trajectory")), { view:'entity', id:node.id }); } catch(_e){}
   } catch (e) { console.warn('[Posture] save trajectory failed:', e); }
 };
 
@@ -45372,6 +45554,9 @@ window._atlasMarkOutreachSent = async function(target) {
     if (!window._atlasOutreachIndex) window._atlasOutreachIndex = {};
     if (!window._atlasOutreachIndex[target.targetId]) window._atlasOutreachIndex[target.targetId] = [];
     window._atlasOutreachIndex[target.targetId].unshift(Object.assign({ outId: outId }, rec));
+    // DG-1 (Team Entanglement) — broadcast the send so the team sees coverage
+    // happening and avoids double-touching the same POC.
+    try { window._corsairEmitEvent && window._corsairEmitEvent('outreach_sent_marked', (target.name || target.recipient), 'marked outreach sent to ' + (target.name || target.recipient) + (target.orgName ? ' · ' + target.orgName : ''), { view:'outreach' }); } catch(e){}
     if (typeof toast === 'function') toast('✓ Marked sent: ' + (target.name || target.recipient), 3000);
   } catch(e) { if (typeof toast === 'function') toast('✗ Mark-sent failed: ' + (e && e.message)); }
   if (typeof window._renderOutreachQueueView === 'function') window._renderOutreachQueueView();
@@ -67020,6 +67205,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.235"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.236"></script>
 </body>
 </html>
