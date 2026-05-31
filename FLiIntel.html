@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.238</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.239</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32111,6 +32111,37 @@ window._setMemberDepartment = async function(uid, dept){
   } catch(e){ if (typeof toast === 'function') toast('Could not set department: ' + (e && e.message)); }
 };
 
+// ── Function-role relevance (operator 2026-05-31; slices confirmed). DISTINCT
+// from the permission role (Owner/Admin/Member). Scopes WHAT KIND of info
+// surfaces first: it boosts the Catch kinds a role cares about and lets the
+// "buried in" kinds recede. It never hard-hides — CEO stays broad, nothing
+// critical disappears. CEO = strategic shape · CFO = money · COO = execution ·
+// Operator = own work. Degrades to no-boost when role unset.
+window.CORSAIR_ROLES = ['CEO', 'CFO', 'COO', 'Operator'];
+window._roleOf = function(uid){
+  if (!uid) return null;
+  var ms = window.workspaceMembers || [];
+  for (var i = 0; i < ms.length; i++){ if (ms[i] && ms[i].uid === uid) return ms[i].functionRole || null; }
+  return null;
+};
+// +score = surfaces first; -score = recedes (never removed).
+window.ROLE_CATCH_BOOST = {
+  CFO: { pattern: 25, commit: 20, signal: 20, stale: 15, decay: -15, posture: -15, meeting: -10, overlap: -10 },
+  COO: { decay: 20, stale: 20, overlap: 20, commit: 15, meeting: 15, posture: 10, 'customer-quiet': 25, pattern: -10 },
+  CEO: { pattern: 10 },
+  Operator: {}
+};
+window._setMemberFunctionRole = async function(uid, role){
+  if (!currentWsId || !uid) return;
+  try {
+    await fbSet(wsPath('members/' + uid + '/functionRole'), role || null);
+    if (typeof window.loadWorkspaceMembers === 'function') await window.loadWorkspaceMembers();
+    if (typeof window.renderTeamView === 'function') { try { window.renderTeamView(); } catch(e){} }
+    if (window.activeView === 'today' && typeof window._renderTodayCatches === 'function') { try { window._renderTodayCatches(); } catch(e){} }
+    if (typeof toast === 'function') toast(role ? ('Role set: ' + role) : 'Role cleared');
+  } catch(e){ if (typeof toast === 'function') toast('Could not set role: ' + (e && e.message)); }
+};
+
 window._atlasRenderActivityFeed = function(){
   var host = document.getElementById('atlas-activity-feed');
   if (!host) return;
@@ -32700,6 +32731,20 @@ window._atlasComputeCatches = function() {
         clickArg: rec.id || null
       });
     });
+  } catch(e){}
+
+  // Role-based relevance (operator 2026-05-31): boost the Catch kinds the
+  // viewer's role cares about so they surface first; let "buried in" kinds
+  // recede. Never hard-hides — CEO stays broad, nothing critical disappears.
+  try {
+    var _vrole = (window._roleOf) ? window._roleOf((window.currentUser && window.currentUser.uid) || null) : null;
+    var _boostMap = (_vrole && window.ROLE_CATCH_BOOST) ? window.ROLE_CATCH_BOOST[_vrole] : null;
+    if (_boostMap) {
+      candidates.forEach(function(c){
+        var b = _boostMap[c.kind];
+        if (typeof b === 'number') c.score = (c.score || 0) + b;
+      });
+    }
   } catch(e){}
 
   // Dedupe by entityId — same entity in multiple sources keeps highest score
@@ -35198,12 +35243,24 @@ async function renderTeamView() {
     } else {
       deptCtrl = _curDept ? '<div style="margin-top:5px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.04em">' + _escDept(_curDept) + '</div>' : '';
     }
+    // Function-role picker (CEO/CFO/COO/Operator) — sits beside the department.
+    var _curRole = m.functionRole || '';
+    var roleCtrl;
+    if (isMe || _isAdmin) {
+      var _roleOpts = '<option value="">— Role —</option>' + (window.CORSAIR_ROLES || []).map(function(rr){
+        return '<option value="' + String(rr).replace(/"/g, '&quot;') + '"' + (rr === _curRole ? ' selected' : '') + '>' + _escDept(rr) + '</option>';
+      }).join('');
+      roleCtrl = '<select onchange="window._setMemberFunctionRole(\'' + String(m.uid).replace(/'/g, "\\'") + '\',this.value)" onclick="event.stopPropagation()" title="Function role — sets what info surfaces first (CEO strategic / CFO money / COO execution)" style="margin-top:5px;margin-left:6px;font-size:11px;background:var(--s2);color:var(--t2);border:1px solid var(--b1);border-radius:4px;padding:3px 5px;font-family:IBM Plex Mono,monospace;max-width:110px">' + _roleOpts + '</select>';
+    } else {
+      roleCtrl = _curRole ? '<span style="margin-left:6px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace">· ' + _escDept(_curRole) + '</span>' : '';
+    }
     sh += '<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 6px;border-radius:6px">'
       + imgHtml
       + '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
       + m.name + (isMe ? ' <span style="font-size:12px;color:var(--t3)">(you)</span>' : '') + '</div>'
       + '<div style="font-size:12px;color:var(--t3)">' + bucket.meetings.length + ' mtgs \u00b7 ' + bucket.contacts.size + ' contacts</div>'
       + deptCtrl
+      + roleCtrl
       + '</div>'
       + capBadge
       + '</div>';
@@ -67345,6 +67402,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.238"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.239"></script>
 </body>
 </html>
