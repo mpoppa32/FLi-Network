@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.239</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.240</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32126,7 +32126,7 @@ window._roleOf = function(uid){
 };
 // +score = surfaces first; -score = recedes (never removed).
 window.ROLE_CATCH_BOOST = {
-  CFO: { pattern: 25, commit: 20, signal: 20, stale: 15, decay: -15, posture: -15, meeting: -10, overlap: -10 },
+  CFO: { pattern: 25, commit: 20, signal: 20, stale: 15, decay: -15, posture: -15, meeting: -10, overlap: -10, 'customer-quiet': -10 },
   COO: { decay: 20, stale: 20, overlap: 20, commit: 15, meeting: 15, posture: 10, 'customer-quiet': 25, pattern: -10 },
   CEO: { pattern: 10 },
   Operator: {}
@@ -32140,6 +32140,43 @@ window._setMemberFunctionRole = async function(uid, role){
     if (window.activeView === 'today' && typeof window._renderTodayCatches === 'function') { try { window._renderTodayCatches(); } catch(e){} }
     if (typeof toast === 'function') toast(role ? ('Role set: ' + role) : 'Role cleared');
   } catch(e){ if (typeof toast === 'function') toast('Could not set role: ' + (e && e.message)); }
+};
+
+// ── Customer-quiet acknowledgement (Property 4 GAP-M support). When an account
+// goes quiet, the OWNING DEPARTMENT acknowledges with the why/plan; that ack is
+// team-shared so everyone else sees "handled (Dept tracking)" instead of the raw
+// alert (the granular reason is gated to the owning dept + CEO/COO in the Catch
+// renderer). Operator types the reason — the platform never infers it. Surfaces
+// + routes, never acts. Stored at workspaces/{wsId}/accountAck/{orgKey}.
+window._accountAcks = window._accountAcks || {};
+window._acctAckListenerWired = window._acctAckListenerWired || {};
+window._acctAckSubscribe = function(){
+  var wsId = window.currentWsId;
+  if (!wsId || !db) return;
+  if (window._acctAckListenerWired[wsId]) return;
+  try {
+    onValue(ref(db, 'workspaces/' + wsId + '/accountAck'), function(snap){
+      window._accountAcks = snap.val() || {};
+      if (window.activeView === 'today' && typeof window._renderTodayCatches === 'function') { try { window._renderTodayCatches(); } catch(e){} }
+    });
+    window._acctAckListenerWired[wsId] = true;
+  } catch(e){ console.warn('[acctAck] subscribe failed:', e && e.message); }
+};
+window._ackAccountQuiet = function(orgKey, orgName){
+  if (!orgKey) return;
+  if (window._canWrite && !window._canWrite()) { if (typeof toast === 'function') toast('Observers cannot acknowledge'); return; }
+  var reason = window.prompt('Acknowledge "' + (orgName || 'this account') + '" — your team is tracking it.\n\nWhy is it quiet / what is the plan? (short — this line is what teammates will see)');
+  if (reason == null) return; // cancelled
+  reason = String(reason).trim();
+  var uid = (window.currentUser && window.currentUser.uid) || null;
+  var byName = (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'A teammate';
+  var byDept = (window._memberDeptByUid && uid) ? window._memberDeptByUid(uid) : null;
+  var rec = { orgKey: String(orgKey), orgName: orgName || '', by: uid, byName: byName, byDept: byDept || null, reason: reason, ts: Date.now() };
+  try {
+    fbSet(wsPath('accountAck/' + String(orgKey)), rec);
+    if (typeof toast === 'function') toast('Acknowledged — ' + (byDept ? byDept + ' ' : '') + 'tracking ' + (orgName || 'account'));
+    if (typeof window._renderTodayCatches === 'function') { try { window._renderTodayCatches(); } catch(e){} }
+  } catch(e){ if (typeof toast === 'function') toast('Could not acknowledge: ' + (e && e.message)); }
 };
 
 window._atlasRenderActivityFeed = function(){
@@ -32279,6 +32316,7 @@ window._renderAtlasTodayWidget = function(){
 // urgency. Surface + route, never auto-act. Hides when empty (per
 // Confidence Principle: hide uncertainty when unproductive).
 window._atlasComputeCatches = function() {
+  if (window._acctAckSubscribe) { try { window._acctAckSubscribe(); } catch(e){} }
   var DAY = 86400000;
   var nowMs = Date.now();
   var nodes_   = window.nodes        || [];
@@ -32733,6 +32771,84 @@ window._atlasComputeCatches = function() {
     });
   } catch(e){}
 
+  // K. Customer-quiet (Property 4 — GAP-M; operator: customers, not teammates).
+  // An account the team engaged before has gone quiet beyond threshold. Account-
+  // framed (never "person X went silent"). The owning department can Acknowledge
+  // with a why/plan; once acked (fresh), it shows "Dept tracking" + recedes, and
+  // the granular reason is gated to the owning dept + CEO/COO in the renderer.
+  try {
+    var QUIET_DAYS = 21;
+    var orgNodes = nodes_.filter(function(n){ return n && (n.type === 'company' || n.type === 'government') && n.name; });
+    if (orgNodes.length) {
+      var orgByName = {};
+      orgNodes.forEach(function(n){ orgByName[String(n.name).toLowerCase().trim()] = n; });
+      var oppById3 = {};
+      opps_.forEach(function(o){ if (o && o.id != null) oppById3[String(o.id)] = o; });
+      var lastTouchByOrgId = {};
+      function _touchOrg(nm, ts){
+        if (!nm || !ts) return;
+        var node = orgByName[String(nm).toLowerCase().trim()];
+        if (!node) return;
+        if (!lastTouchByOrgId[node.id] || ts > lastTouchByOrgId[node.id]) lastTouchByOrgId[node.id] = ts;
+      }
+      mtgs_.forEach(function(m){
+        if (!m) return;
+        var ts = (m.meta && typeof m.meta.ts === 'number') ? m.meta.ts : (typeof m.ts === 'number' ? m.ts : (m.meta && m.meta.date ? Date.parse(String(m.meta.date)) : 0));
+        if (!ts) return;
+        if (m.oppId != null && oppById3[String(m.oppId)]){ var o = oppById3[String(m.oppId)]; _touchOrg(o.customerOrg, ts); _touchOrg(o.agency, ts); }
+        if (m.intel && Array.isArray(m.intel.companies)) m.intel.companies.forEach(function(c){ if (c && c.name) _touchOrg(c.name, ts); });
+        if (m.intel && Array.isArray(m.intel.keyPeople)) m.intel.keyPeople.forEach(function(p){ if (p && p.organization) _touchOrg(p.organization, ts); });
+      });
+      (window._teamEvents || []).forEach(function(e){
+        if (!e || !e.ts) return;
+        var dl = e.deepLink || {};
+        if (dl.view === 'entity' && dl.id != null && lastTouchByOrgId[dl.id] != null && e.ts > lastTouchByOrgId[dl.id]) lastTouchByOrgId[dl.id] = e.ts;
+        if (dl.view === 'opps' && dl.id != null && oppById3[String(dl.id)]){ var oo = oppById3[String(dl.id)]; var nn = oo.customerOrg && orgByName[String(oo.customerOrg).toLowerCase().trim()]; if (nn && (lastTouchByOrgId[nn.id] == null || e.ts > lastTouchByOrgId[nn.id])) lastTouchByOrgId[nn.id] = e.ts; }
+      });
+      var acks = window._accountAcks || {};
+      var myUid_q = (window.currentUser && window.currentUser.uid) || null;
+      var myDept_q = (window._memberDeptByUid && myUid_q) ? window._memberDeptByUid(myUid_q) : null;
+      var myRole_q = (window._roleOf && myUid_q) ? window._roleOf(myUid_q) : null;
+      var orgById_q = {};
+      orgNodes.forEach(function(n){ orgById_q[String(n.id)] = n; });
+      var quietList = [];
+      Object.keys(lastTouchByOrgId).forEach(function(nid){
+        var ts = lastTouchByOrgId[nid];
+        var days = Math.floor((nowMs - ts) / DAY);
+        if (days < QUIET_DAYS) return;
+        var node = orgById_q[String(nid)];
+        if (node) quietList.push({ node: node, days: days, ts: ts });
+      });
+      quietList.sort(function(a,b){ return b.days - a.days; });
+      quietList.slice(0, 5).forEach(function(q){
+        var orgKey = String(q.node.id);
+        var ack = acks[orgKey];
+        var handled = !!(ack && ack.ts >= q.ts && (nowMs - ack.ts) < 21 * DAY);
+        var d = new Date(q.ts);
+        var sinceStr = (d && !isNaN(d.getTime())) ? d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) : (q.days + 'd ago');
+        if (handled){
+          var canSeeReason = (myDept_q && ack.byDept && myDept_q === ack.byDept) || myRole_q === 'CEO' || myRole_q === 'COO';
+          candidates.push({
+            kind: 'customer-quiet', entityId: orgKey,
+            title: q.node.name + ' — quiet ' + q.days + 'd · handled',
+            evidence: (ack.byDept || 'Team') + ' tracking' + (canSeeReason && ack.reason ? ': ' + String(ack.reason).slice(0, 90) : ''),
+            source: 'CUSTOMER QUIET', score: 40,
+            click: 'openEntityInspector', clickArg: orgKey
+          });
+        } else {
+          candidates.push({
+            kind: 'customer-quiet', entityId: orgKey,
+            title: q.node.name + ' — quiet ' + q.days + 'd',
+            evidence: 'No team touch since ' + sinceStr + ' · acknowledge if a department is tracking it',
+            source: 'CUSTOMER QUIET', score: 68 + Math.min(Math.floor(q.days / 7), 20),
+            click: 'openEntityInspector', clickArg: orgKey,
+            _ackOrg: orgKey, _ackName: q.node.name
+          });
+        }
+      });
+    }
+  } catch(e){}
+
   // Role-based relevance (operator 2026-05-31): boost the Catch kinds the
   // viewer's role cares about so they surface first; let "buried in" kinds
   // recede. Never hard-hides — CEO stays broad, nothing critical disappears.
@@ -32783,7 +32899,8 @@ window._renderTodayCatches = function() {
     'pattern':  '#f0a560',
     'meeting':  '#fb923c',
     'posture':  '#a78bfa',
-    'overlap':  '#4fd6e4'
+    'overlap':  '#4fd6e4',
+    'customer-quiet': '#e07a5f'
   };
   function _esc(s) {
     return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
@@ -32817,6 +32934,9 @@ window._renderTodayCatches = function() {
     html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:' + col + ';text-transform:uppercase;margin-bottom:6px">' + _esc(c.source) + '</div>';
     html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;font-weight:600;color:var(--bone);line-height:1.35;margin-bottom:5px">' + _esc(c.title) + '</div>';
     html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper);letter-spacing:.04em;line-height:1.45">' + _esc(c.evidence) + '</div>';
+    if (c.kind === 'customer-quiet' && c._ackOrg) {
+      html += '<button onclick="event.stopPropagation();window._ackAccountQuiet(\'' + String(c._ackOrg).replace(/'/g, "\\'") + '\',\'' + String(c._ackName || '').replace(/"/g, '&quot;').replace(/'/g, "\\'") + '\')" style="margin-top:9px;font-size:10px;font-family:IBM Plex Mono,monospace;letter-spacing:.08em;text-transform:uppercase;background:transparent;border:1px solid ' + col + '70;color:' + col + ';padding:4px 10px;border-radius:3px;cursor:pointer">✓ Acknowledge — we&#39;re tracking</button>';
+    }
     html += '</div>';
   });
   html += '</div>';
@@ -67402,6 +67522,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.239"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.240"></script>
 </body>
 </html>
