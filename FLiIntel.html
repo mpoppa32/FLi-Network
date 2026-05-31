@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.236</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.237</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32581,6 +32581,83 @@ window._atlasComputeCatches = function() {
     }
   } catch(e){}
 
+  // J. Overlap / parallel effort (Property 4 — Ship P4-1). Two or more
+  // teammates independently touched the SAME pursuit/org inside a 10-day
+  // window and may not know it. Reads meetings (loggedByUid) + the team event
+  // stream (actorUid), grouped by entity. ACCOUNT-FRAMED + shown to all
+  // (operator decision 2026-05-31): the notice is about the shared entity;
+  // teammates are named only so the team can coordinate — never a report on a
+  // person. Honest fact label ("both touched in <=10d"); surfaces + routes,
+  // never acts; no human scoring (Doctrine: mutual-aid, supervision-free).
+  try {
+    var OVERLAP_WINDOW = 10 * DAY;
+    var ovlCut = nowMs - OVERLAP_WINDOW;
+    var myUid_ = (window.currentUser && window.currentUser.uid) || null;
+    var ovl = {}; // entityKey -> { label, kind, id, actors: { uid: {name, lastTs} } }
+    function _ovlTouch(key, label, ekind, eid, uid, name, ts){
+      if (!key || !uid || !ts) return;
+      if (!ovl[key]) ovl[key] = { label: label || 'an account', kind: ekind, id: eid, actors: {} };
+      if (label && (!ovl[key].label || ovl[key].label === 'an account')) ovl[key].label = label;
+      var a = ovl[key].actors[uid];
+      if (!a || ts > a.lastTs) ovl[key].actors[uid] = { name: name || 'A teammate', lastTs: ts };
+    }
+    function _ovlName(rawName, uid){
+      if (myUid_ && uid === myUid_) return 'You';
+      var r = String(rawName || '');
+      var looksUid = r.length > 20 && !/\s/.test(r); // guard legacy UID-as-name
+      return (r && !looksUid) ? r : 'A teammate';
+    }
+    var oppById_ = {};
+    opps_.forEach(function(o){ if (o && o.id != null) oppById_[String(o.id)] = o; });
+    // Meetings: logger touched the linked pursuit (preferred), else first company.
+    mtgs_.forEach(function(m){
+      if (!m) return;
+      var ts = (m.meta && typeof m.meta.ts === 'number') ? m.meta.ts : (typeof m.ts === 'number' ? m.ts : (m.meta && m.meta.date ? Date.parse(String(m.meta.date)) : 0));
+      if (!ts || ts < ovlCut) return;
+      var uid = m.loggedByUid || null;
+      if (!uid) return; // unattributable -> can't detect overlap honestly
+      var nm = _ovlName(m.loggedBy, uid);
+      if (m.oppId != null && oppById_[String(m.oppId)]) {
+        _ovlTouch('opp:' + String(m.oppId), oppById_[String(m.oppId)].name || 'a pursuit', 'opp', String(m.oppId), uid, nm, ts);
+      } else if (m.intel && Array.isArray(m.intel.companies) && m.intel.companies[0] && m.intel.companies[0].name) {
+        _ovlTouch('org:' + String(m.intel.companies[0].name).toLowerCase().trim(), m.intel.companies[0].name, 'org', null, uid, nm, ts);
+      }
+    });
+    // Team events: actor touched the deep-linked entity.
+    (window._teamEvents || []).forEach(function(e){
+      if (!e || !e.actorUid || !e.ts || e.ts < ovlCut) return;
+      var dl = e.deepLink || {};
+      var nm2 = _ovlName(e.actor, e.actorUid);
+      if (dl.view === 'opps' && dl.id != null) {
+        var o2 = oppById_[String(dl.id)];
+        _ovlTouch('opp:' + String(dl.id), (o2 && o2.name) || e.subject || 'a pursuit', 'opp', String(dl.id), e.actorUid, nm2, e.ts);
+      } else if (dl.view === 'entity' && dl.id != null) {
+        _ovlTouch('node:' + String(dl.id), e.subject || 'a contact', 'node', String(dl.id), e.actorUid, nm2, e.ts);
+      }
+    });
+    Object.keys(ovl).forEach(function(key){
+      var rec = ovl[key];
+      var uids = Object.keys(rec.actors);
+      if (uids.length < 2) return; // overlap requires 2+ distinct teammates
+      var names = uids.map(function(u){ return rec.actors[u]; }).sort(function(a,b){ return b.lastTs - a.lastTs; }).map(function(a){ return a.name; });
+      var uniq = [];
+      names.forEach(function(n){ if (uniq.indexOf(n) < 0) uniq.push(n); });
+      var who = uniq.length === 2 ? (uniq[0] + ' + ' + uniq[1]) : (uniq.slice(0, 2).join(', ') + ' +' + (uniq.length - 2));
+      var verb = uids.length === 2 ? ' both touched this' : ' have all touched this';
+      var involvesMe = !!(myUid_ && rec.actors[myUid_]);
+      candidates.push({
+        kind: 'overlap',
+        entityId: rec.id || null,
+        title: rec.label + ' — ' + uids.length + ' teammates active',
+        evidence: who + verb + ' in the last 10d · coordinate to avoid double-work',
+        source: 'OVERLAP',
+        score: (involvesMe ? 78 : 70) + Math.min(uids.length - 2, 6),
+        click: rec.kind === 'opp' ? 'opp-detail' : (rec.kind === 'node' ? 'openEntityInspector' : null),
+        clickArg: rec.id || null
+      });
+    });
+  } catch(e){}
+
   // Dedupe by entityId — same entity in multiple sources keeps highest score
   var byEntity = new Map();
   candidates.forEach(function(c) {
@@ -32616,7 +32693,8 @@ window._renderTodayCatches = function() {
     'signal':   '#5fb3b8',
     'pattern':  '#f0a560',
     'meeting':  '#fb923c',
-    'posture':  '#a78bfa'
+    'posture':  '#a78bfa',
+    'overlap':  '#4fd6e4'
   };
   function _esc(s) {
     return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
@@ -67205,6 +67283,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.236"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.237"></script>
 </body>
 </html>
