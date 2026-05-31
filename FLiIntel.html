@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.237</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.238</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32069,6 +32069,48 @@ window.renderAtlasView = function(){
 // is the literal team feed the Vision names — the Bridge made visible on the
 // team chamber. Click a row to open that meeting. Live-refreshed by the
 // meetings RTDB listener so a teammate's log appears within the minute.
+// ── Department-scoped name visibility (Property 5 slice, pulled forward
+// 2026-05-31 per operator). Names show within your OWN department; across
+// departments you see the department LABEL instead of the individual. Degrades
+// to names-to-all when departments aren't set (matches the Vision's current
+// default + correct for a single-squad team). This is the ONE dial every
+// team-facing name display routes through, so the rule lives in one place.
+// Doctrine: same-squad name visibility = teammate awareness; cross-squad label
+// = privacy + support, never surveillance.
+window.CORSAIR_DEPARTMENTS = ['Leadership', 'Sales / BD', 'Engineering', 'Operations', 'Finance'];
+window._memberDeptByUid = function(uid){
+  if (!uid) return null;
+  var ms = window.workspaceMembers || [];
+  for (var i = 0; i < ms.length; i++){ if (ms[i] && ms[i].uid === uid) return ms[i].department || null; }
+  return null;
+};
+window._teamActorLabel = function(actorUid, rawName, viewerUid){
+  var vu = viewerUid || (window.currentUser && window.currentUser.uid) || null;
+  if (actorUid && vu && actorUid === vu) return 'You';
+  // Honest display name: guard a legacy UID-shaped string; resolve from roster if missing.
+  var r = String(rawName == null ? '' : rawName);
+  var looksUid = r.length > 20 && !/\s/.test(r);
+  var nm = (r && !looksUid) ? r : null;
+  if (!nm && actorUid){ var ms = window.workspaceMembers || []; for (var i=0;i<ms.length;i++){ if (ms[i] && ms[i].uid === actorUid && ms[i].name){ nm = ms[i].name; break; } } }
+  if (!nm) nm = 'A teammate';
+  var aDept = actorUid ? window._memberDeptByUid(actorUid) : null;
+  var vDept = vu ? window._memberDeptByUid(vu) : null;
+  // Same department, or either side unset -> show the name (default = today).
+  if (!aDept || !vDept || aDept === vDept) return nm;
+  // Cross-department -> show the actor's department, not the individual.
+  return aDept;
+};
+window._setMemberDepartment = async function(uid, dept){
+  if (!currentWsId || !uid) return;
+  try {
+    await fbSet(wsPath('members/' + uid + '/department'), dept || null);
+    if (typeof window.loadWorkspaceMembers === 'function') await window.loadWorkspaceMembers();
+    if (typeof window.renderTeamView === 'function') { try { window.renderTeamView(); } catch(e){} }
+    if (window.activeView === 'atlas' && typeof window._atlasRenderActivityFeed === 'function') { try { window._atlasRenderActivityFeed(); } catch(e){} }
+    if (typeof toast === 'function') toast(dept ? ('Department set: ' + dept) : 'Department cleared');
+  } catch(e){ if (typeof toast === 'function') toast('Could not set department: ' + (e && e.message)); }
+};
+
 window._atlasRenderActivityFeed = function(){
   var host = document.getElementById('atlas-activity-feed');
   if (!host) return;
@@ -32120,10 +32162,9 @@ window._atlasRenderActivityFeed = function(){
     var ts = it.ts;
     if (it.kind === 'meeting'){
       var m = it.m;
-      var _rawLogger = m.loggedBy || '';
-      var _looksLikeUid = _rawLogger.length > 20 && !/\s/.test(_rawLogger);
-      var actor = (m.loggedByUid && myUid && m.loggedByUid === myUid) ? 'You'
-                : (_rawLogger && !_looksLikeUid) ? _rawLogger : 'A teammate';
+      var actor = window._teamActorLabel
+                ? window._teamActorLabel(m.loggedByUid, m.loggedBy, myUid)
+                : ((m.loggedByUid && myUid && m.loggedByUid === myUid) ? 'You' : (m.loggedBy || 'A teammate'));
       var isTouch = (m.source === 'touch');
       var title = (m.meta && m.meta.title) || 'a meeting';
       var att = (m.intel && Array.isArray(m.intel.keyPeople)) ? m.intel.keyPeople.length : ((m.meta && Array.isArray(m.meta.attendees)) ? m.meta.attendees.length : 0);
@@ -32142,7 +32183,9 @@ window._atlasRenderActivityFeed = function(){
     // Team event row — non-meeting actions (deal advance, contact, outreach, etc.)
     var e = it.e;
     var meta = EVENT_META[e.kind] || { icon: '•', color: '#7d7669' };
-    var actorE = (e.actorUid && myUid && e.actorUid === myUid) ? 'You' : (e.actor || 'A teammate');
+    var actorE = window._teamActorLabel
+               ? window._teamActorLabel(e.actorUid, e.actor, myUid)
+               : ((e.actorUid && myUid && e.actorUid === myUid) ? 'You' : (e.actor || 'A teammate'));
     var line = e.detail || e.subject || 'made an update';
     var click = _eventClick(e);
     var clickAttr = click ? ('onclick="' + click.replace(/"/g, '&quot;') + '" ') : '';
@@ -32602,6 +32645,7 @@ window._atlasComputeCatches = function() {
       if (!a || ts > a.lastTs) ovl[key].actors[uid] = { name: name || 'A teammate', lastTs: ts };
     }
     function _ovlName(rawName, uid){
+      if (window._teamActorLabel) return window._teamActorLabel(uid, rawName, myUid_);
       if (myUid_ && uid === myUid_) return 'You';
       var r = String(rawName || '');
       var looksUid = r.length > 20 && !/\s/.test(r); // guard legacy UID-as-name
@@ -35137,11 +35181,29 @@ async function renderTeamView() {
     var capBadge = capLoad > 0
       ? '<button class="team-cap-load" onclick="event.stopPropagation();window._teamFilterCOPByLead&&window._teamFilterCOPByLead(\'' + safeName + '\')" title="View pursuits owned by ' + safeName + ' in the COP">' + capLoad + ' CAPTURE' + (capLoad === 1 ? '' : 'S') + '</button>'
       : '<div class="team-cap-load team-cap-load--zero" title="No pursuits assigned">\u2014 NONE \u2014</div>';
-    sh += '<div style="display:flex;align-items:center;gap:8px;padding:8px 6px;border-radius:6px">'
+    // Department picker (name-visibility scope). Editable by self or admin
+    // (rules: members/{uid} writable by self/admin). Unset = names shown to all
+    // (default). Drives window._teamActorLabel everywhere.
+    var _isAdmin = (typeof currentUserRole !== 'undefined') && (currentUserRole === 'Owner' || currentUserRole === 'Admin');
+    var _curDept = m.department || '';
+    var _escDept = function(s){ return String(s).replace(/[<>&]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c]; }); };
+    var deptCtrl;
+    if (isMe || _isAdmin) {
+      var _depts = (window.CORSAIR_DEPARTMENTS || []).slice();
+      if (_curDept && _depts.indexOf(_curDept) < 0) _depts.push(_curDept);
+      var _opts = '<option value="">\u2014 Dept \u2014</option>' + _depts.map(function(d){
+        return '<option value="' + String(d).replace(/"/g, '&quot;') + '"' + (d === _curDept ? ' selected' : '') + '>' + _escDept(d) + '</option>';
+      }).join('');
+      deptCtrl = '<select onchange="window._setMemberDepartment(\'' + String(m.uid).replace(/'/g, "\\'") + '\',this.value)" onclick="event.stopPropagation()" title="Department \u2014 names show within a department; other departments see the label" style="margin-top:5px;font-size:11px;background:var(--s2);color:var(--t2);border:1px solid var(--b1);border-radius:4px;padding:3px 5px;font-family:IBM Plex Mono,monospace;max-width:150px">' + _opts + '</select>';
+    } else {
+      deptCtrl = _curDept ? '<div style="margin-top:5px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace;letter-spacing:.04em">' + _escDept(_curDept) + '</div>' : '';
+    }
+    sh += '<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 6px;border-radius:6px">'
       + imgHtml
       + '<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
       + m.name + (isMe ? ' <span style="font-size:12px;color:var(--t3)">(you)</span>' : '') + '</div>'
       + '<div style="font-size:12px;color:var(--t3)">' + bucket.meetings.length + ' mtgs \u00b7 ' + bucket.contacts.size + ' contacts</div>'
+      + deptCtrl
       + '</div>'
       + capBadge
       + '</div>';
@@ -67283,6 +67345,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.237"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.238"></script>
 </body>
 </html>
