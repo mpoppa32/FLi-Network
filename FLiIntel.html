@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.234</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.235</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32774,7 +32774,7 @@ window._atlasStandDown = function(){
   h += '<div style="font-size:13px;color:var(--t2);line-height:1.6">';
   h += '&bull; 21 OSINT sources keep pulling on their own schedules.<br>';
   h += '&bull; The Brief + Sovereign Read recompute overnight (05:00 UTC) — tomorrow\'s read is assembled while you sleep.<br>';
-  h += '&bull; A weekly snapshot is on the books, so The Reckoning keeps its week-over-week truth.<br>';
+  h += '&bull; Weekly snapshots accumulate from normal use — The Reckoning\'s week-over-week truth builds from them.<br>';
   h += '&bull; Email reply-detection activates once Gmail is connected (until then, mark replies in the Outreach Queue).';
   h += '</div>';
   // TOMORROW
@@ -32952,7 +32952,7 @@ window.renderTodayView = function(){
         h6 += '<div style="display:flex;flex-direction:column;gap:6px">';
         topSignals.forEach(function(row){
           var s = row.s;
-          var sev = s.severity || 'info';
+          var sev = String(s.severity || 'info').toLowerCase();
           var sevCol = sev === 'high' ? '#ef4444' : sev === 'med' ? '#f0a560' : sev === 'low' ? '#6ed094' : '#5fb3b8';
           var hl = String(s.headline || '').replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}).slice(0, 120);
           var cat = s.category ? String(s.category).toUpperCase().slice(0, 22) : '';
@@ -44918,6 +44918,13 @@ window._atlasCaptureWeeklySnapshot = async function(){
 window._renderReckoningView = function() {
   var view = document.getElementById('reckoning-view');
   if (!view) return;
+  // P13.235 (review fix) — warm the snapshot cache on direct entry (Tools
+  // menu / restored tab) so week-over-week deltas appear even if Today
+  // hasn't rendered this session. Guarded against re-loop: after load the
+  // cache is {} (not null), so this fires at most once.
+  if (window._atlasSnapshotCache == null && typeof window._atlasLoadSnapshots === 'function') {
+    window._atlasLoadSnapshots().then(function(){ if (window.activeView === 'reckoning' && window._renderReckoningView) window._renderReckoningView(); });
+  }
   function fmt$(v){ if(!v||v<=0)return '$0'; if(v>=1e9)return '$'+(v/1e9).toFixed(1)+'B'; if(v>=1e6)return '$'+(v/1e6).toFixed(1)+'M'; if(v>=1e3)return '$'+Math.round(v/1e3)+'k'; return '$'+Math.round(v); }
   function esc(s){ return String(s==null?'':s).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
   var pwinFrac = (typeof window._pwinFrac==='function') ? window._pwinFrac : function(o){ return Number((o&&o.pwin)||0); };
@@ -46273,7 +46280,7 @@ window._atlasAccountCallPrep = function(orgId){
     var on = String(org.name || '').toLowerCase();
     var opp = (window.opportunities || []).find(function(o){
       if (!o) return false;
-      var s = String(o.stage || '').toLowerCase(); if (s === 'won' || s === 'lost') return false;
+      var s = String(o.stage || '').toLowerCase(); if (s === 'won' || s === 'lost' || s === 'no-bid' || s === 'no_bid') return false;
       return (o.customerOrg && String(o.customerOrg).toLowerCase() === on) || (o.name && on && String(o.name).toLowerCase().indexOf(on) >= 0);
     });
     if (typeof window.openMeetingPrepBrief === 'function') {
@@ -67013,6 +67020,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.234"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.235"></script>
 </body>
 </html>
