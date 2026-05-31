@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.240</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.241</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32126,9 +32126,9 @@ window._roleOf = function(uid){
 };
 // +score = surfaces first; -score = recedes (never removed).
 window.ROLE_CATCH_BOOST = {
-  CFO: { pattern: 25, commit: 20, signal: 20, stale: 15, decay: -15, posture: -15, meeting: -10, overlap: -10, 'customer-quiet': -10 },
-  COO: { decay: 20, stale: 20, overlap: 20, commit: 15, meeting: 15, posture: 10, 'customer-quiet': 25, pattern: -10 },
-  CEO: { pattern: 10 },
+  CFO: { pattern: 25, commit: 20, signal: 20, stale: 15, decay: -15, posture: -15, meeting: -10, overlap: -10, 'customer-quiet': -10, 'effort': 20 },
+  COO: { decay: 20, stale: 20, overlap: 20, commit: 15, meeting: 15, posture: 10, 'customer-quiet': 25, pattern: -10, 'effort': 15 },
+  CEO: { pattern: 10, 'effort': 15 },
   Operator: {}
 };
 window._setMemberFunctionRole = async function(uid, role){
@@ -32849,6 +32849,53 @@ window._atlasComputeCatches = function() {
     }
   } catch(e){}
 
+  // L. Effort-vs-value mismatch (Property 4 — GAP-N). Cross-pipeline pattern:
+  // the team's heaviest pursuit is getting no recent attention while effort
+  // went to lighter work. Team-level (no individual named). "Mismatch" is the
+  // platform's read, labeled as such — surfaces + routes, never acts.
+  try {
+    var EFFORT_WINDOW = 21 * DAY;
+    var effCut = nowMs - EFFORT_WINDOW;
+    var pwinF = (typeof window._pwinFrac === 'function') ? window._pwinFrac : function(o){ return Number((o && o.pwin) || 0); };
+    var activeW = opps_.filter(function(o){
+      var s = String((o && o.stage) || '').toLowerCase();
+      return o && s && s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
+    }).map(function(o){
+      var v = Number(o.value || o.contractValue || 0);
+      return { o: o, w: v * pwinF(o), v: v };
+    }).filter(function(x){ return x.w > 0; });
+    if (activeW.length >= 4) {
+      var touchByOpp = {};
+      mtgs_.forEach(function(m){
+        if (!m || m.oppId == null) return;
+        var ts = (m.meta && typeof m.meta.ts === 'number') ? m.meta.ts : (typeof m.ts === 'number' ? m.ts : (m.meta && m.meta.date ? Date.parse(String(m.meta.date)) : 0));
+        if (ts && ts >= effCut) touchByOpp[String(m.oppId)] = (touchByOpp[String(m.oppId)] || 0) + 1;
+      });
+      (window._teamEvents || []).forEach(function(e){
+        if (!e || !e.ts || e.ts < effCut) return;
+        var dl = e.deepLink || {};
+        if (dl.view === 'opps' && dl.id != null) touchByOpp[String(dl.id)] = (touchByOpp[String(dl.id)] || 0) + 1;
+      });
+      var totalTouches = 0; Object.keys(touchByOpp).forEach(function(k){ totalTouches += touchByOpp[k]; });
+      activeW.sort(function(a,b){ return b.w - a.w; });
+      var topW = activeW[0];
+      var medianW = activeW[Math.floor(activeW.length / 2)].w || 0;
+      var topTouches = touchByOpp[String(topW.o.id)] || 0;
+      // Fire only when the heaviest pursuit is genuinely heavy (>= 2x median),
+      // neglected (0 touches in window), and the team WAS active elsewhere (>= 3).
+      if (topW.w >= 2 * medianW && topTouches === 0 && totalTouches >= 3) {
+        var ewStr = topW.w >= 1e6 ? '$' + (topW.w / 1e6).toFixed(1) + 'M' : '$' + Math.round(topW.w / 1e3) + 'k';
+        candidates.push({
+          kind: 'effort', entityId: String(topW.o.id),
+          title: (topW.o.name || 'Top pursuit') + ' — heaviest pursuit, no recent attention',
+          evidence: ewStr + ' weighted · 0 team touches in 21d while ' + totalTouches + ' went to lighter work · rebalance?',
+          source: 'EFFORT vs VALUE', score: 86,
+          click: 'opp-detail', clickArg: String(topW.o.id)
+        });
+      }
+    }
+  } catch(e){}
+
   // Role-based relevance (operator 2026-05-31): boost the Catch kinds the
   // viewer's role cares about so they surface first; let "buried in" kinds
   // recede. Never hard-hides — CEO stays broad, nothing critical disappears.
@@ -32900,7 +32947,8 @@ window._renderTodayCatches = function() {
     'meeting':  '#fb923c',
     'posture':  '#a78bfa',
     'overlap':  '#4fd6e4',
-    'customer-quiet': '#e07a5f'
+    'customer-quiet': '#e07a5f',
+    'effort':   '#d4a017'
   };
   function _esc(s) {
     return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
@@ -67522,6 +67570,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.240"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.241"></script>
 </body>
 </html>
