@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.232</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.233</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9183,6 +9183,10 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
         <button onclick="if(window.openAddCommitmentModal)window.openAddCommitmentModal()" style="display:flex;align-items:center;gap:8px;padding:13px 22px;background:transparent;border:1px solid rgba(212,130,58,.42);border-radius:3px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s" onmouseover="this.style.background='rgba(212,130,58,.10)';this.style.borderColor='var(--gold)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(212,130,58,.42)'">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>New Follow-up</span>
+        </button>
+        <!-- P13.233 (Block 7 / The Stand-Down) — end-of-day rollup trigger. -->
+        <button onclick="window._atlasStandDown&&window._atlasStandDown()" title="End-of-day rollup — what you captured today, what the platform watches overnight, what's due next 7 days" style="display:flex;align-items:center;gap:8px;padding:13px 18px;background:rgba(95,179,184,.10);border:1px solid rgba(95,179,184,.45);border-radius:3px;color:#5fb3b8;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:all .15s;margin-left:auto" onmouseover="this.style.background='rgba(95,179,184,.18)'" onmouseout="this.style.background='rgba(95,179,184,.10)'">
+          <span>&#9790; Stand-Down</span>
         </button>
         <!-- P13.105 — Tour entry on TODAY. Self-running spotlight + callout
              tour over the real workspace UI. Uses the existing _TOUR_CHAPTERS
@@ -32721,6 +32725,70 @@ window._atlasAutoSyncCancel = function() {
 window._atlasAutoSyncFireNow = function() {
   window._atlasAutoSyncCancel();
   if (typeof window._atlasRunFullSync === 'function') window._atlasRunFullSync();
+};
+
+// P13.233 (Block 7 / The Stand-Down — Moment 5) — end-of-day rollup. The
+// operator closes the laptop knowing nothing slipped and the platform keeps
+// watching. Reactive: today's actions are captured + in the record. Proactive:
+// what watches overnight + what's due next. Read-only composition; modal off
+// Today. Spine: the operator's rest is not a gap in coverage — it's part of
+// the system.
+window._atlasStandDown = function(){
+  var modal = document.getElementById('standdown-modal');
+  if (!modal){
+    modal = document.createElement('div');
+    modal.id = 'standdown-modal'; modal.className = 'overlay'; modal.style.display = 'none';
+    document.body.appendChild(modal);
+  }
+  function esc(s){ return String(s==null?'':s).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
+  var DAY = 86400000, nowMs = Date.now();
+  var now = new Date(), startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  function mtgTs(m){ if(m&&m.meta){ if(typeof m.meta.ts==='number')return m.meta.ts; if(m.meta.date){var t=Date.parse(String(m.meta.date));if(!isNaN(t))return t;} } if(m&&typeof m.ts==='number')return m.ts; return 0; }
+  var mtgs = window.meetings || [];
+  var loggedToday = mtgs.filter(function(m){ return mtgTs(m) >= startToday; });
+  var commits = window.commitments || [];
+  function cDue(c){ if(c.deadline){var d=Date.parse(c.deadline);if(!isNaN(d))return d;} if(c.dueAt){var d2=Date.parse(c.dueAt);if(!isNaN(d2))return d2;} return null; }
+  var dueSoon = commits.filter(function(c){ if(!c||c.done||c.status==='done'||c.completed)return false; var d=cDue(c); return d!=null && d<=nowMs+7*DAY; }).sort(function(a,b){ return (cDue(a)||0)-(cDue(b)||0); });
+  var upcoming = mtgs.filter(function(m){ var t=mtgTs(m); return t>nowMs && t<=nowMs+7*DAY; }).sort(function(a,b){ return mtgTs(a)-mtgTs(b); });
+  var awaiting = 0; try { if(window.Corsair&&window.Corsair.nudge&&window.Corsair.nudge.compute){ awaiting=(window.Corsair.nudge.compute()||[]).filter(function(n){return n.type==='awaiting_your_reply';}).length; } } catch(e){}
+  var sectionHdr = function(label){ return '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase;margin:18px 0 8px">'+label+'</div>'; };
+  var h = '';
+  h += '<div class="modal" style="max-width:620px;max-height:88vh;overflow-y:auto">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+  h += '<div style="font-family:Anton,sans-serif;font-size:26px;letter-spacing:.06em;text-transform:uppercase;color:var(--bone);line-height:1">Stand-Down</div>';
+  h += '<button class="btn btn-sm" onclick="closeModal(\'standdown-modal\')" style="font-size:13px">Close</button>';
+  h += '</div>';
+  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--paper);margin-bottom:6px">Close the laptop. Nothing slips — the record is current and the platform keeps watching.</div>';
+  // TODAY
+  h += sectionHdr('Captured today');
+  if (loggedToday.length){
+    h += '<div style="font-size:13px;color:var(--text);margin-bottom:6px"><b style="color:#22c55e">'+loggedToday.length+'</b> meeting'+(loggedToday.length===1?'':'s')+' logged — in the institutional record, on the team feed.</div>';
+    h += '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:4px">';
+    loggedToday.slice(0,5).forEach(function(m){ h += '<div style="font-size:12px;color:var(--t2);padding:5px 10px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc((m.meta&&m.meta.title)||'meeting')+'</div>'; });
+    h += '</div>';
+  } else {
+    h += '<div style="font-size:13px;color:var(--t3);margin-bottom:4px">No meetings logged today. If a call happened, log it before you close — Bryce sees it within the minute.</div>';
+  }
+  // OVERNIGHT
+  h += sectionHdr('Watching overnight');
+  h += '<div style="font-size:13px;color:var(--t2);line-height:1.6">';
+  h += '&bull; 21 OSINT sources keep pulling on their own schedules.<br>';
+  h += '&bull; The Brief + Sovereign Read recompute overnight (05:00 UTC) — tomorrow\'s read is assembled while you sleep.<br>';
+  h += '&bull; A weekly snapshot is on the books, so The Reckoning keeps its week-over-week truth.<br>';
+  h += '&bull; Email reply-detection activates once Gmail is connected (until then, mark replies in the Outreach Queue).';
+  h += '</div>';
+  // TOMORROW
+  h += sectionHdr('Due next 7 days');
+  if (dueSoon.length || upcoming.length || awaiting){
+    if (awaiting) h += '<div style="font-size:13px;color:var(--gold);margin-bottom:6px">'+awaiting+' inbound awaiting your reply.</div>';
+    if (dueSoon.length){ h += '<div style="font-size:12px;color:var(--t3);margin-bottom:3px">Commitments ('+dueSoon.length+')</div><div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">'; dueSoon.slice(0,5).forEach(function(c){ h += '<div style="font-size:12px;color:var(--t2);padding:5px 10px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.description||c.text||c.title||'commitment')+'</div>'; }); h += '</div>'; }
+    if (upcoming.length){ h += '<div style="font-size:12px;color:var(--t3);margin-bottom:3px">Meetings ('+upcoming.length+')</div><div style="display:flex;flex-direction:column;gap:4px">'; upcoming.slice(0,5).forEach(function(m){ h += '<div style="font-size:12px;color:var(--t2);padding:5px 10px;background:var(--s1);border:1px solid var(--b1);border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc((m.meta&&m.meta.title)||'meeting')+'</div>'; }); h += '</div>'; }
+  } else {
+    h += '<div style="font-size:13px;color:var(--t3)">Nothing due in the next 7 days. Clear runway.</div>';
+  }
+  h += '</div>';
+  modal.innerHTML = h;
+  modal.style.display = 'flex';
 };
 
 window.renderTodayView = function(){
@@ -66945,6 +67013,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.232"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.233"></script>
 </body>
 </html>
