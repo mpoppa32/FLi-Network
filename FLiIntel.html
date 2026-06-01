@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.251</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.252</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -50086,6 +50086,43 @@ var _PHASE85_CATEGORY_META = {
 // when operator clicks "+ N more".
 var _PHASE85_SOFT_CAPS = { pursuit: 10, adversary: 5, customer: 5, capability: 5, context: 3 };
 
+// P13.252 (Honest Surfacing Tier-1 #1) — GLOBAL CEILING on default-render
+// External Intelligence rows. Per-category soft caps already exist (10+5+5+5+3
+// = 28 below the GLANCE-FIRST top-5). On a busy day the operator was looking
+// at 30+ OSINT-derived rows on Today simultaneously — the audit's named
+// failure mode "Brief view easily exceeds 30 OSINT-derived rows on a busy
+// day. No global ceiling." Doctrine: restraint as trust signal. An operator
+// who sees 12 categorized rows believes those are the top 12; if the page
+// scrolls to 30 they stop calibrating.
+//
+// Mechanic: the default-collapsed render is bounded by ceiling items below
+// the GLANCE-FIRST top-5. Per-category "+ N more" expand still works (deliberate
+// operator action on a single category). A new global "↓ Expand all categories
+// (+M items)" footer appears when the ceiling clipped total; once clicked,
+// state persists in localStorage so the operator can stay expanded if they
+// prefer the firehose. The ceiling never hides data — only defers it to a
+// deliberate click.
+var _PHASE85_GLOBAL_CEILING_DEFAULT = 12;
+function _phase85GlobalCeiling(){
+  try {
+    var v = localStorage.getItem('corsair-brief-global-ceiling');
+    if (v && /^\d+$/.test(v)) return Math.max(3, Math.min(60, parseInt(v, 10)));
+  } catch(e){}
+  return _PHASE85_GLOBAL_CEILING_DEFAULT;
+}
+function _phase85IsGloballyExpanded(){
+  try { return localStorage.getItem('corsair-brief-global-expand') === '1'; } catch(e){ return false; }
+}
+window._phase85ToggleGlobalExpand = function(){
+  try {
+    if (_phase85IsGloballyExpanded()) localStorage.removeItem('corsair-brief-global-expand');
+    else localStorage.setItem('corsair-brief-global-expand', '1');
+  } catch(e){}
+  if (window._latestBrief && typeof window._renderExternalIntelligence === 'function') {
+    window._renderExternalIntelligence(window._latestBrief);
+  }
+};
+
 window._briefCategoryExpanded = {}; // categoryKey → bool
 
 // v1.1: stash latest brief so "why" popover can fetch RelevanceComponents on demand
@@ -50437,6 +50474,16 @@ window._renderExternalIntelligence = function(brief) {
     h += '</div>';
   }
 
+  // P13.252 (Honest Surfacing Tier-1 #1) — global ceiling running totals.
+  // Tracks items rendered across categories below GLANCE-FIRST; clips
+  // default-render when ceiling reached. Per-category expand still works.
+  var _globalCeiling = _phase85GlobalCeiling();
+  var _globalExpanded = _phase85IsGloballyExpanded();
+  var _runningTotal = 0;
+  var _ceilingHiddenItems = 0;
+  var _ceilingHiddenCategoriesShown = 0; // categories that rendered <softCap rows
+  var _ceilingTotalAvailable = order.reduce(function(acc, k){ return acc + ((cats[k] || []).length); }, 0);
+
   for (var i = 0; i < order.length; i++) {
     var key = order[i];
     var meta = _PHASE85_CATEGORY_META[key];
@@ -50446,7 +50493,21 @@ window._renderExternalIntelligence = function(brief) {
     // v1.2: soft/hard cap split — show up to soft cap by default, "+ N more" reveals the rest
     var softCap = _PHASE85_SOFT_CAPS[key] || items.length;
     var expanded = !!window._briefCategoryExpanded[key];
-    var renderCount = expanded ? items.length : Math.min(softCap, items.length);
+    // P13.252 — bound by global ceiling unless category expanded OR global expand on.
+    // Per-category expand always wins (deliberate operator action on a single category).
+    var renderCount;
+    if (expanded || _globalExpanded) {
+      renderCount = items.length;
+    } else {
+      var perCatRender = Math.min(softCap, items.length);
+      var remaining = Math.max(0, _globalCeiling - _runningTotal);
+      renderCount = Math.min(perCatRender, remaining);
+      if (renderCount < perCatRender) {
+        _ceilingHiddenItems += (perCatRender - renderCount);
+        if (renderCount > 0) _ceilingHiddenCategoriesShown++;
+      }
+    }
+    _runningTotal += renderCount;
     var hiddenCount = items.length - renderCount;
     h += '<div style="padding:8px 14px 6px;border-top:1px solid rgba(0,0,0,.05)">';
     h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:' + meta.color + ';text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px">' + meta.glyph + ' ' + meta.label + ' · ' + items.length + (items.length > softCap ? ' (showing ' + renderCount + ')' : '') + '</div>';
@@ -50635,6 +50696,20 @@ window._renderExternalIntelligence = function(brief) {
     } else if (expanded && items.length > (_PHASE85_SOFT_CAPS[key] || 0)) {
       h += '<div style="padding:4px 0;text-align:center"><button onclick="window._briefToggleCategory&&window._briefToggleCategory(\'' + key + '\')" style="background:transparent;border:1px dashed var(--b2);border-radius:2px;padding:4px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;cursor:pointer">↑ Collapse</button></div>';
     }
+    h += '</div>';
+  }
+  // P13.252 (Honest Surfacing Tier-1 #1) — global "Expand all" footer.
+  // Visible only when ceiling clipped at least one item. Says exactly what
+  // the operator is choosing between: the curated default vs. the firehose.
+  // The toggle persists in localStorage so the operator's preference sticks.
+  if (anyItems && !_globalExpanded && _ceilingHiddenItems > 0) {
+    h += '<div style="padding:10px 14px;text-align:center;border-top:1px solid rgba(0,0,0,.05);background:rgba(95,179,184,.04)">';
+    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--paper-2);letter-spacing:.10em;text-transform:uppercase;margin-bottom:4px">Showing ' + _runningTotal + ' of ' + _ceilingTotalAvailable + ' items · ' + _ceilingHiddenItems + ' deferred</div>';
+    h += '  <button onclick="window._phase85ToggleGlobalExpand&&window._phase85ToggleGlobalExpand()" style="background:transparent;border:1px dashed #5fb3b8;border-radius:2px;padding:5px 14px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:#5fb3b8;letter-spacing:.10em;text-transform:uppercase;cursor:pointer">↓ Expand all categories</button>';
+    h += '</div>';
+  } else if (anyItems && _globalExpanded) {
+    h += '<div style="padding:6px 14px;text-align:center;border-top:1px solid rgba(0,0,0,.05)">';
+    h += '  <button onclick="window._phase85ToggleGlobalExpand&&window._phase85ToggleGlobalExpand()" style="background:transparent;border:1px dashed var(--b2);border-radius:2px;padding:4px 10px;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;cursor:pointer">↑ Collapse to default ceiling (' + _phase85GlobalCeiling() + ' items)</button>';
     h += '</div>';
   }
   if (!anyItems) {
@@ -68690,6 +68765,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.251"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.252"></script>
 </body>
 </html>
