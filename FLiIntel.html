@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.262</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.263</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -38844,20 +38844,33 @@ window._renderConnectionProvenanceChip = function(entity, nb) {
     var cmt = null;
     if (nb.entity && nb.entity.type === 'commitment') cmt = nb.entity.ref || null;
     else if (entity && entity.type === 'commitment') cmt = entity.ref || null;
-    if (cmt && cmt.sourceMtgId && Array.isArray(window.meetings)) {
-      for (var i = 0; i < window.meetings.length; i++) {
-        if (String(window.meetings[i].id) === String(cmt.sourceMtgId)) return window.meetings[i];
+    if (cmt && cmt.sourceMtgId) {
+      var mtgsRef = (typeof meetings !== 'undefined' && Array.isArray(meetings))
+        ? meetings
+        : ((window.meetings && Array.isArray(window.meetings)) ? window.meetings : null);
+      if (mtgsRef) {
+        for (var i = 0; i < mtgsRef.length; i++) {
+          if (String(mtgsRef[i].id) === String(cmt.sourceMtgId)) return mtgsRef[i];
+        }
       }
     }
     return null;
   }
 
   function _findLinkRecord() {
-    if (!entity || !nb || !nb.entity || !Array.isArray(window.links)) return null;
+    if (!entity || !nb || !nb.entity) return null;
+    // Module-scope `links` is what _buildEntityGraph reads at graph-build
+    // time; window.links is NOT mirrored (verified on Atlas during P13.256
+    // post-ship audit). Reference the module-scope var, fall back to
+    // window.links only if the module-scope binding is undefined.
+    var linksRef = (typeof links !== 'undefined' && Array.isArray(links))
+      ? links
+      : ((window.links && Array.isArray(window.links)) ? window.links : null);
+    if (!linksRef || !linksRef.length) return null;
     var src = (nb.direction === 'out') ? String(entity.id) : String(nb.entity.id);
     var tgt = (nb.direction === 'out') ? String(nb.entity.id) : String(entity.id);
-    for (var i = 0; i < window.links.length; i++) {
-      var l = window.links[i];
+    for (var i = 0; i < linksRef.length; i++) {
+      var l = linksRef[i];
       if (!l) continue;
       var ls = String((l.source && l.source.id != null) ? l.source.id : l.source);
       var lt = String((l.target && l.target.id != null) ? l.target.id : l.target);
@@ -69406,6 +69419,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.262"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.263"></script>
 </body>
 </html>
