@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.263</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.264</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17759,10 +17759,24 @@ window._pulseSignalIsRelevant = function(signal) {
   // Match the FULL term first (word-boundary); if it doesn't match, tokenize
   // multi-word values and try each substantive token. Handles the common
   // case where opps store "Anduril Industries" but the signal only says
-  // "Anduril" — without this, conservative full-term matching dropped
-  // relevant signals. Tokenization keeps the >=5-char dampening rule so
-  // common short words ("vehicle", "branch") and 3-letter noise still don't
-  // create false positives.
+  // "Anduril". P13.265: tokenization without a stoplist produced false
+  // positives — a node named "Chase Defense Partners / Advanced Aircraft
+  // Company" caused any signal mentioning the word "company" to match.
+  // Stoplist of common English suffixes/categories that shouldn't trigger
+  // a match on their own dampens this without losing real-entity matches.
+  var TOKEN_STOPLIST = {
+    'company':1,'companies':1,'corporation':1,'incorporated':1,'limited':1,
+    'industries':1,'industrial':1,'international':1,'national':1,'federal':1,
+    'systems':1,'services':1,'solutions':1,'technology':1,'technologies':1,
+    'group':1,'groups':1,'holdings':1,'partners':1,'partnership':1,'associates':1,
+    'defense':1,'defence':1,'security':1,'agency':1,'department':1,'office':1,
+    'bureau':1,'commission':1,'administration':1,'institute':1,'foundation':1,
+    'advanced':1,'global':1,'general':1,'central':1,'united':1,'states':1,
+    'state':1,'government':1,'public':1,'private':1,'aircraft':1,'aerospace':1,
+    'capital':1,'ventures':1,'venture':1,'enterprise':1,'enterprises':1,
+    'consulting':1,'research':1,'development':1,'engineering':1,'manufacturing':1,
+    'commercial':1,'strategic':1,'tactical':1,'operations':1
+  };
   function check(term){
     if (!term) return false;
     var t = String(term).toLowerCase().trim();
@@ -17774,6 +17788,7 @@ window._pulseSignalIsRelevant = function(signal) {
     for (var i = 0; i < toks.length; i++){
       var tok = toks[i];
       if (!tok || tok.length < minTermLen) continue;
+      if (TOKEN_STOPLIST[tok]) continue;
       var tokRe = new RegExp('(^|[^a-z0-9])' + tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
       if (tokRe.test(blob)) return true;
     }
@@ -51334,7 +51349,23 @@ window._renderExternalIntelligence = function(brief) {
     h += '</div>';
   }
   if (!anyItems) {
-    h = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;font-style:italic">No external intelligence items in the last 24 hours. Source syncs may be inactive or watchlists may be empty.</div>';
+    // P13.264 (post-Tier-2 #8 verification gap fix) — brief-exists-but-empty
+    // branch (typical Atlas state: 106 signals in lake but synthesis yields 0)
+    // now uses the same diagnostic-aware empty state as the null-brief branch.
+    // Names which plugins are reporting so the operator knows where to look.
+    var _xSummary = (typeof window._externalIntelHealthSummary === 'function') ? window._externalIntelHealthSummary() : null;
+    if (_xSummary && _xSummary.activeSources.length > 0) {
+      var _activeList = _xSummary.activeSources.slice(0, 6).map(function(a){
+        return a.name.replace(/_/g, ' ').toUpperCase() + ' (' + a.count + ')';
+      }).join(' &middot; ');
+      var _extra = _xSummary.activeSources.length > 6 ? ' +' + (_xSummary.activeSources.length - 6) + ' more' : '';
+      var _be = _xSummary.totalSignals === 1 ? 'is' : 'are';
+      h = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;line-height:1.55;font-style:italic">' +
+        '<span style="color:var(--t2);font-style:normal">' + _xSummary.totalSignals + ' signal' + (_xSummary.totalSignals === 1 ? '' : 's') + ' across ' + _xSummary.activeSources.length + ' source plugin' + (_xSummary.activeSources.length === 1 ? '' : 's') + '</span> ' + _be + ' in the lake, but the nightly synthesis produced 0 items for the last 24h window. Active sources: ' + _activeList + _extra + '. Click Refresh Sources to trigger synthesis manually.' +
+        '</div>';
+    } else {
+      h = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;font-style:italic">No external intelligence items in the last 24 hours. Source syncs may be inactive or watchlists may be empty.</div>';
+    }
   }
   // Counts summary
   if (brief.counts) {
@@ -69419,6 +69450,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.263"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.264"></script>
 </body>
 </html>
