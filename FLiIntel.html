@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.258</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.259</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -18094,6 +18094,84 @@ window._renderTrustChips = function(signal) {
   return html;
 };
 
+// P13.259 (Honest Surfacing Tier-3 #3) — confidence vocabulary unification.
+// Closes the audit gap: four parallel languages described the same concept
+// across surfaces (BriefItem 0-1 numeric, POC confidence high/medium/low,
+// outreach VERIFIED/INFERRED/GUESSED/FALLBACK, opp scoreConfidence
+// high/partial/sparse). Operator saw the SAME idea wearing four different
+// words. New canonical 5-tier scale + one chip helper.
+//
+// Canonical tiers, in descending trust order:
+//   VERIFIED  — directly observed / explicitly recorded
+//   HIGH      — strong evidence, multiple signals or recent confirmation
+//   INFERRED  — derived from secondary signals
+//   GUESSED   — pattern match without verification
+//   UNKNOWN   — insufficient signal
+//
+// window._normalizeConfidence(value, kind) — accepts any input vocabulary,
+// returns canonical tier string or null. Numeric (0-1) thresholds:
+// >=0.85 VERIFIED, >=0.70 HIGH, >=0.50 INFERRED, >=0.30 GUESSED, else UNKNOWN.
+// String inputs case-insensitive. Outreach vocabulary maps directly. POC
+// high/medium/low maps to HIGH/INFERRED/GUESSED. Opp partial/sparse maps
+// to INFERRED/UNKNOWN.
+//
+// window._renderConfidenceChip(value, kind, opts) — returns the standard
+// chip HTML or empty string. opts.showPercent=true (default for numeric)
+// shows "CONF X%" instead of the tier word. opts.titleAttr adds a hover
+// tooltip explaining the value.
+window._CONFIDENCE_COLORS = {
+  VERIFIED: '#22c55e',
+  HIGH:     '#84cc16',
+  INFERRED: '#f0a560',
+  GUESSED:  '#fb923c',
+  UNKNOWN:  '#94a3b8'
+};
+
+window._normalizeConfidence = function(value, kind) {
+  if (value == null) return null;
+  if (typeof value === 'number') {
+    if (isNaN(value)) return null;
+    if (value >= 0.85) return 'VERIFIED';
+    if (value >= 0.70) return 'HIGH';
+    if (value >= 0.50) return 'INFERRED';
+    if (value >= 0.30) return 'GUESSED';
+    return 'UNKNOWN';
+  }
+  var s = String(value).toLowerCase().trim();
+  if (!s) return null;
+  // Outreach vocabulary
+  if (s === 'verified') return 'VERIFIED';
+  if (s === 'inferred') return 'INFERRED';
+  if (s === 'guessed')  return 'GUESSED';
+  if (s === 'fallback') return 'UNKNOWN';
+  // POC + Catch coarse vocabulary
+  if (s === 'high')   return 'HIGH';
+  if (s === 'medium' || s === 'med') return 'INFERRED';
+  if (s === 'low')    return 'GUESSED';
+  // Opp scoreConfidence vocabulary
+  if (s === 'partial') return 'INFERRED';
+  if (s === 'sparse')  return 'UNKNOWN';
+  // Already canonical?
+  var upper = s.toUpperCase();
+  if (window._CONFIDENCE_COLORS[upper]) return upper;
+  return null;
+};
+
+window._renderConfidenceChip = function(value, kind, opts) {
+  opts = opts || {};
+  var tier = window._normalizeConfidence(value, kind);
+  if (!tier) return '';
+  var color = window._CONFIDENCE_COLORS[tier] || window._CONFIDENCE_COLORS.UNKNOWN;
+  var display;
+  if (typeof value === 'number' && opts.showPercent !== false) {
+    display = 'CONF ' + Math.round(value * 100) + '%';
+  } else {
+    display = tier;
+  }
+  var titleAttr = opts.titleAttr ? ' title="' + String(opts.titleAttr).replace(/"/g, '&quot;') + '"' : '';
+  return '<span' + titleAttr + ' style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + color + ';border:1px solid ' + color + '60;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">' + display + '</span>';
+};
+
 function _dailyFeedToSignalEntity(s) {
   var sigType = (s.category === 'policy') ? 'policy_signal' : 'analysis_publication';
   var sigId = 'df_' + _strHash32((s.headline || '') + '|' + (s.date || ''));
@@ -22222,10 +22300,10 @@ function renderOppDetail(opp){
         var c = top[pi];
         var name = (window._escHTML ? window._escHTML(c.name || '(unnamed)') : String(c.name || '').replace(/[<>&]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]; }));
         var role = (window._escHTML ? window._escHTML(c.role || '') : String(c.role || '').replace(/[<>&]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]; }));
-        var confCol = c.confidence === 'high' ? 'var(--green)' : c.confidence === 'medium' ? '#facc15' : '#fb923c';
         var pidEsc = String(c.personId || '').replace(/'/g,'&#39;');
+        var confChip = (typeof window._renderConfidenceChip === 'function') ? window._renderConfidenceChip(c.confidence || 'low') : '';
         h += '<div onclick="window.openEntityInspector&amp;&amp;window.openEntityInspector(\'' + pidEsc + '\')" style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:rgba(7,13,24,.45);border:1px solid var(--b1);border-radius:2px;cursor:pointer" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
-          '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:' + confCol + ';border:1px solid ' + confCol + '70;background:rgba(0,0,0,.22);padding:1px 6px;border-radius:2px;text-transform:uppercase">' + (c.confidence || 'low') + '</span>' +
+          confChip +
           '<span style="font-size:13px;color:var(--text);font-weight:600">' + name + '</span>' +
           (role ? '<span style="font-size:12px;color:var(--t2)">· ' + role + '</span>' : '') +
           '<span style="margin-left:auto;font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.08em">OPEN ▸</span>' +
@@ -48450,12 +48528,12 @@ window._openAccountDetail = function(orgId){
           var top3 = (window.Corsair.poc.findExisting(r.org.id) || []).slice(0, 3);
           if (!top3.length) return '';
           var rowsHtml = top3.map(function(c){
-            var confCol = c.confidence === 'high' ? 'var(--green)' : c.confidence === 'medium' ? '#facc15' : '#fb923c';
             var pidEsc = String(c.personId || '').replace(/'/g,'&#39;');
             var nameEsc = _accEsc(c.name || '(unnamed)');
             var roleEsc = _accEsc(c.role || '');
+            var confChip = (typeof window._renderConfidenceChip === 'function') ? window._renderConfidenceChip(c.confidence || 'low') : '';
             return '<div onclick="window.openEntityInspector&amp;&amp;window.openEntityInspector(\'' + pidEsc + '\')" title="Open dossier · ' + (c.role || 'role unknown') + '" style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(7,13,24,.45);border:1px solid var(--b1);border-radius:2px;cursor:pointer;flex:1;min-width:200px" onmouseover="this.style.borderColor=\'#5fb3b8\'" onmouseout="this.style.borderColor=\'var(--b1)\'">' +
-              '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.12em;color:' + confCol + ';border:1px solid ' + confCol + '70;background:rgba(0,0,0,.22);padding:1px 5px;border-radius:2px;text-transform:uppercase">' + (c.confidence || 'low') + '</span>' +
+              confChip +
               '<span style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + nameEsc + '</span>' +
               (roleEsc ? '<span style="font-size:11px;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + roleEsc + '</span>' : '') +
             '</div>';
@@ -48632,10 +48710,9 @@ function _renderPOCCandidate(c) {
   var safeName = window._escHTML ? window._escHTML(c.name || '(unnamed)') : String(c.name || '');
   var safeRole = window._escHTML ? window._escHTML(c.role || '') : String(c.role || '');
   var safeSource = window._escHTML ? window._escHTML(c.source || '') : String(c.source || '');
-  var confCol = c.confidence === 'high' ? 'var(--green)'
-             : c.confidence === 'medium' ? '#facc15'
-             : '#fb923c';
-  var confLbl = '<span title="Confidence level — verify any candidate before adding" style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.14em;color:' + confCol + ';border:1px solid ' + confCol + '70;background:rgba(0,0,0,.22);padding:1px 6px;border-radius:2px;text-transform:uppercase">' + (c.confidence || 'low') + '</span>';
+  var confLbl = (typeof window._renderConfidenceChip === 'function')
+    ? window._renderConfidenceChip(c.confidence || 'low', null, {titleAttr: 'Confidence level — verify any candidate before adding'})
+    : '';
   var sourceUrlLink = '';
   if (c.sourceUrl) {
     var _urlStr = String(c.sourceUrl);
@@ -50618,8 +50695,9 @@ window._renderExternalIntelligence = function(brief) {
         return a.name.replace(/_/g, ' ').toUpperCase() + ' (' + a.count + ')';
       }).join(' &middot; ');
       var extra = summary.activeSources.length > 6 ? ' +' + (summary.activeSources.length - 6) + ' more' : '';
+      var beVerb = summary.totalSignals === 1 ? 'is' : 'are';
       emptyHtml = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;line-height:1.55;font-style:italic">' +
-        '<span style="color:var(--t2);font-style:normal">' + summary.totalSignals + ' signal' + (summary.totalSignals === 1 ? '' : 's') + ' across ' + summary.activeSources.length + ' source plugin' + (summary.activeSources.length === 1 ? '' : 's') + '</span> are in the lake, but the nightly synthesis hasn’t produced a Brief in the last 24h. Active sources: ' + activeList + extra + '. Click Refresh Sources to trigger synthesis manually.' +
+        '<span style="color:var(--t2);font-style:normal">' + summary.totalSignals + ' signal' + (summary.totalSignals === 1 ? '' : 's') + ' across ' + summary.activeSources.length + ' source plugin' + (summary.activeSources.length === 1 ? '' : 's') + '</span> ' + beVerb + ' in the lake, but the nightly synthesis hasn’t produced a Brief in the last 24h. Active sources: ' + activeList + extra + '. Click Refresh Sources to trigger synthesis manually.' +
         '</div>';
     } else {
       emptyHtml = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;line-height:1.55;font-style:italic">' +
@@ -69195,6 +69273,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.258"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.259"></script>
 </body>
 </html>
