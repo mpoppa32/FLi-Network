@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.242</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.243</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -32348,8 +32348,20 @@ window._atlasComputeCatches = function() {
     }
   } catch(e){}
 
-  // B. Commitments due in <= 2 days (or overdue within 7d)
+  // B. Commitments due in <= 2 days (or overdue within 7d). Owner resolved to a
+  // workspace member when possible (DG-8 render-time) + coverage framing: the
+  // team sees "X owns it · confirm covered" instead of a bare free-text name,
+  // owner shown dept-scoped via _teamActorLabel. No person-surveillance — just
+  // who owns the deadline so the team can confirm it's covered.
   try {
+    var _myUidB = (window.currentUser && window.currentUser.uid) || null;
+    var _msB = window.workspaceMembers || [];
+    function _resolveCommitOwner(cm){
+      if (cm.ownerUid){ for (var i=0;i<_msB.length;i++){ if (_msB[i] && _msB[i].uid === cm.ownerUid) return { uid:_msB[i].uid, name:_msB[i].name, member:true }; } }
+      var on = String(cm.owner || '').toLowerCase().trim();
+      if (on){ for (var j=0;j<_msB.length;j++){ if (_msB[j] && _msB[j].name && String(_msB[j].name).toLowerCase().trim() === on) return { uid:_msB[j].uid, name:_msB[j].name, member:true }; } }
+      return { uid:null, name: cm.owner || '', member:false };
+    }
     commits_.forEach(function(c) {
       if (!c || c.done || c.status === 'done' || c.completed) return;
       var dts = null;
@@ -32363,10 +32375,13 @@ window._atlasComputeCatches = function() {
       if (daysUntil < 0)       evidence = 'Due ' + Math.abs(daysUntil) + 'd ago · overdue';
       else if (daysUntil === 0) evidence = 'Due today';
       else                      evidence = 'Due in ' + daysUntil + 'd';
+      var _own = _resolveCommitOwner(c);
+      var _ownLbl = (_own.member && window._teamActorLabel) ? window._teamActorLabel(_own.uid, _own.name, _myUidB) : _own.name;
+      var _ownClause = _own.member ? (' · ' + _ownLbl + ' owns it · confirm covered') : (_own.name ? (' · ' + _own.name) : '');
       candidates.push({
         kind: 'commit',
         title: label.length > 80 ? label.slice(0, 78) + '…' : label,
-        evidence: evidence + (c.owner ? ' · ' + c.owner : ''),
+        evidence: evidence + _ownClause,
         source: 'DUE',
         score: daysUntil < 0 ? 90 + Math.min(Math.abs(daysUntil), 7) : 85 - daysUntil * 5,
         click: 'commitments-panel'
@@ -67570,6 +67585,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.242"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.243"></script>
 </body>
 </html>
