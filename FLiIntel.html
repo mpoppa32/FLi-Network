@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.257</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.258</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9390,7 +9390,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
             </span>
           </div>
           <div id="ext-intel-body" style="padding:12px 0">
-            <div style="padding:10px 14px;color:var(--t3);font-size:14px;font-style:italic">External Intelligence brief loads after Phase 8.5.1 migration and source syncs run. Open Settings → Phase 8.5 OSINT Migration to begin.</div>
+            <div style="padding:10px 14px;color:var(--t3);font-size:14px;font-style:italic">Loading external intelligence…</div>
           </div>
         </div>
 
@@ -34176,6 +34176,32 @@ window._externalIntelIsFresh = function(withinHrs){
   return false;
 };
 
+// P13.258 (Honest Surfacing Tier-2 #8) — source health summary computed
+// from the signal lake. Returns {activeSources, totalSignals}. activeSources
+// is an array of {name, count, lastTs} sorted by count desc — used by the
+// diagnostic-aware empty state on External Intelligence and any other
+// surface that needs an honest "which plugins are actually reporting?" read.
+window._externalIntelHealthSummary = function(){
+  var signals = Array.isArray(window._signals) ? window._signals : [];
+  var byName = {};
+  for (var i = 0; i < signals.length; i++){
+    var s = signals[i];
+    if (!s) continue;
+    var raw = s.sourceSystem || s.publisher || (s.source && s.source.system) || 'unknown';
+    var name = String(raw);
+    if (!byName[name]) byName[name] = {name: name, count: 0, lastTs: 0};
+    byName[name].count++;
+    var ts = s.occurredAt || s.dataAsOf || 0;
+    if (ts > byName[name].lastTs) byName[name].lastTs = ts;
+  }
+  var arr = [];
+  for (var k in byName){
+    if (Object.prototype.hasOwnProperty.call(byName, k)) arr.push(byName[k]);
+  }
+  arr.sort(function(a,b){ return b.count - a.count; });
+  return {activeSources: arr, totalSignals: signals.length};
+};
+
 // P13.217 — toggle the Today Intelligence section. Lazy-loads the three
 // cards on first expand via the lightweight client-side loaders (NOT
 // _briefMasterRefresh, which triggers Cloud Functions + burns quota).
@@ -50579,7 +50605,28 @@ window._renderExternalIntelligence = function(brief) {
   var dateEl = document.getElementById('ext-intel-generated');
   if (!body) return;
   if (!brief) {
-    body.innerHTML = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;font-style:italic">No Brief synthesized yet. After migration + first source sync, click Refresh to generate.</div>';
+    // P13.258 (Honest Surfacing Tier-2 #8) — diagnostic-aware empty state.
+    // The audit gap: every empty surface used to read "loads after Phase 8.5.1
+    // migration" — copy that hasn't been accurate in months and tells the
+    // operator nothing about why the surface is empty NOW. Replaced with a
+    // live read of the signal lake: which source plugins HAVE reported,
+    // which haven't, total signal count. Honest about what's known vs unknown.
+    var summary = (typeof window._externalIntelHealthSummary === 'function') ? window._externalIntelHealthSummary() : null;
+    var emptyHtml = '';
+    if (summary && summary.activeSources.length > 0) {
+      var activeList = summary.activeSources.slice(0, 6).map(function(a){
+        return a.name.replace(/_/g, ' ').toUpperCase() + ' (' + a.count + ')';
+      }).join(' &middot; ');
+      var extra = summary.activeSources.length > 6 ? ' +' + (summary.activeSources.length - 6) + ' more' : '';
+      emptyHtml = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;line-height:1.55;font-style:italic">' +
+        '<span style="color:var(--t2);font-style:normal">' + summary.totalSignals + ' signal' + (summary.totalSignals === 1 ? '' : 's') + ' across ' + summary.activeSources.length + ' source plugin' + (summary.activeSources.length === 1 ? '' : 's') + '</span> are in the lake, but the nightly synthesis hasn’t produced a Brief in the last 24h. Active sources: ' + activeList + extra + '. Click Refresh Sources to trigger synthesis manually.' +
+        '</div>';
+    } else {
+      emptyHtml = '<div style="padding:10px 14px;color:var(--t3);font-size:14px;line-height:1.55;font-style:italic">' +
+        'No source plugins have written signals to this workspace yet. The 21 registered plugins run on cron — first signal usually lands within 24h of activation. If this empty state persists, check Settings → Sources Health for plugin status, secrets, and last-run timestamps.' +
+        '</div>';
+    }
+    body.innerHTML = emptyHtml;
     if (dateEl) dateEl.textContent = '—';
     return;
   }
@@ -69148,6 +69195,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.257"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.258"></script>
 </body>
 </html>
