@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.243</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.244</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -14232,7 +14232,60 @@ function connectWorkspace(){
       try { window._renderPostureView(); } catch(e) { console.warn('[Ledger] re-render failed:', e); }
     }
   });
-  netListeners=[u1,u3,u4,u5,u6,u7,u8,u9,u10,u11,uLedger];
+
+  // ── SIGNALS (P13.244 — OSINT O-1: unify signal lakes) ──
+  // Live subscription to /workspaces/{wsId}/signals — the server pipeline
+  // lake. Populates window._signals (normalized to consumer shape via
+  // window._signalToFeedItem). Re-renders OSINT-displaying surfaces on
+  // every write so a SAM.gov cron landing at 10:00 UTC (or a teammate's
+  // Pulse pull) shows up on Today + drawers without a reload. Bounded to
+  // the most recent 500 signals to keep client memory honest.
+  var SIGNALS_PAGE_SIZE = 500;
+  var sigQ = query(ref(db, wsPath('signals')), orderByChild('occurredAt'), limitToLast(SIGNALS_PAGE_SIZE));
+  var uSig = onValue(sigQ, function(snap){
+    var data = snap.val();
+    var arr = [];
+    if (data) {
+      Object.keys(data).forEach(function(k){
+        var sig = data[k]; if (!sig) return;
+        var item = (typeof window._signalToFeedItem === 'function') ? window._signalToFeedItem(sig) : null;
+        if (item) arr.push(item);
+      });
+    }
+    arr.sort(function(a,b){ return (b.occurredAt||0) - (a.occurredAt||0); });
+    window._signals = arr;
+    if (activeView === 'today') {
+      try{ window._renderTodayNarrative && window._renderTodayNarrative(); }catch(e){}
+      try{ window._renderTodayCatches && window._renderTodayCatches(); }catch(e){}
+      try{ window.renderDailyBrief && window.renderDailyBrief(); }catch(e){}
+    }
+    try{ window._refreshOpenInspector && window._refreshOpenInspector(); }catch(e){}
+    if (activeView === 'accounts' && typeof window._renderAccountsView === 'function') {
+      try{ window._renderAccountsView(); }catch(e){}
+    }
+    if (activeView === 'cop' && typeof renderBoard === 'function') {
+      try{ scheduleRenderBoard(); }catch(e){}
+    }
+  });
+
+  // ── BRIEFOUTPUT (P13.244 — OSINT O-1: unify signal lakes) ──
+  // Live subscription to /workspaces/{wsId}/derivedViews/dailyBrief/latest —
+  // the synthesized BriefOutput written by briefSynthesisNightly + on-demand
+  // triggerBriefSynthesis. Carries itemsByCategory (pursuit / adversary /
+  // customer / capability / context), adversaryRollup, customerRollup, and
+  // the 6-factor scoring. Account drawer + pursuit drawer read rollups via
+  // window._briefRollupForOrg when the open entity is tracked; otherwise
+  // they fall back to filtering window._signals.
+  var uBrief = onValue(ref(db, wsPath('derivedViews/dailyBrief/latest')), function(snap){
+    window._brief = snap.val() || null;
+    if (activeView === 'today') {
+      try{ window._renderTodayNarrative && window._renderTodayNarrative(); }catch(e){}
+      try{ window.renderDailyBrief && window.renderDailyBrief(); }catch(e){}
+    }
+    try{ window._refreshOpenInspector && window._refreshOpenInspector(); }catch(e){}
+  });
+
+  netListeners=[u1,u3,u4,u5,u6,u7,u8,u9,u10,u11,uLedger,uSig,uBrief];
   // G2: Load persisted intelligence cache
   setTimeout(_loadPulseCache, 2000);
   // H: Load feed config then today's daily intelligence feed
@@ -17696,6 +17749,68 @@ function _strHash32(str) {
   while (i) h = (h * 33) ^ str.charCodeAt(--i);
   return (h >>> 0).toString(36);
 }
+
+// P13.244 (OSINT O-1) — UNIFIED SIGNAL LAKE NORMALIZER.
+// Adapts a /signals record (server-pipeline + client-pulse, both write here)
+// into the consumer-friendly shape that the 5 OSINT-displaying surfaces
+// have historically read off window._dailyFeedData. Two new listeners
+// (workspaces/{wsId}/signals + workspaces/{wsId}/derivedViews/dailyBrief/latest)
+// keep window._signals + window._brief live. Pulse view keeps reading
+// _dailyFeedData (that's the operator's manual-pull session cache); every
+// other surface now reads the unified cloud view. Closes the "two-disjoint-
+// lakes" Pulse Gap from the OSINT audit. Severity is derived from attrs.severity
+// when present; otherwise mapped from attrs.confidence (server mappers without
+// explicit severity get a deterministic LOW/MED/HIGH).
+window._signalToFeedItem = function(sig) {
+  if (!sig) return null;
+  var a = sig.attrs || {};
+  var occ = sig.occurredAt || (sig.source && (sig.source.refreshedAt || sig.source.fetchedAt)) || Date.now();
+  var sev = String(a.severity || '').toUpperCase();
+  if (sev !== 'HIGH' && sev !== 'MED' && sev !== 'LOW') {
+    var conf = (typeof a.confidence === 'number') ? a.confidence : null;
+    if (conf != null) sev = conf >= 0.85 ? 'HIGH' : conf >= 0.65 ? 'MED' : 'LOW';
+    else sev = 'MED';
+  }
+  var dateStr = '';
+  try { dateStr = new Date(occ).toISOString().slice(0, 10); } catch(e){}
+  return {
+    id: sig.id,
+    category: a.category || sig.type || 'context',
+    severity: sev,
+    headline: a.headline || a.title || a.summary || '',
+    detail: a.detail || a.summary || '',
+    url: (sig.source && sig.source.url) || null,
+    date: dateStr,
+    occurredAt: occ,
+    tags: Array.isArray(a.tags) ? a.tags : [],
+    networkMatches: Array.isArray(sig.subjectIds) ? sig.subjectIds.map(function(id){ return { id: id }; }) : [],
+    publisher: (sig.source && sig.source.system) || null,
+    confidence: (typeof a.confidence === 'number') ? a.confidence : null,
+    parseStatus: a.parseStatus || null,
+    dataAsOf: (sig.source && (sig.source.refreshedAt || sig.source.fetchedAt)) || null,
+    sourceSystem: (sig.source && sig.source.system) || null,
+    _rawSignal: sig
+  };
+};
+
+// Look up a BriefOutput rollup entry for a given org (adversary or customer).
+// Returns null if no rollup is available (brief not yet synthesized) or the
+// org isn't tracked in either rollup. Used by account-drawer + pursuit-drawer
+// to surface server-synthesized account-level intel when present.
+window._briefRollupForOrg = function(orgIdOrName) {
+  if (!window._brief || !orgIdOrName) return null;
+  var key = String(orgIdOrName).toLowerCase().trim();
+  var pick = function(rollup, kind){
+    if (!Array.isArray(rollup)) return null;
+    for (var i = 0; i < rollup.length; i++){
+      var r = rollup[i]; if (!r) continue;
+      if (r.orgId && String(r.orgId).toLowerCase() === key) return { kind: kind, entry: r };
+      if (r.name && String(r.name).toLowerCase() === key) return { kind: kind, entry: r };
+    }
+    return null;
+  };
+  return pick(window._brief.adversaryRollup, 'adversary') || pick(window._brief.customerRollup, 'customer');
+};
 
 function _dailyFeedToSignalEntity(s) {
   var sigType = (s.category === 'policy') ? 'policy_signal' : 'analysis_publication';
@@ -22090,10 +22205,13 @@ function renderOppDetail(opp){
     if (typeof _oppOrgName === 'string' && _oppOrgName) _matchTerms.push(String(_oppOrgName).toLowerCase());
     else if (opp.name) _matchTerms.push(String(opp.name).toLowerCase());
     if (opp.vehicle) _matchTerms.push(String(opp.vehicle).toLowerCase());
-    // Recent OSINT signals from _dailyFeedData
+    // Recent OSINT signals from the unified server-pipeline lake (P13.244
+    // OSINT O-1). Reads window._signals (live via /signals onValue) instead
+    // of the client-only _dailyFeedData cache, so server-cron pulls show up
+    // in the pursuit drawer too.
     var _signals = [];
-    if (Array.isArray(window._dailyFeedData) && _matchTerms.length) {
-      _signals = window._dailyFeedData.filter(function(s){
+    if (Array.isArray(window._signals) && _matchTerms.length) {
+      _signals = window._signals.filter(function(s){
         if (!s) return false;
         var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
         return _matchTerms.some(function(t){ return t && t.length > 2 && blob.indexOf(t) >= 0; });
@@ -32323,7 +32441,11 @@ window._atlasComputeCatches = function() {
   var mtgs_    = window.meetings     || [];
   var opps_    = window.opportunities|| [];
   var commits_ = window.commitments  || [];
-  var signals_ = window._dailyFeedData || [];
+  // P13.244 (OSINT O-1) — reads window._signals (server-pipeline unified
+  // lake) instead of the client-only _dailyFeedData cache. Catch E now fires
+  // on HIGH-severity signals from cloud-cron pulls too, not just operator's
+  // manual Pulse runs.
+  var signals_ = window._signals || [];
 
   var candidates = [];
 
@@ -33037,10 +33159,13 @@ window._renderTodayNarrative = function(){
   var stageStr = sortedStages.map(function(s){return s[1] + ' ' + s[0];}).join(' · ');
   var s1 = '<b>' + ops.length + '</b> active pursuits across <b>' + agencies.size + '</b> agencies · <b>' + fmtMoney(weighted) + '</b> weighted (' + fmtMoney(pipeline) + ' total)' + (stageStr ? ' · ' + stageStr : '');
   // WORLD — signal counts this week
+  // P13.244 (OSINT O-1) — reads window._signals (server-pipeline unified lake)
+  // via the /signals onValue listener, not the client-only _dailyFeedData cache.
+  // Counts now include server-cron pulls + teammate Pulse runs, not just my own.
   var weekAgo = Date.now() - 7*86400000;
-  var signals = window._dailyFeedData || [];
+  var signals = window._signals || [];
   var weekly = signals.filter(function(s){
-    var ts = s && s.date ? new Date(s.date).getTime() : 0;
+    var ts = s && (s.occurredAt || (s.date ? new Date(s.date).getTime() : 0)) || 0;
     return ts > weekAgo;
   });
   var sevHi = 0, sevMed = 0, matched = 0;
@@ -46914,17 +47039,25 @@ window._openAccountDetail = function(orgId){
   // this week." Read-only, defensive (renders only when data exists).
   var _pst = (r.org && r.org.posture) || (org && org.posture) || null;
   var _orgNmLc = String(r.org.name || '').toLowerCase().trim();
+  var _orgRollup = null;
+  try { _orgRollup = window._briefRollupForOrg && window._briefRollupForOrg(r.org.id || r.org.name); } catch(e){}
+  // P13.244 (OSINT O-1) — reads window._signals (server-pipeline unified
+  // lake) via the /signals onValue listener instead of the client-only
+  // _dailyFeedData cache. Cloud-cron pulls from 21 source plugins now show
+  // up on the account drawer alongside the operator's manual Pulse pulls.
+  // Entity-scoped subjectIds intersection is O-2 work — substring match here
+  // is the interim filter on the right lake.
   var _osintWk = [];
-  if (_orgNmLc.length > 2 && Array.isArray(window._dailyFeedData)) {
+  if (_orgNmLc.length > 2 && Array.isArray(window._signals)) {
     var _wkAgo = Date.now() - 7 * 86400000;
-    window._dailyFeedData.forEach(function(s){
+    window._signals.forEach(function(s){
       if (!s) return;
-      var sts = s.date ? new Date(s.date).getTime() : 0;
+      var sts = s.occurredAt || (s.date ? new Date(s.date).getTime() : 0);
       if (sts && sts < _wkAgo) return;
       var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
       if (blob.indexOf(_orgNmLc) >= 0) _osintWk.push(s);
     });
-    _osintWk.sort(function(a,b){ return (b.date ? new Date(b.date).getTime() : 0) - (a.date ? new Date(a.date).getTime() : 0); });
+    _osintWk.sort(function(a,b){ return (b.occurredAt || (b.date ? new Date(b.date).getTime() : 0)) - (a.occurredAt || (a.date ? new Date(a.date).getTime() : 0)); });
     _osintWk = _osintWk.slice(0, 5);
   }
   var _prereadSection = '';
@@ -46937,14 +47070,25 @@ window._openAccountDetail = function(orgId){
       (_pst.position ? (_pst.trajectory ? ' &nbsp;·&nbsp; ' : '') + 'Position: <b>' + _accEsc(_pst.position) + '</b>' : '') +
       '</div></div>';
   }
-  if (_osintWk.length) {
+  if (_osintWk.length || _orgRollup) {
+    // P13.244 (OSINT O-1) — small "tracked as ADVERSARY/CUSTOMER" chip when
+    // BriefOutput rollups have this org; signalCount comes from the server
+    // synth. Full rollup card (sources[], momentum, chips per source) is O-2.
+    var _rollupChip = '';
+    if (_orgRollup && _orgRollup.entry) {
+      var _rk = _orgRollup.kind === 'adversary' ? 'ADVERSARY' : 'CUSTOMER';
+      var _rCol = _orgRollup.kind === 'adversary' ? '#ef4444' : '#22c55e';
+      var _rCount = _orgRollup.entry.signalCount || (Array.isArray(_orgRollup.entry.signals) ? _orgRollup.entry.signals.length : null);
+      var _rCountTxt = (typeof _rCount === 'number') ? (' · ' + _rCount + ' signal' + (_rCount === 1 ? '' : 's')) : '';
+      _rollupChip = '<span style="display:inline-block;margin-left:8px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + _rCol + ';border:1px solid ' + _rCol + '60;background:rgba(0,0,0,.18);padding:1px 6px;border-radius:2px">TRACKED · ' + _rk + _rCountTxt + '</span>';
+    }
     _prereadSection += '<div style="margin-bottom:14px;padding:10px 12px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.22);border-left:3px solid #5fb3b8;border-radius:3px">' +
-      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:6px">OSINT &middot; this week (' + _osintWk.length + ')</div>' +
-      _osintWk.map(function(s){
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:6px">OSINT &middot; this week (' + _osintWk.length + ')' + _rollupChip + '</div>' +
+      (_osintWk.length ? _osintWk.map(function(s){
         var hl = _accEsc(String(s.headline || 'signal').slice(0, 90));
         var dt = s.date ? _accEsc(String(s.date).slice(0, 10)) : '';
         return '<div style="font-size:12px;color:var(--t2);line-height:1.4;padding:4px 0;border-top:1px solid rgba(95,179,184,.12)">' + (dt ? '<span style="color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:10px">' + dt + '</span> ' : '') + hl + '</div>';
-      }).join('') +
+      }).join('') : '<div style="font-size:12px;color:var(--t3);line-height:1.4;padding:4px 0;font-style:italic">No new touches in 7d &middot; rollup is the server\'s longer-window view</div>') +
     '</div>';
   }
 
@@ -67585,6 +67729,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.243"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.244"></script>
 </body>
 </html>

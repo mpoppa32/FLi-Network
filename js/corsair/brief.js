@@ -591,17 +591,22 @@ window.renderDailyBrief = function() {
   // Today-only callout into the morning Brief. Reuses the same scoring
   // logic as the TODAY surface: term set from active opp agency/customer/
   // name/vehicle, hit-count score per dailyFeed signal, top 3 rendered.
+  //
+  // P13.244 (OSINT O-1) — reads window._signals (server-pipeline unified
+  // lake) via the /signals onValue listener instead of the client-only
+  // _dailyFeedData cache. Cloud-cron pulls from 21 plugins now feed the
+  // column, not just operator's manual Pulse runs.
   (function _renderOsintColumn(){
     var listEl = document.getElementById('brief-osint-list');
     var countEl = document.getElementById('brief-osint-count');
     if (!listEl) return;
-    var feed = Array.isArray(window._dailyFeedData) ? window._dailyFeedData : [];
+    var feed = Array.isArray(window._signals) ? window._signals : [];
     var actives = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
     if (!feed.length || !actives.length) {
       if (countEl) countEl.textContent = '0';
       var msg = feed.length
         ? 'No matches against your active pursuits today.'
-        : 'No OSINT feed pulled yet today. Click Pulse to trigger.';
+        : 'No signals in the workspace lake yet — Pulse pulls + nightly cron both write here.';
       listEl.innerHTML = '<div class="brief-empty">' + msg + '</div>';
       return;
     }
