@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.252</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.253</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -33356,6 +33356,10 @@ window._atlasComputeCatches = function() {
   });
 
   deduped.sort(function(a, b) { return b.score - a.score; });
+  // P13.253 (Honest Surfacing Tier-1 #2) — stamp the compute time so the
+  // catches header can wear a COMPUTED Xh AGO chip. Computed on every call;
+  // the chip-helper silently suppresses for <1h (fresh).
+  window._atlasCatchesComputedAt = Date.now();
   return deduped.slice(0, 3);
 };
 
@@ -33387,8 +33391,14 @@ window._renderTodayCatches = function() {
     return String(s == null ? '' : s).replace(/[<>&"]/g, function(ch){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]; });
   }
   var html = '';
+  // P13.253 (Honest Surfacing Tier-1 #2) — Top Catches is the highest-attention
+  // surface on Today; chip tells the operator when the platform last ran the
+  // dedupe + score pass. Silent under 1h, paper-2 1-12h, amber 12-48h, red >48h.
+  var _catchesComputedChip = (typeof window._renderComputedAgoChip === 'function')
+    ? window._renderComputedAgoChip(window._atlasCatchesComputedAt, { silentUnderMin: 60, title: 'Last computed by _atlasComputeCatches at ' + (window._atlasCatchesComputedAt ? new Date(window._atlasCatchesComputedAt).toLocaleString() : 'unknown') + '.' })
+    : '';
   html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;gap:10px">';
-  html += '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.20em;color:var(--gold);text-transform:uppercase">▣ Top Catches · ' + catches.length + '</div>';
+  html += '<div style="display:flex;align-items:baseline;gap:10px"><span style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.20em;color:var(--gold);text-transform:uppercase">▣ Top Catches · ' + catches.length + '</span>' + (_catchesComputedChip ? _catchesComputedChip : '') + '</div>';
   html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.10em;text-transform:uppercase">What the platform got to first today</div>';
   html += '</div>';
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">';
@@ -39446,6 +39456,38 @@ window._osintRefreshUnresolvedChip = function() {
     chip.textContent = 'UNRESOLVED · ' + bundle.count;
     chip.title = 'OSINT signals where the resolver did not bind subjectIds despite a body-text match against your workspace orgs/agencies. Click to review + add patterns.';
   } catch(e) { chip.style.display = 'none'; }
+};
+
+// P13.253 (Honest Surfacing Tier-1 #2) — COMPUTED Xh AGO chip for
+// synthesized surfaces. Closes the audit gap "no 'last computed' chip on
+// derived/synthesized surfaces — Source Health card, Sovereign Read
+// narrative, Adversary/Customer rollups, top-N glance — operator has no
+// way to know whether they're seeing most recent cron pass or stale
+// cache." Doctrine: Trust Principle for *derived* claims. The CONF/AS-OF
+// chips on raw signals say how trustable a fact is; this chip says how
+// trustable the platform's *read* is.
+//
+// Color tiers honest: silent <1h (fresh), paper-2 1h-12h (recent),
+// amber 12-48h (aging), red >48h (stale). Returns '' for null/0 ts so
+// callers get an honest empty when the timestamp is genuinely unknown
+// rather than a fabricated "just now."
+window._renderComputedAgoChip = function(ts, opts) {
+  opts = opts || {};
+  if (!ts || typeof ts !== 'number' || ts <= 0) return '';
+  var ageMin = Math.floor((Date.now() - ts) / 60000);
+  if (ageMin < 0) ageMin = 0;
+  var silentUnder = (typeof opts.silentUnderMin === 'number') ? opts.silentUnderMin : 60;
+  if (ageMin < silentUnder) return '';
+  var col;
+  if (ageMin < 720) col = 'var(--paper-2)';
+  else if (ageMin < 2880) col = '#f0a560';
+  else col = '#ef4444';
+  var label;
+  if (ageMin < 60) label = ageMin + 'm';
+  else if (ageMin < 1440) label = Math.floor(ageMin / 60) + 'h';
+  else label = Math.floor(ageMin / 1440) + 'd';
+  var tip = opts.title || 'When the platform last recomputed this surface — older = staler synthesis.';
+  return '<span title="' + String(tip).replace(/"/g, '&quot;') + '" style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + col + ';border:1px solid ' + col + '60;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px">COMPUTED ' + label + ' AGO</span>';
 };
 
 // P13.246 (OSINT O-4) — SIGNAL ACTION CHIPS, centralized helper.
@@ -50251,7 +50293,14 @@ window._renderExternalIntelligence = function(brief) {
   if (dateEl) {
     var ageMin = Math.floor((Date.now() - brief.generatedAt) / 60000);
     var versionTag = brief.scoringVersion ? ' · v' + brief.scoringVersion : '';
-    dateEl.textContent = (ageMin < 60 ? ageMin + 'm ago' : Math.floor(ageMin/60) + 'h ago') + versionTag;
+    // P13.253 (Honest Surfacing Tier-1 #2) — show the COMPUTED Xh AGO chip
+    // alongside the existing brief-date text so the operator knows the
+    // freshness of the synthesis, not just when the data was generated.
+    var computedChip = (typeof window._renderComputedAgoChip === 'function')
+      ? window._renderComputedAgoChip(brief.generatedAt, { silentUnderMin: 60, title: 'Server brief synthesis last ran ' + new Date(brief.generatedAt).toLocaleString() + '. Older = staler categorization + scoring.' })
+      : '';
+    var ageText = (ageMin < 60 ? ageMin + 'm ago' : Math.floor(ageMin/60) + 'h ago') + versionTag;
+    dateEl.innerHTML = '<span>' + ageText.replace(/[<>&]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) + '</span>' + (computedChip ? ' ' + computedChip : '');
     // Attach a "Copy as text" affordance next to the timestamp so the
     // operator can share today's digest with team members who don't
     // have direct app access. Lazy attach — only rebind if not present.
@@ -50331,7 +50380,11 @@ window._renderExternalIntelligence = function(brief) {
   if (Array.isArray(brief.adversaryRollup) && brief.adversaryRollup.length > 0) {
     var roll = brief.adversaryRollup.slice(0, 6);
     h += '<div style="margin:6px 0 14px;padding:10px 12px;background:rgba(179,64,64,.06);border:1px solid rgba(179,64,64,.22);border-radius:3px">';
-    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:#b34040;text-transform:uppercase;letter-spacing:.10em;font-weight:700;margin-bottom:6px">Adversary activity — last ' + Math.round((brief.windowHours || 168) / 24) + 'd</div>';
+    // P13.253 (Honest Surfacing Tier-1 #2) — computed-ago chip on adversary rollup.
+    var _advComputedChip = (typeof window._renderComputedAgoChip === 'function')
+      ? window._renderComputedAgoChip(brief.generatedAt, { silentUnderMin: 60, title: 'Adversary rollup aggregated by the server synthesis ' + new Date(brief.generatedAt).toLocaleString() + '.' })
+      : '';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:#b34040;text-transform:uppercase;letter-spacing:.10em;font-weight:700">Adversary activity — last ' + Math.round((brief.windowHours || 168) / 24) + 'd</span>' + (_advComputedChip ? _advComputedChip : '') + '</div>';
     for (var ri = 0; ri < roll.length; ri++) {
       var rEntry = roll[ri];
       var orgLabel = rEntry.orgName || rEntry.orgId;
@@ -50442,7 +50495,11 @@ window._renderExternalIntelligence = function(brief) {
   var topN = allItems.slice(0, 5);
   if (topN.length > 0) {
     h += '<div style="padding:10px 14px 4px;border-top:1px solid rgba(0,0,0,.05);background:linear-gradient(180deg,rgba(95,179,184,.04),transparent)">';
-    h += '  <div style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:#5fb3b8;text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px;font-weight:700">▾ TODAY\'S TOP ' + topN.length + ' · GLANCE-FIRST</div>';
+    // P13.253 (Honest Surfacing Tier-1 #2) — computed-ago chip on GLANCE-FIRST.
+    var _glanceComputedChip = (typeof window._renderComputedAgoChip === 'function')
+      ? window._renderComputedAgoChip(brief.generatedAt, { silentUnderMin: 60, title: 'Server synthesis last ranked these items ' + new Date(brief.generatedAt).toLocaleString() + '.' })
+      : '';
+    h += '  <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:#5fb3b8;text-transform:uppercase;letter-spacing:.14em;font-weight:700">▾ TODAY\'S TOP ' + topN.length + ' · GLANCE-FIRST</span>' + (_glanceComputedChip ? _glanceComputedChip : '') + '</div>';
     for (var tt = 0; tt < topN.length; tt++) {
       var rowMeta = topN[tt].categoryMeta;
       var rowItem = topN[tt].item;
@@ -68765,6 +68822,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.252"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.253"></script>
 </body>
 </html>
