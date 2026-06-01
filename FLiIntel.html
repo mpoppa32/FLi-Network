@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.261</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.262</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -18252,6 +18252,28 @@ window._normalizeConfidence = function(value, kind) {
   var upper = s.toUpperCase();
   if (window._CONFIDENCE_COLORS[upper]) return upper;
   return null;
+};
+
+// P13.262 (Honest Surfacing Tier-3 #10) — INFERRED/FACT claim badge.
+// Catches that COMPUTE a cross-pipeline pattern (effort-vs-value,
+// customer-quiet, posture-shift, concentration risk, score-pipeline-dark)
+// wear an INFERRED chip so the operator can distinguish "the platform
+// computed this from indirect signals" from "the platform observed this
+// as a recorded fact" (commitment due, meeting tomorrow, signal landed).
+// Default: silent for facts (no chip noise), INFERRED chip for derived
+// claims. Pass opts.showFact=true to force a FACT chip when explicit
+// affirmation helps (e.g. WORLD sentence "12 intel signals" = FACT count
+// next to "heaviest on X" = INFERRED concentration claim).
+window._renderClaimBadge = function(inferred, opts) {
+  opts = opts || {};
+  var title = opts.titleAttr ? ' title="' + String(opts.titleAttr).replace(/"/g, '&quot;') + '"' : '';
+  if (inferred) {
+    return '<span' + title + ' style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:#f0a560;border:1px solid #f0a56060;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">INFERRED</span>';
+  }
+  if (opts.showFact) {
+    return '<span' + title + ' style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:#5fb3b8;border:1px solid #5fb3b860;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">FACT</span>';
+  }
+  return '';
 };
 
 window._renderConfidenceChip = function(value, kind, opts) {
@@ -33162,7 +33184,8 @@ window._atlasComputeCatches = function() {
             evidence: 'Concentration risk · one ' + dim + ' carries ' + pct + '% of ' + wStr + ' weighted · diversify or defend',
             source: 'CONCENTRATION',
             score: 60 + Math.min(Math.round((best.share - 0.40) * 100), 25),
-            clickView: 'bdperf'
+            clickView: 'bdperf',
+            inferred: true
           });
         }
       }
@@ -33192,7 +33215,8 @@ window._atlasComputeCatches = function() {
         evidence: 'Forecast is dark — no value or p(win) on ' + Math.round(frac * 100) + '% of active pipeline. Bulk Score lights it up in one paste.',
         source: 'SCORE PIPELINE',
         score: 60 + Math.round(frac * 40),
-        click: 'bulk-score'
+        click: 'bulk-score',
+        inferred: true
       });
     }
   } catch(e){}
@@ -33297,7 +33321,8 @@ window._atlasComputeCatches = function() {
         title: label + ' — posture: ' + pm.intel.companyPulse,
         evidence: 'Meeting read suggests trajectory ' + traj + ' — confirm in the dossier · ' + (pAge === 0 ? 'today' : pAge + 'd ago'),
         source: 'POSTURE SHIFT', score: (pulse === 'crisis' ? 82 : 74) - Math.min(pAge, 8),
-        click: pcl, clickArg: parg, clickMid: pm.id
+        click: pcl, clickArg: parg, clickMid: pm.id,
+        inferred: true
       });
       pEmit++;
     }
@@ -33443,7 +33468,8 @@ window._atlasComputeCatches = function() {
             title: q.node.name + ' — quiet ' + q.days + 'd · handled',
             evidence: (ack.byDept || 'Team') + ' tracking' + (canSeeReason && ack.reason ? ': ' + String(ack.reason).slice(0, 90) : ''),
             source: 'CUSTOMER QUIET', score: 40,
-            click: 'openEntityInspector', clickArg: orgKey
+            click: 'openEntityInspector', clickArg: orgKey,
+            inferred: true
           });
         } else {
           candidates.push({
@@ -33452,7 +33478,8 @@ window._atlasComputeCatches = function() {
             evidence: 'No team touch since ' + sinceStr + ' · acknowledge if a department is tracking it',
             source: 'CUSTOMER QUIET', score: 68 + Math.min(Math.floor(q.days / 7), 20),
             click: 'openEntityInspector', clickArg: orgKey,
-            _ackOrg: orgKey, _ackName: q.node.name
+            _ackOrg: orgKey, _ackName: q.node.name,
+            inferred: true
           });
         }
       });
@@ -33500,7 +33527,8 @@ window._atlasComputeCatches = function() {
           title: (topW.o.name || 'Top pursuit') + ' — heaviest pursuit, no recent attention',
           evidence: ewStr + ' weighted · 0 team touches in 21d while ' + totalTouches + ' went to lighter work · rebalance?',
           source: 'EFFORT vs VALUE', score: 110, // > stale's ceiling (100) + max role boost (20) so the effort framing wins entity-dedup over a plain "stalled" Catch on the same heaviest pursuit
-          click: 'opp-detail', clickArg: String(topW.o.id)
+          click: 'opp-detail', clickArg: String(topW.o.id),
+          inferred: true
         });
       }
     }
@@ -33599,7 +33627,8 @@ window._renderTodayCatches = function() {
       clickJs = "window.switchView&&window.switchView('" + String(c.clickView).replace(/'/g, "\\'") + "')";
     }
     html += '<div onclick="' + clickJs + '" style="padding:14px 16px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:4px solid ' + col + ';border-radius:3px;cursor:pointer;transition:border-color 140ms,background 140ms" onmouseover="this.style.background=\'rgba(7,13,24,.78)\'" onmouseout="this.style.background=\'rgba(7,13,24,.55)\'">';
-    html += '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:' + col + ';text-transform:uppercase;margin-bottom:6px">' + _esc(c.source) + '</div>';
+    var claimBadge = (typeof window._renderClaimBadge === 'function') ? window._renderClaimBadge(c.inferred, {titleAttr: c.inferred ? 'Derived from cross-pipeline pattern — confirm before acting' : ''}) : '';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><div style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.18em;color:' + col + ';text-transform:uppercase">' + _esc(c.source) + '</div>' + claimBadge + '</div>';
     html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;font-weight:600;color:var(--bone);line-height:1.35;margin-bottom:5px">' + _esc(c.title) + '</div>';
     html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper);letter-spacing:.04em;line-height:1.45">' + _esc(c.evidence) + '</div>';
     if (c.kind === 'customer-quiet' && c._ackOrg) {
@@ -33756,9 +33785,16 @@ window._renderTodayNarrative = function(){
     } else if (topConcentration.length === 2) {
       concentrationPart = ' — heaviest on <b>' + topConcentration[0].name + '</b> (' + topConcentration[0].count + ') and <b>' + topConcentration[1].name + '</b> (' + topConcentration[1].count + ')';
     }
+    // P13.262 (Tier-3 #10) — the "heaviest on X" framing is a derived
+    // pattern claim (computed from term-match frequency across signals).
+    // Wear the INFERRED chip so the operator can tell it apart from the
+    // raw counts (signals/HIGH/MED), which are observed facts.
+    var concentrationBadge = (topConcentration.length > 0 && typeof window._renderClaimBadge === 'function')
+      ? ' ' + window._renderClaimBadge(true, {titleAttr: 'Concentration is computed from subjectIds + body-text term matches over the last 7 days — not a single observed fact.'})
+      : '';
     var sevPart = sevHi ? ' · ' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') : (sevMed ? ' · ' + sevMed + ' MED' : '');
     var matchPart = matched ? ' · <b>' + matched + '</b> mention your network' : '';
-    s2 = 'This week: <b>' + weekly.length + '</b> intel signals' + concentrationPart + sevPart + matchPart + '.';
+    s2 = 'This week: <b>' + weekly.length + '</b> intel signals' + concentrationPart + concentrationBadge + sevPart + matchPart + '.';
   }
   // GAPS — POC coverage across BD-target orgs
   var nodes = window.nodes || [];
@@ -69370,6 +69406,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.261"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.262"></script>
 </body>
 </html>
