@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.253</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.254</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -33480,10 +33480,18 @@ window._renderTodayNarrative = function(){
   var sortedStages = Object.keys(stageCounts).map(function(k){return [k, stageCounts[k]];}).sort(function(a,b){return b[1]-a[1];}).slice(0, 3);
   var stageStr = sortedStages.map(function(s){return s[1] + ' ' + s[0];}).join(' · ');
   var s1 = '<b>' + ops.length + '</b> active pursuits across <b>' + agencies.size + '</b> agencies · <b>' + fmtMoney(weighted) + '</b> weighted (' + fmtMoney(pipeline) + ' total)' + (stageStr ? ' · ' + stageStr : '');
-  // WORLD — signal counts this week
-  // P13.244 (OSINT O-1) — reads window._signals (server-pipeline unified lake)
-  // via the /signals onValue listener, not the client-only _dailyFeedData cache.
-  // Counts now include server-cron pulls + teammate Pulse runs, not just my own.
+  // WORLD — concentration this week, not raw counts.
+  // P13.244 (OSINT O-1) — reads window._signals (server-pipeline unified
+  // lake) via the /signals onValue listener.
+  // P13.254 (Honest Surfacing Tier-1 #4) — closes the audit gap "WORLD
+  // sentence reduces a complex OSINT lake to count without context. If 12
+  // signals are HIGH on the same competitor-win, the sentence still reads
+  // '12 / 3 HIGH' without telling operator the concentration." Now: top-2
+  // most-mentioned orgs surface in the line, so "heaviest on Anduril (5)
+  // and State Dept (3)" replaces "12 signals (3 HIGH, 2 MED)" — same data,
+  // higher operator-utility. Concentration uses subjectIds first (resolver-
+  // linked, cheapest) then walks the same opp-term + org-node name set as
+  // O-5's unresolved-mentions detector (word-boundary regex, >=5 chars).
   var weekAgo = Date.now() - 7*86400000;
   var signals = window._signals || [];
   var weekly = signals.filter(function(s){
@@ -33496,13 +33504,84 @@ window._renderTodayNarrative = function(){
     else if (s.severity === 'MED') sevMed++;
     if (Array.isArray(s.networkMatches) && s.networkMatches.length) matched++;
   });
+  // P13.254 — build the concentration map.
+  var orgHits = {};
+  var orgIdToName = {};
+  var idToNode = {};
+  (window.nodes || []).forEach(function(n){
+    if (n && n.id != null) idToNode[String(n.id)] = n;
+  });
+  // Build term -> display-name map from active opps + tracked org/gov/company nodes
+  var concentrationTerms = [];
+  (window.opportunities || []).forEach(function(o){
+    if (!o) return;
+    var stg = String(o.stage || '').toLowerCase();
+    if (stg === 'won' || stg === 'lost' || stg === 'no-bid' || stg === 'no_bid') return;
+    ['agency','customerOrg','adversaryOrg'].forEach(function(field){
+      var v = o[field];
+      if (v && String(v).length >= 5 && String(v).toLowerCase() !== 'agency unknown') {
+        concentrationTerms.push({ term: String(v).toLowerCase(), display: String(v).trim() });
+      }
+    });
+  });
+  (window.nodes || []).forEach(function(n){
+    if (!n || !n.name) return;
+    if (n.type !== 'org' && n.type !== 'company' && n.type !== 'government') return;
+    if (String(n.name).length < 5) return;
+    concentrationTerms.push({ term: String(n.name).toLowerCase(), display: String(n.name).trim() });
+  });
+  // Dedupe by lowercase term, keep first display
+  var seenTerm = {};
+  concentrationTerms = concentrationTerms.filter(function(t){ if (seenTerm[t.term]) return false; seenTerm[t.term] = true; return true; });
+  function _wordBoundaryRegex(t){
+    return new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
+  }
+  weekly.forEach(function(s){
+    if (!s) return;
+    // First: subjectIds (resolver-linked) — count each id once per signal
+    var raw = s._rawSignal || {};
+    var sids = Array.isArray(raw.subjectIds) ? raw.subjectIds : [];
+    if (sids.length) {
+      sids.forEach(function(sid){
+        var n = idToNode[String(sid)];
+        if (n && n.name) {
+          orgIdToName[String(n.name).toLowerCase()] = String(n.name).trim();
+          orgHits[String(n.name).toLowerCase()] = (orgHits[String(n.name).toLowerCase()] || 0) + 1;
+        }
+      });
+      return;
+    }
+    // Fallback: word-boundary match against concentration terms
+    var blob = ((s.headline || '') + ' ' + (s.detail || '')).toLowerCase();
+    if (!blob) return;
+    var matchedThisSignal = {};
+    concentrationTerms.forEach(function(t){
+      if (matchedThisSignal[t.term]) return;
+      if (_wordBoundaryRegex(t.term).test(blob)) {
+        matchedThisSignal[t.term] = 1;
+        orgIdToName[t.term] = t.display;
+        orgHits[t.term] = (orgHits[t.term] || 0) + 1;
+      }
+    });
+  });
+  var topConcentration = Object.keys(orgHits)
+    .filter(function(k){ return orgHits[k] >= 2; })
+    .map(function(k){ return { name: orgIdToName[k] || k, count: orgHits[k] }; })
+    .sort(function(a, b){ return b.count - a.count; })
+    .slice(0, 2);
   var s2;
   if (weekly.length === 0) {
     s2 = 'No intel feed this week — click <span style="text-decoration:underline;cursor:pointer;color:var(--gold)" onclick="window.switchView&amp;&amp;window.switchView(\'pulse\')">Pulse</span> to run a fresh pull.';
   } else {
-    var sevPart = sevHi ? ' (' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') + ')' : (sevMed ? ' (' + sevMed + ' MED)' : '');
-    var matchPart = matched ? ' — <b>' + matched + '</b> touched your network' : '';
-    s2 = 'This week: <b>' + weekly.length + '</b> intel signals' + sevPart + matchPart + '.';
+    var concentrationPart = '';
+    if (topConcentration.length === 1) {
+      concentrationPart = ' — heaviest on <b>' + topConcentration[0].name + '</b> (' + topConcentration[0].count + ')';
+    } else if (topConcentration.length === 2) {
+      concentrationPart = ' — heaviest on <b>' + topConcentration[0].name + '</b> (' + topConcentration[0].count + ') and <b>' + topConcentration[1].name + '</b> (' + topConcentration[1].count + ')';
+    }
+    var sevPart = sevHi ? ' · ' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') : (sevMed ? ' · ' + sevMed + ' MED' : '');
+    var matchPart = matched ? ' · <b>' + matched + '</b> mention your network' : '';
+    s2 = 'This week: <b>' + weekly.length + '</b> intel signals' + concentrationPart + sevPart + matchPart + '.';
   }
   // GAPS — POC coverage across BD-target orgs
   var nodes = window.nodes || [];
@@ -68822,6 +68901,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.253"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.254"></script>
 </body>
 </html>
