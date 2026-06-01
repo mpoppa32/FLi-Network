@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.248</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.249</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9381,6 +9381,8 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
             <span>◆ EXTERNAL INTELLIGENCE · LAST 24H</span>
             <span style="display:flex;align-items:center;gap:8px">
               <span class="brief-date" id="ext-intel-generated">—</span>
+              <!-- P13.249 (OSINT O-5) — unresolved-mentions diagnostic chip. Hidden when count=0. -->
+              <button id="ext-intel-unresolved-chip" onclick="window._osintOpenDiagnostic&&window._osintOpenDiagnostic()" title="OSINT resolver missed these body-text matches — click to add as patterns" style="display:none;align-items:center;padding:3px 8px;border:1px solid #f0a56060;border-radius:2px;background:rgba(240,165,96,.10);color:#f0a560;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer">UNRESOLVED · 0</button>
               <button id="ext-intel-copy" onclick="window._copyBriefAsMarkdown&&window._copyBriefAsMarkdown()" title="Copy the External Intelligence brief as Markdown — paste into Slack, GitHub, Notion, or any markdown-aware tool" style="padding:3px 8px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:12px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase">Copy Markdown</button>
               <button id="ext-intel-refresh" onclick="window._refreshExternalIntelligence&&window._refreshExternalIntelligence()" title="Re-synthesize the External Intelligence brief from the latest source pulls (signals, awards, opportunities)" style="padding:3px 8px;border:1px solid var(--b2);border-radius:2px;background:transparent;color:var(--t2);font-size:12px;cursor:pointer;font-family:'IBM Plex Mono',monospace;letter-spacing:.1em;text-transform:uppercase">Refresh Sources</button>
             </span>
@@ -13800,6 +13802,7 @@ async function _restPollFetchAll(){
     if (activeView === 'posture') { try { window._renderPostureView && window._renderPostureView(); } catch(e){} }
     if (activeView === 'rhythm') { try { window._renderRhythmView && window._renderRhythmView(); } catch(e){} }
     try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){}
+    try { window._osintRefreshUnresolvedChip && window._osintRefreshUnresolvedChip(); } catch(e){}
     try { setSS('live (REST)'); } catch(e){}
     _restPoll.lastOk = Date.now();
     return true;
@@ -14380,6 +14383,7 @@ function connectWorkspace(){
       try{ window.renderDailyBrief && window.renderDailyBrief(); }catch(e){}
     }
     try{ window._refreshOpenInspector && window._refreshOpenInspector(); }catch(e){}
+    try{ window._osintRefreshUnresolvedChip && window._osintRefreshUnresolvedChip(); }catch(e){}
     if (activeView === 'accounts' && typeof window._renderAccountsView === 'function') {
       try{ window._renderAccountsView(); }catch(e){}
     }
@@ -39064,6 +39068,228 @@ window._applyAwardSuggestion = async function(oppId, action){
     if (typeof window.selectOpp === 'function') { try { window.selectOpp(opp.id); } catch(e){} }
     if (typeof window.switchView === 'function') { try { window.switchView('opps'); } catch(e){} }
   }
+};
+
+// P13.249 (OSINT O-5) — UNRESOLVED-MENTIONS DIAGNOSTIC.
+// The audit's "single largest false-negative class with no diagnostic surface" —
+// signals land with subjectIds=[] when the workspace's patterns.contractors/programs
+// don't match the source's body text, and there's no way for the operator to know
+// the resolver missed the bind. Today's verification confirmed it's the #1 actual
+// blocker on Atlas (patterns is null + 19 of 21 mappers gate output on patterns).
+//
+// window._osintUnresolvedMentions() returns { items, count, terms } where:
+//   items = signals where subjectIds is empty AND body text mentions a substantive
+//           org/agency name from window.opportunities + window.nodes. Each item:
+//           { signal, term, matchSource: 'opp-agency'|'opp-customer'|'org-node' }
+//   count = items.length
+//   terms = aggregated unique matched terms sorted by frequency (the operator's
+//           triage queue — adding the top-N to patterns.contractors restores
+//           subjectIds resolution for future synth runs)
+//
+// _osintAddPattern(category, term) writes via REST PUT to
+//   /workspaces/{wsId}/patterns/{category}/{slug} = term
+// using the wedge-safe REST path. Returns Promise<boolean>.
+//
+// _osintOpenDiagnostic() opens a modal listing the unresolved-mentions queue
+// + the existing /orgMergeCandidates + /personMergeCandidates, with one-click
+// add/merge/dismiss actions per row.
+window._osintUnresolvedMentions = function(opts) {
+  opts = opts || {};
+  var maxRows = opts.max || 200;
+  var sinceMs = Date.now() - (opts.sinceDays || 30) * 86400000;
+  var minTermLen = opts.minTermLen || 5;
+  var signals = Array.isArray(window._signals) ? window._signals : [];
+  var opps = (window.opportunities || []);
+  var nodes_ = (window.nodes || []);
+  var dismissals = (window._osintDismissals && typeof window._osintDismissals === 'object') ? window._osintDismissals : {};
+
+  // Build candidate-term set (substantive only — >= minTermLen chars).
+  var terms = [];
+  var seenTerms = {};
+  function pushTerm(raw, source) {
+    if (!raw) return;
+    var t = String(raw).toLowerCase().trim();
+    if (t.length < minTermLen) return;
+    if (seenTerms[t]) return;
+    seenTerms[t] = true;
+    terms.push({ term: t, original: String(raw).trim(), source: source });
+  }
+  opps.forEach(function(o){
+    if (!o) return;
+    if (o.agency) pushTerm(o.agency, 'opp-agency');
+    if (o.customerOrg) pushTerm(o.customerOrg, 'opp-customer');
+    if (o.vehicle) pushTerm(o.vehicle, 'opp-vehicle');
+    if (o.adversaryOrg) pushTerm(o.adversaryOrg, 'opp-adversary');
+  });
+  nodes_.forEach(function(n){
+    if (!n || !n.name) return;
+    if (n.type === 'org' || n.type === 'company' || n.type === 'government') {
+      pushTerm(n.name, 'org-node');
+      if (Array.isArray(n.alternateNames)) n.alternateNames.forEach(function(a){ pushTerm(a, 'org-alt'); });
+    }
+  });
+
+  var items = [];
+  var termHitCount = {};
+  signals.forEach(function(s){
+    if (!s) return;
+    var raw = s._rawSignal || {};
+    var subjectIds = Array.isArray(raw.subjectIds) ? raw.subjectIds : [];
+    if (subjectIds.length > 0) return; // already resolved
+    var ts = s.occurredAt || 0;
+    if (ts && ts < sinceMs) return;
+    var blob = ((s.headline || '') + ' ' + (s.detail || '')).toLowerCase();
+    var hits = [];
+    terms.forEach(function(t){
+      // whole-word check to dampen 3-letter substring noise (require word boundary
+      // or surrounding non-alphanumeric — drops "civ" matching "civilian")
+      var re = new RegExp('(^|[^a-z0-9])' + t.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
+      if (re.test(blob)) {
+        var dismissKey = s.id + '::' + t.term;
+        if (dismissals[dismissKey]) return;
+        hits.push(t);
+        termHitCount[t.original] = (termHitCount[t.original] || 0) + 1;
+      }
+    });
+    if (hits.length) {
+      hits.forEach(function(h){
+        items.push({ signal: s, term: h.original, termLc: h.term, matchSource: h.source });
+      });
+    }
+  });
+  items.sort(function(a, b){
+    var ah = termHitCount[a.term] || 0;
+    var bh = termHitCount[b.term] || 0;
+    if (bh !== ah) return bh - ah;
+    return (b.signal.occurredAt || 0) - (a.signal.occurredAt || 0);
+  });
+  if (items.length > maxRows) items = items.slice(0, maxRows);
+  var topTerms = Object.keys(termHitCount).map(function(k){ return { term: k, count: termHitCount[k] }; }).sort(function(a,b){ return b.count - a.count; });
+  return { items: items, count: items.length, terms: topTerms };
+};
+
+window._osintAddPattern = async function(category, term) {
+  if (!currentUser || !currentWsId || !term) return false;
+  try {
+    var tok = await currentUser.getIdToken();
+    var slug = String(term).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+    if (!slug) return false;
+    var url = 'https://fli-network-default-rtdb.firebaseio.com/workspaces/' + currentWsId + '/patterns/' + encodeURIComponent(category) + '/' + encodeURIComponent(slug) + '.json?auth=' + encodeURIComponent(tok);
+    var resp = await fetch(url, {
+      method: 'PUT',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(String(term).trim())
+    });
+    return resp.ok;
+  } catch(e) {
+    console.warn('[P13.249 addPattern] failed:', e && e.message);
+    return false;
+  }
+};
+
+window._osintDismissUnresolved = function(signalId, term) {
+  if (!signalId || !term) return;
+  window._osintDismissals = window._osintDismissals || {};
+  window._osintDismissals[signalId + '::' + String(term).toLowerCase()] = true;
+  try { window._osintRefreshDiagnostic && window._osintRefreshDiagnostic(); } catch(e){}
+};
+
+window._osintOpenDiagnostic = function() {
+  var existing = document.getElementById('osint-diag-modal');
+  if (existing) { existing.style.display = 'flex'; window._osintRefreshDiagnostic(); return; }
+  var modal = document.createElement('div');
+  modal.id = 'osint-diag-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(7,13,24,.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+  modal.innerHTML = '<div id="osint-diag-shell" style="max-width:780px;width:calc(100% - 40px);max-height:88vh;overflow:hidden;display:flex;flex-direction:column;background:linear-gradient(180deg,var(--ink-2),var(--ink-3));border:1px solid var(--rule-2);border-left:3px solid #5fb3b8;border-radius:4px;box-shadow:0 24px 64px rgba(0,0,0,.7)">' +
+    '<div style="padding:14px 18px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase">OSINT &middot; Resolver Diagnostic</div>' +
+      '<button onclick="document.getElementById(\'osint-diag-modal\').style.display=\'none\'" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer">&times;</button>' +
+    '</div>' +
+    '<div style="padding:12px 18px;border-bottom:1px solid var(--rule);font-size:13px;color:var(--t2);line-height:1.5">Signals whose body text mentions a known org/agency name but the resolver did not link them. Add the term to <b style="color:var(--bone)">patterns.contractors</b> (or <b style="color:var(--bone)">patterns.programs</b>) so future source synths bind the mention.</div>' +
+    '<div id="osint-diag-body" style="overflow-y:auto;flex:1;padding:14px 18px"></div>' +
+    '<div style="padding:10px 18px;border-top:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.10em;color:var(--paper-2)">' +
+      '<span id="osint-diag-status">—</span>' +
+      '<button onclick="window._osintRefreshDiagnostic()" style="padding:5px 12px;background:transparent;border:1px solid var(--b2);color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Recompute</button>' +
+    '</div>' +
+  '</div>';
+  document.body.appendChild(modal);
+  window._osintRefreshDiagnostic();
+};
+
+window._osintRefreshDiagnostic = function() {
+  var body = document.getElementById('osint-diag-body');
+  var status = document.getElementById('osint-diag-status');
+  if (!body) return;
+  var bundle = window._osintUnresolvedMentions({ max: 200, sinceDays: 30 });
+  var html = '';
+  if (bundle.terms.length) {
+    html += '<div style="margin-bottom:14px"><div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:6px">Top unresolved terms &middot; ' + bundle.terms.length + '</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    bundle.terms.slice(0, 12).forEach(function(t){
+      var safeTerm = String(t.term).replace(/'/g, '&#39;').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
+      var argTerm = String(t.term).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:2px solid #5fb3b8;border-radius:2px">';
+      html += '<span style="flex:1;font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--bone)">' + safeTerm + ' <span style="color:var(--paper-2);font-family:IBM Plex Mono,monospace;font-size:10px">&middot; ' + t.count + ' signal' + (t.count === 1 ? '' : 's') + '</span></span>';
+      html += '<button onclick="window._osintAddPatternFromUi(\'contractors\',\'' + argTerm + '\',this)" style="padding:3px 8px;border:1px solid #22c55e60;color:#22c55e;background:rgba(0,0,0,.18);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border-radius:2px">↗ Add to contractors</button>';
+      html += '<button onclick="window._osintAddPatternFromUi(\'programs\',\'' + argTerm + '\',this)" style="padding:3px 8px;border:1px solid #a78bfa60;color:#a78bfa;background:rgba(0,0,0,.18);font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;border-radius:2px">↗ Add to programs</button>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  }
+  if (bundle.items.length) {
+    html += '<div><div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:var(--gold);text-transform:uppercase;margin-bottom:6px">Unresolved mentions &middot; ' + bundle.items.length + '</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:5px">';
+    bundle.items.slice(0, 30).forEach(function(m){
+      var s = m.signal;
+      var safeHl = String(s.headline || 'signal').replace(/[<>&]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}).slice(0, 110);
+      var safeTerm = String(m.term).replace(/[<>&]/g, function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});
+      var argTerm = String(m.term).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      var argSigId = String(s.id || '').replace(/'/g, "\\'");
+      var src = s.publisher || s.sourceSystem || 'src';
+      var dt = s.date ? String(s.date).slice(0,10) : '';
+      html += '<div style="padding:7px 10px;background:rgba(7,13,24,.45);border:1px solid var(--rule);border-radius:2px;font-size:12px;line-height:1.4">';
+      html += '<div style="display:flex;align-items:baseline;gap:8px;color:var(--paper-2);font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.08em;margin-bottom:2px">';
+      html += '<span style="color:#5fb3b8">' + safeTerm + '</span>';
+      if (dt) html += '<span>' + dt + '</span>';
+      html += '<span>&middot; ' + String(src).toUpperCase() + '</span>';
+      html += '<span style="margin-left:auto"><button onclick="window._osintDismissUnresolved(\'' + argSigId + '\',\'' + argTerm + '\')" style="padding:1px 5px;background:transparent;border:1px solid var(--rule);color:var(--paper-2);font-family:IBM Plex Mono,monospace;font-size:9px;cursor:pointer;border-radius:2px">dismiss</button></span>';
+      html += '</div>';
+      html += '<div style="color:var(--bone)">' + safeHl + '</div>';
+      html += '</div>';
+    });
+    if (bundle.items.length > 30) html += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);text-align:center;padding:8px 0">+' + (bundle.items.length - 30) + ' more (capped at 30 in modal &middot; full list via _osintUnresolvedMentions())</div>';
+    html += '</div></div>';
+  }
+  if (!bundle.terms.length && !bundle.items.length) {
+    html = '<div style="padding:24px 16px;color:var(--t3);font-style:italic;text-align:center;line-height:1.5">No unresolved mentions detected in the last 30 days &middot; resolver is binding cleanly OR no qualifying terms found.</div>';
+  }
+  body.innerHTML = html;
+  if (status) status.textContent = bundle.count + ' unresolved &middot; ' + bundle.terms.length + ' unique terms';
+};
+
+window._osintAddPatternFromUi = async function(category, term, btnEl) {
+  if (!term || !category) return;
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = '…'; }
+  var ok = await window._osintAddPattern(category, term);
+  if (btnEl) {
+    btnEl.textContent = ok ? '✓ ADDED' : '✗ FAILED';
+    btnEl.style.opacity = '.65';
+  }
+  if (ok && typeof toast === 'function') toast('Added "' + term + '" to patterns.' + category);
+  if (!ok && typeof toast === 'function') toast('Failed to add pattern — check permissions');
+};
+
+window._osintRefreshUnresolvedChip = function() {
+  var chip = document.getElementById('ext-intel-unresolved-chip');
+  if (!chip) return;
+  try {
+    var bundle = window._osintUnresolvedMentions({ max: 1000, sinceDays: 30 });
+    if (bundle.count === 0) { chip.style.display = 'none'; return; }
+    chip.style.display = 'inline-flex';
+    chip.textContent = 'UNRESOLVED · ' + bundle.count;
+    chip.title = 'OSINT signals where the resolver did not bind subjectIds despite a body-text match against your workspace orgs/agencies. Click to review + add patterns.';
+  } catch(e) { chip.style.display = 'none'; }
 };
 
 // P13.246 (OSINT O-4) — SIGNAL ACTION CHIPS, centralized helper.
@@ -68218,6 +68444,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.248"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.249"></script>
 </body>
 </html>
