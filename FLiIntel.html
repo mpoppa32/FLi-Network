@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.255</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.256</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -38547,6 +38547,91 @@ window._entityInspectorBack = function() {
   setTimeout(watchModal, 1000);
 })();
 
+// P13.256 (Honest Surfacing Tier-2 #6) — Inspector dossier connection
+// provenance chips. Closes the audit gap "Inspector dossier shows zero
+// trust labeling for ANY entity — Person from facaDatabase fuzzy match
+// looks identical to Person typed by Mike." Every connection row in the
+// DOSSIER tab now carries a quiet chip naming WHY this connection exists:
+// from a meeting (with date), inferred, linked-via-meeting (with date),
+// or unlabeled graph edge. Fuzzy-matched relations also wear a FUZZY chip
+// so the operator never confuses a name-similarity match for a verified link.
+window._renderConnectionProvenanceChip = function(entity, nb) {
+  if (!nb) return '';
+  var rel = String(nb.relation || '').toUpperCase();
+
+  function _findMeetingForRelation() {
+    if (nb.entity && nb.entity.type === 'meeting') return nb.entity.ref || null;
+    if (entity && entity.type === 'meeting' && entity.ref) return entity.ref;
+    var cmt = null;
+    if (nb.entity && nb.entity.type === 'commitment') cmt = nb.entity.ref || null;
+    else if (entity && entity.type === 'commitment') cmt = entity.ref || null;
+    if (cmt && cmt.sourceMtgId && Array.isArray(window.meetings)) {
+      for (var i = 0; i < window.meetings.length; i++) {
+        if (String(window.meetings[i].id) === String(cmt.sourceMtgId)) return window.meetings[i];
+      }
+    }
+    return null;
+  }
+
+  function _findLinkRecord() {
+    if (!entity || !nb || !nb.entity || !Array.isArray(window.links)) return null;
+    var src = (nb.direction === 'out') ? String(entity.id) : String(nb.entity.id);
+    var tgt = (nb.direction === 'out') ? String(nb.entity.id) : String(entity.id);
+    for (var i = 0; i < window.links.length; i++) {
+      var l = window.links[i];
+      if (!l) continue;
+      var ls = String((l.source && l.source.id != null) ? l.source.id : l.source);
+      var lt = String((l.target && l.target.id != null) ? l.target.id : l.target);
+      if (ls === src && lt === tgt) return l;
+      if (l.dir === 'both' && ls === tgt && lt === src) return l;
+    }
+    return null;
+  }
+
+  function _chip(text, col) {
+    return '<span style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + col + ';border:1px solid ' + col + '60;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">' + text + '</span>';
+  }
+
+  var meetingDerived = (rel === 'ATTENDED' || rel === 'MENTIONED_IN' ||
+                       rel === 'DISCUSSES' || rel === 'FROM_MEETING' ||
+                       rel === 'OWNS');
+  var chips = [];
+
+  if (meetingDerived) {
+    var mtg = _findMeetingForRelation();
+    var dateStr = (mtg && mtg.meta && mtg.meta.date) ? String(mtg.meta.date).slice(0, 10) : '';
+    var verb = (rel === 'ATTENDED')      ? 'FROM MEETING'
+             : (rel === 'MENTIONED_IN')  ? 'MENTIONED IN MEETING'
+             : (rel === 'DISCUSSES')     ? 'MEETING TAGGED'
+             : (rel === 'FROM_MEETING')  ? 'FROM MEETING'
+             : (rel === 'OWNS')          ? 'OWNER OF COMMITMENT'
+             : 'FROM MEETING';
+    var label = verb + (dateStr ? ' · ' + dateStr : '');
+    chips.push(_chip(label, '#d4823a'));
+  } else {
+    var link = _findLinkRecord();
+    if (link && link.inferredOriginally) {
+      chips.push(_chip('AUTO INFERRED', '#f0a560'));
+    } else if (link && link.notes) {
+      var notes = String(link.notes);
+      var dateMatch = notes.match(/\d{4}-\d{2}-\d{2}/);
+      if (dateMatch) {
+        chips.push(_chip('LINKED VIA MEETING · ' + dateMatch[0], '#d4823a'));
+      } else {
+        chips.push(_chip('GRAPH EDGE', '#b5ad9f'));
+      }
+    } else {
+      chips.push(_chip('GRAPH EDGE', '#b5ad9f'));
+    }
+  }
+
+  if (rel === 'ATTENDED' || rel === 'MENTIONED_IN' || rel === 'OWNS') {
+    chips.push(_chip('FUZZY ≥0.72', '#f0a560'));
+  }
+
+  return chips.join('');
+};
+
 window._renderEntityInspector = function(entity) {
   var traversed = window.traverseEntity(entity.id, 1);
   if (!traversed) return '<div class="empty">Entity not found.</div>';
@@ -38615,6 +38700,7 @@ window._renderEntityInspector = function(entity) {
         var name = _eiEsc(nb.entity.name);
         var relText = (nb.relation || '').toLowerCase().replace(/_/g, ' ');
         if (nb.direction === 'in') relText += ' (inbound)';
+        var provChip = (typeof window._renderConnectionProvenanceChip === 'function') ? window._renderConnectionProvenanceChip(entity, nb) : '';
         h += '<div onclick="window.openEntityInspector(\'' + _eiEsc(nb.entity.id).replace(/'/g, "&#39;") + '\')" ';
         h += 'style="display:flex;align-items:center;gap:11px;padding:10px 13px;background:rgba(10,16,32,.4);border:1px solid var(--b1);border-radius:var(--rsm);cursor:pointer;transition:all .15s" ';
         h += 'onmouseover="this.style.background=\'rgba(10,16,32,.75)\';this.style.borderColor=\'var(--b2)\';this.style.transform=\'translateX(2px)\'" ';
@@ -38623,6 +38709,7 @@ window._renderEntityInspector = function(entity) {
         h += '<div style="flex:1;min-width:0">';
         h += '<div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + name + '</div>';
         h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;text-transform:uppercase;letter-spacing:0.1em;color:var(--t3);margin-top:2px">' + _eiEsc(relText) + '</div>';
+        if (provChip) h += '<div style="margin-top:4px">' + provChip + '</div>';
         h += '</div>';
         h += '<div style="color:var(--t3);font-size:14px;flex-shrink:0">\u2192</div>';
         h += '</div>';
@@ -69019,6 +69106,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.255"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.256"></script>
 </body>
 </html>
