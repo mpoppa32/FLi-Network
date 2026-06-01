@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.259</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.260</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17743,6 +17743,61 @@ function _parseFeedText(text, cat) {
 }
 
 // ── Render the full feed ─────────────────────────────────────────
+// P13.260 (Honest Surfacing Tier-3 #9) — Pulse view relevance filter.
+// Returns true if the signal matches at least one active-opp term or a
+// network member name. Reuses the matching primitives from
+// _osintUnresolvedMentions: substantive terms only (>=5 chars), word-
+// boundary match against signal headline+detail. Pulse signals also
+// carry a pre-computed networkMatches array (line ~17814), so any signal
+// with a non-empty networkMatches is automatically relevant.
+window._pulseSignalIsRelevant = function(signal) {
+  if (!signal) return false;
+  if (Array.isArray(signal.networkMatches) && signal.networkMatches.length > 0) return true;
+  var blob = ((signal.headline || '') + ' ' + (signal.detail || '')).toLowerCase();
+  if (!blob.trim()) return false;
+  var minTermLen = 5;
+  function check(term){
+    if (!term) return false;
+    var t = String(term).toLowerCase().trim();
+    if (t.length < minTermLen) return false;
+    var re = new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
+    return re.test(blob);
+  }
+  var opps = window.opportunities || [];
+  for (var i = 0; i < opps.length; i++) {
+    var o = opps[i];
+    if (!o) continue;
+    if (check(o.agency) || check(o.customerOrg) || check(o.vehicle) ||
+        check(o.adversaryOrg) || check(o.programName)) return true;
+  }
+  var nodes_ = window.nodes || [];
+  for (var j = 0; j < nodes_.length; j++) {
+    var n = nodes_[j];
+    if (!n || !n.name) continue;
+    if (n.type === 'org' || n.type === 'company' || n.type === 'government' || n.type === 'person') {
+      if (check(n.name)) return true;
+      if (Array.isArray(n.alternateNames)) {
+        for (var k = 0; k < n.alternateNames.length; k++) {
+          if (check(n.alternateNames[k])) return true;
+        }
+      }
+    }
+  }
+  return false;
+};
+
+window._pulseGetShowAll = function() {
+  try { return localStorage.getItem('corsair-pulse-show-all') === '1'; } catch(e){ return false; }
+};
+
+window._pulseTogglesShowAll = function() {
+  var next = !window._pulseGetShowAll();
+  try { localStorage.setItem('corsair-pulse-show-all', next ? '1' : '0'); } catch(e){}
+  if (Array.isArray(window._dailyFeedData) && window._dailyFeedData.length) {
+    _renderDailyFeed(window._dailyFeedData);
+  }
+};
+
 function _renderDailyFeed(signals) {
   var empty = document.getElementById('pulse-feed-empty');
   var content = document.getElementById('pulse-feed-content');
@@ -17757,9 +17812,21 @@ function _renderDailyFeed(signals) {
   if (empty) empty.style.display = 'none';
   if (content) content.style.display = 'block';
 
+  // P13.260 (Tier-3 #9) — relevance filter. Default: filter to signals
+  // matching an active opp term or network member name. Toggle "show all"
+  // persists in localStorage. Honest "Showing X of Y" line names exactly
+  // what was filtered.
+  var showAll = window._pulseGetShowAll();
+  var totalCount = signals.length;
+  var renderedSignals = showAll ? signals : signals.filter(function(s){
+    try { return window._pulseSignalIsRelevant(s); } catch(e){ return true; }
+  });
+  var filteredCount = renderedSignals.length;
+  var deferredCount = totalCount - filteredCount;
+
   // Group by category for section rendering
   var byCat = {};
-  signals.forEach(function(s) {
+  renderedSignals.forEach(function(s) {
     if (!byCat[s.category]) byCat[s.category] = [];
     byCat[s.category].push(s);
   });
@@ -17768,17 +17835,31 @@ function _renderDailyFeed(signals) {
   var catOrder = ['contracts', 'policy', 'programs', 'industry', 'congressional', 'competitive', 'social'];
 
   // Summary bar
-  var highCount = signals.filter(function(s) { return s.severity === 'HIGH'; }).length;
-  var medCount  = signals.filter(function(s) { return s.severity === 'MED'; }).length;
+  var highCount = renderedSignals.filter(function(s) { return s.severity === 'HIGH'; }).length;
+  var medCount  = renderedSignals.filter(function(s) { return s.severity === 'MED'; }).length;
   // FIX 6: Count new-since-yesterday signals
-  var newCount = signals.filter(function(s) { return s.isNew; }).length;
+  var newCount = renderedSignals.filter(function(s) { return s.isNew; }).length;
   h += '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
-  h += '<div style="font-size:14px;color:var(--t2)">' + signals.length + ' signals across ' + Object.keys(byCat).length + ' categories</div>';
+  var summaryText = showAll
+    ? (totalCount + ' signals across ' + Object.keys(byCat).length + ' categories')
+    : (filteredCount + ' of ' + totalCount + ' signals · matching your active pursuits or network');
+  h += '<div style="font-size:14px;color:var(--t2)">' + summaryText + '</div>';
   if (highCount) h += '<span style="font-size:13px;padding:2px 8px;border-radius:3px;background:rgba(239,68,68,.15);color:var(--red);font-weight:700;font-family:IBM Plex Mono,monospace">' + highCount + ' HIGH</span>';
   if (medCount)  h += '<span style="font-size:13px;padding:2px 8px;border-radius:3px;background:rgba(245,158,11,.15);color:var(--amber);font-weight:700;font-family:IBM Plex Mono,monospace">' + medCount + ' MED</span>';
   if (newCount)  h += '<span style="font-size:13px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.15);color:var(--green);font-weight:700;font-family:IBM Plex Mono,monospace">' + newCount + ' NEW</span>';
-  h += '<span style="font-size:12px;color:var(--t3);margin-left:auto">' + new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + '</span>';
+  var toggleLabel = showAll ? 'Showing all · click to filter' : (deferredCount > 0 ? 'Show all (+' + deferredCount + ')' : 'Show all');
+  var toggleCol = showAll ? '#5fb3b8' : '#d4823a';
+  h += '<button onclick="window._pulseTogglesShowAll&&window._pulseTogglesShowAll()" title="' + (showAll ? 'Filter back to active-pursuit + network matches' : 'Show every signal from this pull, including ones not matching your pursuits or network') + '" style="margin-left:auto;padding:3px 10px;background:transparent;border:1px solid ' + toggleCol + '60;border-radius:2px;color:' + toggleCol + ';font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer">' + toggleLabel + '</button>';
+  h += '<span style="font-size:12px;color:var(--t3)">' + new Date().toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + '</span>';
   h += '</div>';
+
+  // Honest deferred-count line when filter is active and removed >0
+  if (!showAll && deferredCount > 0) {
+    h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin:-6px 0 14px;font-style:italic">' + deferredCount + ' signal' + (deferredCount === 1 ? '' : 's') + ' not surfaced — no match against your active pursuits (' + (window.opportunities||[]).length + ' tracked) or network nodes</div>';
+  }
+  if (!showAll && filteredCount === 0 && totalCount > 0) {
+    h += '<div style="padding:14px 16px;color:var(--t3);font-size:14px;line-height:1.55;font-style:italic;background:rgba(7,13,24,.45);border:1px dashed var(--rule);border-radius:3px;margin-bottom:14px">Nothing in this pull matched an active pursuit term or a network node. Click "Show all" above to review every signal — or adjust active opps so the filter has more to match against.</div>';
+  }
 
   // Render each category section
   catOrder.forEach(function(cat) {
@@ -69273,6 +69354,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.259"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.260"></script>
 </body>
 </html>
