@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.245</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.246</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17680,6 +17680,17 @@ function _renderFeedSignalCard(s) {
   }
   h += '<button onclick="navigator.clipboard.writeText(' + JSON.stringify(s.headline + (s.detail ? ' — ' + s.detail : '') + (s.url ? ' ' + s.url : '')) + ').then(function(){window.toast(\'Copied\')})" style="padding:2px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif">⎘</button>';
   h += '</div>';
+  // P13.246 (OSINT O-4) — one-click posture + award chips on every signal,
+  // not just the Brief OSINT column. Closes the audit gap "Pulse view
+  // signal cards offer only Tag Deal (gated to HIGH/MED). The same
+  // _detectPostureTransition + _detectAwardMatchForOpp helpers exist
+  // globally but are NOT wired into _renderFeedSignalCard. LOW-severity
+  // signals get NO action chip on Pulse at all." MARK LOST? routes through
+  // the doctrine modal via _applyAwardSuggestion.
+  var sigChips = (typeof window._renderSignalActionChips === 'function')
+    ? window._renderSignalActionChips(s)
+    : '';
+  if (sigChips) h += sigChips;
   h += '</div></div></div>';
   return h;
 }
@@ -22385,7 +22396,14 @@ function renderOppDetail(opp){
           if (_cat) h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + _sevCol + ';text-transform:uppercase">' + _cat + '</span>';
           if (_date) h += '<span style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2)">' + _date + '</span>';
           h +=   '</div>';
+          // P13.246 (OSINT O-4) — trust chips + one-click action chips on
+          // pursuit-drawer signal rows. Pulls in the same chip helpers used
+          // by account drawer + Inspector Signals tab + Brief OSINT column.
+          var _ptrust = (typeof window._renderTrustChips === 'function') ? window._renderTrustChips(s) : '';
+          if (_ptrust) h += '<div style="margin-bottom:3px">' + _ptrust + '</div>';
           h +=   '<div style="font-family:IBM Plex Sans,sans-serif;font-size:12.5px;color:var(--bone);line-height:1.35">' + _hl + (_url ? ' <span style="color:' + _sevCol + ';font-family:IBM Plex Mono,monospace;font-size:10px">↗</span>' : '') + '</div>';
+          var _pchips = (typeof window._renderSignalActionChips === 'function') ? window._renderSignalActionChips(s) : '';
+          if (_pchips) h += _pchips;
           h += '</div>';
         });
         h += '</div>';
@@ -32746,7 +32764,12 @@ window._atlasComputeCatches = function() {
         source: 'SIGNAL',
         score: 80 - Math.min(ageDays, 6) * 2,
         click: 'pulse',
-        clickUrl: s.url || null
+        clickUrl: s.url || null,
+        // P13.246 (OSINT O-4) — carry the raw signal so the catch renderer
+        // can mount one-click posture/award chips on signal-kind catches
+        // (closes the audit gap: Top Catches strip "10 of 11 catch kinds are
+        // NAVIGATE-only").
+        _signal: s
       });
     });
   } catch(e){}
@@ -33232,6 +33255,14 @@ window._renderTodayCatches = function() {
     html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper);letter-spacing:.04em;line-height:1.45">' + _esc(c.evidence) + '</div>';
     if (c.kind === 'customer-quiet' && c._ackOrg) {
       html += '<button onclick="event.stopPropagation();window._ackAccountQuiet(\'' + String(c._ackOrg).replace(/'/g, "\\'") + '\',\'' + String(c._ackName || '').replace(/"/g, '&quot;').replace(/'/g, "\\'") + '\')" style="margin-top:9px;font-size:10px;font-family:IBM Plex Mono,monospace;letter-spacing:.08em;text-transform:uppercase;background:transparent;border:1px solid ' + col + '70;color:' + col + ';padding:4px 10px;border-radius:3px;cursor:pointer">✓ Acknowledge — we&#39;re tracking</button>';
+    }
+    // P13.246 (OSINT O-4) — signal-kind catches now carry the raw signal
+    // on c._signal so the same action chips that render on Brief / Pulse /
+    // account drawer / Inspector also render here. Lifts Top Catches signal
+    // cards from NAVIGATE-only to one-click-act.
+    if (c.kind === 'signal' && c._signal && typeof window._renderSignalActionChips === 'function') {
+      var catchChips = window._renderSignalActionChips(c._signal);
+      if (catchChips) html += catchChips;
     }
     html += '</div>';
   });
@@ -38426,6 +38457,11 @@ window._renderEntitySignals = function(entity) {
       h += '<div style="font-size:13.5px;color:var(--text);line-height:1.45;font-weight:500">' + headline + (sUrl ? ' <span style="color:' + sevCol + ';font-family:IBM Plex Mono,monospace;font-size:10px">&#8599;</span>' : '') + '</div>';
       if (detail) h += '<div style="font-size:12px;color:var(--t2);line-height:1.45;margin-top:3px">' + detail + '</div>';
       h += '<div style="display:flex;gap:10px;align-items:baseline;margin-top:5px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.10em;color:var(--paper-2)">' + (dt ? '<span>' + dt + '</span>' : '') + '<span>' + matchTag + '</span></div>';
+      // P13.246 (OSINT O-4) — one-click action chips per row (RISING /
+      // FALLING / MARK LOST?). The Inspector dossier used to show ZERO
+      // action chips on signals (audit gap closure).
+      var sigActionChips = (typeof window._renderSignalActionChips === 'function') ? window._renderSignalActionChips(s) : '';
+      if (sigActionChips) h += sigActionChips;
       h += '</div>';
     });
     h += '</div>';
@@ -38850,15 +38886,100 @@ window._applyAwardSuggestion = async function(oppId, action){
   var opp = (window.opportunities || []).find(function(o){ return String(o.id) === String(oppId); });
   if (!opp) return;
   if (action === 'mark_lost' || action === 'mark_won') {
-    if (!confirm((action === 'mark_lost' ? 'Mark ' : 'Mark ') + opp.name + ' as ' + action.replace('mark_', '').toUpperCase() + '?')) return;
-    if (typeof window._setOppStage === 'function') {
-      try { await window._setOppStage(opp.id, action === 'mark_lost' ? 'lost' : 'won'); if (typeof toast === 'function') toast('✓ Opp marked ' + action.replace('mark_', '')); }
-      catch(e){ if (typeof toast === 'function') toast('Stage update failed'); }
+    var fromStage = String(opp.stage || '');
+    var toStage = action === 'mark_lost' ? 'lost' : 'won';
+    var doStageChange = async function() {
+      if (typeof window._setOppStage !== 'function') return;
+      try {
+        await window._setOppStage(opp.id, toStage);
+        if (typeof toast === 'function') toast('✓ Opp marked ' + toStage);
+      } catch(e){
+        if (typeof toast === 'function') toast('Stage update failed');
+      }
+    };
+    // P13.246 (OSINT O-4) — route through the doctrine modal so STAGE_SPEC
+    // gates apply (audit closure: was using bare confirm(), bypassing the
+    // gate logic that the dossier stage-bar uses).
+    if (typeof window._confirmStageAdvance === 'function') {
+      window._confirmStageAdvance(opp, fromStage, toStage, doStageChange, function(){});
+    } else if (confirm('Mark ' + opp.name + ' as ' + toStage.toUpperCase() + '?')) {
+      await doStageChange();
     }
   } else if (action === 'open') {
     if (typeof window.selectOpp === 'function') { try { window.selectOpp(opp.id); } catch(e){} }
     if (typeof window.switchView === 'function') { try { window.switchView('opps'); } catch(e){} }
   }
+};
+
+// P13.246 (OSINT O-4) — SIGNAL ACTION CHIPS, centralized helper.
+// Returns HTML for one-click action chips on any signal: RISING / FALLING /
+// REPOSITIONING per network-matched person where transition keywords fire,
+// plus MARK LOST? / REVIEW per active opp where the signal matches
+// (competitor_win / customer_activity). Replaces the chip-rendering block
+// that lived only in brief.js _renderOsintColumn (audit gap: "Pulse view
+// signal cards offer only Tag Deal... Today Catches strip — 10 of 11 catch
+// kinds are NAVIGATE-only... Entity Inspector dossier shows NO signal feed
+// and NO action chips"). Surfaces using this helper: brief.js OSINT column,
+// account drawer OSINT-week, Inspector SIGNALS tab, pursuit drawer
+// signals+posture, Pulse signal cards.
+// Args: signal (normalized via _signalToFeedItem), opps (optional array of
+// active pursuits — defaults to window.opportunities filtered), opts: {
+// compact, max }. Returns '' (empty string) when no chips fire.
+window._renderSignalActionChips = function(signal, opps, opts) {
+  opts = opts || {};
+  var compact = !!opts.compact;
+  var maxPerKind = (typeof opts.max === 'number') ? opts.max : 2;
+  if (!signal) return '';
+  var actives = Array.isArray(opps) ? opps : (window.opportunities || []).filter(function(o){
+    return o && o.stage !== 'won' && o.stage !== 'lost';
+  });
+  var nodes = window.nodes || [];
+  var posChipsHtml = '';
+  if (typeof window._detectPostureTransition === 'function' && Array.isArray(signal.networkMatches)) {
+    var psuggs = [];
+    signal.networkMatches.forEach(function(m){
+      if (!m || !m.id) return;
+      var p = null;
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i] && String(nodes[i].id) === String(m.id) && nodes[i].type === 'person') { p = nodes[i]; break; }
+      }
+      if (!p) return;
+      var sg = window._detectPostureTransition(signal, p);
+      if (sg) psuggs.push({ person: p, sugg: sg });
+    });
+    if (psuggs.length) {
+      posChipsHtml = psuggs.slice(0, maxPerKind).map(function(item){
+        var trajCol = item.sugg.trajectory === 'rising' ? '#22c55e' : item.sugg.trajectory === 'falling' ? '#ef4444' : '#f0a560';
+        var trajLbl = item.sugg.trajectory.toUpperCase();
+        var personEsc = String(item.person.name || '').replace(/'/g, '&#39;').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
+        var hlEsc = String(item.sugg.headline || '').replace(/'/g, "\\'").replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
+        var urlEsc = String(item.sugg.sourceUrl || '').replace(/'/g, "\\'");
+        var label = compact ? ('↗ ' + trajLbl) : ('↗ ' + trajLbl + ' · ' + personEsc);
+        return '<button onclick="event.stopPropagation();window._applyPostureSuggestion(\'' + item.person.id + '\',\'' + item.sugg.trajectory + '\',\'' + urlEsc + '\',\'' + hlEsc + '\')" title="OSINT-detected ' + item.sugg.trajectory + ' (' + item.sugg.triggerKeyword + ') · click to apply with this signal as evidence" style="background:rgba(0,0,0,.22);border:1px solid ' + trajCol + '60;color:' + trajCol + ';font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:2px;cursor:pointer;margin-right:4px;text-transform:uppercase">' + label + '</button>';
+      }).join('');
+    }
+  }
+  var oppChipsHtml = '';
+  if (typeof window._detectAwardMatchForOpp === 'function' && actives.length) {
+    var osuggs = [];
+    actives.forEach(function(o){
+      var sg = window._detectAwardMatchForOpp(signal, o);
+      if (sg) osuggs.push(sg);
+    });
+    if (osuggs.length) {
+      oppChipsHtml = osuggs.slice(0, maxPerKind).map(function(item){
+        var col = item.type === 'competitor_win' ? '#ef4444' : '#facc15';
+        var lbl = item.type === 'competitor_win' ? '↗ MARK LOST?' : '↗ REVIEW';
+        var action = item.type === 'competitor_win' ? 'mark_lost' : 'open';
+        var oppNameEsc = String(item.oppName || '').replace(/'/g, '&#39;').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
+        var hintEsc = String(item.hint || '').replace(/"/g, '&quot;');
+        var fullLabel = compact ? lbl : (lbl + ' · ' + oppNameEsc.slice(0, 30));
+        return '<button onclick="event.stopPropagation();window._applyAwardSuggestion(\'' + item.oppId + '\',\'' + action + '\')" title="' + hintEsc + '" style="background:rgba(0,0,0,.22);border:1px solid ' + col + '60;color:' + col + ';font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:2px;cursor:pointer;margin-right:4px;text-transform:uppercase">' + fullLabel + '</button>';
+      }).join('');
+    }
+  }
+  if (!posChipsHtml && !oppChipsHtml) return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:4px">' + posChipsHtml + oppChipsHtml + '</div>';
 };
 
 // P13.172 — OSINT → Posture transition detection (Sovereign Intelligence
@@ -47287,9 +47408,11 @@ window._openAccountDetail = function(orgId){
         var hl = _accEsc(String(s.headline || 'signal').slice(0, 90));
         var dt = s.date ? _accEsc(String(s.date).slice(0, 10)) : '';
         var chips = (typeof window._renderTrustChips === 'function') ? window._renderTrustChips(s) : '';
+        var actionChips = (typeof window._renderSignalActionChips === 'function') ? window._renderSignalActionChips(s) : '';
         return '<div style="font-size:12px;color:var(--t2);line-height:1.4;padding:6px 0;border-top:1px solid rgba(95,179,184,.12)">' +
           (chips ? '<div style="margin-bottom:3px">' + chips + '</div>' : '') +
           (dt ? '<span style="color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:10px">' + dt + '</span> ' : '') + hl +
+          actionChips +
         '</div>';
       }).join('') : '<div style="font-size:12px;color:var(--t3);line-height:1.4;padding:4px 0;font-style:italic">No new touches in 7d' + (_orgRollup ? ' &middot; rollup above is the server\'s wider-window view' : '') + '</div>') +
     '</div>';
@@ -67932,6 +68055,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.245"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.246"></script>
 </body>
 </html>

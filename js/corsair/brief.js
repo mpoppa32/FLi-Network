@@ -651,50 +651,16 @@ window.renderDailyBrief = function() {
       var clickAttr = sUrl
         ? 'onclick="window.open(\'' + String(sUrl).replace(/\'/g, '&#39;') + '\',\'_blank\',\'noopener,noreferrer\')"'
         : 'onclick="if(window.switchView)window.switchView(\'pulse\')"';
-      // P13.172 — posture suggestion chips. For each network-matched person
-      // node, detect transition keywords in the signal text. When match,
-      // render one-click "↗ Apply <trajectory> for <person>" chip.
-      var postureSuggHtml = '';
-      if (typeof window._detectPostureTransition === 'function' && Array.isArray(s.networkMatches)) {
-        var suggs = [];
-        s.networkMatches.forEach(function(m){
-          var p = nodes.find(function(n){ return String(n.id) === String(m.id) && n.type === 'person'; });
-          if (!p) return;
-          var sg = window._detectPostureTransition(s, p);
-          if (sg) suggs.push({ person: p, sugg: sg });
-        });
-        if (suggs.length) {
-          postureSuggHtml = suggs.slice(0, 2).map(function(item){
-            var trajCol = item.sugg.trajectory === 'rising' ? '#22c55e' : item.sugg.trajectory === 'falling' ? '#ef4444' : '#f0a560';
-            var trajLbl = item.sugg.trajectory.toUpperCase();
-            var personEsc = String(item.person.name || '').replace(/'/g, '&#39;').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
-            var hlEsc = String(item.sugg.headline || '').replace(/'/g, "\\'").replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
-            var urlEsc = String(item.sugg.sourceUrl || '').replace(/'/g, "\\'");
-            return '<button onclick="event.stopPropagation();window._applyPostureSuggestion(\'' + item.person.id + '\',\'' + item.sugg.trajectory + '\',\'' + urlEsc + '\',\'' + hlEsc + '\')" title="OSINT-detected ' + item.sugg.trajectory + ' (' + item.sugg.triggerKeyword + ') · click to apply with this signal as evidence" style="background:rgba(0,0,0,.22);border:1px solid ' + trajCol + '60;color:' + trajCol + ';font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:2px;cursor:pointer;margin-right:4px;text-transform:uppercase">↗ ' + trajLbl + ' · ' + personEsc + '</button>';
-          }).join('');
-        }
-      }
-      // P13.173 — Award→opp suggestion chips. Cross-ref signal against
-      // each active pursuit; render chips for customer-activity or
-      // competitor-win matches with one-click action.
-      var oppSuggHtml = '';
-      if (typeof window._detectAwardMatchForOpp === 'function') {
-        var oppSuggs = [];
-        actives.forEach(function(o){
-          var sg = window._detectAwardMatchForOpp(s, o);
-          if (sg) oppSuggs.push(sg);
-        });
-        if (oppSuggs.length) {
-          oppSuggHtml = oppSuggs.slice(0, 2).map(function(item){
-            var col = item.type === 'competitor_win' ? '#ef4444' : '#facc15';
-            var lbl = item.type === 'competitor_win' ? '↗ MARK LOST?' : '↗ REVIEW';
-            var action = item.type === 'competitor_win' ? 'mark_lost' : 'open';
-            var oppNameEsc = String(item.oppName || '').replace(/'/g, '&#39;').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; });
-            var hintEsc = String(item.hint || '').replace(/"/g, '&quot;');
-            return '<button onclick="event.stopPropagation();window._applyAwardSuggestion(\'' + item.oppId + '\',\'' + action + '\')" title="' + hintEsc + '" style="background:rgba(0,0,0,.22);border:1px solid ' + col + '60;color:' + col + ';font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 6px;border-radius:2px;cursor:pointer;margin-right:4px;text-transform:uppercase">' + lbl + ' · ' + oppNameEsc.slice(0, 30) + '</button>';
-          }).join('');
-        }
-      }
+      // P13.246 (OSINT O-4) — one-click action chips via the centralized
+      // window._renderSignalActionChips helper. Used to duplicate this chip
+      // building inline; now every signal-displaying surface gets the same
+      // chips by calling the helper. MARK LOST? routes through the
+      // _confirmStageAdvance doctrine modal via the updated
+      // _applyAwardSuggestion (was bypassing STAGE_SPEC gates with a bare
+      // confirm()).
+      var chipsHtml = (typeof window._renderSignalActionChips === 'function')
+        ? window._renderSignalActionChips(s, actives)
+        : '';
       return '<div class="brief-item" ' + clickAttr + ' style="cursor:pointer;flex-direction:column;align-items:stretch;gap:3px">' +
         '<div style="display:flex;justify-content:space-between;gap:6px;align-items:center">' +
           '<span class="brief-item-title" style="display:flex;align-items:center;gap:6px">' +
@@ -703,7 +669,7 @@ window.renderDailyBrief = function() {
           '</span>' +
           matchedChip +
         '</div>' +
-        (postureSuggHtml || oppSuggHtml ? '<div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:2px">' + postureSuggHtml + oppSuggHtml + '</div>' : '') +
+        chipsHtml +
       '</div>';
     }).join('');
   })();
