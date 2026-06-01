@@ -16,7 +16,7 @@ import { acquireTokens } from "../../framework/rateLimit";
 import { withRetry } from "../../framework/retry";
 import { Logger } from "../../framework/logger";
 
-export const DEFAULT_RSS_URL = "https://www.darpa.mil/rss/news_events.rss";
+export const DEFAULT_RSS_URL = "https://www.darpa.mil/rss/news.xml";
 const USER_AGENT = "Corsair Defense BD Intel (mpoppa32@gmail.com)";
 
 export interface DarpaNewsRssItem {
