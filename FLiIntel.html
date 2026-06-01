@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.260</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.261</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17756,12 +17756,28 @@ window._pulseSignalIsRelevant = function(signal) {
   var blob = ((signal.headline || '') + ' ' + (signal.detail || '')).toLowerCase();
   if (!blob.trim()) return false;
   var minTermLen = 5;
+  // Match the FULL term first (word-boundary); if it doesn't match, tokenize
+  // multi-word values and try each substantive token. Handles the common
+  // case where opps store "Anduril Industries" but the signal only says
+  // "Anduril" — without this, conservative full-term matching dropped
+  // relevant signals. Tokenization keeps the >=5-char dampening rule so
+  // common short words ("vehicle", "branch") and 3-letter noise still don't
+  // create false positives.
   function check(term){
     if (!term) return false;
     var t = String(term).toLowerCase().trim();
     if (t.length < minTermLen) return false;
-    var re = new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
-    return re.test(blob);
+    var fullRe = new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
+    if (fullRe.test(blob)) return true;
+    if (t.indexOf(' ') < 0) return false;
+    var toks = t.split(/\s+/);
+    for (var i = 0; i < toks.length; i++){
+      var tok = toks[i];
+      if (!tok || tok.length < minTermLen) continue;
+      var tokRe = new RegExp('(^|[^a-z0-9])' + tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
+      if (tokRe.test(blob)) return true;
+    }
+    return false;
   }
   var opps = window.opportunities || [];
   for (var i = 0; i < opps.length; i++) {
@@ -69354,6 +69370,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.260"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.261"></script>
 </body>
 </html>
