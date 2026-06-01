@@ -5,9 +5,16 @@
 // budget; ~50 requests/hour per workspace is comfortable.
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret } from "firebase-functions/params";
 import { createLogger, generateJobId } from "../framework/logger";
 import { iterateApprovedWorkspaces } from "../framework/workspaceIterator";
 import { syncWorkspace } from "../sources/samGov";
+
+// P13.266 — bind SAMGOV_API_KEY secret to runtime env. The framework
+// reads process.env.SAMGOV_API_KEY (functions/src/framework/secrets.ts:43)
+// but the function must declare the secret here for Firebase to inject it.
+// One-time setup: `firebase functions:secrets:set SAMGOV_API_KEY`.
+export const SAMGOV_API_KEY = defineSecret("SAMGOV_API_KEY");
 
 export const samGovHourly = onSchedule(
   {
@@ -17,6 +24,7 @@ export const samGovHourly = onSchedule(
     memory: "1GiB",
     timeoutSeconds: 540,
     retryCount: 2,
+    secrets: [SAMGOV_API_KEY],
   },
   async (event) => {
     const jobId = generateJobId("samGovHourly");

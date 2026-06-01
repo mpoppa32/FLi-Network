@@ -3,9 +3,10 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { createLogger } from "../framework/logger";
 import { syncWorkspace } from "../sources/samGov";
+import { SAMGOV_API_KEY } from "../jobs/samGovHourly";
 
 export const triggerSamGovSync = onCall(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 540 },
+  { region: "us-central1", memory: "1GiB", timeoutSeconds: 540, secrets: [SAMGOV_API_KEY] },
   async (request) => {
     const log = createLogger({ source: "http_triggerSamGovSync" });
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication required.");
