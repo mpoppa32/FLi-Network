@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.246</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.247</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17680,6 +17680,12 @@ function _renderFeedSignalCard(s) {
   }
   h += '<button onclick="navigator.clipboard.writeText(' + JSON.stringify(s.headline + (s.detail ? ' — ' + s.detail : '') + (s.url ? ' ' + s.url : '')) + ').then(function(){window.toast(\'Copied\')})" style="padding:2px 8px;border:1px solid var(--b2);border-radius:var(--rsm);background:transparent;color:var(--t2);font-size:13px;cursor:pointer;font-family:IBM Plex Sans,sans-serif">⎘</button>';
   h += '</div>';
+  // P13.247 (OSINT O-6) — trust chips on Pulse signal cards. The Pulse
+  // surface displays the operator's own brief pulls but used to wear no
+  // CONF / AS OF / source visibility; now matches the chip set on every
+  // other signal-displaying surface.
+  var pulseTrustChips = (typeof window._renderTrustChips === 'function') ? window._renderTrustChips(s) : '';
+  if (pulseTrustChips) h += '<div style="margin-top:5px">' + pulseTrustChips + '</div>';
   // P13.246 (OSINT O-4) — one-click posture + award chips on every signal,
   // not just the Brief OSINT column. Closes the audit gap "Pulse view
   // signal cards offer only Tag Deal (gated to HIGH/MED). The same
@@ -17921,7 +17927,11 @@ window._renderTrustChips = function(signal) {
       html += '<span style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + asofCol + ';border:1px solid ' + asofCol + '60;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">AS OF ' + asofTxt + ' AGO</span>';
     }
   }
-  var src = signal.sourceSystem || signal.publisher || null;
+  // P13.247 (OSINT O-6) — accept BriefItem shape too. BriefItem from
+  // _PHASE85_CATEGORY_META rendering uses `.source`; the normalized
+  // _signals[] entries from O-1 use `.sourceSystem` / `.publisher`. Same
+  // chip wears either.
+  var src = signal.sourceSystem || signal.publisher || signal.source || null;
   if (src) {
     var srcDisplay = String(src).replace(/_/g, ' ').toUpperCase().slice(0, 16);
     html += '<span style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:#5fb3b8;border:1px solid #5fb3b860;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">' + srcDisplay + '</span>';
@@ -33259,10 +33269,18 @@ window._renderTodayCatches = function() {
     // P13.246 (OSINT O-4) — signal-kind catches now carry the raw signal
     // on c._signal so the same action chips that render on Brief / Pulse /
     // account drawer / Inspector also render here. Lifts Top Catches signal
-    // cards from NAVIGATE-only to one-click-act.
-    if (c.kind === 'signal' && c._signal && typeof window._renderSignalActionChips === 'function') {
-      var catchChips = window._renderSignalActionChips(c._signal);
-      if (catchChips) html += catchChips;
+    // cards from NAVIGATE-only to one-click-act. P13.247 (OSINT O-6) —
+    // trust chips on the same cards so the operator scanning Top Catches
+    // sees CONF / AS OF / source consistently with Brief + Pulse + drawer.
+    if (c.kind === 'signal' && c._signal) {
+      if (typeof window._renderTrustChips === 'function') {
+        var catchTrust = window._renderTrustChips(c._signal);
+        if (catchTrust) html += '<div style="margin-top:6px">' + catchTrust + '</div>';
+      }
+      if (typeof window._renderSignalActionChips === 'function') {
+        var catchChips = window._renderSignalActionChips(c._signal);
+        if (catchChips) html += catchChips;
+      }
     }
     html += '</div>';
   });
@@ -49876,9 +49894,17 @@ window._renderExternalIntelligence = function(brief) {
       var rowAge = rowAgeMin < 60 ? rowAgeMin + 'm' : (rowAgeMin < 1440 ? Math.floor(rowAgeMin/60) + 'h' : Math.floor(rowAgeMin/1440) + 'd');
       var rowScore = (rowItem.relevance && typeof rowItem.relevance.total === 'number') ? rowItem.relevance.total.toFixed(1) : '—';
       var pinPrefix = rowItem.pinned ? '<span style="color:var(--gold);font-size:13px">▼</span> ' : '';
+      // P13.247 (OSINT O-6) — trust chips on the GLANCE-FIRST row. Audit
+      // closure: "the MOST-scanned BriefItem surface (top of every category
+      // load) intentionally strips chip rendering for width. Stale / low-
+      // conf / shallow items look identical to fresh / high-conf / deep at
+      // the position operator scans most." Compact chips (no AS OF when
+      // recent, no CONF when high) keep the row narrow but make
+      // unverified data visibly unverified.
+      var glanceTrustChips = (typeof window._renderTrustChips === 'function') ? window._renderTrustChips(rowItem) : '';
       h += '  <div style="display:flex;gap:8px;align-items:baseline;padding:3px 0;font-size:14px;line-height:1.35">';
       h += '    <span style="color:' + rowMeta.color + ';font-weight:700;font-size:12px">' + rowMeta.glyph + '</span>';
-      h += '    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + pinPrefix + '<span style="color:var(--text);font-weight:600">' + (rowItem.title||'').replace(/</g,'&lt;') + '</span> <span style="color:var(--t3)">— ' + (rowItem.subtitle||'').replace(/</g,'&lt;') + '</span></span>';
+      h += '    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + pinPrefix + '<span style="color:var(--text);font-weight:600">' + (rowItem.title||'').replace(/</g,'&lt;') + '</span> <span style="color:var(--t3)">— ' + (rowItem.subtitle||'').replace(/</g,'&lt;') + '</span>' + (glanceTrustChips ? ' ' + glanceTrustChips : '') + '</span>';
       h += '    <span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:var(--t3);white-space:nowrap">' + rowScore + ' · ' + rowItem.source + ' · ' + rowAge;
       if (rowItem.link) h += ' · <a href="' + rowItem.link + '" target="_blank" style="color:var(--t3)">open</a>';
       h += ' · <a href="#" onclick="event.preventDefault();window._briefItemTouches&&window._briefItemTouches(\'' + rowItem.entityId + '\',\'' + rowItem.kind + '\')" style="color:#5fb3b8;text-decoration:underline">touches</a>';
@@ -68055,6 +68081,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.246"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.247"></script>
 </body>
 </html>
