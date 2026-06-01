@@ -35,6 +35,13 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   dod_oig: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence (sibling to gao_reports)
   darpa_news: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence (DARPA news feed)
   nasa_oig: { capacity: 2, refillPerSecond: 0.5 }, // polite RSS, daily cadence (sibling to dod_oig)
+  dod_comptroller: { capacity: 1, refillPerSecond: 0.5 }, // polite monthly PDF walk (R-2/P-1 budget books)
+  state_department: { capacity: 2, refillPerSecond: 0.5 }, // polite multi-feed RSS aggregator
+  defense_scoop: { capacity: 3, refillPerSecond: 0.5 }, // polite per-publication RSS (Breaking Defense / DefenseScoop / etc.)
+  plum_book: { capacity: 1, refillPerSecond: 0.5 }, // polite monthly PDF walk (FVRA vacancy reports)
+  senate_lda: { capacity: 3, refillPerSecond: 0.5 }, // polite weekly REST (lda.senate.gov)
+  advisory_boards: { capacity: 1, refillPerSecond: 0.5 }, // polite weekly HTML+PDF walk (DSB/DBB/DIB)
+  industry_assoc: { capacity: 1, refillPerSecond: 0.5 }, // polite quarterly HTML scrape (NDIA/AFA/AUSA rosters)
 };
 
 interface BucketState {
