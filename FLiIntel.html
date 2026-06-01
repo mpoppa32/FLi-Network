@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.250</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.251</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13803,6 +13803,9 @@ async function _restPollFetchAll(){
     if (activeView === 'rhythm') { try { window._renderRhythmView && window._renderRhythmView(); } catch(e){} }
     try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){}
     try { window._osintRefreshUnresolvedChip && window._osintRefreshUnresolvedChip(); } catch(e){}
+    // P13.251 (OSINT O-3) — let the notify-check fire on REST-polled signal
+    // updates too (same triggering pattern as the realtime uSig listener).
+    try { window._corsairNotifyCheck && window._corsairNotifyCheck(); } catch(e){}
     try { setSS('live (REST)'); } catch(e){}
     _restPoll.lastOk = Date.now();
     return true;
@@ -14384,6 +14387,10 @@ function connectWorkspace(){
     }
     try{ window._refreshOpenInspector && window._refreshOpenInspector(); }catch(e){}
     try{ window._osintRefreshUnresolvedChip && window._osintRefreshUnresolvedChip(); }catch(e){}
+    // P13.251 (OSINT O-3) — trigger notify-check on signal-update so a HIGH
+    // signal matching an active opp fires a browser Notification the second
+    // it lands, not on the next 5-min interval tick.
+    try{ window._corsairNotifyCheck && window._corsairNotifyCheck(); }catch(e){}
     if (activeView === 'accounts' && typeof window._renderAccountsView === 'function') {
       try{ window._renderAccountsView(); }catch(e){}
     }
@@ -32600,7 +32607,11 @@ window._atlasRenderActivityFeed = function(){
     commitment_completed:  { icon: '✓', color: '#22c55e' },
     posture_changed:       { icon: '⊚', color: '#a78bfa' },
     talking_points_edited: { icon: '✎', color: '#5fb3b8' },
-    nudge_dismissed:       { icon: '○', color: '#7d7669' }
+    nudge_dismissed:       { icon: '○', color: '#7d7669' },
+    // P13.251 (OSINT O-3) — HIGH-severity OSINT signal touching an active
+    // opp landed via cron or Pulse pull. Surfaces on Team Activity feed so
+    // a teammate sees the same beat the originator's notification fires on.
+    signal_landed:         { icon: '◆', color: '#ef4444' }
   };
   function _eventClick(e){
     var dl = e && e.deepLink;
@@ -55904,6 +55915,92 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
         'mtg-'+m.id+'-'+today
       );
     });
+    // 3) OSINT signal land — HIGH-severity matching an active opp.
+    // P13.251 (OSINT O-3) — closes the audit gap "NO push notification ever
+    // fires for any OSINT signal — _corsairNotifications._check only reads
+    // commitments + meetings." A SAM.gov amendment / DARPA award / SEC
+    // filing landing on /signals via cron now fires a browser Notification
+    // AND emits a signal_landed team event into /workspaces/{wsId}/events
+    // (subject to the originator's notification toggle + Notification
+    // permission — same gates as commit/meeting alerts). Dedup keys via
+    // the existing _fire fired-map so each signal-id fires at most once.
+    // Team event emission is per-signal-id (separate localStorage map so
+    // teammates also see the beat once each).
+    var signals_=window._signals||[];
+    var opps_=window.opportunities||[];
+    if(signals_.length&&opps_.length){
+      var oneWeekAgo=nowMs-7*86400000;
+      var actives=[];
+      for(var oi=0;oi<opps_.length;oi++){
+        var o=opps_[oi];if(!o)continue;
+        var stg=String(o.stage||'').toLowerCase();
+        if(stg==='won'||stg==='lost'||stg==='no-bid'||stg==='no_bid')continue;
+        var terms=[];
+        if(o.customerOrg)terms.push(String(o.customerOrg).toLowerCase());
+        if(o.adversaryOrg)terms.push(String(o.adversaryOrg).toLowerCase());
+        if(o.agency&&String(o.agency).toLowerCase()!=='agency unknown')terms.push(String(o.agency).toLowerCase());
+        var orgIds=[];
+        if(o.customerOrgId)orgIds.push(String(o.customerOrgId));
+        if(o.adversaryOrgId)orgIds.push(String(o.adversaryOrgId));
+        if(!terms.length&&!orgIds.length)continue;
+        actives.push({oppId:String(o.id||''),oppName:String(o.name||''),terms:terms,orgIds:orgIds});
+      }
+      if(actives.length){
+        var emittedKey='corsair-signal-events-emitted';
+        var emitted={};
+        try{emitted=JSON.parse(localStorage.getItem(emittedKey)||'{}');}catch(e){}
+        signals_.forEach(function(s){
+          if(!s||!s.id)return;
+          var sev=String(s.severity||'').toLowerCase();
+          if(sev!=='high'&&sev!=='hi')return;
+          var ts=s.occurredAt||0;
+          if(ts<oneWeekAgo)return;
+          var raw=s._rawSignal||{};
+          var subjectIds=Array.isArray(raw.subjectIds)?raw.subjectIds.map(String):[];
+          var blob=((s.headline||'')+' '+(s.detail||'')).toLowerCase();
+          var matched=null;
+          for(var am=0;am<actives.length&&!matched;am++){
+            var ax=actives[am];
+            // subjectIds intersection first (resolver-linked, cleanest)
+            if(ax.orgIds.length){
+              for(var oo=0;oo<ax.orgIds.length;oo++){if(subjectIds.indexOf(ax.orgIds[oo])>=0){matched=ax;break;}}
+            }
+            if(matched)break;
+            // term substring fallback
+            for(var ti=0;ti<ax.terms.length;ti++){
+              var t=ax.terms[ti];
+              if(t.length>3&&blob.indexOf(t)>=0){matched=ax;break;}
+            }
+          }
+          if(!matched)return;
+          var hl=(s.headline||'OSINT signal').slice(0,140);
+          _fire(
+            'OSINT signal · '+matched.oppName.slice(0,80),
+            hl+(s.publisher?' · '+s.publisher:''),
+            function(){if(window.switchView)window.switchView('pulse');},
+            'sig-'+s.id
+          );
+          // Team event emission (once per signal-id, ever)
+          if(!emitted[s.id]){
+            try{
+              if(window._corsairEmitEvent){
+                window._corsairEmitEvent('signal_landed',
+                  s.headline||'OSINT signal',
+                  'HIGH · '+matched.oppName+(s.publisher?' · '+s.publisher:''),
+                  {view:'pulse'}
+                );
+              }
+              emitted[s.id]=Date.now();
+            }catch(e){}
+          }
+        });
+        try{
+          var cutoff=Date.now()-30*86400000;
+          Object.keys(emitted).forEach(function(k){if(emitted[k]<cutoff)delete emitted[k];});
+          localStorage.setItem(emittedKey,JSON.stringify(emitted));
+        }catch(e){}
+      }
+    }
   }
   // Refresh UI when the settings modal opens
   document.addEventListener('click',function(ev){
@@ -55913,6 +56010,10 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
   setInterval(_check,5*60*1000);
   // Initial check after the workspace loads
   setTimeout(function(){_refreshUI();_check();},6000);
+  // P13.251 (OSINT O-3) — expose so uSig (the /signals listener from P13.244)
+  // + the REST polling fallback (P13.248) can trigger a fresh check the moment
+  // signals land — no waiting for the 5-min tick on HIGH-severity matches.
+  window._corsairNotifyCheck = _check;
 })();
 
 // ── CRM P0.6: top-bar Activity dropdown (real-time, last 20 events) ───
@@ -68589,6 +68690,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.250"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.251"></script>
 </body>
 </html>
