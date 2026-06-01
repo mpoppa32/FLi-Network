@@ -7,7 +7,7 @@ import {
   readSourceHealth,
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
-import { loadConfig, validateConfig, type PlumBookConfig } from "./config";
+import { loadConfig, validateConfig, DEFAULT_DEFENSE_AGENCY_PATTERNS, type PlumBookConfig } from "./config";
 import { fetchIndex, type VacancyReportCandidate } from "./client";
 import {
   fetchAndExtractPdf,
@@ -59,6 +59,9 @@ export interface PlumBookSyncResult {
    *  config.usePositionalExtraction is true. */
   positionalPdfsHit?: number;
   positionalFallbacksToText?: number;
+  /** v1.4: vacancies skipped because the agency string didn't match
+   *  the defense-tech / DoW market filter (defenseAgenciesOnly=true). */
+  vacanciesSkippedOffDomain?: number;
   /** v1.3: quadrennial Plum Book ingestion totals. Only populated when
    *  config.enableQuadrennialPlumBook is true. */
   quadrennialEntriesParsed?: number;
@@ -132,6 +135,27 @@ export async function syncWorkspace(
 
     const minDaysVacant =
       options.minDaysVacantOverride ?? config.minDaysVacantToEmit ?? 0;
+
+    // v1.4 (2026-06-01) — defense-tech / DoW market filter. Per operator
+    // doctrine: "I only need specific information — focus on the defense
+    // tech/DoW market." When defenseAgenciesOnly is true (default), skip
+    // vacancies whose agency string doesn't substring-match any pattern
+    // in defenseAgencyPatterns. Off-domain agencies (HHS, EPA, Agriculture,
+    // Education, etc.) never reach the upsert path.
+    const defenseAgenciesOnly = config.defenseAgenciesOnly !== false;
+    const defensePatterns = (
+      config.defenseAgencyPatterns && config.defenseAgencyPatterns.length
+        ? config.defenseAgencyPatterns
+        : DEFAULT_DEFENSE_AGENCY_PATTERNS
+    ).map((p) => p.toLowerCase());
+    function isDefenseRelevantAgency(agency: string | null): boolean {
+      if (!agency) return false;
+      const lc = agency.toLowerCase();
+      for (let i = 0; i < defensePatterns.length; i++) {
+        if (lc.indexOf(defensePatterns[i]) >= 0) return true;
+      }
+      return false;
+    }
 
     if (!options.dryRun) {
       const usePositional = !!config.usePositionalExtraction;
@@ -207,6 +231,12 @@ export async function syncWorkspace(
           for (const vacancy of parsed.vacancies) {
             // Filter on days_vacant threshold when set
             if (minDaysVacant > 0 && (vacancy.daysVacant ?? 0) < minDaysVacant) {
+              continue;
+            }
+            // v1.4 — defense-tech / DoW market filter
+            if (defenseAgenciesOnly && !isDefenseRelevantAgency(vacancy.agency)) {
+              result.vacanciesSkippedOffDomain =
+                (result.vacanciesSkippedOffDomain ?? 0) + 1;
               continue;
             }
             result.vacanciesEmitted++;

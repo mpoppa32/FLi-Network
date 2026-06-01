@@ -13,6 +13,50 @@
 import type { Logger } from "../../framework/logger";
 import { db, sourcePath } from "../../framework/rtdb";
 
+/** Default defense-tech / DoW market filter patterns. Substring match
+ *  against vacancy.agency (case-insensitive). Operator can override via
+ *  config.defenseAgencyPatterns. Patterns chosen to match the agency
+ *  formatting GAO FVRA reports actually produce ("Department of Defense",
+ *  "DEPARTMENT OF THE NAVY", "Defense Advanced Research Projects Agency"
+ *  etc.) — keep them substantive enough to avoid generic-word false
+ *  positives but loose enough to catch formatting variation. */
+export const DEFAULT_DEFENSE_AGENCY_PATTERNS = [
+  // Core DoD + service branches
+  "department of defense", "dod", "office of the secretary of defense", "osd",
+  "department of the army", "department of the navy", "department of the air force",
+  "department of the space force", "u.s. space force", "us space force",
+  "joint chiefs", "joint staff",
+  // DoD agencies
+  "darpa", "defense advanced research",
+  "defense threat reduction", "dtra",
+  "defense logistics agency", "dla",
+  "defense contract management", "dcma",
+  "defense counterintelligence", "dcsa",
+  "defense contract audit", "dcaa",
+  "missile defense agency", "mda",
+  // Intelligence community (defense-adjacent through DoD authorities)
+  "national reconnaissance", "nro",
+  "national security agency", "nsa",
+  "national geospatial-intelligence", "nga",
+  "defense intelligence agency", "dia",
+  "central intelligence agency", "cia",
+  "office of the director of national intelligence", "odni",
+  // Defense-buyer adjacent
+  "department of homeland security", "dhs",
+  "customs and border protection", "cbp",
+  "coast guard", "uscg",
+  "transportation security administration", "tsa",
+  "federal bureau of investigation", "fbi",
+  // Foreign military / arms transfer
+  "department of state", "bureau of political-military",
+  // Nuclear weapons + national labs
+  "department of energy", "national nuclear security", "nnsa",
+  // Drone-prime adjacent (NASA contractors overlap defense)
+  "national aeronautics and space", "nasa",
+  // Drone regulation
+  "federal aviation administration", "faa",
+];
+
 export interface PlumBookConfig {
   /** Default-on (public data). */
   enabled: boolean;
@@ -58,6 +102,14 @@ export interface PlumBookConfig {
   /** v1.3: cap on positions ingested per Plum Book sync. Default 9000
    *  (full publication). Operator can lower for targeted ingestion. */
   maxPositionsPerPlumBookSync?: number;
+  /** v1.4 — defense-tech / DoW market filter. When true (default), only
+   *  vacancies whose agency matches one of `defenseAgencyPatterns` emit
+   *  Signals. Doctrine: "if it doesn't apply, I don't want it." Operator
+   *  can flip to false for full federal coverage. */
+  defenseAgenciesOnly?: boolean;
+  /** v1.4 — substring patterns (case-insensitive) matched against
+   *  vacancy.agency. Empty/unset uses DEFAULT_DEFENSE_AGENCY_PATTERNS. */
+  defenseAgencyPatterns?: string[];
   disabled?: boolean;
   initializedAt?: number;
 }
@@ -75,6 +127,8 @@ export const DEFAULT_PLUM_BOOK_CONFIG: PlumBookConfig = {
   enableQuadrennialPlumBook: false,
   quadrennialPdfUrl: "https://www.govinfo.gov/content/pkg/GPO-PLUMBOOK-2024/pdf/GPO-PLUMBOOK-2024.pdf",
   maxPositionsPerPlumBookSync: 9000,
+  defenseAgenciesOnly: true,
+  defenseAgencyPatterns: DEFAULT_DEFENSE_AGENCY_PATTERNS,
 };
 
 export async function loadConfig(
