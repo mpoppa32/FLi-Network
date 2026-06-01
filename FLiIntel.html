@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.256</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.257</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -34064,9 +34064,20 @@ window.renderTodayView = function(){
         hostIS.parentElement.insertBefore(intelSection, hostIS);
       }
       intelSection.style.display = 'block';
-      // Apply remembered open/closed state (default closed).
+      // Apply remembered open/closed state, with auto-expand on fresh intel.
+      // P13.257 (Honest Surfacing Tier-2 #7) — when the operator has NEVER
+      // touched the toggle (localStorage key is null) AND external intel has
+      // a touch in the last 24h, auto-expand. Once the operator explicitly
+      // collapses ('0') or opens ('1'), their choice is sticky. Empty intel
+      // stays collapsed (no false-positive expansion on a quiet day).
+      var intelOpenStored = null;
+      try { intelOpenStored = localStorage.getItem('corsair-today-intel-open'); } catch(e){}
       var intelOpen = false;
-      try { intelOpen = localStorage.getItem('corsair-today-intel-open') === '1'; } catch(e){}
+      if (intelOpenStored === '1') {
+        intelOpen = true;
+      } else if (intelOpenStored === null && typeof window._externalIntelIsFresh === 'function' && window._externalIntelIsFresh(24)) {
+        intelOpen = true;
+      }
       var chev = document.getElementById('today-intel-chevron');
       if (intelOpen) {
         intelBody.style.display = 'block';
@@ -34132,6 +34143,37 @@ window._exitTodayView = function(){
       if (op && card.parentElement !== op) op.appendChild(card);
     });
   } catch(e){ console.warn('[P13.217 intel-exit-today] failed:', e); }
+};
+
+// P13.257 (Honest Surfacing Tier-2 #7) — External Intelligence freshness
+// probe. Returns true if any normalized signal (window._signals) has
+// occurredAt/dataAsOf within the given hour-window, OR the BriefOutput was
+// generated within the window AND carries at least one categorized item.
+// Used by renderTodayView to auto-expand the Intelligence accordion on
+// fresh days, while leaving quiet days collapsed (no manufactured signal).
+window._externalIntelIsFresh = function(withinHrs){
+  var cutoff = Date.now() - (withinHrs || 24) * 3600000;
+  var signals = Array.isArray(window._signals) ? window._signals : [];
+  for (var i = 0; i < signals.length; i++){
+    var s = signals[i];
+    var ts = s && (s.occurredAt || s.dataAsOf || 0);
+    if (ts && ts >= cutoff) return true;
+  }
+  var brief = window._brief || null;
+  if (brief && brief.generatedAt && brief.generatedAt >= cutoff){
+    var ibc = brief.itemsByCategory;
+    if (ibc && typeof ibc === 'object'){
+      var total = 0;
+      for (var k in ibc){
+        if (Object.prototype.hasOwnProperty.call(ibc, k)){
+          var arr = ibc[k];
+          if (Array.isArray(arr)) total += arr.length;
+        }
+      }
+      if (total > 0) return true;
+    }
+  }
+  return false;
 };
 
 // P13.217 — toggle the Today Intelligence section. Lazy-loads the three
@@ -69106,6 +69148,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.256"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.257"></script>
 </body>
 </html>
