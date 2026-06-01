@@ -153,6 +153,26 @@ export async function mapNoticeToOpportunity(
 }
 
 /** Idempotent upsert respecting operator overrides. */
+// P13.266 — Firebase RTDB rejects undefined values anywhere in the tree.
+// Source records frequently have missing fields (placeOfPerf.state, dates,
+// codes), so strip every undefined recursively before write. Preserves
+// nulls, empty strings, empty arrays — only undefined gets dropped.
+function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => stripUndefinedDeep(v)).filter((v) => v !== undefined) as unknown as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === undefined) continue;
+      const cleaned = stripUndefinedDeep(v);
+      if (cleaned !== undefined) out[k] = cleaned;
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
+
 export async function upsertOpportunity(
   workspaceId: string,
   opp: Opportunity
@@ -160,7 +180,7 @@ export async function upsertOpportunity(
   const path = wsPath(workspaceId, "opportunities", opp.id);
   const snap = await db.ref(path).once("value");
   if (!snap.exists()) {
-    await db.ref(path).set(opp);
+    await db.ref(path).set(stripUndefinedDeep(opp));
     return { action: "created", oppId: opp.id };
   }
   const existing = snap.val() as Opportunity;
@@ -190,6 +210,6 @@ export async function upsertOpportunity(
     operatorOverrides: existing.reconciliation?.operatorOverrides ?? [],
   };
 
-  await db.ref(path).set(merged);
+  await db.ref(path).set(stripUndefinedDeep(merged));
   return { action: "updated", oppId: opp.id };
 }

@@ -257,16 +257,21 @@ export async function resolveRecipientOrg(
     (a): a is string => !!a && a.trim().length > 0 && normalizeName(a) !== norm
   );
 
+  // P13.266 — Firebase RTDB rejects undefined values ("set failed: value
+  // argument contains undefined in property..."). The Organization interface
+  // marks uei/alternateNames as optional, so OMIT the keys entirely when
+  // null/empty rather than setting them to undefined. Discovered via SAM.gov
+  // first-key activation — every record was failing the org write.
   const newOrg: Organization = {
     id: orgId,
     type: options.type ?? "company",
     name: recipientName.trim(),
-    uei: uei ?? undefined,
-    alternateNames: altPersist.length > 0 ? altPersist : undefined,
     autoCreated: true,
     created: new Date().toISOString(),
     source: provenance,
   };
+  if (uei) newOrg.uei = uei;
+  if (altPersist.length > 0) newOrg.alternateNames = altPersist;
 
   await db.ref(wsPath(workspaceId, "nodes", orgId)).set(newOrg);
 
