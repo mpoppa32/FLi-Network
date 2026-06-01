@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.249</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.250</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -39188,6 +39188,147 @@ window._osintAddPattern = async function(category, term) {
   }
 };
 
+// P13.250 (OSINT O-5 / auto-seed) — bootstrap patterns.contractors +
+// patterns.programs from active opportunities + tracked org nodes.
+// Verified-via-MCP root cause on Atlas: 19 of 21 source mappers gate
+// their output on patterns.contractors body-text matching, but the
+// workspace had no patterns at all (verified null). This helper seeds
+// them in one shot from data the operator already has — every active
+// opp's agency / customerOrg / adversaryOrg + every Org/government/
+// company node name with >=5 chars (skips obvious stopwords + the
+// operator's own org).
+//
+// Uses a single REST PATCH for atomicity: one multi-path update under
+// /workspaces/{wsId}/patterns. Skips terms already present.
+// Returns { added, skipped, contractors, programs }.
+window._osintSeedPatternsFromOpps = async function(opts) {
+  opts = opts || {};
+  if (!currentUser || !currentWsId) return { error: 'not signed in' };
+  var minLen = opts.minLen || 5;
+  var maxTerms = opts.maxTerms || 200;
+  var stopwords = { 'unknown': 1, 'tbd': 1, 'pending': 1, 'classified': 1, 'various': 1, 'multiple': 1, 'agency unknown': 1, 'self': 1, 'atlas': 1 };
+  try {
+    var tok = await currentUser.getIdToken();
+    var base = 'https://fli-network-default-rtdb.firebaseio.com/workspaces/' + currentWsId;
+    // Read existing patterns to skip dupes
+    var existingResp = await fetch(base + '/patterns.json?auth=' + encodeURIComponent(tok));
+    var existing = existingResp.ok ? (await existingResp.json()) : null;
+    var have = { contractors: {}, programs: {} };
+    if (existing) {
+      if (existing.contractors) Object.values(existing.contractors).forEach(function(v){ have.contractors[String(v).toLowerCase().trim()] = true; });
+      if (existing.programs) Object.values(existing.programs).forEach(function(v){ have.programs[String(v).toLowerCase().trim()] = true; });
+    }
+
+    function consider(rawTerm, category) {
+      if (!rawTerm) return null;
+      var term = String(rawTerm).trim();
+      var lc = term.toLowerCase();
+      if (lc.length < minLen) return null;
+      if (stopwords[lc]) return null;
+      if (have[category][lc]) return null;
+      var slug = lc.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+      if (!slug) return null;
+      return { slug: slug, term: term, lc: lc };
+    }
+
+    var contractorAdds = {};
+    var programAdds = {};
+    var contractorsCount = 0;
+    var programsCount = 0;
+    var skipped = 0;
+    var opps = window.opportunities || [];
+    opps.forEach(function(o){
+      if (!o) return;
+      var stage = String(o.stage || '').toLowerCase();
+      if (stage === 'won' || stage === 'lost' || stage === 'no-bid' || stage === 'no_bid') return;
+      [o.agency, o.customerOrg, o.adversaryOrg].forEach(function(t){
+        var c = consider(t, 'contractors');
+        if (c && !contractorAdds[c.slug] && contractorsCount < maxTerms) { contractorAdds[c.slug] = c.term; contractorsCount++; have.contractors[c.lc] = true; }
+        else if (c) skipped++;
+      });
+      // vehicles/program-codes go into programs
+      var p = consider(o.vehicle, 'programs');
+      if (p && !programAdds[p.slug] && programsCount < maxTerms) { programAdds[p.slug] = p.term; programsCount++; have.programs[p.lc] = true; }
+      else if (p) skipped++;
+      var pn = consider(o.programName, 'programs');
+      if (pn && !programAdds[pn.slug] && programsCount < maxTerms) { programAdds[pn.slug] = pn.term; programsCount++; have.programs[pn.lc] = true; }
+      else if (pn) skipped++;
+    });
+    // Tracked Org nodes — only those flagged as bdTarget / customer / adversary
+    var nodes_ = window.nodes || [];
+    nodes_.forEach(function(n){
+      if (!n || !n.name) return;
+      if (n.type !== 'org' && n.type !== 'company' && n.type !== 'government') return;
+      var isTracked = !!(n.bdTarget || n.customer || n.adversary || n.priority === 1 || n.tier === 1 || (Array.isArray(n.tags) && n.tags.indexOf('t1') >= 0));
+      if (!isTracked) return; // only seed tracked orgs to avoid noise
+      var c = consider(n.name, 'contractors');
+      if (c && !contractorAdds[c.slug] && contractorsCount < maxTerms) { contractorAdds[c.slug] = c.term; contractorsCount++; have.contractors[c.lc] = true; }
+      else if (c) skipped++;
+      if (Array.isArray(n.alternateNames)) {
+        n.alternateNames.forEach(function(alt){
+          var ca = consider(alt, 'contractors');
+          if (ca && !contractorAdds[ca.slug] && contractorsCount < maxTerms) { contractorAdds[ca.slug] = ca.term; contractorsCount++; have.contractors[ca.lc] = true; }
+          else if (ca) skipped++;
+        });
+      }
+    });
+
+    // Build the atomic PATCH body. Firebase REST PATCH supports
+    // multi-path update if keys contain '/'. We'll use full /patterns
+    // path as the PATCH target with shallow object value.
+    var patchBody = {};
+    Object.keys(contractorAdds).forEach(function(slug){ patchBody['contractors/' + slug] = contractorAdds[slug]; });
+    Object.keys(programAdds).forEach(function(slug){ patchBody['programs/' + slug] = programAdds[slug]; });
+    var totalAdded = Object.keys(patchBody).length;
+    if (totalAdded === 0) return { added: 0, skipped: skipped, contractors: 0, programs: 0, message: 'No new terms to add (patterns already up to date or no qualifying opps)' };
+    var patchUrl = base + '/patterns.json?auth=' + encodeURIComponent(tok);
+    var resp = await fetch(patchUrl, {
+      method: 'PATCH',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patchBody)
+    });
+    if (!resp.ok) {
+      return { error: 'PATCH failed status ' + resp.status, added: 0 };
+    }
+    return {
+      added: totalAdded,
+      skipped: skipped,
+      contractors: Object.keys(contractorAdds).length,
+      programs: Object.keys(programAdds).length,
+      sampleContractors: Object.values(contractorAdds).slice(0, 5),
+      samplePrograms: Object.values(programAdds).slice(0, 5)
+    };
+  } catch(e) {
+    console.warn('[P13.250 seedPatterns] failed:', e && e.message);
+    return { error: e && e.message };
+  }
+};
+
+window._osintSeedPatternsFromUi = async function(btnEl) {
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Seeding…'; }
+  try {
+    var result = await window._osintSeedPatternsFromOpps();
+    if (result.error) {
+      if (btnEl) { btnEl.textContent = '✗ ' + (result.error || 'failed'); btnEl.style.opacity = '.65'; }
+      if (typeof toast === 'function') toast('Seed failed: ' + (result.error || 'unknown'));
+      return;
+    }
+    if (result.added === 0) {
+      if (btnEl) { btnEl.textContent = '✓ already seeded'; btnEl.style.opacity = '.65'; }
+      if (typeof toast === 'function') toast(result.message || 'No new patterns to add');
+      return;
+    }
+    if (btnEl) { btnEl.textContent = '✓ ' + result.added + ' added'; btnEl.style.opacity = '.65'; }
+    if (typeof toast === 'function') toast('Seeded ' + result.added + ' patterns (' + result.contractors + ' contractors · ' + result.programs + ' programs)');
+    try { window._osintRefreshDiagnostic && window._osintRefreshDiagnostic(); } catch(e){}
+    try { window._osintRefreshUnresolvedChip && window._osintRefreshUnresolvedChip(); } catch(e){}
+  } catch(e) {
+    if (btnEl) { btnEl.textContent = '✗ FAILED'; }
+    if (typeof toast === 'function') toast('Seed errored: ' + (e && e.message));
+  }
+};
+
 window._osintDismissUnresolved = function(signalId, term) {
   if (!signalId || !term) return;
   window._osintDismissals = window._osintDismissals || {};
@@ -39207,6 +39348,10 @@ window._osintOpenDiagnostic = function() {
       '<button onclick="document.getElementById(\'osint-diag-modal\').style.display=\'none\'" style="background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer">&times;</button>' +
     '</div>' +
     '<div style="padding:12px 18px;border-bottom:1px solid var(--rule);font-size:13px;color:var(--t2);line-height:1.5">Signals whose body text mentions a known org/agency name but the resolver did not link them. Add the term to <b style="color:var(--bone)">patterns.contractors</b> (or <b style="color:var(--bone)">patterns.programs</b>) so future source synths bind the mention.</div>' +
+    '<div style="padding:10px 18px;border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:10px;background:rgba(212,130,58,.06)">' +
+      '<div style="flex:1;font-size:12px;color:var(--t2);line-height:1.45"><b style="color:var(--gold)">Bootstrap shortcut:</b> seed patterns from every active opportunity\'s agency + customerOrg + adversaryOrg + vehicle + tracked org-node names. One-shot. Skips dupes and stopwords. The biggest leverage for restoring subjectIds resolution on new signals.</div>' +
+      '<button onclick="window._osintSeedPatternsFromUi(this)" style="padding:6px 12px;border:1px solid var(--gold);background:rgba(212,130,58,.12);color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px;flex-shrink:0">↗ Seed from opps</button>' +
+    '</div>' +
     '<div id="osint-diag-body" style="overflow-y:auto;flex:1;padding:14px 18px"></div>' +
     '<div style="padding:10px 18px;border-top:1px solid var(--rule);display:flex;justify-content:space-between;align-items:center;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.10em;color:var(--paper-2)">' +
       '<span id="osint-diag-status">—</span>' +
@@ -68444,6 +68589,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.249"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.250"></script>
 </body>
 </html>
