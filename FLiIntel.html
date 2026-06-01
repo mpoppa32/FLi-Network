@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.244</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.245</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -17805,11 +17805,122 @@ window._briefRollupForOrg = function(orgIdOrName) {
     for (var i = 0; i < rollup.length; i++){
       var r = rollup[i]; if (!r) continue;
       if (r.orgId && String(r.orgId).toLowerCase() === key) return { kind: kind, entry: r };
-      if (r.name && String(r.name).toLowerCase() === key) return { kind: kind, entry: r };
+      // BriefOutput rollups use orgName (not name); also accept name for safety.
+      var nm = r.orgName || r.name;
+      if (nm && String(nm).toLowerCase() === key) return { kind: kind, entry: r };
     }
     return null;
   };
   return pick(window._brief.adversaryRollup, 'adversary') || pick(window._brief.customerRollup, 'customer');
+};
+
+// P13.245 (OSINT O-2) — ENTITY-SCOPED OSINT MATCHER.
+// Returns signals touching a given entity (Person or Org), in order of
+// match strength: (1) subjectIds intersection (the resolver already linked
+// this signal to this entity — cleanest match); (2) alternateNames + name
+// substring fallback for cases where the unresolved-mentions diagnostic
+// hasn't caught up yet (O-5 will close that gap). Walks the entity's
+// alternateNames so BAH resolves to Booz Allen Hamilton without the operator
+// having to teach the platform every variant. Returns { items, rollup } —
+// items is an array of {signal, matchedBy, matchedTerm?} pairs already
+// sorted newest-first and trimmed to opts.max (default 8); rollup is the
+// BriefOutput adversary/customer entry if the entity is on either watchlist.
+window._osintForEntity = function(entity, opts) {
+  opts = opts || {};
+  var sinceDays = (typeof opts.sinceDays === 'number') ? opts.sinceDays : 7;
+  var max = (typeof opts.max === 'number') ? opts.max : 8;
+  var sinceMs = Date.now() - sinceDays * 86400000;
+  var empty = { items: [], rollup: null };
+  if (!entity || entity.id == null) return empty;
+  var entityIdLc = String(entity.id).toLowerCase();
+  var entityIdRaw = String(entity.id);
+  var nameLc = String(entity.name || '').toLowerCase().trim();
+  var altNames = Array.isArray(entity.alternateNames)
+    ? entity.alternateNames.map(function(n){ return String(n || '').toLowerCase().trim(); }).filter(function(n){ return n.length > 2; })
+    : [];
+  var allTerms = (nameLc && nameLc.length > 2) ? [nameLc].concat(altNames) : altNames;
+  var signals = Array.isArray(window._signals) ? window._signals : [];
+  var matched = [];
+  var seen = {};
+  for (var i = 0; i < signals.length; i++) {
+    var s = signals[i];
+    if (!s || seen[s.id]) continue;
+    var ts = s.occurredAt || (s.date ? new Date(s.date).getTime() : 0);
+    if (ts && ts < sinceMs) continue;
+    var raw = s._rawSignal || {};
+    var subjectIds = Array.isArray(raw.subjectIds) ? raw.subjectIds : [];
+    var hit = false;
+    for (var j = 0; j < subjectIds.length; j++) {
+      if (String(subjectIds[j]) === entityIdRaw || String(subjectIds[j]).toLowerCase() === entityIdLc) {
+        seen[s.id] = 1;
+        matched.push({ signal: s, matchedBy: 'subjectIds' });
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
+    if (allTerms.length) {
+      var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
+      for (var ti = 0; ti < allTerms.length; ti++) {
+        var t = allTerms[ti];
+        if (t.length > 2 && blob.indexOf(t) >= 0) {
+          seen[s.id] = 1;
+          matched.push({ signal: s, matchedBy: 'name', matchedTerm: t });
+          break;
+        }
+      }
+    }
+  }
+  matched.sort(function(a, b){
+    var at = (a.signal && a.signal.occurredAt) || 0;
+    var bt = (b.signal && b.signal.occurredAt) || 0;
+    return bt - at;
+  });
+  if (matched.length > max) matched = matched.slice(0, max);
+  var rollup = null;
+  try { rollup = window._briefRollupForOrg && window._briefRollupForOrg(entityIdRaw); } catch(e){}
+  if (!rollup && nameLc) {
+    try { rollup = window._briefRollupForOrg && window._briefRollupForOrg(entity.name); } catch(e){}
+  }
+  return { items: matched, rollup: rollup };
+};
+
+// P13.245 (OSINT O-2) — TRUST CHIPS for a signal. CONF (color tier by
+// confidence band) + AS OF (color tier by age — silent <24h, amber 24-72h,
+// red >168h) + SOURCE (system name, dimmed teal). Centralized helper so
+// every surface that displays a signal can wear the same honesty layer;
+// O-6 (Trust Chips Everywhere) replaces this implementation with the
+// audit's canonical render path. Until then this gives the account drawer +
+// Inspector Signals tab the chips that the Brief category-list loop
+// (FLiIntel.html:49526-49550) renders.
+window._renderTrustChips = function(signal) {
+  if (!signal) return '';
+  var html = '';
+  var conf = (typeof signal.confidence === 'number') ? signal.confidence : null;
+  if (conf != null) {
+    var confCol = conf >= 0.85 ? '#22c55e' : conf >= 0.65 ? '#f0a560' : '#ef4444';
+    html += '<span style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + confCol + ';border:1px solid ' + confCol + '60;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">CONF ' + Math.round(conf * 100) + '%</span>';
+  }
+  var asOf = signal.dataAsOf || signal.occurredAt || null;
+  if (asOf) {
+    var ageHr = Math.floor((Date.now() - asOf) / 3600000);
+    if (ageHr >= 24) {
+      var asofCol = ageHr > 168 ? '#ef4444' : ageHr > 72 ? '#f0a560' : '#b5ad9f';
+      var asofTxt = ageHr < 48 ? ageHr + 'h' : Math.floor(ageHr / 24) + 'd';
+      html += '<span style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + asofCol + ';border:1px solid ' + asofCol + '60;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">AS OF ' + asofTxt + ' AGO</span>';
+    }
+  }
+  var src = signal.sourceSystem || signal.publisher || null;
+  if (src) {
+    var srcDisplay = String(src).replace(/_/g, ' ').toUpperCase().slice(0, 16);
+    html += '<span style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:#5fb3b8;border:1px solid #5fb3b860;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">' + srcDisplay + '</span>';
+  }
+  if (signal.parseStatus && signal.parseStatus !== 'deep') {
+    var psCol = signal.parseStatus === 'failed' ? '#ef4444' : '#f0a560';
+    var psTxt = signal.parseStatus === 'failed' ? 'PARSE FAILED' : 'METADATA ONLY';
+    html += '<span style="display:inline-block;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + psCol + ';border:1px solid ' + psCol + '60;background:rgba(0,0,0,.18);padding:1px 5px;border-radius:2px;margin-right:4px">' + psTxt + '</span>';
+  }
+  return html;
 };
 
 function _dailyFeedToSignalEntity(s) {
@@ -38233,15 +38344,94 @@ window._renderEntityInspector = function(entity) {
   // Step 3a is chrome only: posture panel renders an empty-state pull-quote.
   // Steps 3b-3e fill in influence read editor, contacts table, row expansion,
   // adversaries section, and predecessor notes block.
+  // P13.245 (OSINT O-2) — adds SIGNALS tab between DOSSIER and POSTURE for
+  // person + org entities. Closes the audit gap "Entity Inspector dossier
+  // shows ZERO OSINT signals — Person from facaDatabase fuzzy match looks
+  // identical to typed-in contact." Lets the operator review the cloud-
+  // synthesized OSINT touching the open entity, with full trust chips, in
+  // the same surface where they read the connections + posture.
   var postureH = (typeof window._renderEntityPosture === 'function')
     ? window._renderEntityPosture(entity) : '';
+  var signalsH = (typeof window._renderEntitySignals === 'function')
+    ? window._renderEntitySignals(entity) : '';
+  var signalsTabApplicable = (entity && (entity.type === 'person' || entity.type === 'org'));
   return ''
     + '<div id="entity-inspector-tabs">'
     +   '<button id="entity-tab-dossier" class="ei-tab active" onclick="window._switchEntityInspectorTab(\'dossier\')">DOSSIER</button>'
+    +   (signalsTabApplicable ? '<button id="entity-tab-signals" class="ei-tab" onclick="window._switchEntityInspectorTab(\'signals\')">SIGNALS</button>' : '')
     +   '<button id="entity-tab-posture" class="ei-tab" onclick="window._switchEntityInspectorTab(\'posture\')">POSTURE</button>'
     + '</div>'
     + '<div id="entity-dossier-content">' + h + '</div>'
+    + (signalsTabApplicable ? '<div id="entity-signals-content" data-surface="signals" style="display:none">' + signalsH + '</div>' : '')
     + '<div id="entity-posture-content" data-surface="posture" style="display:none">' + postureH + '</div>';
+};
+
+// P13.245 (OSINT O-2) — Inspector Signals tab content. Server-pipeline OSINT
+// touching the open entity. Uses window._osintForEntity to match by
+// subjectIds intersection first (resolver-linked), then walks alternateNames
+// so BAH → Booz Allen. Renders the BriefOutput rollup card when the entity
+// is on the adversary or customer watchlist (signalCount + sources) plus a
+// per-row list with full trust chips (CONF + AS OF + source + parseStatus).
+// Person + org entities only — meeting / commitment don't carry direct
+// OSINT links (those entities' OSINT context lives on the related org's
+// drawer instead).
+window._renderEntitySignals = function(entity) {
+  if (!entity) return '';
+  var supported = { person: 1, org: 1 };
+  if (!supported[entity.type]) {
+    return '<div style="padding:30px;color:var(--t3);font-family:IBM Plex Sans,sans-serif;font-size:13px;line-height:1.55">OSINT signals are tracked at the person + organization level. Open a person or organization in this entity\'s connections to see their signals.</div>';
+  }
+  var bundle = (typeof window._osintForEntity === 'function')
+    ? window._osintForEntity(entity, { sinceDays: 30, max: 20 })
+    : { items: [], rollup: null };
+  var items = (bundle && Array.isArray(bundle.items)) ? bundle.items : [];
+  var rollup = (bundle && bundle.rollup) || null;
+  var h = '<div style="padding:24px 26px 32px;font-family:IBM Plex Sans,sans-serif;color:var(--text)">';
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-weight:700;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:4px">OSINT &middot; this entity</div>';
+  h += '<div style="font-size:13px;color:var(--t2);margin-bottom:18px;letter-spacing:.02em">Server-pipeline signals (21 source plugins + your manual Pulse pulls) that touch ' + _eiEsc(entity.name || '') + '. Walks alternateNames so abbreviations resolve.</div>';
+  if (rollup && rollup.entry) {
+    var rk = rollup.kind === 'adversary' ? 'ADVERSARY' : 'CUSTOMER';
+    var rCol = rollup.kind === 'adversary' ? '#ef4444' : '#22c55e';
+    var entry = rollup.entry;
+    var cnt = (typeof entry.signalCount === 'number') ? entry.signalCount : null;
+    var sources = Array.isArray(entry.sources) ? entry.sources : [];
+    h += '<div style="margin-bottom:18px;padding:12px 14px;background:rgba(0,0,0,.18);border-left:3px solid ' + rCol + ';border-radius:3px">';
+    h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.12em;color:' + rCol + '">TRACKED &middot; ' + rk + (cnt != null ? ' &middot; ' + cnt + ' signal' + (cnt === 1 ? '' : 's') : '') + '</div>';
+    if (sources.length) {
+      var srcStr = sources.slice(0, 6).map(function(sx){ return String(sx || '').replace(/_/g, ' ').toUpperCase(); }).join(' &middot; ');
+      h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.10em;margin-top:4px">sources &middot; ' + srcStr + (sources.length > 6 ? ' +' + (sources.length - 6) : '') + '</div>';
+    }
+    if (entry.topSignalTitle) {
+      h += '<div style="font-size:12px;color:var(--text);margin-top:6px;line-height:1.4">Top &middot; ' + _eiEsc(String(entry.topSignalTitle).slice(0, 140)) + '</div>';
+    }
+    h += '</div>';
+  }
+  if (!items.length) {
+    h += '<div style="padding:18px 14px;background:rgba(7,13,24,.45);border:1px dashed var(--rule);border-radius:3px;color:var(--t3);font-size:13px;font-style:italic;line-height:1.5">No touching signals in the last 30 days for this entity. ' + (rollup ? 'The TRACKED chip above is from the server\'s wider window.' : 'Once any source mentions ' + _eiEsc(entity.name || 'this entity') + ' or an alternate name on it, the signal appears here.') + '</div>';
+  } else {
+    h += '<div style="display:flex;flex-direction:column;gap:8px">';
+    items.forEach(function(m){
+      var s = m.signal; if (!s) return;
+      var headline = _eiEsc(String(s.headline || 'signal').slice(0, 160));
+      var detail = s.detail ? _eiEsc(String(s.detail).slice(0, 220)) : '';
+      var dt = s.date ? _eiEsc(String(s.date).slice(0, 10)) : '';
+      var sev = String(s.severity || '').toLowerCase();
+      var sevCol = sev === 'high' ? '#ef4444' : sev === 'med' ? '#f0a560' : '#5fb3b8';
+      var matchTag = m.matchedBy === 'subjectIds' ? 'resolver-linked' : (m.matchedBy === 'name' && m.matchedTerm ? 'matched &quot;' + _eiEsc(m.matchedTerm) + '&quot;' : 'name match');
+      var chips = (typeof window._renderTrustChips === 'function') ? window._renderTrustChips(s) : '';
+      var sUrl = (s.url && /^https?:\/\//i.test(s.url)) ? s.url : null;
+      var clickAttr = sUrl ? ' onclick="window.open(\'' + String(sUrl).replace(/\'/g, '&#39;') + '\',\'_blank\',\'noopener,noreferrer\')"' : '';
+      h += '<div' + clickAttr + ' style="' + (sUrl ? 'cursor:pointer;' : '') + 'padding:10px 13px;background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:2px solid ' + sevCol + ';border-radius:3px">';
+      if (chips) h += '<div style="margin-bottom:5px">' + chips + '</div>';
+      h += '<div style="font-size:13.5px;color:var(--text);line-height:1.45;font-weight:500">' + headline + (sUrl ? ' <span style="color:' + sevCol + ';font-family:IBM Plex Mono,monospace;font-size:10px">&#8599;</span>' : '') + '</div>';
+      if (detail) h += '<div style="font-size:12px;color:var(--t2);line-height:1.45;margin-top:3px">' + detail + '</div>';
+      h += '<div style="display:flex;gap:10px;align-items:baseline;margin-top:5px;font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.10em;color:var(--paper-2)">' + (dt ? '<span>' + dt + '</span>' : '') + '<span>' + matchTag + '</span></div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
 };
 
 // Phase 7.5.2 — Inspector Posture tab content (Step 3a chrome).
@@ -38301,21 +38491,36 @@ window._renderEntityPosture = function(entity) {
 };
 
 window._switchEntityInspectorTab = function(tabName) {
+  // P13.245 (OSINT O-2) — three-tab tab system: DOSSIER, SIGNALS (for
+  // person/org only), POSTURE. Signals tab + content are conditionally
+  // rendered, so the helpers tolerate either missing element.
   var dossier = document.getElementById('entity-dossier-content');
+  var signals = document.getElementById('entity-signals-content');
   var posture = document.getElementById('entity-posture-content');
   var tabD    = document.getElementById('entity-tab-dossier');
+  var tabS    = document.getElementById('entity-tab-signals');
   var tabP    = document.getElementById('entity-tab-posture');
   if (!dossier || !posture || !tabD || !tabP) return;
-  if (tabName === 'posture') {
+  var hideAll = function(){
     dossier.style.display = 'none';
-    posture.style.display = 'block';
+    if (signals) signals.style.display = 'none';
+    posture.style.display = 'none';
     tabD.classList.remove('active');
+    if (tabS) tabS.classList.remove('active');
+    tabP.classList.remove('active');
+  };
+  if (tabName === 'signals' && signals && tabS) {
+    hideAll();
+    signals.style.display = 'block';
+    tabS.classList.add('active');
+  } else if (tabName === 'posture') {
+    hideAll();
+    posture.style.display = 'block';
     tabP.classList.add('active');
   } else {
+    hideAll();
     dossier.style.display = '';
-    posture.style.display = 'none';
     tabD.classList.add('active');
-    tabP.classList.remove('active');
   }
 };
 
@@ -47038,28 +47243,15 @@ window._openAccountDetail = function(orgId){
   // "contract trajectory" + "what the OSINT layer caught about their company
   // this week." Read-only, defensive (renders only when data exists).
   var _pst = (r.org && r.org.posture) || (org && org.posture) || null;
-  var _orgNmLc = String(r.org.name || '').toLowerCase().trim();
-  var _orgRollup = null;
-  try { _orgRollup = window._briefRollupForOrg && window._briefRollupForOrg(r.org.id || r.org.name); } catch(e){}
-  // P13.244 (OSINT O-1) — reads window._signals (server-pipeline unified
-  // lake) via the /signals onValue listener instead of the client-only
-  // _dailyFeedData cache. Cloud-cron pulls from 21 source plugins now show
-  // up on the account drawer alongside the operator's manual Pulse pulls.
-  // Entity-scoped subjectIds intersection is O-2 work — substring match here
-  // is the interim filter on the right lake.
-  var _osintWk = [];
-  if (_orgNmLc.length > 2 && Array.isArray(window._signals)) {
-    var _wkAgo = Date.now() - 7 * 86400000;
-    window._signals.forEach(function(s){
-      if (!s) return;
-      var sts = s.occurredAt || (s.date ? new Date(s.date).getTime() : 0);
-      if (sts && sts < _wkAgo) return;
-      var blob = ((s.headline || '') + ' ' + (s.detail || '') + ' ' + (Array.isArray(s.tags) ? s.tags.join(' ') : '')).toLowerCase();
-      if (blob.indexOf(_orgNmLc) >= 0) _osintWk.push(s);
-    });
-    _osintWk.sort(function(a,b){ return (b.occurredAt || (b.date ? new Date(b.date).getTime() : 0)) - (a.occurredAt || (a.date ? new Date(a.date).getTime() : 0)); });
-    _osintWk = _osintWk.slice(0, 5);
-  }
+  // P13.245 (OSINT O-2) — entity-scoped OSINT via subjectIds intersection
+  // + alternateNames walk. Replaces the naive blob.indexOf substring match
+  // that was the Moment 2 Call Prep blocker. _osintForEntity returns the
+  // server-resolved (BriefOutput-aware) match set + the adversary/customer
+  // rollup if the org is on either watchlist.
+  var _entityForOsint = { id: (r.org && r.org.id), name: (r.org && r.org.name) || '', alternateNames: (r.org && r.org.alternateNames) || [] };
+  var _osintBundle = (typeof window._osintForEntity === 'function') ? window._osintForEntity(_entityForOsint, { sinceDays: 7, max: 5 }) : { items: [], rollup: null };
+  var _osintWk = (_osintBundle && Array.isArray(_osintBundle.items)) ? _osintBundle.items.map(function(m){ return m.signal; }) : [];
+  var _orgRollup = (_osintBundle && _osintBundle.rollup) || null;
   var _prereadSection = '';
   if (_pst && (_pst.trajectory || _pst.position)) {
     var _trajCol = ({ rising:'#22c55e', falling:'#ef4444', repositioning:'#f0a560', stable:'var(--t2)' })[String(_pst.trajectory || '').toLowerCase()] || 'var(--t2)';
@@ -47071,24 +47263,35 @@ window._openAccountDetail = function(orgId){
       '</div></div>';
   }
   if (_osintWk.length || _orgRollup) {
-    // P13.244 (OSINT O-1) — small "tracked as ADVERSARY/CUSTOMER" chip when
-    // BriefOutput rollups have this org; signalCount comes from the server
-    // synth. Full rollup card (sources[], momentum, chips per source) is O-2.
-    var _rollupChip = '';
+    // P13.245 (OSINT O-2) — TRACKED chip with rollup-derived signalCount +
+    // sources list, plus per-signal trust chips (CONF + AS OF + source).
+    // The rollup line surfaces the server's wider-window aggregate (every
+    // distinct source touching this org + total touches in the BriefOutput
+    // window); the per-row chips are O-6 territory and live here until the
+    // canonical helper lands.
+    var _rollupHeader = '';
     if (_orgRollup && _orgRollup.entry) {
       var _rk = _orgRollup.kind === 'adversary' ? 'ADVERSARY' : 'CUSTOMER';
       var _rCol = _orgRollup.kind === 'adversary' ? '#ef4444' : '#22c55e';
-      var _rCount = _orgRollup.entry.signalCount || (Array.isArray(_orgRollup.entry.signals) ? _orgRollup.entry.signals.length : null);
-      var _rCountTxt = (typeof _rCount === 'number') ? (' · ' + _rCount + ' signal' + (_rCount === 1 ? '' : 's')) : '';
-      _rollupChip = '<span style="display:inline-block;margin-left:8px;font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + _rCol + ';border:1px solid ' + _rCol + '60;background:rgba(0,0,0,.18);padding:1px 6px;border-radius:2px">TRACKED · ' + _rk + _rCountTxt + '</span>';
+      var _rEntry = _orgRollup.entry;
+      var _rCount = (typeof _rEntry.signalCount === 'number') ? _rEntry.signalCount : null;
+      var _rCountTxt = (typeof _rCount === 'number') ? (' &middot; ' + _rCount + ' signal' + (_rCount === 1 ? '' : 's')) : '';
+      var _rSources = Array.isArray(_rEntry.sources) ? _rEntry.sources.slice(0, 4).map(function(sys){ return String(sys || '').replace(/_/g,' ').toUpperCase(); }).join(' &middot; ') : '';
+      var _rSourcesTxt = _rSources ? '<div style="font-family:IBM Plex Mono,monospace;font-size:9px;color:var(--paper-2);letter-spacing:.10em;margin-top:3px">sources &middot; ' + _accEsc(_rSources) + (Array.isArray(_rEntry.sources) && _rEntry.sources.length > 4 ? ' +' + (_rEntry.sources.length - 4) : '') + '</div>' : '';
+      _rollupHeader = '<div style="margin-bottom:8px;padding:6px 9px;background:rgba(0,0,0,.18);border-left:2px solid ' + _rCol + ';border-radius:2px"><span style="font-family:IBM Plex Mono,monospace;font-size:9px;font-weight:700;letter-spacing:.10em;color:' + _rCol + '">TRACKED &middot; ' + _rk + _rCountTxt + '</span>' + _rSourcesTxt + '</div>';
     }
     _prereadSection += '<div style="margin-bottom:14px;padding:10px 12px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.22);border-left:3px solid #5fb3b8;border-radius:3px">' +
-      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:6px">OSINT &middot; this week (' + _osintWk.length + ')' + _rollupChip + '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:6px">OSINT &middot; this week (' + _osintWk.length + ')</div>' +
+      _rollupHeader +
       (_osintWk.length ? _osintWk.map(function(s){
         var hl = _accEsc(String(s.headline || 'signal').slice(0, 90));
         var dt = s.date ? _accEsc(String(s.date).slice(0, 10)) : '';
-        return '<div style="font-size:12px;color:var(--t2);line-height:1.4;padding:4px 0;border-top:1px solid rgba(95,179,184,.12)">' + (dt ? '<span style="color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:10px">' + dt + '</span> ' : '') + hl + '</div>';
-      }).join('') : '<div style="font-size:12px;color:var(--t3);line-height:1.4;padding:4px 0;font-style:italic">No new touches in 7d &middot; rollup is the server\'s longer-window view</div>') +
+        var chips = (typeof window._renderTrustChips === 'function') ? window._renderTrustChips(s) : '';
+        return '<div style="font-size:12px;color:var(--t2);line-height:1.4;padding:6px 0;border-top:1px solid rgba(95,179,184,.12)">' +
+          (chips ? '<div style="margin-bottom:3px">' + chips + '</div>' : '') +
+          (dt ? '<span style="color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:10px">' + dt + '</span> ' : '') + hl +
+        '</div>';
+      }).join('') : '<div style="font-size:12px;color:var(--t3);line-height:1.4;padding:4px 0;font-style:italic">No new touches in 7d' + (_orgRollup ? ' &middot; rollup above is the server\'s wider-window view' : '') + '</div>') +
     '</div>';
   }
 
@@ -67729,6 +67932,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.244"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.245"></script>
 </body>
 </html>
