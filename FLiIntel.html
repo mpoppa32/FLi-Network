@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.247</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.248</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13719,6 +13719,126 @@ window._showWorkspaceRemovedModal = function() {
   document.body.appendChild(ov);
 };
 
+// P13.248 — REST-POLLING FALLBACK for the wedged Firebase realtime channel.
+// Diagnosed via Chrome MCP: WS handshake to wss://fli-network-default-rtdb.firebaseio.com
+// opens cleanly in ~200ms but .info/connected stays false indefinitely (Firebase SDK
+// internal state machine stuck). REST endpoints respond healthy in <300ms. After a
+// connectWorkspace, if window.meetings stays empty for 6s (listener starvation),
+// _restPollStart() takes over: fetches /meetings + /nodes + /links + /opportunities +
+// /commitments + /signals + /derivedViews/dailyBrief/latest + /pendingCapture + /ledger
+// via REST every 30s, populates the same module-scoped vars the listeners would (so
+// every consumer surface — Today, COP, Outreach, the OSINT panels — works exactly the
+// same), and triggers the same render functions. If the realtime channel ever
+// reconnects, polling auto-stops (detected via .info/connected onValue transition to
+// true).
+var _restPoll = { active: false, intervalId: null, lastOk: 0, inFlight: false };
+async function _restPollFetchAll(){
+  if (_restPoll.inFlight) return false;
+  if (!currentUser || !currentWsId) return false;
+  _restPoll.inFlight = true;
+  try {
+    var tok = await currentUser.getIdToken();
+    var base = 'https://fli-network-default-rtdb.firebaseio.com/workspaces/' + currentWsId;
+    var paths = ['/meetings','/nodes','/links','/opportunities','/commitments','/tl_commitments','/calEntries','/signals','/derivedViews/dailyBrief/latest','/pendingCapture','/ledger','/calibration','/atlasUpdates','/accountAck'];
+    var responses = await Promise.all(paths.map(function(p){
+      return fetch(base + p + '.json?auth=' + encodeURIComponent(tok))
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .catch(function(){ return null; });
+    }));
+    var rMtg = responses[0], rNode = responses[1], rLink = responses[2], rOpp = responses[3];
+    var rCom = responses[4], rTl = responses[5], rCal = responses[6];
+    var rSig = responses[7], rBrief = responses[8], rPc = responses[9], rLed = responses[10], rCalib = responses[11];
+    if (rMtg && typeof rMtg === 'object') {
+      meetingMap.clear();
+      Object.values(rMtg).forEach(function(m){ if (m && m.id != null) meetingMap.set(m.id, m); });
+      try { rebuildMeetingsArray(); } catch(e){}
+    }
+    if (rNode && typeof rNode === 'object') {
+      nodes = Object.values(rNode);
+      nodeMap.clear();
+      nodes.forEach(function(n){ if (n && n.id != null) nodeMap.set(n.id, n); });
+      window.nodes = nodes;
+    }
+    if (rLink && typeof rLink === 'object') {
+      links = Object.values(rLink);
+      linkMap.clear();
+      links.forEach(function(l){ if (l && l.id != null) linkMap.set(l.id, l); });
+    }
+    if (rOpp && typeof rOpp === 'object') {
+      opportunities = Object.values(rOpp);
+      window.opportunities = opportunities;
+    }
+    if (rCom && typeof rCom === 'object') { commitments = Object.values(rCom); window.commitments = commitments; }
+    if (rTl && typeof rTl === 'object') { tlCommitments = Object.values(rTl); }
+    if (rCal && typeof rCal === 'object') { calEntries = Object.values(rCal); }
+    if (rPc && typeof rPc === 'object') { pendingCapture = Object.values(rPc); }
+    if (rLed && typeof rLed === 'object') { window.ledger = Object.values(rLed); }
+    if (rCalib && typeof rCalib === 'object') { calibrationRecords = Object.values(rCalib); }
+    if (rSig && typeof rSig === 'object' && typeof window._signalToFeedItem === 'function') {
+      var arr = [];
+      Object.values(rSig).forEach(function(sig){ var it = window._signalToFeedItem(sig); if (it) arr.push(it); });
+      arr.sort(function(a,b){ return (b.occurredAt||0) - (a.occurredAt||0); });
+      window._signals = arr;
+    }
+    if (rBrief && typeof rBrief === 'object') { window._brief = rBrief; }
+    try { buildEntityGraph && buildEntityGraph(); } catch(e){}
+    try { updateCount && updateCount(); } catch(e){}
+    try { renderSidebarMtgList && renderSidebarMtgList(); } catch(e){}
+    try { scheduleRenderBoard && scheduleRenderBoard(); } catch(e){}
+    if (activeView === 'today') {
+      try { window.renderDailyBrief && window.renderDailyBrief(); } catch(e){}
+      try { window._renderTodayNarrative && window._renderTodayNarrative(); } catch(e){}
+      try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
+      try { window._renderTodayOrientation && window._renderTodayOrientation(); } catch(e){}
+    }
+    if (activeView === 'atlas') { try { window._atlasRenderActivityFeed && window._atlasRenderActivityFeed(); } catch(e){} }
+    if (activeView === 'outreach') { try { window._renderOutreachQueueView && window._renderOutreachQueueView(); } catch(e){} }
+    if (activeView === 'coverage') { try { window._renderCoverageView && window._renderCoverageView(); } catch(e){} }
+    if (activeView === 'accounts') { try { window._renderAccountsView && window._renderAccountsView(); } catch(e){} }
+    if (activeView === 'drone') { try { window._renderDroneUniverse && window._renderDroneUniverse(); } catch(e){} }
+    if (activeView === 'reckoning') { try { window._renderReckoningView && window._renderReckoningView(); } catch(e){} }
+    if (activeView === 'posture') { try { window._renderPostureView && window._renderPostureView(); } catch(e){} }
+    if (activeView === 'rhythm') { try { window._renderRhythmView && window._renderRhythmView(); } catch(e){} }
+    try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){}
+    try { setSS('live (REST)'); } catch(e){}
+    _restPoll.lastOk = Date.now();
+    return true;
+  } catch(e) {
+    console.warn('[P13.248 REST poll] failed:', e && e.message);
+    return false;
+  } finally {
+    _restPoll.inFlight = false;
+  }
+}
+window._restPollStart = function(){
+  if (_restPoll.active) return;
+  _restPoll.active = true;
+  console.log('[P13.248] REST polling fallback ENABLED (Firebase realtime channel was starved). 30s interval.');
+  _restPollFetchAll();
+  _restPoll.intervalId = setInterval(_restPollFetchAll, 30000);
+};
+window._restPollStop = function(){
+  if (!_restPoll.active) return;
+  if (_restPoll.intervalId) clearInterval(_restPoll.intervalId);
+  _restPoll.intervalId = null;
+  _restPoll.active = false;
+  console.log('[P13.248] REST polling fallback DISABLED (realtime channel recovered).');
+};
+window._restPollOnce = _restPollFetchAll;
+function _restPollDetectWedge(){
+  if (!currentWsId) return;
+  setTimeout(function(){
+    if (_restPoll.active) return;
+    var mtgLen = (typeof meetings !== 'undefined' && meetings) ? meetings.length : 0;
+    var oppLen = (typeof opportunities !== 'undefined' && opportunities) ? opportunities.length : 0;
+    var nodeLen = (typeof nodes !== 'undefined' && nodes) ? nodes.length : 0;
+    if (mtgLen === 0 && oppLen === 0 && nodeLen === 0) {
+      console.warn('[P13.248] listener starvation detected after 6s (meetings/opps/nodes all empty). Enabling REST polling.');
+      window._restPollStart();
+    }
+  }, 6000);
+}
+
 function connectWorkspace(){
   netListeners.forEach(function(u){try{u();}catch(e){}});
   netListeners=[];
@@ -14286,6 +14406,23 @@ function connectWorkspace(){
   });
 
   netListeners=[u1,u3,u4,u5,u6,u7,u8,u9,u10,u11,uLedger,uSig,uBrief];
+
+  // P13.248 — wedge detection. If after 6 seconds the realtime listeners
+  // haven't populated any of meetings/opps/nodes (all are still empty), the
+  // Firebase realtime channel is starved — flip on REST polling so Atlas
+  // remains usable. Diagnosed via Chrome MCP: WS opens, REST is healthy,
+  // SDK state machine just refuses to acknowledge .info/connected = true.
+  // Also subscribe to .info/connected so polling auto-disables if/when
+  // realtime recovers.
+  try {
+    var uConn = onValue(ref(db, '.info/connected'), function(snap){
+      if (snap.val() === true && _restPoll.active) {
+        try { window._restPollStop(); } catch(e){}
+      }
+    });
+    netListeners.push(uConn);
+  } catch(e){}
+  try { _restPollDetectWedge(); } catch(e){}
   // G2: Load persisted intelligence cache
   setTimeout(_loadPulseCache, 2000);
   // H: Load feed config then today's daily intelligence feed
@@ -68081,6 +68218,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.247"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.248"></script>
 </body>
 </html>
