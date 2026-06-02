@@ -27,6 +27,41 @@ export function sourcePath(workspaceId: string, system: string, ...parts: string
   return wsPath(workspaceId, "sources", system, ...parts);
 }
 
+/**
+ * Recursively strip `undefined` values from any object/array before writing
+ * to RTDB. Firebase RTDB rejects writes containing undefined ANYWHERE in the
+ * tree with: "set failed: value argument contains undefined in property...".
+ *
+ * Source records frequently have missing optional fields (state, city,
+ * dates, codes, related IDs). Mappers historically wrote them as
+ * `field: undefined` which breaks the entire write. Use this helper before
+ * any `db.ref(path).set(value)` to drop undefined keys/elements cleanly.
+ *
+ * Preserves: null, empty string, 0, false, empty array, empty object.
+ * Only drops: undefined.
+ *
+ * P13.266 — added framework-level after SAM.gov + defense_scoop first-activation
+ * both hit the same Firebase undefined-rejection. Future plugins should
+ * default to writing through this.
+ */
+export function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => stripUndefinedDeep(v))
+      .filter((v) => v !== undefined) as unknown as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (v === undefined) continue;
+      const cleaned = stripUndefinedDeep(v);
+      if (cleaned !== undefined) out[k] = cleaned;
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
+
 // Batched multi-path update with a soft per-batch cap.
 // Per migration spec OIQ-3 (LOCKED): 500 entities per batch.
 export const BATCH_SIZE = 500;

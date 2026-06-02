@@ -12,7 +12,7 @@
 
 import { hashFields } from "../../framework/hashing";
 import { externalProvenance } from "../../framework/provenance";
-import { db, wsPath } from "../../framework/rtdb";
+import { db, wsPath, stripUndefinedDeep } from "../../framework/rtdb";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
@@ -132,7 +132,7 @@ export async function upsertDsPublicationSignal(
   const path = wsPath(workspaceId, "signals", id);
   const snap = await db.ref(path).once("value");
   if (!snap.exists()) {
-    await db.ref(path).set(signal);
+    await db.ref(path).set(stripUndefinedDeep(signal));
     log?.debug("defense_scoop_signal_created", {
       id,
       publication: publication.key,
@@ -157,7 +157,7 @@ export async function upsertDsPublicationSignal(
       programMatchesFound: matchedPrograms.length,
     };
   }
-  await db.ref(path).set(signal);
+  await db.ref(path).set(stripUndefinedDeep(signal));
   return {
     signalId: id,
     action: "updated",
