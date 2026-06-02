@@ -69,9 +69,13 @@ export async function upsertServiceNewsSignal(
 
   // P13.266 — body-text contractor resolution (same shape as
   // defenseScoop + thinkTanks). Best-effort per pattern.
+  //
+  // P13.269 — match against full item.description (content:encoded or
+  // description) rather than the 1000-char `summary`. Storage stays
+  // truncated; matching window opens up to full body.
   const relatedIds: string[] = [];
   const seenRelated = new Set<string>();
-  const haystack = (title + " " + summary).toLowerCase();
+  const haystack = (title + " " + (item.description || "")).toLowerCase();
   const maxRelated = Math.max(1, patterns.maxRelatedPerSignal || 6);
   let bodyOrgsResolved = 0;
   for (const name of patterns.defenseContractors) {

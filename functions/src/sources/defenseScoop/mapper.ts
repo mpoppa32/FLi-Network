@@ -77,10 +77,14 @@ export async function upsertDsPublicationSignal(
   // configured pattern list — they don't go through orgResolver
   // (programs aren't Orgs); instead we surface matched program names
   // in attrs.matchedPrograms for downstream filtering / display.
+  // P13.269 — match against full item.description (which now prefers
+  // <content:encoded> = full article body) rather than the 1000-char
+  // `summary`. Storage stays truncated; matching window opens up to
+  // catch contractor / program mentions deeper in the article.
   const relatedIds: string[] = [];
   const seenRelated = new Set<string>();
   const matchedPrograms: string[] = [];
-  const haystack = (title + " " + summary).toLowerCase();
+  const haystack = (title + " " + (item.description || "")).toLowerCase();
   const maxRelated = Math.max(1, patterns.maxRelatedPerSignal || 6);
   let bodyOrgsResolved = 0;
   for (const name of patterns.defenseContractors) {

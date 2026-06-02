@@ -77,7 +77,14 @@ export function parseRssFeed(xml: string): RssItem[] {
       const hrefMatch = block.match(/<link\b[^>]*href=["']([^"']+)["']/i);
       if (hrefMatch) link = hrefMatch[1];
     }
-    const description = extractTag(block, "description") || extractTag(block, "summary") || extractTag(block, "content");
+    // P13.269 — prefer <content:encoded> (WordPress/Drupal RSS extension)
+    // when present; carries full article body. Falls back to RSS
+    // description / Atom summary / Atom content. DefenseScoop, Defense
+    // News, Defense One all ship 12-180 char descriptions but multi-KB
+    // content:encoded with the company-naming lead paragraphs — taking
+    // content:encoded multiplies orgResolver hit rate without an extra
+    // HTTP fetch per item.
+    const description = extractTag(block, "content:encoded") || extractTag(block, "description") || extractTag(block, "summary") || extractTag(block, "content");
     const pubDate = extractTag(block, "pubDate") || extractTag(block, "updated") || extractTag(block, "published");
     const guid = extractTag(block, "guid") || extractTag(block, "id") || link;
     const author = extractTag(block, "dc:creator") || extractTag(block, "author") || extractTag(block, "name");

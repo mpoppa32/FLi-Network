@@ -75,7 +75,12 @@ export function parseRssFeed(xml: string): DsRssItem[] {
       const hrefMatch = block.match(/<link\b[^>]*href=["']([^"']+)["']/i);
       if (hrefMatch) link = hrefMatch[1];
     }
+    // P13.269 — prefer <content:encoded>. DefenseScoop, Defense News,
+    // Defense One all ship multi-KB body in this field while their
+    // <description> is 12-180 chars. Empirically lifts orgResolver
+    // hit rate without an extra HTTP fetch per item.
     const description =
+      extractTag(block, "content:encoded") ||
       extractTag(block, "description") ||
       extractTag(block, "summary") ||
       extractTag(block, "content");

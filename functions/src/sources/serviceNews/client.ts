@@ -73,7 +73,11 @@ export function parseRssFeed(xml: string): RssItem[] {
       const hrefMatch = block.match(/<link\b[^>]*href=["']([^"']+)["']/i);
       if (hrefMatch) link = hrefMatch[1];
     }
-    const description = extractTag(block, "description") || extractTag(block, "summary") || extractTag(block, "content");
+    // P13.269 — prefer <content:encoded> for full body (see thinkTanks
+    // client for rationale). .mil services rarely include it but the
+    // shared pattern keeps the parser symmetric across all three RSS
+    // mappers.
+    const description = extractTag(block, "content:encoded") || extractTag(block, "description") || extractTag(block, "summary") || extractTag(block, "content");
     const pubDate = extractTag(block, "pubDate") || extractTag(block, "updated") || extractTag(block, "published");
     const guid = extractTag(block, "guid") || extractTag(block, "id") || link;
     const author = extractTag(block, "dc:creator") || extractTag(block, "author") || extractTag(block, "name");

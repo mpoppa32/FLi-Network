@@ -69,12 +69,18 @@ export async function upsertPublicationSignal(
   );
 
   // P13.266 — body-text contractor resolution. Same pattern as
-  // defenseScoop: scan title + summary for configured patterns,
+  // defenseScoop: scan title + body for configured patterns,
   // resolve via orgResolver, accumulate in relatedIds. Best-effort —
   // a single failed resolve doesn't kill the signal.
+  //
+  // P13.269 — match against full item.description (which, post-client
+  // fix, prefers <content:encoded> = full article body) rather than the
+  // 1000-char-truncated `summary`. Storage stays truncated; matching
+  // window opens up to the full body so contractor names appearing
+  // beyond the first 1000 chars also resolve.
   const relatedIds: string[] = [];
   const seenRelated = new Set<string>();
-  const haystack = (title + " " + summary).toLowerCase();
+  const haystack = (title + " " + (item.description || "")).toLowerCase();
   const maxRelated = Math.max(1, patterns.maxRelatedPerSignal || 6);
   let bodyOrgsResolved = 0;
   for (const name of patterns.defenseContractors) {
