@@ -199,3 +199,14 @@ export { orgMergeBackfillYearly } from "./jobs/orgMergeBackfillOnce";
 // curation policy.
 export { triggerUasPatternsSync } from "./http/triggerUasPatternsSync";
 export { uasPatternsDaily } from "./jobs/uasPatternsDaily";
+
+// uas-patterns PIE supply-chain intelligence (P13.275) — companion to
+// the DDG plugin. Daily HTML scrape of the same domain (rate-limit
+// bucket shared) extracts MANUFACTURERS + SCENARIOS static slices.
+// Emits supply_chain_status Signals per vendor present in workspace
+// and supply_chain_scenario Signals per forecast (with relatedIds via
+// mention scan against workspace Orgs). v1 ships only the static
+// slices; the page's token-gated /api/data dynamic streams (FLAGS /
+// PREDICTIONS / OUTCOMES / signals) are deferred to v1.1.
+export { triggerUasPatternsPieSync } from "./http/triggerUasPatternsPieSync";
+export { uasPatternsPieDaily } from "./jobs/uasPatternsPieDaily";

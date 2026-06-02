@@ -50,7 +50,10 @@ export type SignalType =
   | "advisory_body_report"
   // P13.273 / O-7 — uas-patterns DDG Tracker
   | "ddg_status_change"
-  | "ddg_prediction";
+  | "ddg_prediction"
+  // P13.275 — uas-patterns PIE supply-chain intelligence (companion)
+  | "supply_chain_status"
+  | "supply_chain_scenario";
 
 export interface Signal {
   id: string;
