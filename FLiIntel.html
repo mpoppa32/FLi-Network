@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.265</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.274</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -51950,6 +51950,8 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'congressional_hearing') return window._congressionalHearingTouchRow(sig, attrs);
       if (sig.type === 'nomination') return window._nominationTouchRow(sig, attrs);
       if (sig.type === 'committee_meeting') return window._committeeMeetingTouchRow(sig, attrs);
+      if (sig.type === 'ddg_status_change') return window._ddgStatusChangeTouchRow(sig, attrs);
+      if (sig.type === 'ddg_prediction') return window._ddgPredictionTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -53014,6 +53016,96 @@ window._proxyStatementTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + palette.bg + ';color:' + palette.fg + ';border:1px solid ' + palette.fg + '40">DEF 14A</span>';
 
   var clickUrl = attrs.documentUrl || (sig.source && sig.source.url) || '';
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// uas-patterns DDG Tracker v1.0: touch-row renderer for ddg_status_change
+// Signals. Title is vendor name + rank chip. Subtitle composes score,
+// phase, and win probability. Right chip is the rank tier in a color
+// keyed by rank (gold for #1, green for #2-3, teal for #4-7, neutral
+// for #8+). The plugin emits these once per vendor per sync; same-hash
+// refreshes don't re-fire so chip colors stay stable until the curator
+// changes a metric.
+window._ddgStatusChangeTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var vendorName = (attrs.vendorName || 'Vendor').toString();
+  var ddgRank = Number(attrs.ddgRank) || 0;
+  var ddgScore = Number(attrs.ddgScore) || 0;
+  var ddgPhase = (attrs.ddgPhase || 'G-I').toString();
+  var winProb = Number(attrs.winProb) || 0;
+  var phase2outlook = (attrs.phase2outlook || '').toString();
+
+  var titleHtml = esc(vendorName) + (ddgRank > 0 ? '<span style="color:var(--t3);font-weight:400"> · #' + ddgRank + '</span>' : '');
+
+  var subParts = [];
+  if (ddgScore) subParts.push(ddgScore.toFixed(1) + ' pts');
+  if (ddgPhase) subParts.push(ddgPhase);
+  if (winProb) subParts.push(winProb + '% G-II winProb');
+  if (phase2outlook) subParts.push(esc(phase2outlook.slice(0, 80)));
+  var subtitleHtml = subParts.join(' · ');
+
+  var chipFg, chipBg;
+  if (ddgRank === 1) { chipFg = '#d4823a'; chipBg = 'rgba(212,130,58,.12)'; }
+  else if (ddgRank <= 3) { chipFg = '#3a8a5c'; chipBg = 'rgba(58,138,92,.10)'; }
+  else if (ddgRank <= 7) { chipFg = '#5fb3b8'; chipBg = 'rgba(95,179,184,.10)'; }
+  else { chipFg = 'var(--t3)'; chipBg = 'rgba(125,118,105,.08)'; }
+  var chipLabel = ddgRank > 0 ? '#' + ddgRank + ' DDG' : 'DDG';
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + chipBg + ';color:' + chipFg + ';border:1px solid ' + chipFg + '40">' + chipLabel + '</span>';
+
+  var clickUrl = (attrs.sourceUrl || (sig.source && sig.source.url) || 'https://uas-patterns.com/ddg/').toString();
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// uas-patterns DDG Tracker v1.0: touch-row renderer for ddg_prediction
+// Signals. Title is the forecast headline. Subtitle composes timeframe
+// + impact tier + first sentence of summary. Right chip is the analyst
+// probability % in a tier color (critical red, high amber, medium blue,
+// low neutral). Confidence chip is rendered by the surrounding Brief
+// item layer at confidence < 0.85 (these always emit at 0.75 INFERRED).
+window._ddgPredictionTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var titleText = (attrs.title || 'Analyst prediction').toString();
+  var titleHtml = esc(titleText.slice(0, 200));
+
+  var timeframe = (attrs.timeframe || '').toString();
+  var impact = (attrs.impact || 'medium').toString();
+  var probability = Number(attrs.probability) || 0;
+  var summary = (attrs.summary || '').toString();
+
+  var subParts = [];
+  if (timeframe) subParts.push(esc(timeframe));
+  if (impact) subParts.push(esc(impact));
+  if (summary) {
+    var firstSentence = summary.split('. ')[0];
+    if (firstSentence.length > 140) firstSentence = firstSentence.slice(0, 140) + '...';
+    subParts.push(esc(firstSentence));
+  }
+  var subtitleHtml = subParts.join(' · ');
+
+  var impactLc = impact.toLowerCase();
+  var chipFg, chipBg;
+  if (impactLc === 'critical') { chipFg = '#b34040'; chipBg = 'rgba(179,64,64,.12)'; }
+  else if (impactLc === 'high') { chipFg = '#d4823a'; chipBg = 'rgba(212,130,58,.12)'; }
+  else if (impactLc === 'medium' || impactLc === 'moderate') { chipFg = '#5fb3b8'; chipBg = 'rgba(95,179,184,.10)'; }
+  else { chipFg = 'var(--t3)'; chipBg = 'rgba(125,118,105,.08)'; }
+  var chipLabel = probability ? probability + '% PRED' : 'PRED';
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + chipBg + ';color:' + chipFg + ';border:1px solid ' + chipFg + '40">' + chipLabel + '</span>';
+
+  var clickUrl = (attrs.sourceUrl || (sig.source && sig.source.url) || 'https://uas-patterns.com/ddg/').toString();
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
@@ -54294,7 +54386,13 @@ window._SOURCE_HEALTH_META = [
   { key: 'plum_book',       label: 'Plum Book / Federal Vacancies', cadenceMin: 43200, accent: '#b56ba3' },
   { key: 'industry_assoc',  label: 'Industry Assoc Rosters (NDIA/AFA/AUSA)', cadenceMin: 129600, accent: '#6a8a3a' },
   { key: 'state_department', label: 'State Department',                      cadenceMin: 1440,  accent: '#c8a060' },
-  { key: 'defense_scoop',    label: 'Defense BD News',                        cadenceMin: 1440,  accent: '#a04060' }
+  { key: 'defense_scoop',    label: 'Defense BD News',                        cadenceMin: 1440,  accent: '#a04060' },
+  // P13.274 — registry catch-up. These four plugins ship signals already but
+  // weren't in the operator-visible Source Health surface.
+  { key: 'dod_oig',          label: 'DoD OIG Reports',                        cadenceMin: 1440,  accent: '#8a5a3a' },
+  { key: 'darpa_news',       label: 'DARPA News',                             cadenceMin: 1440,  accent: '#5b8a98' },
+  { key: 'nasa_oig',         label: 'NASA OIG Reports',                       cadenceMin: 1440,  accent: '#6e7ea8' },
+  { key: 'uas_patterns',     label: 'DDG Tracker (uas-patterns.com)',         cadenceMin: 1440,  accent: '#c5704a' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -69454,6 +69552,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.265"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.274"></script>
 </body>
 </html>
