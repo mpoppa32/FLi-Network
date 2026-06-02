@@ -34,7 +34,20 @@ function defaultEnabledPublications(): string[] {
 }
 
 /** Default contractor patterns. Sourced from state_department v1.2
- *  with a few defense-news-relevant additions. */
+ *  with a few defense-news-relevant additions.
+ *
+ *  P13.267 — drone-prime customer additions (Vantor / Firestorm Labs /
+ *  Auterion / Neros Technologies / ModalAI / AeroVironment), plus
+ *  Performance Drone Works (Atlas node exists; not yet in customerOrgIds
+ *  but pattern lets future opps backfill cleanly). Six of the seven are
+ *  confirmed customerOrgId in the live Atlas workspace (1777435779676)
+ *  via existing opportunities; their normalized names cleanly resolve
+ *  through orgResolver (lowercase + Inc/LLC/Corp/etc strip). Lifts the
+ *  pattern-to-customer-set overlap from 1 of 28 (Anduril only) to 7 of
+ *  35 — unblocking Brief customer category population from think_tank /
+ *  service_news / defense_scoop body-text resolution. Per doctrine 3.6
+ *  "Specific Information Only" — focus the pattern list on the operator's
+ *  actual drone-defense / DoW market, not broad defense. */
 export const DEFAULT_DS_CONTRACTOR_PATTERNS: string[] = [
   "Lockheed Martin",
   "Boeing",
@@ -64,6 +77,22 @@ export const DEFAULT_DS_CONTRACTOR_PATTERNS: string[] = [
   "Sikorsky",
   "Pratt & Whitney",
   "Aerojet Rocketdyne",
+  // P13.267 — drone-prime customer additions
+  "Vantor",
+  "Firestorm Labs",
+  "Auterion",
+  "Neros Technologies",
+  "ModalAI",
+  // AeroVironment — resolves to "AeroVironment Inc" node (confirmed customerOrgId).
+  // "AeroVironment (AV) Inc." node also exists but won't resolve via this
+  // pattern (normalizes to "aerovironment (av)") — left to operator merge.
+  "AeroVironment",
+  // Performance Drone Works — Atlas node exists (drone-prime), not yet in
+  // customerOrgIds set; pattern still added so future opps backfill cleanly
+  // and the signal links to the correct node. Bare "PDW" too short to
+  // substring-match safely (e.g., "PDW-3" parts numbers in press) — only
+  // the spelled-out form used.
+  "Performance Drone Works",
 ];
 
 /** Default program-name patterns. Defense BD news is heavy on program
