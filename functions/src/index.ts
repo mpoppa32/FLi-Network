@@ -214,3 +214,14 @@ export { uasPatternsDaily } from "./jobs/uasPatternsDaily";
 // PREDICTIONS / OUTCOMES / signals) are deferred to v1.1.
 export { triggerUasPatternsPieSync } from "./http/triggerUasPatternsPieSync";
 export { uasPatternsPieDaily } from "./jobs/uasPatternsPieDaily";
+
+// Entity domain enrichment (P13.279) — derives node.domain on
+// government-typed Organization nodes from aggregated SAM.gov POC email
+// frequencies per opp.customerOrgId. Atlas at design time: 0/951 nodes
+// had domain populated; 238 derivable from existing absorbed POC data.
+// Lifts the email matcher's primary companyByDomain exact path from 0%
+// to ~80% government coverage. Pure-graph derivation; no external API.
+// Idempotent — never overwrites an existing explicit node.domain.
+// See `corsair-entity-domain-enrichment.md` for design + probe results.
+export { triggerEnrichEntityDomains } from "./http/triggerEnrichEntityDomains";
+export { enrichEntityDomainsYearly } from "./jobs/enrichEntityDomainsYearly";
