@@ -325,3 +325,15 @@ The operator's fear was bolt-ons. The answer is the foundation. Once the foundat
 This is how Corsair becomes a single unstoppable thing. Not by adding the right features. By refusing to add anything that is not a vibration of the one true primitive.
 
 — Drafted 2026-06-02. To be revisited only when the foundation itself is challenged.
+
+---
+
+## ADDENDUM — Fact Correction (2026-06-02, same day)
+
+Movement 2 ("Violations") named *Gmail and Calendar capture configured-not-deployed* as the single largest active violation, with AWAITING REPLY silent, the Bridge severed, etc. That claim was based on `corsair-coherence-audit.md` (May 30, P13.211), which was accurate at the time of the audit.
+
+It is no longer accurate as of this writing. OAuth was deployed on 2026-05-28; Mike's `mike@atlasmotion.com` Google account has been connected and refreshing tokens for five days. Atlas's `pendingCapture` collection holds 87 entries flowed from real Gmail + Calendar traffic. `captureHourly` runs reliably on the `15 * * * *` schedule. See `corsair-oauth-deployment.md` for the full diagnosis.
+
+The structural read of Movement 2 is preserved: the absorption-channel completeness is gated on every team member's OAuth grant, and Atlas at present has 1 of 3 team members connected with a `pendingCapture` match rate of 11.5%. The violation's *shape* shifts from "deploy OAuth" to "complete team scaling + lift match-rate coverage." The primitive's read holds: the platform's ambient absorption is bounded by which channels are open. Repair sequencing tracks the real shape, not the stale framing.
+
+This addendum is the discipline. The primitive doc cannot afford a falsehood inside a truth-claim about gaps — the same intellectual-honesty rule the coherence audit followed in its own CORRECTION section, applied here recursively.
