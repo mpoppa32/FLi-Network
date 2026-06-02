@@ -8832,26 +8832,12 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
-<!-- P13.104 — Corsair Cinema overlay (self-running cinematic demo).
-     Sits ABOVE live product views. Driven by window.CorsairCinema engine. -->
-<div id="corsair-cinema" aria-hidden="true">
-  <div class="cinema-vignette"></div>
-  <div class="cinema-fade" id="cinema-fade"></div>
-  <div class="cinema-progress" id="cinema-progress" aria-hidden="true"></div>
-  <div class="cinema-progress-meta" id="cinema-progress-meta">Corsair · Cinematic</div>
-  <div class="cinema-narration" id="cinema-narration">
-    <div class="cinema-narration-eyebrow" id="cinema-narration-eyebrow"></div>
-    <div class="cinema-narration-text" id="cinema-narration-text"></div>
-  </div>
-  <div class="cinema-wordmark" id="cinema-wordmark">CORSAIR</div>
-  <div class="cinema-wordmark-tagline" id="cinema-wordmark-tagline">DEFENSE CAPTURE INTELLIGENCE</div>
-  <div class="cinema-paused" id="cinema-paused">▌▌ Paused — space to resume</div>
-  <div class="cinema-controls" id="cinema-controls">
-    <button class="cinema-btn" onclick="window.CorsairCinema&&window.CorsairCinema.togglePause()" title="Pause / resume (space)">▌▌</button>
-    <button class="cinema-btn" onclick="window.CorsairCinema&&window.CorsairCinema.skipToEnd()" title="Skip to end (S)">Skip</button>
-    <button class="cinema-btn" onclick="window.CorsairCinema&&window.CorsairCinema.stop()" title="Exit cinema (Esc)">Exit</button>
-  </div>
-</div>
+<!-- P13.277 — Corsair Cinema overlay (P13.104) removed per the primitive
+     analysis (corsair-the-primitive.md, Movement 2: bolt-on, cut). The
+     engine + CSS remain in the file dead-by-cascade for a follow-up
+     sweep; without this DOM the engine has nothing to animate. The
+     auth-screen "Watch the Tour" button still works — it launches the
+     separate Atlas Demo Tour engine, not Cinema. -->
 
 <div id="d3-fallback-msg" style="display:none;position:fixed;top:0;left:0;right:0;background:#7f1d1d;color:#fff;padding:10px 16px;font-size:12px;font-family:IBM Plex Sans,sans-serif;text-align:center;z-index:99999">⚠️ Network map unavailable — could not load the D3 library. Check your connection and reload.</div>
 
@@ -8904,7 +8890,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.276</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.277</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -34084,82 +34070,15 @@ window.renderTodayView = function(){
   // idempotent, fire-and-forget — so the Reckoning's week-over-week deltas
   // and the snapshot-based Catches have data going forward.
   try { if(!window._atlasSnapStarted){ window._atlasSnapStarted = true; if(window._atlasLoadSnapshots) window._atlasLoadSnapshots(); if(window._atlasCaptureWeeklySnapshot) window._atlasCaptureWeeklySnapshot(); } } catch(e){}
-  // P13.92 (Day 5) — Quick Start callout for first-time users on this
-  // workspace. Renders ONCE (until dismissed) above the rhythm host.
-  // Explains the 4 primary actions + points at Pipeline for the unscored
-  // pursuits workflow. Bryce sees this on his first Atlas land; one × dismiss
-  // means he never sees it again.
-  try {
-    var wsKey = 'corsair-quickstart-dismissed-' + (window.currentWsId || 'default');
-    var dismissed = false;
-    try { dismissed = localStorage.getItem(wsKey) === '1'; } catch(e){}
-    var hostP = document.getElementById('today-rhythm-host');
-    // Remove any existing callout (re-render hygiene)
-    var existing = document.getElementById('today-quickstart-callout');
-    if (existing) existing.remove();
-    // P13.218 — after the first view, the Quick Start auto-collapses to a
-    // thin strip (Simplicity: a daily operator shouldn't see a how-to box
-    // every morning). _quickstartExpand sets the force flag + re-renders.
-    var seenKey = 'corsair-quickstart-seen-' + (window.currentWsId || 'default');
-    var qsSeen = false; try { qsSeen = localStorage.getItem(seenKey) === '1'; } catch(e){}
-    var qsForce = (window._quickstartForceExpand === true);
-    if (!dismissed && hostP && hostP.parentElement && qsSeen && !qsForce) {
-      var stripC = document.createElement('div');
-      stripC.id = 'today-quickstart-callout';
-      stripC.style.cssText = 'margin:0 22px 14px;padding:9px 16px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid var(--gold);border-radius:2px;display:flex;align-items:center;justify-content:space-between;gap:10px';
-      stripC.innerHTML = '<span onclick="window._quickstartExpand&&window._quickstartExpand()" style="cursor:pointer;flex:1;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase"><span style="display:inline-block;width:10px;margin-right:6px">&#9656;</span>Quick Start &middot; 5 min to wired-in</span>' +
-        '<button onclick="(function(){try{localStorage.setItem(\'' + wsKey + '\',\'1\');}catch(e){}var c=document.getElementById(\'today-quickstart-callout\');if(c)c.remove();})()" title="Dismiss &middot; won\'t show again" style="background:transparent;border:0;color:var(--paper-2);font-size:16px;cursor:pointer;line-height:1;padding:2px 6px;flex-shrink:0">&times;</button>';
-      hostP.parentElement.insertBefore(stripC, hostP);
-    } else if (!dismissed && hostP && hostP.parentElement) {
-      var ops = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
-      var unscored = ops.filter(function(o){
-        var v = Number(o.value || o.contractValue || 0);
-        var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
-        return v <= 0 && p <= 0;
-      }).length;
-      var callout = document.createElement('div');
-      callout.id = 'today-quickstart-callout';
-      // P13.189 — sized up for demo visibility.
-      callout.style.cssText = 'margin:0 22px 18px;padding:24px 28px;background:linear-gradient(135deg,rgba(212,130,58,.12),rgba(95,179,184,.07));border:1px solid rgba(212,130,58,.40);border-left:5px solid var(--gold);border-radius:3px;position:relative';
-      var h = '';
-      h += '<button onclick="window._quickstartCollapse&&window._quickstartCollapse()" title="Collapse to a strip" style="position:absolute;top:13px;right:44px;background:transparent;border:0;color:var(--paper-2);font-size:15px;cursor:pointer;line-height:1;padding:2px 6px">&#9652;</button>';
-      h += '<button onclick="(function(){try{localStorage.setItem(\'' + wsKey + '\',\'1\');}catch(e){}var c=document.getElementById(\'today-quickstart-callout\');if(c)c.remove();})()" title="Dismiss · won\'t show again" style="position:absolute;top:10px;right:12px;background:transparent;border:0;color:var(--paper-2);font-size:22px;cursor:pointer;line-height:1;padding:2px 6px">×</button>';
-      h += '<div style="font-family:IBM Plex Mono,monospace;font-size:14px;font-weight:700;letter-spacing:.20em;color:var(--gold);text-transform:uppercase;margin-bottom:14px">Quick Start &nbsp;·&nbsp; 5 min to wired-in</div>';
-      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:' + (unscored > 0 ? '12px' : '0') + '">';
-      // 4 actions
-      var steps = [
-        { num: '1', icon: '✎', label: 'Log a meeting', detail: 'Paste any meeting notes — Corsair extracts people, stances, commitments, risks automatically.' },
-        { num: '2', icon: '＋', label: 'Add a contact', detail: 'Name, role, org, tier. The Entity Graph builds itself from here.' },
-        { num: '3', icon: '◆', label: 'Open a pursuit', detail: 'Click any opp card in Pipeline — see Intel Score, People at Org, Meeting History, Signals.' },
-        { num: '4', icon: '✓', label: 'Clear today\'s queue', detail: 'Watch cards below. Click ✓ DONE or ✗ DROP to triage in seconds.' }
-      ];
-      steps.forEach(function(s){
-        h += '<div style="display:flex;gap:14px;align-items:flex-start;padding:14px 16px;background:rgba(7,13,24,.50);border:1px solid var(--rule);border-radius:2px">';
-        h +=   '<div style="font-family:IBM Plex Mono,monospace;font-size:14px;font-weight:700;color:var(--gold);background:rgba(212,130,58,.18);border:1px solid rgba(212,130,58,.45);border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + s.num + '</div>';
-        h +=   '<div style="min-width:0">';
-        h +=     '<div style="font-family:IBM Plex Sans,sans-serif;font-size:17px;font-weight:600;color:var(--bone);margin-bottom:4px">' + s.label + '</div>';
-        h +=     '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--paper);line-height:1.45">' + s.detail + '</div>';
-        h +=   '</div>';
-        h += '</div>';
-      });
-      h += '</div>';
-      // Atlas-specific nudge if many unscored opps
-      if (unscored > 5) {
-        h += '<div style="padding:9px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-left:2px solid #22c55e;border-radius:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
-        h +=   '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:#22c55e;text-transform:uppercase">Highest leverage right now</span>';
-        h +=   '<span style="font-family:IBM Plex Sans,sans-serif;font-size:12.5px;color:var(--bone);flex:1;min-width:160px;line-height:1.3">You have <b>' + unscored + ' unscored pursuits</b>. Open <b>Pipeline</b> and click <b>⊞ Bulk Score</b> to populate values + pwins in one paste — your forecast lights up immediately.</span>';
-        h +=   '<button onclick="switchView(\'cop\');setTimeout(function(){window._openBulkScoreModal&&window._openBulkScoreModal();},300)" style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;color:#0b0d11;background:#22c55e;border:1px solid #22c55e;padding:7px 12px;border-radius:3px;cursor:pointer;text-transform:uppercase;flex-shrink:0">Bulk Score →</button>';
-        h += '</div>';
-      }
-      callout.innerHTML = h;
-      // Insert BEFORE the rhythm host so it's the first thing below the action bar
-      hostP.parentElement.insertBefore(callout, hostP);
-      // P13.218 — mark seen so the next render shows the collapsed strip; clear
-      // the one-shot force-expand flag.
-      try { localStorage.setItem(seenKey, '1'); } catch(e){}
-      window._quickstartForceExpand = false;
-    }
-  } catch(e){ console.warn('[P13.92 quickstart callout] failed:', e); }
+  // P13.277 — Quick Start callout (P13.92 / P13.218) removed per the
+  // primitive analysis (corsair-the-primitive.md, Movement 2: standing
+  // pedagogy violates the primitive's ambient quality). The 4 actions
+  // it pointed at — Log Meeting, New Contact, New Pursuit, New
+  // Follow-up — are already first-class buttons on the Today action
+  // row; an operator who arrives at Today does not need a how-to box
+  // to find them. Existing localStorage keys (corsair-quickstart-
+  // dismissed-*, corsair-quickstart-seen-*) are left in place; they
+  // are now no-ops and are harmless to leave on legacy workspaces.
   // P13.96 — ATLAS latest-update widget. Renders only when updates exist.
   try { if (typeof window._renderAtlasTodayWidget === 'function') window._renderAtlasTodayWidget(); } catch(e){ console.warn('[P13.96 atlas widget] failed:', e); }
   // P13.93 (Day 6) — OSINT signals matched to active pursuits.
@@ -34452,11 +34371,11 @@ window._toggleTodayIntel = function(){
   }
 };
 
-// P13.218 — Quick Start expand/collapse. _quickstartExpand sets a one-shot
-// force flag and re-renders Today (idempotent — guarded relocations); the
-// quickstart block then builds the full callout instead of the strip.
-window._quickstartExpand = function(){ window._quickstartForceExpand = true; try { window.renderTodayView && window.renderTodayView(); } catch(e){} };
-window._quickstartCollapse = function(){ window._quickstartForceExpand = false; try { window.renderTodayView && window.renderTodayView(); } catch(e){} };
+// P13.277 — Quick Start expand/collapse helpers (P13.218) removed
+// alongside the callout itself. Stubs kept as no-op functions so any
+// stale inline onclick from a cached page version doesn't throw.
+window._quickstartExpand = function(){};
+window._quickstartCollapse = function(){};
 
 // CRM P0.3 — Daily Brief Card collapse + persist
 window._corsairApplyBriefCollapsed = function(){
@@ -69655,6 +69574,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.276"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.277"></script>
 </body>
 </html>
