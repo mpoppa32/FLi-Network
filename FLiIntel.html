@@ -8890,7 +8890,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.281</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.282</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10464,7 +10464,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
   </div>
 </div>
 
-<!-- P13.281 UNBOUND DOMAINS VIEW ───────────────────────────────
+<!-- P13.282 UNBOUND DOMAINS VIEW ───────────────────────────────
      Vendor + customer email domains that appear in pendingCapture but
      don't yet match any tracked node. Operator binds each to a company
      node so the matcher's primary companyByDomain path lights up. The
@@ -12615,14 +12615,48 @@ window.fbGet = fbGet;
     } catch (e) { done = true; throw e; }
   };
   setInterval(async function(){
-    if (!window.currentWsId || typeof window.wsPath !== 'function') return;
+    if (!window.currentWsId) return;
     var done = false;
     setTimeout(function(){ if (!done) _show('Heartbeat ping timed out'); }, _HANG_MS);
     try {
-      await _originalFbGet(window.wsPath('info'));
-      done = true;
-      _lastSuccess = Date.now();
-      _hide();
+      // P13.282 — heartbeat via REST instead of the wedged SDK. P13.248's
+      // REST polling fallback proved the SDK realtime channel can sit
+      // wedged for hours while REST stays healthy in <300ms; the
+      // pre-P13.282 heartbeat used _originalFbGet (the raw SDK get) and
+      // false-positive-fired the stale-connection banner every 30s on
+      // every Atlas session in the wedged state. Two cheap success paths
+      // are tried before the SDK fallback so the banner only fires on a
+      // genuine end-to-end outage:
+      //   (1) Fast path — if the REST polling fallback (P13.248) pinged
+      //       successfully within the last 60s, the connection is
+      //       provably alive. No new fetch needed.
+      //   (2) REST ping — direct GET against /workspaces/{ws}/info via
+      //       the same auth-tokened REST endpoint the polling fallback
+      //       uses. Bypasses the SDK channel entirely.
+      //   (3) Only if both fail do we attempt the SDK path (kept as a
+      //       last-resort signal so the banner still reflects a true
+      //       full outage if REST + SDK are both unreachable).
+      if (typeof _restPoll !== 'undefined' && _restPoll && (Date.now() - _restPoll.lastOk) < 60000) {
+        done = true; _lastSuccess = Date.now(); _hide(); return;
+      }
+      if (window.currentUser && typeof window.currentUser.getIdToken === 'function') {
+        try {
+          var tok = await window.currentUser.getIdToken();
+          var url = 'https://fli-network-default-rtdb.firebaseio.com/workspaces/' + window.currentWsId + '/info.json?auth=' + encodeURIComponent(tok);
+          var r = await fetch(url);
+          if (r && r.ok) {
+            done = true; _lastSuccess = Date.now(); _hide(); return;
+          }
+        } catch(e) { /* fall through to SDK path */ }
+      }
+      if (typeof window.wsPath === 'function') {
+        await _originalFbGet(window.wsPath('info'));
+        done = true;
+        _lastSuccess = Date.now();
+        _hide();
+      } else {
+        done = true;
+      }
     } catch(e) { done = true; }
   }, _HEARTBEAT_MS);
   window._rtdbHealth = function(){
@@ -45933,7 +45967,7 @@ function renderCaptureView() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// P13.281 — UNBOUND DOMAINS VIEW
+// P13.282 — UNBOUND DOMAINS VIEW
 // Operator-bound vendor domain enrichment. Backend v1+v2 (P13.279/280)
 // derive domains for federal-contractor + government nodes, but Atlas's
 // operator-curated drone-vendor nodes (no UEI) stay empty. This view
@@ -69815,6 +69849,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.281"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.282"></script>
 </body>
 </html>
