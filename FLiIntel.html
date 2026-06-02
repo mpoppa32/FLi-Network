@@ -8890,7 +8890,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.284</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.285</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10464,7 +10464,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
   </div>
 </div>
 
-<!-- P13.284 UNBOUND DOMAINS VIEW ───────────────────────────────
+<!-- P13.285 UNBOUND DOMAINS VIEW ───────────────────────────────
      Vendor + customer email domains that appear in pendingCapture but
      don't yet match any tracked node. Operator binds each to a company
      node so the matcher's primary companyByDomain path lights up. The
@@ -12619,10 +12619,10 @@ window.fbGet = fbGet;
     var done = false;
     setTimeout(function(){ if (!done) _show('Heartbeat ping timed out'); }, _HANG_MS);
     try {
-      // P13.284 — heartbeat via REST instead of the wedged SDK. P13.248's
+      // P13.285 — heartbeat via REST instead of the wedged SDK. P13.248's
       // REST polling fallback proved the SDK realtime channel can sit
       // wedged for hours while REST stays healthy in <300ms; the
-      // pre-P13.284 heartbeat used _originalFbGet (the raw SDK get) and
+      // pre-P13.285 heartbeat used _originalFbGet (the raw SDK get) and
       // false-positive-fired the stale-connection banner every 30s on
       // every Atlas session in the wedged state. Two cheap success paths
       // are tried before the SDK fallback so the banner only fires on a
@@ -19354,6 +19354,20 @@ function _showOnlyView(v){
 function switchView(v){
   // Normalize sacred-mode aliases (graph→network, cop→opps, brief→today)
   if(_CORSAIR_MODE_ALIAS[v])v=_CORSAIR_MODE_ALIAS[v];
+
+  // P13.285 — defensive re-run of the relocator. _relocateViewsIntoMainApp
+  // runs once at selectWorkspace; if a view was added to the file AFTER
+  // that initial run (e.g. operator was already in a workspace when
+  // P13.281 added unbound-view, OR a sibling-build-of-cinema-cut leaves a
+  // view orphaned at body level), flex:1 collapses to zero height under
+  // the body parent and clicking the menu item produces "nothing comes
+  // up." The relocator is idempotent — it only moves views that aren't
+  // already inside main-app — so calling it on every switchView is
+  // cheap. Closes the new-view-checklist trap from the
+  // [[project_corsair_new_view_checklist]] memory.
+  if (typeof _relocateViewsIntoMainApp === 'function') {
+    try { _relocateViewsIntoMainApp(); } catch(e){}
+  }
 
   // P13.77 — restore embedded rhythm panel back to its sibling slot
   // BEFORE we switch views (so other views don't end up with the rhythm
@@ -33864,7 +33878,7 @@ window._renderTodayNarrative = function(){
       : '';
     var sevPart = sevHi ? ' · ' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') : (sevMed ? ' · ' + sevMed + ' MED' : '');
     var matchPart = matched ? ' · <b>' + matched + '</b> mention your network' : '';
-    // P13.284 — customer rollup phrase. P13.283 lit up Brief's
+    // P13.285 — customer rollup phrase. P13.283 lit up Brief's
     // customerRollup by wiring workspace patterns into mapper-time
     // body-text resolution; this surfaces the top 2 active customer
     // agencies in the WORLD sentence so the operator sees the lake-to-
@@ -33975,7 +33989,7 @@ window._renderTodayOrientation = function() {
   // outreach queue size (if previously rendered)
   var queueSize = (window._atlasOutreachQueueTargets || []).length;
 
-  // P13.284 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
+  // P13.285 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
   // pendingCapture was previously surfaced only via a badge inside the
   // Tools menu (FLiIntel.html:9001) — a click MOST operators never make.
   // Surfacing here gives the absorption loop ("X pending review · Y
@@ -34015,7 +34029,7 @@ window._renderTodayOrientation = function() {
       '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' + (queueSize ? '<span style="color:#5fb3b8">' + queueSize + '</span> targets queued' : 'Outreach Queue') + '</div>' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' + pendingCands + ' candidates · ' + pendingOrgs + ' orgs · open →</div>' +
     '</button>' +
-    // Tile 4 — Auto-Capture (P13.284, B9). Surfaces the now-richly-tagged
+    // Tile 4 — Auto-Capture (P13.285, B9). Surfaces the now-richly-tagged
     // pendingCapture corpus (47 outbound + 20 matched on Atlas at write
     // time) at the Today level. Click goes to capture view for review.
     '<button onclick="window.switchView&&window.switchView(\'capture\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(212,130,58,.06));border:1px solid #f59e0b;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
@@ -46021,7 +46035,7 @@ function renderCaptureView() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// P13.284 — UNBOUND DOMAINS VIEW
+// P13.285 — UNBOUND DOMAINS VIEW
 // Operator-bound vendor domain enrichment. Backend v1+v2 (P13.279/280)
 // derive domains for federal-contractor + government nodes, but Atlas's
 // operator-curated drone-vendor nodes (no UEI) stay empty. This view
@@ -69903,6 +69917,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.284"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.285"></script>
 </body>
 </html>
