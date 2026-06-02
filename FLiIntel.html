@@ -8890,7 +8890,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.282</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.284</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10464,7 +10464,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
   </div>
 </div>
 
-<!-- P13.282 UNBOUND DOMAINS VIEW ───────────────────────────────
+<!-- P13.284 UNBOUND DOMAINS VIEW ───────────────────────────────
      Vendor + customer email domains that appear in pendingCapture but
      don't yet match any tracked node. Operator binds each to a company
      node so the matcher's primary companyByDomain path lights up. The
@@ -12619,10 +12619,10 @@ window.fbGet = fbGet;
     var done = false;
     setTimeout(function(){ if (!done) _show('Heartbeat ping timed out'); }, _HANG_MS);
     try {
-      // P13.282 — heartbeat via REST instead of the wedged SDK. P13.248's
+      // P13.284 — heartbeat via REST instead of the wedged SDK. P13.248's
       // REST polling fallback proved the SDK realtime channel can sit
       // wedged for hours while REST stays healthy in <300ms; the
-      // pre-P13.282 heartbeat used _originalFbGet (the raw SDK get) and
+      // pre-P13.284 heartbeat used _originalFbGet (the raw SDK get) and
       // false-positive-fired the stale-connection banner every 30s on
       // every Atlas session in the wedged state. Two cheap success paths
       // are tried before the SDK fallback so the banner only fires on a
@@ -33864,7 +33864,31 @@ window._renderTodayNarrative = function(){
       : '';
     var sevPart = sevHi ? ' · ' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') : (sevMed ? ' · ' + sevMed + ' MED' : '');
     var matchPart = matched ? ' · <b>' + matched + '</b> mention your network' : '';
-    s2 = 'This week: <b>' + weekly.length + '</b> intel signals' + concentrationPart + concentrationBadge + sevPart + matchPart + '.';
+    // P13.284 — customer rollup phrase. P13.283 lit up Brief's
+    // customerRollup by wiring workspace patterns into mapper-time
+    // body-text resolution; this surfaces the top 2 active customer
+    // agencies in the WORLD sentence so the operator sees the lake-to-
+    // customer linkage directly on Today. Filter to active=true (in
+    // current customerOrgIds set, not historical) and sort by
+    // totalRelevance to match Brief's own ordering. Skip if the same
+    // org already named in concentrationPart so we don't duplicate.
+    var customerPart = '';
+    var rollup = (window._brief && Array.isArray(window._brief.customerRollup)) ? window._brief.customerRollup : [];
+    if (rollup.length > 0) {
+      var concentratedNames = new Set();
+      topConcentration.forEach(function(c){ if (c && c.name) concentratedNames.add(String(c.name).toLowerCase()); });
+      var activeCustomers = rollup
+        .filter(function(r){ return r && r.active && r.orgName; })
+        .filter(function(r){ return !concentratedNames.has(String(r.orgName).toLowerCase()); })
+        .sort(function(a, b){ return (b.totalRelevance||0) - (a.totalRelevance||0); })
+        .slice(0, 2);
+      if (activeCustomers.length === 1) {
+        customerPart = ' · activity on <b>' + window._escHTML(activeCustomers[0].orgName) + '</b>';
+      } else if (activeCustomers.length === 2) {
+        customerPart = ' · activity on <b>' + window._escHTML(activeCustomers[0].orgName) + '</b> and <b>' + window._escHTML(activeCustomers[1].orgName) + '</b>';
+      }
+    }
+    s2 = 'This week: <b>' + weekly.length + '</b> intel signals' + concentrationPart + concentrationBadge + sevPart + matchPart + customerPart + '.';
   }
   // GAPS — POC coverage across BD-target orgs
   var nodes = window.nodes || [];
@@ -33951,6 +33975,20 @@ window._renderTodayOrientation = function() {
   // outreach queue size (if previously rendered)
   var queueSize = (window._atlasOutreachQueueTargets || []).length;
 
+  // P13.284 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
+  // pendingCapture was previously surfaced only via a badge inside the
+  // Tools menu (FLiIntel.html:9001) — a click MOST operators never make.
+  // Surfacing here gives the absorption loop ("X pending review · Y
+  // outbound correctly matched") a Today-level chip per session-passdown
+  // pickup #5. Counts read from window.pendingCapture (post-P13.278
+  // direction-tagged + matchSource-rich).
+  var pending = window.pendingCapture || [];
+  var pendingTotal = pending.length;
+  var pendingMatched = 0;
+  for (var pi = 0; pi < pending.length; pi++) {
+    if (pending[pi] && pending[pi].matchedNodeId) pendingMatched++;
+  }
+
   el.style.display = 'grid';
   el.style.gridTemplateColumns = 'repeat(auto-fit, minmax(240px, 1fr))';
   el.style.gap = '12px';
@@ -33976,6 +34014,22 @@ window._renderTodayOrientation = function() {
       '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#5fb3b8;text-transform:uppercase">▷ Send</div>' +
       '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' + (queueSize ? '<span style="color:#5fb3b8">' + queueSize + '</span> targets queued' : 'Outreach Queue') + '</div>' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' + pendingCands + ' candidates · ' + pendingOrgs + ' orgs · open →</div>' +
+    '</button>' +
+    // Tile 4 — Auto-Capture (P13.284, B9). Surfaces the now-richly-tagged
+    // pendingCapture corpus (47 outbound + 20 matched on Atlas at write
+    // time) at the Today level. Click goes to capture view for review.
+    '<button onclick="window.switchView&&window.switchView(\'capture\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(212,130,58,.06));border:1px solid #f59e0b;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;color:#f59e0b;text-transform:uppercase">⚡ Capture</div>' +
+      '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' +
+        (pendingTotal === 0
+          ? 'Auto-Capture'
+          : '<span style="color:#f59e0b">' + pendingTotal + '</span> pending review') +
+      '</div>' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' +
+        (pendingTotal === 0
+          ? 'Gmail + Calendar absorbed · queue empty'
+          : pendingMatched + ' matched · ' + (pendingTotal - pendingMatched) + ' unmatched · open →') +
+      '</div>' +
     '</button>';
 };
 
@@ -45967,7 +46021,7 @@ function renderCaptureView() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// P13.282 — UNBOUND DOMAINS VIEW
+// P13.284 — UNBOUND DOMAINS VIEW
 // Operator-bound vendor domain enrichment. Backend v1+v2 (P13.279/280)
 // derive domains for federal-contractor + government nodes, but Atlas's
 // operator-curated drone-vendor nodes (no UEI) stay empty. This view
@@ -69849,6 +69903,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.282"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.284"></script>
 </body>
 </html>
