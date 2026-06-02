@@ -48,6 +48,12 @@ export async function upsertServiceNewsSignal(
   const occurredAt = item.pubDateMs || Date.now();
   const title = (item.title || "Untitled").slice(0, 500);
   const summary = (item.description || "").slice(0, 1000);
+  // P13.271 — persist a wider window (20KB) of the raw body so the
+  // monthly relatedIds backfill can re-match against deep contractor
+  // mentions. See defenseScoop mapper for the full rationale.
+  const fullBody = item.description || "";
+  const bodyText =
+    fullBody.length > summary.length ? fullBody.slice(0, 20000) : undefined;
   const leadership = isLeadershipAnnouncement(title + " " + summary);
 
   const hash = hashFields(
@@ -109,6 +115,7 @@ export async function upsertServiceNewsSignal(
       service: service.service,
       title,
       summary,
+      bodyText,
       url: item.link,
       author: item.author,
       isLeadershipAnnouncement: leadership,
@@ -132,6 +139,12 @@ export async function upsertServiceNewsSignal(
   const existing = snap.val() as Signal;
   if (existing.source?.hash === hash) {
     await db.ref(`${path}/source/refreshedAt`).set(Date.now());
+    // P13.271 — opportunistic bodyText backfill on same-hash refresh.
+    // See defenseScoop mapper for rationale.
+    const existingAttrs = (existing.attrs as Record<string, unknown>) || {};
+    if (!existingAttrs.bodyText && bodyText) {
+      await db.ref(`${path}/attrs/bodyText`).set(bodyText);
+    }
     return { signalId: id, action: "unchanged", leadership, bodyOrgsResolved };
   }
   await db.ref(path).set(stripUndefinedDeep(signal));

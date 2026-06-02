@@ -50,6 +50,15 @@ export async function upsertDsPublicationSignal(
   const occurredAt = item.pubDateMs || Date.now();
   const title = (item.title || "Untitled").slice(0, 500);
   const summary = (item.description || "").slice(0, 1000);
+  // P13.271 — persist a wider window (20KB) of the raw body so the
+  // monthly relatedIds backfill can re-match against deep contractor
+  // mentions. P13.269 widened the SYNC haystack to full body but stored
+  // only the 1000-char summary; legacy signals therefore couldn't
+  // re-resolve. bodyText is undefined when the upstream feed only
+  // carries a short description (Atom summary, etc.) — no wasted bytes.
+  const fullBody = item.description || "";
+  const bodyText =
+    fullBody.length > summary.length ? fullBody.slice(0, 20000) : undefined;
   const author = item.author || undefined;
   const categories = item.categories || [];
 
@@ -124,6 +133,7 @@ export async function upsertDsPublicationSignal(
       publicationCategory: publication.category,
       title,
       summary,
+      bodyText,
       author,
       categories,
       topicTags: publication.topicTags,
@@ -154,6 +164,15 @@ export async function upsertDsPublicationSignal(
   const existing = snap.val() as Signal;
   if (existing.source?.hash === hash) {
     await db.ref(`${path}/source/refreshedAt`).set(Date.now());
+    // P13.271 — opportunistic bodyText backfill: pre-P13.271 signals
+    // were created with only attrs.summary (1000-char truncated). On
+    // a same-hash refresh, populate attrs.bodyText if missing so the
+    // monthly backfill can match against the full body. One-time cost
+    // per legacy signal; quick no-op once written.
+    const existingAttrs = (existing.attrs as Record<string, unknown>) || {};
+    if (!existingAttrs.bodyText && bodyText) {
+      await db.ref(`${path}/attrs/bodyText`).set(bodyText);
+    }
     return {
       signalId: id,
       action: "unchanged",

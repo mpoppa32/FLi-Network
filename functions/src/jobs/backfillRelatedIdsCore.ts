@@ -66,8 +66,15 @@ export async function backfillRelatedIdsForWorkspace(
 
     const attrs = (sig.attrs ?? {}) as Record<string, unknown>;
     const title = String(attrs.title || "");
+    // P13.271 — prefer the wider attrs.bodyText (~20KB raw body persisted
+    // by the mappers post-P13.271). Falls back to summary on legacy
+    // signals or feeds where description is shorter than the summary
+    // truncation (Atom summary-only). Catches contractor names deep in
+    // the article that the 1000-char summary missed.
+    const bodyText = String(attrs.bodyText || "");
     const summary = String(attrs.summary || "");
-    const haystack = (title + " " + summary).toLowerCase();
+    const body = bodyText.length > summary.length ? bodyText : summary;
+    const haystack = (title + " " + body).toLowerCase();
     if (!haystack.trim()) continue;
 
     const rids: string[] = [];
