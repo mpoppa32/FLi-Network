@@ -3,9 +3,10 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { createLogger } from "../framework/logger";
 import { syncWorkspace } from "../sources/congressGov";
+import { CONGRESSGOV_API_KEY } from "../jobs/congressGovDaily";
 
 export const triggerCongressGovSync = onCall(
-  { region: "us-central1", memory: "1GiB", timeoutSeconds: 540 },
+  { region: "us-central1", memory: "1GiB", timeoutSeconds: 540, secrets: [CONGRESSGOV_API_KEY] },
   async (request) => {
     const log = createLogger({ source: "http_triggerCongressGovSync" });
     if (!request.auth) throw new HttpsError("unauthenticated", "Authentication required.");

@@ -1,6 +1,6 @@
 // Congress.gov source — Hearing → Signal mapper (V1)
 
-import { db, wsPath } from "../../framework/rtdb";
+import { db, wsPath, stripUndefinedDeep } from "../../framework/rtdb";
 import { externalProvenance } from "../../framework/provenance";
 import { hashFields } from "../../framework/hashing";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
@@ -127,7 +127,7 @@ export async function upsertSignal(
   const path = wsPath(workspaceId, "signals", signal.id);
   const snap = await db.ref(path).once("value");
   if (!snap.exists()) {
-    await db.ref(path).set(signal);
+    await db.ref(path).set(stripUndefinedDeep(signal));
     return { action: "created", signalId: signal.id };
   }
   const existing = snap.val() as Signal;
@@ -135,7 +135,7 @@ export async function upsertSignal(
     await db.ref(`${path}/source/refreshedAt`).set(Date.now());
     return { action: "unchanged", signalId: signal.id };
   }
-  await db.ref(path).set(signal);
+  await db.ref(path).set(stripUndefinedDeep(signal));
   return { action: "updated", signalId: signal.id };
 }
 
