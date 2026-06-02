@@ -171,4 +171,9 @@ export { triggerBriefDigestTest } from "./http/triggerBriefDigestTest";
 // sig_tt_/sig_sn_/sig_ds_ records. Hash-stable signals predating the
 // P13.266-269 wiring ships need this to pick up the new resolution
 // path without re-fetching RSS. Match-to-existing-only (autoCreate:false).
+//
+// onCall callable for operator UI use; onSchedule monthly wrapper for
+// cloud-scheduler-run-now and standing cron — both call the shared core
+// in jobs/backfillRelatedIdsCore.ts.
 export { triggerRelatedIdsBackfill } from "./http/triggerRelatedIdsBackfill";
+export { relatedIdsBackfillMonthly } from "./jobs/relatedIdsBackfillMonthly";

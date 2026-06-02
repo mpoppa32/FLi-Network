@@ -18,13 +18,14 @@
 //
 // Idempotency: signals that already carry relatedIds are skipped. Re-runs
 // only touch signals where relatedIds is missing or empty.
+//
+// P13.270 — operator-callable wrapper around backfillRelatedIdsForWorkspace.
+// A sibling onSchedule (relatedIdsBackfillMonthly) lets Cloud Scheduler
+// fire the same logic without an end-user Firebase Auth token.
 
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { createLogger } from "../framework/logger";
-import { db, wsPath } from "../framework/rtdb";
-import { resolveRecipientOrg } from "../sources/usaSpending/orgResolver";
-import { DEFAULT_DS_CONTRACTOR_PATTERNS } from "../sources/defenseScoop/config";
-import type { Signal } from "../framework/types/signals";
+import { backfillRelatedIdsForWorkspace } from "../jobs/backfillRelatedIdsCore";
 
 export const triggerRelatedIdsBackfill = onCall(
   {
@@ -41,104 +42,17 @@ export const triggerRelatedIdsBackfill = onCall(
     if (!workspaceId) {
       throw new HttpsError("invalid-argument", "workspaceId is required.");
     }
-    const maxRelated = Math.max(
-      1,
-      Math.min(20, Number(request.data?.maxRelated ?? 6))
-    );
-
-    log.info("related_ids_backfill_started", {
+    const maxRelated = Number(request.data?.maxRelated ?? 6);
+    log.info("related_ids_backfill_request", {
       workspaceId,
       userId: request.auth.uid,
-      patternCount: DEFAULT_DS_CONTRACTOR_PATTERNS.length,
       maxRelated,
     });
-
-    const sigsSnap = await db.ref(wsPath(workspaceId, "signals")).once("value");
-    const sigs = (sigsSnap.val() as Record<string, Signal> | null) ?? {};
-
-    let scanned = 0;
-    let alreadyHasRelated = 0;
-    let patched = 0;
-    let resolveErrors = 0;
-    const matchedByPattern: Record<string, number> = {};
-    const patchedBySource: Record<string, number> = {};
-    const updates: Record<string, unknown> = {};
-
-    for (const [id, sig] of Object.entries(sigs)) {
-      if (!sig) continue;
-      // Scope: RSS-source signals only. samGov / usaspending / sec_edgar /
-      // gao_protest etc. have their own subject/related shape and are
-      // not affected by the body-text contractor resolution path.
-      if (
-        !id.startsWith("sig_tt_") &&
-        !id.startsWith("sig_sn_") &&
-        !id.startsWith("sig_ds_")
-      ) {
-        continue;
-      }
-      scanned++;
-      if (sig.relatedIds && sig.relatedIds.length > 0) {
-        alreadyHasRelated++;
-        continue;
-      }
-
-      const attrs = (sig.attrs ?? {}) as Record<string, unknown>;
-      const title = String(attrs.title || "");
-      const summary = String(attrs.summary || "");
-      const haystack = (title + " " + summary).toLowerCase();
-      if (!haystack.trim()) continue;
-
-      const rids: string[] = [];
-      const seen = new Set<string>();
-      for (const pattern of DEFAULT_DS_CONTRACTOR_PATTERNS) {
-        if (rids.length >= maxRelated) break;
-        if (!pattern || haystack.indexOf(pattern.toLowerCase()) < 0) continue;
-        try {
-          const r = await resolveRecipientOrg(workspaceId, pattern, null, {
-            autoCreate: false,
-            emitFuzzyCandidates: false,
-          });
-          if (r.orgId && !seen.has(r.orgId)) {
-            seen.add(r.orgId);
-            rids.push(r.orgId);
-            matchedByPattern[pattern] = (matchedByPattern[pattern] || 0) + 1;
-          }
-        } catch {
-          // Pattern doesn't resolve to an existing Org (autoCreate:false
-          // throws). Backfill is match-only — skip silently.
-          resolveErrors++;
-        }
-      }
-
-      if (rids.length > 0) {
-        updates[
-          `${wsPath(workspaceId, "signals", id)}/relatedIds`
-        ] = rids;
-        patched++;
-        const prefix = id.split("_").slice(0, 2).join("_");
-        patchedBySource[prefix] = (patchedBySource[prefix] || 0) + 1;
-      }
-    }
-
-    if (Object.keys(updates).length > 0) {
-      await db.ref().update(updates);
-    }
-
-    log.info("related_ids_backfill_completed", {
+    const result = await backfillRelatedIdsForWorkspace(
       workspaceId,
-      scanned,
-      alreadyHasRelated,
-      patched,
-      resolveErrors,
-    });
-
-    return {
-      ok: true,
-      scanned,
-      alreadyHasRelated,
-      patched,
-      patchedBySource,
-      matchedByPattern,
-    };
+      { maxRelated },
+      log
+    );
+    return { ok: true, ...result };
   }
 );
