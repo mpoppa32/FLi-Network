@@ -42,6 +42,7 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
   senate_lda: { capacity: 3, refillPerSecond: 0.5 }, // polite weekly REST (lda.senate.gov)
   advisory_boards: { capacity: 1, refillPerSecond: 0.5 }, // polite weekly HTML+PDF walk (DSB/DBB/DIB)
   industry_assoc: { capacity: 1, refillPerSecond: 0.5 }, // polite quarterly HTML scrape (NDIA/AFA/AUSA rosters)
+  uas_patterns: { capacity: 1, refillPerSecond: 0.2 }, // polite daily single-page scrape (5s between fetches; robots.txt Crawl-delay:1 — we exceed politeness)
 };
 
 interface BucketState {

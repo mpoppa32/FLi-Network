@@ -31,7 +31,9 @@ export type SourceSystem =
   | "defense_scoop" // Phase 8.6.15 — Defense BD news aggregator
   | "dod_oig" // Phase 8.6.16 — DoD Office of Inspector General audit/eval/investigation reports
   | "darpa_news" // Phase 8.6.17 — DARPA news + program announcements (R&D pipeline leading-edge)
-  | "nasa_oig"; // Phase 8.6.18 — NASA Office of Inspector General (defense-adjacent contractor exposure)
+  | "nasa_oig" // Phase 8.6.18 — NASA Office of Inspector General (defense-adjacent contractor exposure)
+  | "uas_patterns"; // P13.273 / O-7 — uas-patterns.com DDG Tracker (drone-specific Cat 13)
+
 
 export interface SourceProvenance {
   system: SourceSystem;

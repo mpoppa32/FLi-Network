@@ -47,7 +47,10 @@ export type SignalType =
   | "public_speaking"
   | "investor_communication"
   | "funding_event"
-  | "advisory_body_report";
+  | "advisory_body_report"
+  // P13.273 / O-7 — uas-patterns DDG Tracker
+  | "ddg_status_change"
+  | "ddg_prediction";
 
 export interface Signal {
   id: string;

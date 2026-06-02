@@ -189,3 +189,13 @@ export { backfillOrgMerge } from "./http/triggerOrgMergeBackfill";
 // cleanup sessions (the onCall above can't be invoked from a CLI token).
 // Same shared core in jobs/backfillOrgMergeCore.ts.
 export { orgMergeBackfillYearly } from "./jobs/orgMergeBackfillOnce";
+
+// uas-patterns DDG Tracker (P13.273 / O-7) — daily HTML scrape of the
+// Defense Drone Gauntlet leaderboard + analyst predictions. Closes
+// Category 13 (drone-specific / Atlas-target-market) coverage gap.
+// Emits ddg_status_change Signals per tracked vendor and ddg_prediction
+// Signals per analyst forecast. Subject-resolves only to existing Org
+// nodes (no autoCreate); INFERRED confidence 0.75 per third-party
+// curation policy.
+export { triggerUasPatternsSync } from "./http/triggerUasPatternsSync";
+export { uasPatternsDaily } from "./jobs/uasPatternsDaily";
