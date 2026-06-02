@@ -9,7 +9,8 @@
 import { Logger } from "../framework/logger";
 import { db, wsPath } from "../framework/rtdb";
 import { resolveRecipientOrg } from "../sources/usaSpending/orgResolver";
-import { DEFAULT_DS_CONTRACTOR_PATTERNS } from "../sources/defenseScoop/config";
+import { DEFAULT_DS_CONTRACTOR_PATTERNS, DEFAULT_DS_PROGRAM_PATTERNS } from "../sources/defenseScoop/config";
+import { loadWorkspacePatterns } from "../framework/loadWorkspacePatterns";
 import type { Signal } from "../framework/types/signals";
 
 export interface BackfillRelatedIdsResult {
@@ -32,9 +33,24 @@ export async function backfillRelatedIdsForWorkspace(
   log?: Logger
 ): Promise<BackfillRelatedIdsResult> {
   const maxRelated = Math.max(1, Math.min(20, opts.maxRelated ?? 6));
+
+  // P13.283 — merge workspace-scoped operator-seeded patterns at
+  // /workspaces/{ws}/patterns/contractors with the hardcoded defaults
+  // BEFORE walking signals. Pre-P13.283 the backfill ran against the
+  // 35-entry default list only; Atlas at write-time carried 118
+  // additional operator-curated entries at /patterns/contractors that
+  // the backfill was ignoring, so the empirical result was 204 scanned
+  // / 0 patched on every monthly run. Merging closes that gap.
+  const wsPatterns = await loadWorkspacePatterns(
+    workspaceId,
+    { contractors: DEFAULT_DS_CONTRACTOR_PATTERNS, programs: DEFAULT_DS_PROGRAM_PATTERNS },
+    log
+  );
+
   log?.info("related_ids_backfill_started", {
     workspaceId,
-    patternCount: DEFAULT_DS_CONTRACTOR_PATTERNS.length,
+    patternCount: wsPatterns.contractors.length,
+    patternsMeta: wsPatterns.meta,
     maxRelated,
   });
 
@@ -79,7 +95,7 @@ export async function backfillRelatedIdsForWorkspace(
 
     const rids: string[] = [];
     const seen = new Set<string>();
-    for (const pattern of DEFAULT_DS_CONTRACTOR_PATTERNS) {
+    for (const pattern of wsPatterns.contractors) {
       if (rids.length >= maxRelated) break;
       if (!pattern || haystack.indexOf(pattern.toLowerCase()) < 0) continue;
       try {

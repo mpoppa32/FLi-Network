@@ -18,6 +18,7 @@ import {
   readSourceHealth,
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
+import { loadWorkspacePatterns } from "../../framework/loadWorkspacePatterns";
 import {
   loadConfig,
   validateConfig,
@@ -105,9 +106,21 @@ export async function syncWorkspace(
     result.itemsConsidered = feed.length;
     result.itemsMatched = relevant.length;
 
+    // P13.283 — merge workspace-scoped operator-seeded patterns at
+    // /workspaces/{ws}/patterns/{contractors,programs} with config
+    // defaults so /patterns/contractors (operator-seeded, 100+ entries
+    // on Atlas) flows to darpa_news body-text resolution.
+    const baseContractors = effectiveContractorPatterns(config);
+    const basePrograms = effectiveProgramPatterns(config);
+    const wsPatterns = await loadWorkspacePatterns(
+      workspaceId,
+      { contractors: baseContractors, programs: basePrograms },
+      log
+    );
+    log?.info("darpa_news_patterns_loaded", { workspaceId, meta: wsPatterns.meta });
     const patterns = {
-      contractors: effectiveContractorPatterns(config),
-      programs: effectiveProgramPatterns(config),
+      contractors: wsPatterns.contractors,
+      programs: wsPatterns.programs,
       maxRelatedPerSignal: config.maxRelatedPerSignal,
       resolveBodyOrgs: config.resolveBodyOrgs,
     };

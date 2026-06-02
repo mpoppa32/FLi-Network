@@ -10,7 +10,8 @@ import {
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
 import { loadConfig, validateConfig, type ServiceNewsConfig } from "./config";
-import { DEFAULT_DS_CONTRACTOR_PATTERNS } from "../defenseScoop/config";
+import { DEFAULT_DS_CONTRACTOR_PATTERNS, DEFAULT_DS_PROGRAM_PATTERNS } from "../defenseScoop/config";
+import { loadWorkspacePatterns } from "../../framework/loadWorkspacePatterns";
 import { fetchServiceFeed } from "./client";
 import { upsertServiceNewsSignal, matchesKeywords } from "./mapper";
 import { SERVICE_NEWS_REGISTRY, isLeadershipAnnouncement } from "./registry";
@@ -90,8 +91,22 @@ export async function syncWorkspace(
     // defenseScoop + thinkTanks. Unlocks brief customer/adversary
     // categorization AND brief v1.13 leadership-flux bumps (which key
     // off service_news signals' touched-Org indexing).
+    //
+    // P13.283 — merge the workspace-scoped operator-seeded patterns at
+    // /workspaces/{ws}/patterns/contractors with the hardcoded defaults.
+    // Pre-P13.283 service_news ran defaults-only (35 entries) and
+    // emitted 0 of 62 signals with resolved relatedIds on Atlas; the
+    // operator-curated 100+ vendor list at /patterns/contractors was
+    // sitting unused. See framework/loadWorkspacePatterns.ts for the
+    // dedupe + ordering discipline.
+    const wsPatterns = await loadWorkspacePatterns(
+      workspaceId,
+      { contractors: DEFAULT_DS_CONTRACTOR_PATTERNS, programs: DEFAULT_DS_PROGRAM_PATTERNS },
+      log
+    );
+    log?.info("service_news_patterns_loaded", { workspaceId, meta: wsPatterns.meta });
     const patterns = {
-      defenseContractors: DEFAULT_DS_CONTRACTOR_PATTERNS,
+      defenseContractors: wsPatterns.contractors,
       maxRelatedPerSignal: 6,
     };
 

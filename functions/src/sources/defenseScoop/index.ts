@@ -26,6 +26,7 @@ import {
 } from "./registry";
 import { fetchDsFeed, type DsRssItem } from "./client";
 import { upsertDsPublicationSignal, matchesKeywords } from "./mapper";
+import { loadWorkspacePatterns } from "../../framework/loadWorkspacePatterns";
 
 export const SOURCE_NAME = "defense_scoop";
 export const SOURCE_VERSION = "1.0.0";
@@ -111,16 +112,33 @@ export async function syncWorkspace(
     const cutoff = Date.now() - config.lookbackDays * 24 * 60 * 60 * 1000;
     const maxItems = Math.max(1, config.maxItemsPerPublication ?? 80);
 
+    // P13.283 — merge workspace-scoped operator-seeded patterns at
+    // /workspaces/{ws}/patterns/{contractors,programs} with the
+    // hardcoded defaults (or config overrides). Atlas at write-time
+    // carried 110+ operator-curated vendor names in workspace patterns
+    // that the pre-P13.283 mapper-time pattern list was ignoring; the
+    // empirical effect was 11 of 53 defense_scoop signals carrying
+    // relatedIds. Merging closes that gap so the Brief's customer +
+    // adversary rollups populate from the lake. See
+    // framework/loadWorkspacePatterns.ts for dedupe discipline.
+    const baseContractors =
+      config.defenseContractorPatterns &&
+      config.defenseContractorPatterns.length > 0
+        ? config.defenseContractorPatterns
+        : DEFAULT_DS_CONTRACTOR_PATTERNS;
+    const basePrograms =
+      config.programPatterns && config.programPatterns.length > 0
+        ? config.programPatterns
+        : DEFAULT_DS_PROGRAM_PATTERNS;
+    const wsPatterns = await loadWorkspacePatterns(
+      workspaceId,
+      { contractors: baseContractors, programs: basePrograms },
+      log
+    );
+    log?.info("defense_scoop_patterns_loaded", { workspaceId, meta: wsPatterns.meta });
     const patterns = {
-      defenseContractors:
-        config.defenseContractorPatterns &&
-        config.defenseContractorPatterns.length > 0
-          ? config.defenseContractorPatterns
-          : DEFAULT_DS_CONTRACTOR_PATTERNS,
-      programs:
-        config.programPatterns && config.programPatterns.length > 0
-          ? config.programPatterns
-          : DEFAULT_DS_PROGRAM_PATTERNS,
+      defenseContractors: wsPatterns.contractors,
+      programs: wsPatterns.programs,
       maxRelatedPerSignal: config.maxRelatedPerSignal ?? 6,
     };
 

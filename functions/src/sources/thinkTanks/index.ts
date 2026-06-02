@@ -12,7 +12,8 @@ import {
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
 import { loadConfig, validateConfig, type ThinkTankConfig } from "./config";
-import { DEFAULT_DS_CONTRACTOR_PATTERNS } from "../defenseScoop/config";
+import { DEFAULT_DS_CONTRACTOR_PATTERNS, DEFAULT_DS_PROGRAM_PATTERNS } from "../defenseScoop/config";
+import { loadWorkspacePatterns } from "../../framework/loadWorkspacePatterns";
 import { fetchTankFeed } from "./client";
 import { upsertPublicationSignal, matchesKeywords } from "./mapper";
 import { THINK_TANK_REGISTRY, findTankByKey } from "./registry";
@@ -94,8 +95,20 @@ export async function syncWorkspace(
     // defenseScoop. Includes Atlas's drone-prime customers (Anduril /
     // Shield AI / Saildrone / Skydio / Epirus) so think-tank analysis
     // pieces mentioning them get categorized as customer in the Brief.
+    //
+    // P13.283 — merge workspace-scoped operator-seeded patterns. See
+    // framework/loadWorkspacePatterns.ts. Atlas at write-time carries
+    // 100+ vendor names at /patterns/contractors; merging them in
+    // lifts think_tank's resolution coverage from ~5/89 to multiples
+    // higher and populates the Brief's customer/adversary rollups.
+    const wsPatterns = await loadWorkspacePatterns(
+      workspaceId,
+      { contractors: DEFAULT_DS_CONTRACTOR_PATTERNS, programs: DEFAULT_DS_PROGRAM_PATTERNS },
+      log
+    );
+    log?.info("think_tank_patterns_loaded", { workspaceId, meta: wsPatterns.meta });
     const patterns = {
-      defenseContractors: DEFAULT_DS_CONTRACTOR_PATTERNS,
+      defenseContractors: wsPatterns.contractors,
       maxRelatedPerSignal: 6,
     };
 
