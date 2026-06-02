@@ -8904,7 +8904,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.274</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.276</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -51952,6 +51952,8 @@ window._renderEntityTouches = function(node, t, nodes) {
       if (sig.type === 'committee_meeting') return window._committeeMeetingTouchRow(sig, attrs);
       if (sig.type === 'ddg_status_change') return window._ddgStatusChangeTouchRow(sig, attrs);
       if (sig.type === 'ddg_prediction') return window._ddgPredictionTouchRow(sig, attrs);
+      if (sig.type === 'supply_chain_status') return window._supplyChainStatusTouchRow(sig, attrs);
+      if (sig.type === 'supply_chain_scenario') return window._supplyChainScenarioTouchRow(sig, attrs);
       var title = attrs.title || attrs.summary || sig.type.replace(/_/g,' ');
       return {
         title: (title || '').toString().slice(0,120),
@@ -53106,6 +53108,105 @@ window._ddgPredictionTouchRow = function(sig, attrs) {
   var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + chipBg + ';color:' + chipFg + ';border:1px solid ' + chipFg + '40">' + chipLabel + '</span>';
 
   var clickUrl = (attrs.sourceUrl || (sig.source && sig.source.url) || 'https://uas-patterns.com/ddg/').toString();
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// uas-patterns PIE v1.0: touch-row renderer for supply_chain_status
+// Signals. Per-manufacturer audit status from the curator's supply-chain
+// intelligence engine. Title is vendor name + country. Subtitle composes
+// status label + funding tier + first two programs + last_audited date.
+// Right chip is the signalDirection (positive green, neutral blue,
+// negative amber/red) — the curator's single-glance read on whether
+// this vendor's trajectory is improving or deteriorating.
+window._supplyChainStatusTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var name = (attrs.manufacturerName || 'Manufacturer').toString();
+  var country = (attrs.country || '').toString();
+  var statusLabel = (attrs.statusLabel || attrs.status || '').toString();
+  var funding = (attrs.funding || '').toString();
+  var programs = Array.isArray(attrs.programs) ? attrs.programs : [];
+  var lastAudited = (attrs.lastAudited || '').toString();
+  var signalDirection = (attrs.signalDirection || 'neutral').toString().toLowerCase();
+  var ndaaStatus = (attrs.ndaaStatus || '').toString();
+
+  var titleHtml = esc(name) + (country ? '<span style="color:var(--t3);font-weight:400"> · ' + esc(country) + '</span>' : '');
+
+  var subParts = [];
+  if (statusLabel) subParts.push(esc(statusLabel.slice(0, 60)));
+  if (funding && funding !== 'Unknown') subParts.push(esc(funding));
+  if (programs.length > 0) {
+    var p = programs.slice(0, 2).map(esc).join(', ');
+    if (programs.length > 2) p += ', +' + (programs.length - 2);
+    subParts.push(p);
+  }
+  if (ndaaStatus) subParts.push('NDAA: ' + esc(ndaaStatus));
+  if (lastAudited) subParts.push('audited ' + esc(lastAudited));
+  var subtitleHtml = subParts.join(' · ');
+
+  var chipFg, chipBg, chipLabel;
+  if (signalDirection === 'positive') {
+    chipFg = '#3a8a5c'; chipBg = 'rgba(58,138,92,.10)'; chipLabel = '↑ POSITIVE';
+  } else if (signalDirection === 'negative') {
+    chipFg = '#b34040'; chipBg = 'rgba(179,64,64,.12)'; chipLabel = '↓ NEGATIVE';
+  } else {
+    chipFg = '#5fb3b8'; chipBg = 'rgba(95,179,184,.10)'; chipLabel = '◇ NEUTRAL';
+  }
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + chipBg + ';color:' + chipFg + ';border:1px solid ' + chipFg + '40">' + chipLabel + '</span>';
+
+  var clickUrl = (attrs.sourceUrl || (sig.source && sig.source.url) || 'https://uas-patterns.com/patterns/').toString();
+  return {
+    titleHtml: titleHtml,
+    subtitleHtml: subtitleHtml,
+    rightHtml: rightHtml,
+    onclick: clickUrl ? "window.open('" + clickUrl + "','_blank')" : ''
+  };
+};
+
+// uas-patterns PIE v1.0: touch-row renderer for supply_chain_scenario
+// Signals. Forward-looking supply-chain risk forecasts from the curator.
+// Title is the scenario name (with the curator's emoji prefix intact).
+// Subtitle composes first sentence of description + recovery line +
+// affected-platform count. Right chip is the probability% color-keyed
+// by likelihood tier (>=60% red, 30-60% amber, <30% blue).
+window._supplyChainScenarioTouchRow = function(sig, attrs) {
+  attrs = attrs || {};
+  var esc = function(s){ return (s||'').toString().replace(/</g,'&lt;'); };
+
+  var titleText = (attrs.title || 'Supply-chain scenario').toString();
+  var titleHtml = esc(titleText.slice(0, 200));
+
+  var description = (attrs.description || '').toString();
+  var recovery = (attrs.recovery || '').toString();
+  var disrupted = Array.isArray(attrs.disrupted) ? attrs.disrupted : [];
+  var probability = Number(attrs.probability) || 0;
+
+  var subParts = [];
+  if (description) {
+    var firstSentence = description.split('. ')[0];
+    if (firstSentence.length > 140) firstSentence = firstSentence.slice(0, 140) + '...';
+    subParts.push(esc(firstSentence));
+  }
+  if (disrupted.length > 0) {
+    subParts.push(disrupted.length + ' platform' + (disrupted.length === 1 ? '' : 's') + ' affected');
+  }
+  if (recovery) subParts.push('recovery: ' + esc(recovery.slice(0, 60)));
+  var subtitleHtml = subParts.join(' · ');
+
+  var chipFg, chipBg;
+  if (probability >= 60) { chipFg = '#b34040'; chipBg = 'rgba(179,64,64,.12)'; }
+  else if (probability >= 30) { chipFg = '#d4823a'; chipBg = 'rgba(212,130,58,.12)'; }
+  else { chipFg = '#5fb3b8'; chipBg = 'rgba(95,179,184,.10)'; }
+  var chipLabel = probability ? probability + '% RISK' : 'SCENARIO';
+  var rightHtml = '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:12px;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;padding:2px 7px;border-radius:2px;background:' + chipBg + ';color:' + chipFg + ';border:1px solid ' + chipFg + '40">' + chipLabel + '</span>';
+
+  var clickUrl = (attrs.sourceUrl || (sig.source && sig.source.url) || 'https://uas-patterns.com/patterns/').toString();
   return {
     titleHtml: titleHtml,
     subtitleHtml: subtitleHtml,
@@ -54392,7 +54493,9 @@ window._SOURCE_HEALTH_META = [
   { key: 'dod_oig',          label: 'DoD OIG Reports',                        cadenceMin: 1440,  accent: '#8a5a3a' },
   { key: 'darpa_news',       label: 'DARPA News',                             cadenceMin: 1440,  accent: '#5b8a98' },
   { key: 'nasa_oig',         label: 'NASA OIG Reports',                       cadenceMin: 1440,  accent: '#6e7ea8' },
-  { key: 'uas_patterns',     label: 'DDG Tracker (uas-patterns.com)',         cadenceMin: 1440,  accent: '#c5704a' }
+  { key: 'uas_patterns',     label: 'DDG Tracker (uas-patterns.com)',         cadenceMin: 1440,  accent: '#c5704a' },
+  // P13.276 — uas-patterns PIE supply-chain intelligence (sibling to DDG).
+  { key: 'uas_patterns_pie', label: 'PIE Supply Chain (uas-patterns.com)',    cadenceMin: 1440,  accent: '#8a4a3a' }
 ];
 
 window._sourceHealthClassify = function(state, cadenceMin) {
@@ -69552,6 +69655,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.274"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.276"></script>
 </body>
 </html>
