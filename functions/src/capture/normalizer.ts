@@ -51,7 +51,12 @@ export interface PendingCaptureEntry {
   // "matched via sender domain"). direction is the inbound/outbound flag
   // the nudge engine uses to detect "you haven't replied" state.
   // Thread headers enable reply-chain grouping in Phase 1B.
-  matchSource?: "sender-email" | "attendee-email" | "sender-domain" | null;
+  matchSource?:
+    | "sender-email"
+    | "attendee-email"
+    | "sender-domain"
+    | "attendee-domain"
+    | null;
   direction?: "inbound" | "outbound" | "unknown";
   threadId?: string | null;
   messageId?: string | null;

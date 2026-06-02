@@ -36,6 +36,7 @@ interface BackfillResponse {
     "sender-email": number;
     "attendee-email": number;
     "sender-domain": number;
+    "attendee-domain": number;
   };
   byDirection: {
     inbound: number;
@@ -92,7 +93,7 @@ export const backfillCaptureMatches = onCall(
     const response: BackfillResponse = {
       processed: 0,
       matched: 0,
-      bySource: { "sender-email": 0, "attendee-email": 0, "sender-domain": 0 },
+      bySource: { "sender-email": 0, "attendee-email": 0, "sender-domain": 0, "attendee-domain": 0 },
       byDirection: { inbound: 0, outbound: 0, unknown: 0 },
     };
 

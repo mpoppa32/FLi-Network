@@ -149,6 +149,10 @@ export { captureHourly } from "./jobs/captureHourly";
 // P13.137 — one-shot backfill so existing pendingCapture entries get the
 // matcher applied without waiting for them to age out and re-capture.
 export { backfillCaptureMatches } from "./http/backfillCaptureMatches";
+// P13.278 — onSchedule wrapper so cloud-scheduler-run-now can fire the
+// matcher backfill headlessly. Yearly cron; primary purpose is the
+// run-now path during matcher-tuning sessions.
+export { captureMatchBackfillYearly } from "./jobs/captureMatchBackfillOnce";
 
 // P13.154 — scoped invite read (replaces client-side full-tree /invites
 // read that required .read: "auth != null" on the entire invites tree).
