@@ -177,3 +177,15 @@ export { triggerBriefDigestTest } from "./http/triggerBriefDigestTest";
 // in jobs/backfillRelatedIdsCore.ts.
 export { triggerRelatedIdsBackfill } from "./http/triggerRelatedIdsBackfill";
 export { relatedIdsBackfillMonthly } from "./jobs/relatedIdsBackfillMonthly";
+
+// 2026-06-02 — one-shot operator-callable backfill that merges duplicate
+// org/person nodes accumulated by the pre-v1.3 orgResolver / pre-v1.2
+// personResolver race. Workspace 1777435779676 had 17 clusters at deploy
+// time (4× "Senate Armed Services" etc). The in-flight dedupe fix in
+// orgResolver/personResolver prevents future dups; this callable cleans
+// up the existing ones. Idempotent; safe to re-run.
+export { backfillOrgMerge } from "./http/triggerOrgMergeBackfill";
+// onSchedule yearly wrapper — exists for cloud-scheduler-run-now during
+// cleanup sessions (the onCall above can't be invoked from a CLI token).
+// Same shared core in jobs/backfillOrgMergeCore.ts.
+export { orgMergeBackfillYearly } from "./jobs/orgMergeBackfillOnce";

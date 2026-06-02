@@ -125,6 +125,17 @@ interface PersonCache {
 let _cache: { workspaceId: string; cache: PersonCache; loadedAt: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+// v1.2 (2026-06-02) — per-process in-flight dedupe for cache load + create.
+// Mirrors the orgResolver v1.3 fix. The race shape is identical: between
+// cache.byName.has(norm) and the cache.byName.set after db.set, an `await`
+// boundary lets two concurrent callers each mint a new personId for the
+// same normalized name. Workspace 1777435779676 produced "Bruce Hoffman",
+// "Jamil Jaffer", and 6 honorific pairs (The Honorable X / General X)
+// because the honorific normalizer collapsed both forms to the same key
+// but the create race produced separate person nodes.
+const _inFlightCacheLoad = new Map<string, Promise<PersonCache>>();
+const _inFlightByName = new Map<string, Promise<{ personId: string; created: boolean; matchedVia: "canonical" | "alternate" | "none"; fuzzyCandidatesEmitted?: number }>>();
+
 /** v1.1: Jaro-Winkler similarity threshold for surfacing a merge
  *  candidate to the operator. Exact matches collapse via byName before
  *  reaching this code. Tuned conservatively — at 0.92 the typical false
@@ -142,23 +153,33 @@ async function loadPersonCache(workspaceId: string): Promise<PersonCache> {
   if (_cache && _cache.workspaceId === workspaceId && now - _cache.loadedAt < CACHE_TTL_MS) {
     return _cache.cache;
   }
-  const snap = await db.ref(wsPath(workspaceId, "nodes")).once("value");
-  const nodes = (snap.val() as Record<string, Person> | null) ?? {};
-  const cache: PersonCache = { byName: new Map(), displayNameById: new Map() };
-  for (const [id, node] of Object.entries(nodes)) {
-    if (!node || node.type !== "person" || !node.name) continue;
-    const norm = normalizePersonName(node.name);
-    if (norm) cache.byName.set(norm, id);
-    if (!cache.displayNameById.has(id)) cache.displayNameById.set(id, node.name);
-    if (node.alternateNames) {
-      for (const alt of node.alternateNames) {
-        const altNorm = normalizePersonName(alt);
-        if (altNorm) cache.byName.set(altNorm, id);
+  const inflight = _inFlightCacheLoad.get(workspaceId);
+  if (inflight) return inflight;
+  const work = (async (): Promise<PersonCache> => {
+    const snap = await db.ref(wsPath(workspaceId, "nodes")).once("value");
+    const nodes = (snap.val() as Record<string, Person> | null) ?? {};
+    const cache: PersonCache = { byName: new Map(), displayNameById: new Map() };
+    for (const [id, node] of Object.entries(nodes)) {
+      if (!node || node.type !== "person" || !node.name) continue;
+      const norm = normalizePersonName(node.name);
+      if (norm) cache.byName.set(norm, id);
+      if (!cache.displayNameById.has(id)) cache.displayNameById.set(id, node.name);
+      if (node.alternateNames) {
+        for (const alt of node.alternateNames) {
+          const altNorm = normalizePersonName(alt);
+          if (altNorm) cache.byName.set(altNorm, id);
+        }
       }
     }
+    _cache = { workspaceId, cache, loadedAt: Date.now() };
+    return cache;
+  })();
+  _inFlightCacheLoad.set(workspaceId, work);
+  try {
+    return await work;
+  } finally {
+    _inFlightCacheLoad.delete(workspaceId);
   }
-  _cache = { workspaceId, cache, loadedAt: now };
-  return cache;
 }
 
 // ─── v1.1: Jaro-Winkler fuzzy similarity ────────────────────────────────
@@ -322,65 +343,97 @@ export async function resolvePersonByName(
     }
   }
 
+  // v1.2 — in-flight dedupe. Skip the key when norm is empty (resolver
+  // would still fall through to creating a Person with no normalized key,
+  // which is rare but valid; we just don't bother deduping that case).
+  // When a preferredId is supplied (deterministic source-stable id), the
+  // create itself is idempotent, so skip in-flight registration too.
+  const nameKey = norm && !options.preferredId ? `${workspaceId}::name::${norm}` : null;
+  if (nameKey) {
+    const existing = _inFlightByName.get(nameKey);
+    if (existing) return existing;
+  }
+
   if (options.autoCreate === false) {
     throw new Error(`No matching Person for "${fullName}"`);
   }
 
-  // Auto-create
-  const personId =
-    options.preferredId ||
-    "pers_" + (typeof crypto !== "undefined" && crypto.randomUUID
-      ? crypto.randomUUID().slice(0, 12)
-      : String(Date.now()) + Math.floor(Math.random() * 1000));
+  // Auto-create — wrap in IIFE so the in-flight promise is published
+  // synchronously, before the first await inside the create.
+  const work = (async (): Promise<{ personId: string; created: boolean; matchedVia: "canonical" | "alternate" | "none"; fuzzyCandidatesEmitted?: number }> => {
+    const personId =
+      options.preferredId ||
+      "pers_" + (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID().slice(0, 12)
+        : String(Date.now()) + Math.floor(Math.random() * 1000));
 
-  // Persist alternates that don't normalize to the canonical form
-  const altPersist = (options.alternateNames || []).filter(
-    (a): a is string =>
-      !!a && a.trim().length > 0 && normalizePersonName(a) !== norm
-  );
+    // Persist alternates that don't normalize to the canonical form
+    const altPersist = (options.alternateNames || []).filter(
+      (a): a is string =>
+        !!a && a.trim().length > 0 && normalizePersonName(a) !== norm
+    );
 
-  const newPerson: Person = {
-    id: personId,
-    type: "person",
-    name: fullName.trim(),
-    role: options.role || undefined,
-    org: options.org || undefined,
-    alternateNames: altPersist.length > 0 ? altPersist : undefined,
-    created: new Date().toISOString(),
-    source: options.provenance,
-  };
+    const newPerson: Person = {
+      id: personId,
+      type: "person",
+      name: fullName.trim(),
+      role: options.role || undefined,
+      org: options.org || undefined,
+      alternateNames: altPersist.length > 0 ? altPersist : undefined,
+      created: new Date().toISOString(),
+      source: options.provenance,
+    };
 
-  await db.ref(wsPath(workspaceId, "nodes", personId)).set(newPerson);
+    await db.ref(wsPath(workspaceId, "nodes", personId)).set(newPerson);
 
-  // Update cache
-  if (norm) cache.byName.set(norm, personId);
-  if (!cache.displayNameById.has(personId)) {
-    cache.displayNameById.set(personId, newPerson.name);
-  }
-  for (const alt of altPersist) {
-    const altNorm = normalizePersonName(alt);
-    if (altNorm) cache.byName.set(altNorm, personId);
-  }
-
-  // v1.1: fuzzy candidate emission (default on; opt-out for migrations)
-  let fuzzyCandidatesEmitted = 0;
-  if (options.emitFuzzyCandidates !== false) {
-    try {
-      fuzzyCandidatesEmitted = await emitFuzzyMergeCandidates(
-        workspaceId,
-        personId,
-        newPerson.name,
-        norm,
-        cache,
-        options.log
-      );
-    } catch (err) {
-      options.log?.warn?.("person_fuzzy_emit_pass_failed", {
-        personId,
-        message: (err as Error).message,
-      });
+    // Update cache
+    if (norm) cache.byName.set(norm, personId);
+    if (!cache.displayNameById.has(personId)) {
+      cache.displayNameById.set(personId, newPerson.name);
     }
-  }
+    for (const alt of altPersist) {
+      const altNorm = normalizePersonName(alt);
+      if (altNorm) cache.byName.set(altNorm, personId);
+    }
+    // Mirror to the canonical _cache if we're holding a non-canonical copy.
+    if (_cache && _cache.workspaceId === workspaceId && _cache.cache !== cache) {
+      if (norm) _cache.cache.byName.set(norm, personId);
+      if (!_cache.cache.displayNameById.has(personId)) {
+        _cache.cache.displayNameById.set(personId, newPerson.name);
+      }
+      for (const alt of altPersist) {
+        const altNorm = normalizePersonName(alt);
+        if (altNorm) _cache.cache.byName.set(altNorm, personId);
+      }
+    }
 
-  return { personId, created: true, matchedVia: "none", fuzzyCandidatesEmitted };
+    // v1.1: fuzzy candidate emission (default on; opt-out for migrations)
+    let fuzzyCandidatesEmitted = 0;
+    if (options.emitFuzzyCandidates !== false) {
+      try {
+        fuzzyCandidatesEmitted = await emitFuzzyMergeCandidates(
+          workspaceId,
+          personId,
+          newPerson.name,
+          norm,
+          cache,
+          options.log
+        );
+      } catch (err) {
+        options.log?.warn?.("person_fuzzy_emit_pass_failed", {
+          personId,
+          message: (err as Error).message,
+        });
+      }
+    }
+
+    return { personId, created: true, matchedVia: "none", fuzzyCandidatesEmitted };
+  })();
+
+  if (nameKey) _inFlightByName.set(nameKey, work);
+  try {
+    return await work;
+  } finally {
+    if (nameKey) _inFlightByName.delete(nameKey);
+  }
 }

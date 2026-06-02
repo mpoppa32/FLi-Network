@@ -46,6 +46,36 @@ interface OrgCache {
 let _cache: { workspaceId: string; cache: OrgCache; loadedAt: number } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
+// v1.3 (2026-06-02) — per-process in-flight dedupe for cache load + create.
+//
+// Root cause being fixed: between cache.byName.has(norm) (line ~222) and the
+// cache.byName.set(norm, orgId) that follows db.ref().set(newOrg), there is
+// an `await` boundary. Two parallel calls into resolveRecipientOrg for the
+// same logical entity (same agency name resolved by different mappers within
+// one warm Cloud Functions instance) BOTH miss the cache, BOTH mint a new
+// orgId, BOTH write — and the workspace ends up with duplicate org nodes.
+// Workspace 1777435779676 accumulated 17 such clusters (4× "Senate Armed
+// Services", 4× "Senate Intelligence", 2× L3Harris, etc) before this fix.
+//
+// The cache itself has its own load race: two callers when _cache is null
+// both `await db.once()` and end up with separate OrgCache instances. Even
+// after one wins the assignment to _cache, the loser is still holding a
+// stale local reference. That makes the create-race possible even when the
+// in-memory cache "should" be hot.
+//
+// Two maps fix both:
+//   _inFlightCacheLoad collapses concurrent loadOrgCache calls into one.
+//   _inFlightByName/_inFlightByUei collapse concurrent creates for the same
+//   normalized name / UEI into a single shared promise.
+//
+// Per-process only. Cross-instance races (two Cloud Functions containers
+// running the same workspace at the same time) are still possible but rare
+// at our volume; if they show up, the fix is an RTDB transaction on a
+// /workspaces/{ws}/orgNameIndex/{norm} node, deferred for now.
+const _inFlightCacheLoad = new Map<string, Promise<OrgCache>>();
+const _inFlightByName = new Map<string, Promise<{ orgId: string; created: boolean; fuzzyCandidatesEmitted?: number }>>();
+const _inFlightByUei = new Map<string, Promise<{ orgId: string; created: boolean; fuzzyCandidatesEmitted?: number }>>();
+
 /** v1.1: Jaro-Winkler threshold for surfacing a merge candidate. Set
  *  slightly tighter than the personResolver default (0.92 vs 0.92) —
  *  Org names are typically longer than personal names, so a JW match
@@ -69,32 +99,45 @@ async function loadOrgCache(workspaceId: string): Promise<OrgCache> {
   if (_cache && _cache.workspaceId === workspaceId && now - _cache.loadedAt < CACHE_TTL_MS) {
     return _cache.cache;
   }
-  const snap = await db.ref(wsPath(workspaceId, "nodes")).once("value");
-  const nodes = (snap.val() as Record<string, Organization> | null) ?? {};
-  const cache: OrgCache = {
-    byName: new Map(),
-    byUei: new Map(),
-    displayNameById: new Map(),
-  };
-  for (const [id, node] of Object.entries(nodes)) {
-    if (!node || !node.name) continue;
-    // Skip non-Org node types (Person, etc.) — orgResolver is scoped
-    // to Orgs only. Persons appear in the same nodes table but
-    // shouldn't be candidates for Org-side merging.
-    if (node.type && node.type !== "company" && node.type !== "government") {
-      continue;
-    }
-    cache.byName.set(normalizeName(node.name), id);
-    if (!cache.displayNameById.has(id)) cache.displayNameById.set(id, node.name);
-    if (node.uei) cache.byUei.set(node.uei, id);
-    if (node.alternateNames) {
-      for (const alt of node.alternateNames) {
-        cache.byName.set(normalizeName(alt), id);
+  // Collapse parallel cold loads — otherwise two callers race to build
+  // separate OrgCache instances and only one wins the _cache slot, leaving
+  // the loser holding a stale-by-construction local reference.
+  const inflight = _inFlightCacheLoad.get(workspaceId);
+  if (inflight) return inflight;
+  const work = (async (): Promise<OrgCache> => {
+    const snap = await db.ref(wsPath(workspaceId, "nodes")).once("value");
+    const nodes = (snap.val() as Record<string, Organization> | null) ?? {};
+    const cache: OrgCache = {
+      byName: new Map(),
+      byUei: new Map(),
+      displayNameById: new Map(),
+    };
+    for (const [id, node] of Object.entries(nodes)) {
+      if (!node || !node.name) continue;
+      // Skip non-Org node types (Person, etc.) — orgResolver is scoped
+      // to Orgs only. Persons appear in the same nodes table but
+      // shouldn't be candidates for Org-side merging.
+      if (node.type && node.type !== "company" && node.type !== "government") {
+        continue;
+      }
+      cache.byName.set(normalizeName(node.name), id);
+      if (!cache.displayNameById.has(id)) cache.displayNameById.set(id, node.name);
+      if (node.uei) cache.byUei.set(node.uei, id);
+      if (node.alternateNames) {
+        for (const alt of node.alternateNames) {
+          cache.byName.set(normalizeName(alt), id);
+        }
       }
     }
+    _cache = { workspaceId, cache, loadedAt: Date.now() };
+    return cache;
+  })();
+  _inFlightCacheLoad.set(workspaceId, work);
+  try {
+    return await work;
+  } finally {
+    _inFlightCacheLoad.delete(workspaceId);
   }
-  _cache = { workspaceId, cache, loadedAt: now };
-  return cache;
 }
 
 /** v1.1: scan the cache for fuzzy matches against the just-created Org
@@ -234,81 +277,118 @@ export async function resolveRecipientOrg(
     }
   }
 
+  // v1.3 — in-flight dedupe. A parallel call already mid-create for the same
+  // normalized name (or UEI) wins; we latch onto its promise and return its
+  // orgId. Keyed by workspaceId so cross-workspace creates don't collide.
+  const ueiKey = uei ? `${workspaceId}::uei::${uei}` : null;
+  const nameKey = `${workspaceId}::name::${norm}`;
+  if (ueiKey) {
+    const existing = _inFlightByUei.get(ueiKey);
+    if (existing) return existing;
+  }
+  {
+    const existing = _inFlightByName.get(nameKey);
+    if (existing) return existing;
+  }
+
   if (options.autoCreate === false) {
     throw new Error(`No matching Organization for "${recipientName}" (UEI: ${uei || "n/a"})`);
   }
 
-  // Auto-create
-  const orgId = "org_" + (typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID().slice(0, 12)
-    : String(Date.now()) + Math.floor(Math.random() * 1000));
+  // Auto-create — wrap in an IIFE so we can register the in-flight promise
+  // BEFORE any await. A concurrent caller that arrives between our cache
+  // miss and our db.set will find this promise and avoid creating a dup.
+  const work = (async (): Promise<{ orgId: string; created: boolean; fuzzyCandidatesEmitted?: number }> => {
+    const orgId = "org_" + (typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID().slice(0, 12)
+      : String(Date.now()) + Math.floor(Math.random() * 1000));
 
-  const provenance: SourceProvenance = externalProvenance(
-    "usaspending",
-    uei || recipientName,
-    null,
-    null,
-    Date.now()
-  );
+    const provenance: SourceProvenance = externalProvenance(
+      "usaspending",
+      uei || recipientName,
+      null,
+      null,
+      Date.now()
+    );
 
-  // v1.2: persist alternateNames on auto-create so future cross-source
-  // lookups via either canonical name OR alternate match cleanly.
-  const altPersist = (options.alternateNames || []).filter(
-    (a): a is string => !!a && a.trim().length > 0 && normalizeName(a) !== norm
-  );
+    // v1.2: persist alternateNames on auto-create so future cross-source
+    // lookups via either canonical name OR alternate match cleanly.
+    const altPersist = (options.alternateNames || []).filter(
+      (a): a is string => !!a && a.trim().length > 0 && normalizeName(a) !== norm
+    );
 
-  // P13.266 — Firebase RTDB rejects undefined values ("set failed: value
-  // argument contains undefined in property..."). The Organization interface
-  // marks uei/alternateNames as optional, so OMIT the keys entirely when
-  // null/empty rather than setting them to undefined. Discovered via SAM.gov
-  // first-key activation — every record was failing the org write.
-  const newOrg: Organization = {
-    id: orgId,
-    type: options.type ?? "company",
-    name: recipientName.trim(),
-    autoCreated: true,
-    created: new Date().toISOString(),
-    source: provenance,
-  };
-  if (uei) newOrg.uei = uei;
-  if (altPersist.length > 0) newOrg.alternateNames = altPersist;
+    // P13.266 — Firebase RTDB rejects undefined values ("set failed: value
+    // argument contains undefined in property..."). The Organization interface
+    // marks uei/alternateNames as optional, so OMIT the keys entirely when
+    // null/empty rather than setting them to undefined. Discovered via SAM.gov
+    // first-key activation — every record was failing the org write.
+    const newOrg: Organization = {
+      id: orgId,
+      type: options.type ?? "company",
+      name: recipientName.trim(),
+      autoCreated: true,
+      created: new Date().toISOString(),
+      source: provenance,
+    };
+    if (uei) newOrg.uei = uei;
+    if (altPersist.length > 0) newOrg.alternateNames = altPersist;
 
-  await db.ref(wsPath(workspaceId, "nodes", orgId)).set(newOrg);
+    await db.ref(wsPath(workspaceId, "nodes", orgId)).set(newOrg);
 
-  // Update cache
-  cache.byName.set(norm, orgId);
-  if (uei) cache.byUei.set(uei, orgId);
-  if (!cache.displayNameById.has(orgId)) {
-    cache.displayNameById.set(orgId, newOrg.name);
-  }
-  // v1.2: cache alternates so a subsequent lookup in the same sync run
-  // hits without re-loading
-  for (const alt of altPersist) {
-    const altNorm = normalizeName(alt);
-    if (altNorm) cache.byName.set(altNorm, orgId);
-  }
-
-  // v1.1: fuzzy candidate emission (default on; opt-out for migrations)
-  let fuzzyCandidatesEmitted = 0;
-  if (options.emitFuzzyCandidates !== false) {
-    try {
-      fuzzyCandidatesEmitted = await emitFuzzyOrgMergeCandidates(
-        workspaceId,
-        orgId,
-        newOrg.name,
-        norm,
-        cache,
-        options.log
-      );
-    } catch (err) {
-      options.log?.warn?.("org_fuzzy_emit_pass_failed", {
-        orgId,
-        message: (err as Error).message,
-      });
+    // Update local cache AND the shared _cache if it points elsewhere (the
+    // load race can leave us holding a non-canonical OrgCache instance).
+    cache.byName.set(norm, orgId);
+    if (uei) cache.byUei.set(uei, orgId);
+    if (!cache.displayNameById.has(orgId)) {
+      cache.displayNameById.set(orgId, newOrg.name);
     }
-  }
+    for (const alt of altPersist) {
+      const altNorm = normalizeName(alt);
+      if (altNorm) cache.byName.set(altNorm, orgId);
+    }
+    if (_cache && _cache.workspaceId === workspaceId && _cache.cache !== cache) {
+      _cache.cache.byName.set(norm, orgId);
+      if (uei) _cache.cache.byUei.set(uei, orgId);
+      if (!_cache.cache.displayNameById.has(orgId)) {
+        _cache.cache.displayNameById.set(orgId, newOrg.name);
+      }
+      for (const alt of altPersist) {
+        const altNorm = normalizeName(alt);
+        if (altNorm) _cache.cache.byName.set(altNorm, orgId);
+      }
+    }
 
-  return { orgId, created: true, fuzzyCandidatesEmitted };
+    // v1.1: fuzzy candidate emission (default on; opt-out for migrations)
+    let fuzzyCandidatesEmitted = 0;
+    if (options.emitFuzzyCandidates !== false) {
+      try {
+        fuzzyCandidatesEmitted = await emitFuzzyOrgMergeCandidates(
+          workspaceId,
+          orgId,
+          newOrg.name,
+          norm,
+          cache,
+          options.log
+        );
+      } catch (err) {
+        options.log?.warn?.("org_fuzzy_emit_pass_failed", {
+          orgId,
+          message: (err as Error).message,
+        });
+      }
+    }
+
+    return { orgId, created: true, fuzzyCandidatesEmitted };
+  })();
+
+  if (ueiKey) _inFlightByUei.set(ueiKey, work);
+  _inFlightByName.set(nameKey, work);
+  try {
+    return await work;
+  } finally {
+    if (ueiKey) _inFlightByUei.delete(ueiKey);
+    _inFlightByName.delete(nameKey);
+  }
 }
 
 /**
