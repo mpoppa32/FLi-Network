@@ -9,7 +9,7 @@ import { externalProvenance } from "../../framework/provenance";
 import type { Award, AwardLifecycleState, AwardType, AwardCategory, LifecycleTransition } from "../../framework/types/awards";
 import type { UsaSpendingSearchResult } from "./client";
 import { resolveRecipientOrg, resolveAgencyOrg } from "./orgResolver";
-import { db, wsPath } from "../../framework/rtdb";
+import { db, wsPath, stripUndefinedDeep } from "../../framework/rtdb";
 
 const AWARD_TYPE_TO_CATEGORY: Record<string, AwardCategory> = {
   A: "contract",
@@ -138,8 +138,16 @@ export async function mapSearchResultToAward(
     baseAndAllOptionsValue: obligated,
     totalOutlays: typeof record["Total Outlays"] === "number" ? record["Total Outlays"] : undefined,
     currency: "USD",
-    naics: record.NAICS || "",
-    psc: record.PSC || "",
+    // USAspending API returns NAICS/PSC as either string codes OR objects
+    // like {code:"541330", description:"..."}. Coerce to the string code so
+    // the secondary-index path key (awardsByNaics/{naics}) doesn't end up
+    // serializing as "[object Object]".
+    naics: (typeof record.NAICS === "object" && record.NAICS !== null
+      ? ((record.NAICS as { code?: string }).code || "")
+      : (record.NAICS || "")),
+    psc: (typeof record.PSC === "object" && record.PSC !== null
+      ? ((record.PSC as { code?: string }).code || "")
+      : (record.PSC || "")),
     setAside: record["Type of Set Aside"] || undefined,
     awardedAt,
     popStart,
@@ -183,7 +191,7 @@ export async function upsertAward(
   const path = wsPath(workspaceId, "awards", award.id);
   const snap = await db.ref(path).once("value");
   if (!snap.exists()) {
-    await db.ref(path).set(award);
+    await db.ref(path).set(stripUndefinedDeep(award));
     await writeSecondaryIndexes(workspaceId, award);
     return { action: "created", awardId: award.id };
   }
@@ -224,7 +232,7 @@ export async function upsertAward(
     },
   };
 
-  await db.ref(path).set(merged);
+  await db.ref(path).set(stripUndefinedDeep(merged));
   await writeSecondaryIndexes(workspaceId, merged);
   return { action: "updated", awardId: award.id };
 }
