@@ -23,7 +23,8 @@ export const THINK_TANK_REGISTRY: ThinkTankSource[] = [
   {
     key: "csis",
     name: "Center for Strategic and International Studies (CSIS)",
-    rssUrl: "https://www.csis.org/analysis/feed",
+    // P13.268 — /analysis/feed retired; /rss.xml is the current path
+    rssUrl: "https://www.csis.org/rss.xml",
     websiteUrl: "https://www.csis.org",
     topicTags: ["defense", "international_security", "great_power_competition"],
     category: "defense",
@@ -32,7 +33,9 @@ export const THINK_TANK_REGISTRY: ThinkTankSource[] = [
   {
     key: "rand",
     name: "RAND Corporation",
-    rssUrl: "https://www.rand.org/rss.xml",
+    // P13.268 — /rss.xml retired; /blog.xml is the current Atom feed
+    // ("RAND Commentary"; parser handles both RSS items + Atom entries)
+    rssUrl: "https://www.rand.org/blog.xml",
     websiteUrl: "https://www.rand.org",
     topicTags: ["defense", "operations_research", "policy"],
     category: "defense",
@@ -41,20 +44,23 @@ export const THINK_TANK_REGISTRY: ThinkTankSource[] = [
   {
     key: "cnas",
     name: "Center for a New American Security (CNAS)",
+    // P13.268 — RSS removed entirely (no feed references anywhere on
+    // homepage or /publications page); defaultOn:false until restored
     rssUrl: "https://www.cnas.org/publications/feed",
     websiteUrl: "https://www.cnas.org",
     topicTags: ["defense", "strategy", "technology"],
     category: "strategy",
-    defaultOn: true,
+    defaultOn: false,
   },
   {
     key: "hudson",
     name: "Hudson Institute",
+    // P13.268 — RSS removed entirely; defaultOn:false until restored
     rssUrl: "https://www.hudson.org/rss/research",
     websiteUrl: "https://www.hudson.org",
     topicTags: ["defense", "policy", "strategy"],
     category: "policy",
-    defaultOn: true,
+    defaultOn: false,
   },
   {
     key: "aei",
