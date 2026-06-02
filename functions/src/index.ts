@@ -225,3 +225,14 @@ export { uasPatternsPieDaily } from "./jobs/uasPatternsPieDaily";
 // See `corsair-entity-domain-enrichment.md` for design + probe results.
 export { triggerEnrichEntityDomains } from "./http/triggerEnrichEntityDomains";
 export { enrichEntityDomainsYearly } from "./jobs/enrichEntityDomainsYearly";
+
+// Company domain enrichment (P13.280) — v2 companion to the above. Where
+// v1 derived government org domains via POC email aggregation, v2 derives
+// COMPANY node domains via SAM.gov entity-information API lookup by
+// node.uei (472 of 652 Atlas companies have UEI populated at design time).
+// Extracts coreData.entityInformation.entityURL → normalized domain.
+// Confidence-tiered by Jaro-Winkler match between legalBusinessName and
+// node.name. Time-bounded chunked processing (450s deadline per run);
+// idempotent + safe to re-run since previously-written nodes are skipped.
+export { triggerEnrichCompanyDomainsByUei } from "./http/triggerEnrichCompanyDomainsByUei";
+export { enrichCompanyDomainsByUeiYearly } from "./jobs/enrichCompanyDomainsByUeiYearly";
