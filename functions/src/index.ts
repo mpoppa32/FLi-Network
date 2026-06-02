@@ -166,3 +166,9 @@ export { listMyInvites } from "./http/listMyInvites";
 // immediately to the caller (or to a `to` override) for SendGrid setup testing.
 export { dailyBriefDigest } from "./jobs/dailyBriefDigest";
 export { triggerBriefDigestTest } from "./http/triggerBriefDigestTest";
+
+// P13.270 — one-shot backfill of Signal.relatedIds across existing
+// sig_tt_/sig_sn_/sig_ds_ records. Hash-stable signals predating the
+// P13.266-269 wiring ships need this to pick up the new resolution
+// path without re-fetching RSS. Match-to-existing-only (autoCreate:false).
+export { triggerRelatedIdsBackfill } from "./http/triggerRelatedIdsBackfill";
