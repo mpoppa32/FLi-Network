@@ -6,6 +6,13 @@
 // (FMS context + bilateral relationships), and on-the-record press
 // briefings.
 //
+// P13.268 — state.gov retired their category-specific /press-releases/feed/,
+// /press-briefings/feed/, /fact-sheets/feed/ endpoints (now serve HTML, not
+// RSS). All four registry entries now point to the universal /feed/ which
+// returns valid XML. Per-feed topicTags + category are still distinct so
+// downstream filtering still works; the source dedups by signal ID hash so
+// fetching the same URL 4 times produces no duplicate writes.
+//
 // Each feed maps to analysis_publication Signals with attrs.feedKey
 // distinguishing the kind for downstream filtering.
 
@@ -29,7 +36,7 @@ export const STATE_DEPARTMENT_REGISTRY: StateDepartmentFeed[] = [
   {
     key: "press_releases",
     name: "State Department Press Releases",
-    rssUrl: "https://www.state.gov/press-releases/feed/",
+    rssUrl: "https://www.state.gov/feed/",
     category: "policy",
     defaultOn: true,
     topicTags: ["policy", "diplomacy", "international"],
@@ -37,7 +44,7 @@ export const STATE_DEPARTMENT_REGISTRY: StateDepartmentFeed[] = [
   {
     key: "press_briefings",
     name: "Press Briefings",
-    rssUrl: "https://www.state.gov/press-briefings/feed/",
+    rssUrl: "https://www.state.gov/feed/",
     category: "briefing",
     defaultOn: true,
     topicTags: ["policy", "diplomacy", "briefing"],
@@ -51,7 +58,7 @@ export const STATE_DEPARTMENT_REGISTRY: StateDepartmentFeed[] = [
     // alias feed routes the same RSS through a category filter downstream
     // — kept separate so an operator can disable other feeds and keep
     // sanctions-only.
-    rssUrl: "https://www.state.gov/press-releases/feed/",
+    rssUrl: "https://www.state.gov/feed/",
     category: "sanctions",
     defaultOn: false,
     topicTags: ["sanctions", "designations", "export-control"],
@@ -59,7 +66,7 @@ export const STATE_DEPARTMENT_REGISTRY: StateDepartmentFeed[] = [
   {
     key: "fact_sheets",
     name: "Fact Sheets (bilateral + multilateral)",
-    rssUrl: "https://www.state.gov/fact-sheets/feed/",
+    rssUrl: "https://www.state.gov/feed/",
     category: "factsheet",
     defaultOn: true,
     topicTags: ["factsheet", "bilateral", "multilateral"],
