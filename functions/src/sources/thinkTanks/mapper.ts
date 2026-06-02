@@ -6,7 +6,8 @@
 
 import { hashFields } from "../../framework/hashing";
 import { externalProvenance } from "../../framework/provenance";
-import { db, wsPath } from "../../framework/rtdb";
+import { db, wsPath, stripUndefinedDeep } from "../../framework/rtdb";
+import { resolveRecipientOrg } from "../usaSpending/orgResolver";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
 import type { ThinkTankSource } from "./registry";
@@ -17,6 +18,16 @@ function signalId(tankKey: string, guid: string): string {
   return "sig_tt_" + tankKey + "_" + safe;
 }
 
+// P13.266 — subjectIds resolver wiring. think_tank pieces don't have a
+// single "subject" Org (they're analysis pieces); body-text contractor
+// resolution into relatedIds matches defenseScoop's pattern. Brief synth
+// collects subjectIds + relatedIds identically, so this unlocks
+// adversary/customer/capability categorization on every touched entity.
+export interface TankUpsertPatterns {
+  defenseContractors: string[];
+  maxRelatedPerSignal: number;
+}
+
 /**
  * Map one RSS item to a Signal. Idempotent: same item produces same hash;
  * subsequent runs bump refreshedAt but don't rewrite.
@@ -25,8 +36,13 @@ export async function upsertPublicationSignal(
   workspaceId: string,
   tank: ThinkTankSource,
   item: RssItem,
+  patterns: TankUpsertPatterns,
   log?: Logger
-): Promise<{ signalId: string; action: "created" | "updated" | "unchanged" }> {
+): Promise<{
+  signalId: string;
+  action: "created" | "updated" | "unchanged";
+  bodyOrgsResolved: number;
+}> {
   const id = signalId(tank.key, item.guid);
   const occurredAt = item.pubDateMs || Date.now();
   const title = (item.title || "Untitled").slice(0, 500);
@@ -52,10 +68,39 @@ export async function upsertPublicationSignal(
     Date.now()
   );
 
+  // P13.266 — body-text contractor resolution. Same pattern as
+  // defenseScoop: scan title + summary for configured patterns,
+  // resolve via orgResolver, accumulate in relatedIds. Best-effort —
+  // a single failed resolve doesn't kill the signal.
+  const relatedIds: string[] = [];
+  const seenRelated = new Set<string>();
+  const haystack = (title + " " + summary).toLowerCase();
+  const maxRelated = Math.max(1, patterns.maxRelatedPerSignal || 6);
+  let bodyOrgsResolved = 0;
+  for (const name of patterns.defenseContractors) {
+    if (relatedIds.length >= maxRelated) break;
+    if (!name || haystack.indexOf(name.toLowerCase()) < 0) continue;
+    try {
+      const r = await resolveRecipientOrg(workspaceId, name, null, {
+        autoCreate: true,
+        type: "company",
+        emitFuzzyCandidates: false,
+      });
+      if (r.orgId && !seenRelated.has(r.orgId)) {
+        seenRelated.add(r.orgId);
+        relatedIds.push(r.orgId);
+        bodyOrgsResolved++;
+      }
+    } catch (err) {
+      // best-effort
+    }
+  }
+
   const signal: Signal = {
     id,
     type: "analysis_publication",
     subjectIds: [],
+    relatedIds: relatedIds.length > 0 ? relatedIds : undefined,
     occurredAt,
     attrs: {
       tankKey: tank.key,
@@ -74,17 +119,22 @@ export async function upsertPublicationSignal(
   const path = wsPath(workspaceId, "signals", id);
   const snap = await db.ref(path).once("value");
   if (!snap.exists()) {
-    await db.ref(path).set(signal);
-    log?.debug("think_tank_signal_created", { id, tank: tank.key, title: title.slice(0, 80) });
-    return { signalId: id, action: "created" };
+    await db.ref(path).set(stripUndefinedDeep(signal));
+    log?.debug("think_tank_signal_created", {
+      id,
+      tank: tank.key,
+      title: title.slice(0, 80),
+      bodyOrgsResolved,
+    });
+    return { signalId: id, action: "created", bodyOrgsResolved };
   }
   const existing = snap.val() as Signal;
   if (existing.source?.hash === hash) {
     await db.ref(`${path}/source/refreshedAt`).set(Date.now());
-    return { signalId: id, action: "unchanged" };
+    return { signalId: id, action: "unchanged", bodyOrgsResolved };
   }
-  await db.ref(path).set(signal);
-  return { signalId: id, action: "updated" };
+  await db.ref(path).set(stripUndefinedDeep(signal));
+  return { signalId: id, action: "updated", bodyOrgsResolved };
 }
 
 /**

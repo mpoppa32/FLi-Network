@@ -9,7 +9,8 @@
 
 import { hashFields } from "../../framework/hashing";
 import { externalProvenance } from "../../framework/provenance";
-import { db, wsPath } from "../../framework/rtdb";
+import { db, wsPath, stripUndefinedDeep } from "../../framework/rtdb";
+import { resolveRecipientOrg } from "../usaSpending/orgResolver";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
 import type { ServiceNewsSource } from "./registry";
@@ -21,12 +22,28 @@ function signalId(serviceKey: string, guid: string): string {
   return "sig_sn_" + serviceKey + "_" + safe;
 }
 
+// P13.266 — subjectIds resolver wiring. Service-branch news pieces
+// frequently name defense contractors; resolving them into relatedIds
+// (a) categorizes touching signals into adversary/customer in the
+// Brief and (b) feeds Brief v1.13 leadership-flux bumps, which depend
+// on service_news touched-Org indexing.
+export interface ServiceNewsUpsertPatterns {
+  defenseContractors: string[];
+  maxRelatedPerSignal: number;
+}
+
 export async function upsertServiceNewsSignal(
   workspaceId: string,
   service: ServiceNewsSource,
   item: RssItem,
+  patterns: ServiceNewsUpsertPatterns,
   log?: Logger
-): Promise<{ signalId: string; action: "created" | "updated" | "unchanged"; leadership: boolean }> {
+): Promise<{
+  signalId: string;
+  action: "created" | "updated" | "unchanged";
+  leadership: boolean;
+  bodyOrgsResolved: number;
+}> {
   const id = signalId(service.key, item.guid);
   const occurredAt = item.pubDateMs || Date.now();
   const title = (item.title || "Untitled").slice(0, 500);
@@ -50,10 +67,37 @@ export async function upsertServiceNewsSignal(
     Date.now()
   );
 
+  // P13.266 — body-text contractor resolution (same shape as
+  // defenseScoop + thinkTanks). Best-effort per pattern.
+  const relatedIds: string[] = [];
+  const seenRelated = new Set<string>();
+  const haystack = (title + " " + summary).toLowerCase();
+  const maxRelated = Math.max(1, patterns.maxRelatedPerSignal || 6);
+  let bodyOrgsResolved = 0;
+  for (const name of patterns.defenseContractors) {
+    if (relatedIds.length >= maxRelated) break;
+    if (!name || haystack.indexOf(name.toLowerCase()) < 0) continue;
+    try {
+      const r = await resolveRecipientOrg(workspaceId, name, null, {
+        autoCreate: true,
+        type: "company",
+        emitFuzzyCandidates: false,
+      });
+      if (r.orgId && !seenRelated.has(r.orgId)) {
+        seenRelated.add(r.orgId);
+        relatedIds.push(r.orgId);
+        bodyOrgsResolved++;
+      }
+    } catch (err) {
+      // best-effort
+    }
+  }
+
   const signal: Signal = {
     id,
     type: "service_news",
     subjectIds: [],
+    relatedIds: relatedIds.length > 0 ? relatedIds : undefined,
     occurredAt,
     attrs: {
       serviceKey: service.key,
@@ -72,17 +116,22 @@ export async function upsertServiceNewsSignal(
   const path = wsPath(workspaceId, "signals", id);
   const snap = await db.ref(path).once("value");
   if (!snap.exists()) {
-    await db.ref(path).set(signal);
-    log?.debug("service_news_signal_created", { id, service: service.key, leadership });
-    return { signalId: id, action: "created", leadership };
+    await db.ref(path).set(stripUndefinedDeep(signal));
+    log?.debug("service_news_signal_created", {
+      id,
+      service: service.key,
+      leadership,
+      bodyOrgsResolved,
+    });
+    return { signalId: id, action: "created", leadership, bodyOrgsResolved };
   }
   const existing = snap.val() as Signal;
   if (existing.source?.hash === hash) {
     await db.ref(`${path}/source/refreshedAt`).set(Date.now());
-    return { signalId: id, action: "unchanged", leadership };
+    return { signalId: id, action: "unchanged", leadership, bodyOrgsResolved };
   }
-  await db.ref(path).set(signal);
-  return { signalId: id, action: "updated", leadership };
+  await db.ref(path).set(stripUndefinedDeep(signal));
+  return { signalId: id, action: "updated", leadership, bodyOrgsResolved };
 }
 
 export function matchesKeywords(item: RssItem, keywords: string[]): boolean {

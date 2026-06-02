@@ -12,6 +12,7 @@ import {
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
 import { loadConfig, validateConfig, type ThinkTankConfig } from "./config";
+import { DEFAULT_DS_CONTRACTOR_PATTERNS } from "../defenseScoop/config";
 import { fetchTankFeed } from "./client";
 import { upsertPublicationSignal, matchesKeywords } from "./mapper";
 import { THINK_TANK_REGISTRY, findTankByKey } from "./registry";
@@ -89,6 +90,15 @@ export async function syncWorkspace(
     const cutoff = Date.now() - config.lookbackDays * 24 * 60 * 60 * 1000;
     const perTankCap = options.perTankCap ?? 50;
 
+    // P13.266 — body-text contractor resolution patterns shared with
+    // defenseScoop. Includes Atlas's drone-prime customers (Anduril /
+    // Shield AI / Saildrone / Skydio / Epirus) so think-tank analysis
+    // pieces mentioning them get categorized as customer in the Brief.
+    const patterns = {
+      defenseContractors: DEFAULT_DS_CONTRACTOR_PATTERNS,
+      maxRelatedPerSignal: 6,
+    };
+
     for (const tank of tanks) {
       try {
         const feed = await fetchTankFeed(tank.rssUrl, log);
@@ -106,7 +116,7 @@ export async function syncWorkspace(
 
         for (const item of relevant) {
           try {
-            const r = await upsertPublicationSignal(workspaceId, tank, item, log);
+            const r = await upsertPublicationSignal(workspaceId, tank, item, patterns, log);
             if (r.action === "created") result.signalsCreated++;
             else if (r.action === "updated") result.signalsUpdated++;
             else result.signalsUnchanged++;

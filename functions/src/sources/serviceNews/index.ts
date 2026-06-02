@@ -10,6 +10,7 @@ import {
 } from "../../framework/sourceHealth";
 import { categorizeError } from "../../framework/errors";
 import { loadConfig, validateConfig, type ServiceNewsConfig } from "./config";
+import { DEFAULT_DS_CONTRACTOR_PATTERNS } from "../defenseScoop/config";
 import { fetchServiceFeed } from "./client";
 import { upsertServiceNewsSignal, matchesKeywords } from "./mapper";
 import { SERVICE_NEWS_REGISTRY, isLeadershipAnnouncement } from "./registry";
@@ -85,6 +86,15 @@ export async function syncWorkspace(
     const cutoff = Date.now() - config.lookbackDays * 24 * 60 * 60 * 1000;
     const perCap = options.perServiceCap ?? 30;
 
+    // P13.266 — body-text contractor resolution patterns shared with
+    // defenseScoop + thinkTanks. Unlocks brief customer/adversary
+    // categorization AND brief v1.13 leadership-flux bumps (which key
+    // off service_news signals' touched-Org indexing).
+    const patterns = {
+      defenseContractors: DEFAULT_DS_CONTRACTOR_PATTERNS,
+      maxRelatedPerSignal: 6,
+    };
+
     for (const service of services) {
       try {
         const feed = await fetchServiceFeed(service.rssUrl, log);
@@ -104,7 +114,7 @@ export async function syncWorkspace(
 
         for (const item of filtered) {
           try {
-            const r = await upsertServiceNewsSignal(workspaceId, service, item, log);
+            const r = await upsertServiceNewsSignal(workspaceId, service, item, patterns, log);
             if (r.action === "created") result.signalsCreated++;
             else if (r.action === "updated") result.signalsUpdated++;
             else result.signalsUnchanged++;
