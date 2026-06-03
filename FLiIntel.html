@@ -8890,7 +8890,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.285</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.286</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10464,7 +10464,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
   </div>
 </div>
 
-<!-- P13.285 UNBOUND DOMAINS VIEW ───────────────────────────────
+<!-- P13.286 UNBOUND DOMAINS VIEW ───────────────────────────────
      Vendor + customer email domains that appear in pendingCapture but
      don't yet match any tracked node. Operator binds each to a company
      node so the matcher's primary companyByDomain path lights up. The
@@ -12603,11 +12603,74 @@ window.fbGet = fbGet;
     document.body.appendChild(div);
   }
   function _hide(){ var e = document.getElementById('rtdb-stale-banner'); if (e) e.remove(); }
+  // P13.286 — Snapshot-shaped mock returned by the REST fallback so
+  // existing callers using snap.val() / .exists() / .child() / .forEach()
+  // / .numChildren() / .key continue to work without per-caller changes.
+  // Doesn't cover EVERY Firebase Snapshot method but covers what fbGet
+  // callers in this codebase use. Hoisted outside the wrapper so the
+  // closure isn't redefined per call.
+  function _restSnapshotMock(v, p) {
+    var key = String(p || '').split('/').pop() || null;
+    return {
+      val: function() { return v; },
+      exists: function() { return v !== null && v !== undefined; },
+      numChildren: function() { return v && typeof v === 'object' ? Object.keys(v).length : 0; },
+      hasChildren: function() { return v && typeof v === 'object' && Object.keys(v).length > 0; },
+      forEach: function(cb) {
+        if (!v || typeof v !== 'object') return false;
+        var stop = false;
+        var keys = Object.keys(v);
+        for (var i = 0; i < keys.length; i++) {
+          if (stop) break;
+          var k = keys[i];
+          stop = cb(_restSnapshotMock(v[k], p + '/' + k)) === true;
+        }
+        return stop;
+      },
+      child: function(name) {
+        var cv = (v && typeof v === 'object') ? v[name] : null;
+        return _restSnapshotMock(cv, p + '/' + name);
+      },
+      key: key
+    };
+  }
+
   window.fbGet = async function(path){
     var done = false;
     setTimeout(function(){ if (!done) _show('Read of ' + String(path).slice(0,60) + ' has been pending >10s'); }, _HANG_MS);
+
+    // P13.286 — race SDK + REST on every fbGet. P13.282 fixed the
+    // heartbeat-specific ping but every other fbGet call (Today's
+    // _atlasCaptureWeeklySnapshot read of /weeklySnapshots, the
+    // unbound view's _unboundLoadSkipped, dozens of others) still
+    // routed through _originalFbGet directly and hung forever when the
+    // SDK realtime channel sat wedged (the known Atlas failure mode
+    // documented in [[project_corsair_rtdb_wedge_membership]]). Symptom:
+    // red "Read of <path> has been pending >10s" banner + dependent
+    // surfaces never render. The race here makes REST the safety net
+    // on every fbGet; whichever path returns first wins. REST returns
+    // in <300ms when the SDK is wedged; SDK wins when the channel is
+    // healthy (its snapshot has richer methods).
     try {
-      var r = await _originalFbGet(path);
+      var sdkPromise = _originalFbGet(path);
+      var normPath = String(path || '').replace(/^\//, '');
+      var inWsScope = normPath.indexOf('workspaces/') === 0;
+      if (inWsScope && window.currentUser && typeof window.currentUser.getIdToken === 'function') {
+        var restPromise = (async function() {
+          var tok = await window.currentUser.getIdToken();
+          var url = 'https://fli-network-default-rtdb.firebaseio.com/' + normPath + '.json?auth=' + encodeURIComponent(tok);
+          var resp = await fetch(url);
+          if (!resp || !resp.ok) throw new Error('REST HTTP ' + (resp ? resp.status : 'no-response'));
+          var v = await resp.json();
+          return _restSnapshotMock(v, path);
+        })().catch(function(){ return new Promise(function(){}); });  // swallow REST errors so race falls to SDK
+        var snap = await Promise.race([sdkPromise, restPromise]);
+        done = true;
+        _lastSuccess = Date.now();
+        _hide();
+        return snap;
+      }
+      var r = await sdkPromise;
       done = true;
       _lastSuccess = Date.now();
       _hide();
@@ -12619,10 +12682,10 @@ window.fbGet = fbGet;
     var done = false;
     setTimeout(function(){ if (!done) _show('Heartbeat ping timed out'); }, _HANG_MS);
     try {
-      // P13.285 — heartbeat via REST instead of the wedged SDK. P13.248's
+      // P13.286 — heartbeat via REST instead of the wedged SDK. P13.248's
       // REST polling fallback proved the SDK realtime channel can sit
       // wedged for hours while REST stays healthy in <300ms; the
-      // pre-P13.285 heartbeat used _originalFbGet (the raw SDK get) and
+      // pre-P13.286 heartbeat used _originalFbGet (the raw SDK get) and
       // false-positive-fired the stale-connection banner every 30s on
       // every Atlas session in the wedged state. Two cheap success paths
       // are tried before the SDK fallback so the banner only fires on a
@@ -19355,7 +19418,7 @@ function switchView(v){
   // Normalize sacred-mode aliases (graph→network, cop→opps, brief→today)
   if(_CORSAIR_MODE_ALIAS[v])v=_CORSAIR_MODE_ALIAS[v];
 
-  // P13.285 — defensive re-run of the relocator. _relocateViewsIntoMainApp
+  // P13.286 — defensive re-run of the relocator. _relocateViewsIntoMainApp
   // runs once at selectWorkspace; if a view was added to the file AFTER
   // that initial run (e.g. operator was already in a workspace when
   // P13.281 added unbound-view, OR a sibling-build-of-cinema-cut leaves a
@@ -33878,7 +33941,7 @@ window._renderTodayNarrative = function(){
       : '';
     var sevPart = sevHi ? ' · ' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') : (sevMed ? ' · ' + sevMed + ' MED' : '');
     var matchPart = matched ? ' · <b>' + matched + '</b> mention your network' : '';
-    // P13.285 — customer rollup phrase. P13.283 lit up Brief's
+    // P13.286 — customer rollup phrase. P13.283 lit up Brief's
     // customerRollup by wiring workspace patterns into mapper-time
     // body-text resolution; this surfaces the top 2 active customer
     // agencies in the WORLD sentence so the operator sees the lake-to-
@@ -33989,7 +34052,7 @@ window._renderTodayOrientation = function() {
   // outreach queue size (if previously rendered)
   var queueSize = (window._atlasOutreachQueueTargets || []).length;
 
-  // P13.285 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
+  // P13.286 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
   // pendingCapture was previously surfaced only via a badge inside the
   // Tools menu (FLiIntel.html:9001) — a click MOST operators never make.
   // Surfacing here gives the absorption loop ("X pending review · Y
@@ -34029,7 +34092,7 @@ window._renderTodayOrientation = function() {
       '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' + (queueSize ? '<span style="color:#5fb3b8">' + queueSize + '</span> targets queued' : 'Outreach Queue') + '</div>' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' + pendingCands + ' candidates · ' + pendingOrgs + ' orgs · open →</div>' +
     '</button>' +
-    // Tile 4 — Auto-Capture (P13.285, B9). Surfaces the now-richly-tagged
+    // Tile 4 — Auto-Capture (P13.286, B9). Surfaces the now-richly-tagged
     // pendingCapture corpus (47 outbound + 20 matched on Atlas at write
     // time) at the Today level. Click goes to capture view for review.
     '<button onclick="window.switchView&&window.switchView(\'capture\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(212,130,58,.06));border:1px solid #f59e0b;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
@@ -46035,7 +46098,7 @@ function renderCaptureView() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// P13.285 — UNBOUND DOMAINS VIEW
+// P13.286 — UNBOUND DOMAINS VIEW
 // Operator-bound vendor domain enrichment. Backend v1+v2 (P13.279/280)
 // derive domains for federal-contractor + government nodes, but Atlas's
 // operator-curated drone-vendor nodes (no UEI) stay empty. This view
@@ -69917,6 +69980,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.285"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.286"></script>
 </body>
 </html>
