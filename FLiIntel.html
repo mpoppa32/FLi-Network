@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.303</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.304</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -39537,6 +39537,38 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
       var mz = meetings[mzi];
       if (mz && mz.id != null) _mtgById[String(mz.id)] = mz;
     }
+    // P13.304 — workspace-load perf. The old attendee→person matcher ran
+    // nameSimilarity for every (meeting × attendee × node) pair on every
+    // rebuild. On Atlas (35 meetings, ~7 attendees each, 40 person nodes,
+    // 1194 nodes total) that is tens of thousands of heavy string-similarity
+    // calls — measured >45s, freezing workspace load. Fix: precompute the
+    // person set + an exact lowercased-name map ONCE, match exact first (O(1)),
+    // fall back to fuzzy only on a miss and only over the ~40 person nodes,
+    // and MEMOIZE attendee-name → person across the whole rebuild so a
+    // recurring attendee ("Bill Allen" in 20 meetings) is matched once.
+    var _persons = [];
+    var _personByLc = {};
+    for (var pni = 0; pni < nodes.length; pni++){
+      var pn2 = nodes[pni];
+      if (!pn2 || pn2.type !== 'person' || !pn2.name) continue;
+      _persons.push(pn2);
+      var plc = String(pn2.name).toLowerCase().trim();
+      if (plc && !_personByLc[plc]) _personByLc[plc] = pn2;
+    }
+    var _attMatchMemo = {}; // lc attendee name → matched person node | null
+    function _matchAttendeeToPerson(name){
+      var lc = String(name||'').toLowerCase().trim();
+      if (!lc) return null;
+      if (Object.prototype.hasOwnProperty.call(_attMatchMemo, lc)) return _attMatchMemo[lc];
+      var hit = _personByLc[lc] || null;                 // O(1) exact match
+      if (!hit && simFn){                                // fuzzy fallback — persons only (~40)
+        for (var fi = 0; fi < _persons.length; fi++){
+          try { if (simFn(name, _persons[fi].name) >= 0.72){ hit = _persons[fi]; break; } } catch (e) {}
+        }
+      }
+      _attMatchMemo[lc] = hit;
+      return hit;
+    }
     for (var mIdx = 0; mIdx < meetings.length; mIdx++){
       var mt = meetings[mIdx];
       if (!mt) continue;
@@ -39552,27 +39584,20 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
       var _atSources = [];
       if (mt.meta && Array.isArray(mt.meta.attendees)) _atSources.push(mt.meta.attendees);
       if (mt.intel && Array.isArray(mt.intel.keyPeople)) _atSources.push(mt.intel.keyPeople);
-      if (_atSources.length && simFn){
+      if (_atSources.length){
         var seenForMtg = {};  // dedupe person matches across both lists
         for (var asi = 0; asi < _atSources.length; asi++){
           var atts = _atSources[asi];
           for (var ai = 0; ai < atts.length; ai++){
             var att = atts[ai];
             if (!att || !att.name) continue;
-            for (var ni = 0; ni < nodes.length; ni++){
-              var nn = nodes[ni];
-              if (!nn || nn.type !== 'person' || !nn.name) continue;
-              try {
-                if (simFn(att.name, nn.name) >= 0.72){
-                  var pid = String(nn.id);
-                  if (seenForMtg[pid]) break;
-                  seenForMtg[pid] = 1;
-                  if (!idx.meetingsByAttendee.has(pid)) idx.meetingsByAttendee.set(pid, []);
-                  idx.meetingsByAttendee.get(pid).push(mt);
-                  break;
-                }
-              } catch (e) {}
-            }
+            var pmatch = _matchAttendeeToPerson(att.name);
+            if (!pmatch) continue;
+            var pid = String(pmatch.id);
+            if (seenForMtg[pid]) continue;
+            seenForMtg[pid] = 1;
+            if (!idx.meetingsByAttendee.has(pid)) idx.meetingsByAttendee.set(pid, []);
+            idx.meetingsByAttendee.get(pid).push(mt);
           }
         }
       }
@@ -71269,6 +71294,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.303"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.304"></script>
 </body>
 </html>
