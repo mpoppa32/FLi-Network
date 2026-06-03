@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.302</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.303</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -40550,12 +40550,13 @@ window._postureSuggestionsFor = function(entityId) {
 };
 
 // Cooldown: was (entityId, field, value) dismissed within the cooldown window?
-window._postureInCooldown = function(entityId, field, value) {
+window._postureInCooldown = function(entityId, field, value, pursuitId) {
   var all = window._postureSuggestionsCache || {};
   var now = Date.now();
   for (var k in all) {
     var s = all[k];
     if (!s || String(s.entityId)!==String(entityId) || s.field!==field || s.suggestedValue!==value) continue;
+    if (pursuitId && String(s.pursuitId||'')!==String(pursuitId)) continue; // position is per-pursuit
     if (s.status === 'dismissed' && s.cooldownUntil && s.cooldownUntil > now) return true;
   }
   return false;
@@ -40612,6 +40613,59 @@ window._postureWriteTrajSuggestion = async function(opts){
   catch(e) { return false; }
 };
 
+// ── P13.303 — POSITION inference (Posture v2 slice 1) ────────────────────
+// Position is per-(person, pursuit): the same contact can be an ally on one
+// pursuit and a rival on another. Workspace-shared (unlike Path). Cues are
+// anchored to "us/our" where possible so the inference attaches to the
+// operator's pursuit, not a third party. Modest confidence (0.6) — Position
+// is more consequential than Trajectory, so the bar to suggest is the cue
+// PLUS the person named PLUS a linked pursuit (meeting.oppId / entry.oppId).
+// Taxonomy is posture.js POSITION_TAXONOMY (authoritative over the design
+// doc, which listed a stale vocabulary). Path is NOT inferred here — it is
+// operator-private (Doctrine VIII) and the suggestion store has no private-
+// scoping model yet; deferred to a dedicated slice.
+window._POSTURE_POSITION_CUES = {
+  ally:       ['on our side','advocating for us','aligned with us','in our corner','championing our','backing our bid','wants us to win','supporting our bid','pushing for us','fighting for us'],
+  adversary:  ['working against us','opposed to us','trying to block us','actively against us','undermining us','wants us to lose','fighting our bid','blocking our'],
+  rival:      ['backing the competitor','favoring the incumbent','pushing their own solution','going after the same','competing against us','prefers a competitor','backing a competitor'],
+  gatekeeper: ['controls access to','you will have to go through','owns the decision','decides who gets','gatekeeps','holds the keys to','approves who'],
+  benefactor: ['went to bat for us','vouched for us','put in a good word','did us a favor','covered for us','stuck their neck out for us'],
+  debtor:     ['owes us','they owe us','indebted to us','we covered for them','owes the team','owes me one']
+};
+// First specific cue match wins (ally/adversary checked before the softer
+// rival/gatekeeper). Returns {pos, conf, quote} | null.
+window._postureScanPosition = function(text){
+  var blob = String(text||'').toLowerCase();
+  if (!blob.trim()) return null;
+  var order = ['ally','adversary','rival','gatekeeper','benefactor','debtor'];
+  for (var i=0;i<order.length;i++){
+    var cues = window._POSTURE_POSITION_CUES[order[i]];
+    for (var j=0;j<cues.length;j++){ if (blob.indexOf(cues[j])>=0) return { pos: order[i], conf: 0.6, quote: cues[j] }; }
+  }
+  return null;
+};
+// Per-pursuit position suggestion writer. id keyed by entity+pursuit+value so
+// the same contact can carry distinct position suggestions per pursuit.
+window._postureWritePositionSuggestion = async function(opts){
+  var node = opts && opts.node;
+  if (!node || !opts.pursuitId || !window.currentWsId || typeof window.fbSet !== 'function') return false;
+  var byP = (node.posture && node.posture.byPursuit) || {};
+  var current = (byP[opts.pursuitId] && byP[opts.pursuitId].position) || null;
+  if (current === opts.pos) return false;                                              // already there
+  if (window._postureInCooldown(node.id, 'position', opts.pos, opts.pursuitId)) return false; // dismissed recently
+  var sid = 'psug_' + String(node.id) + '_position_' + String(opts.pursuitId) + '_' + opts.pos;
+  var rec = {
+    id: sid, entityId: node.id, entityType: 'person', field: 'position',
+    pursuitId: String(opts.pursuitId), pursuitName: opts.pursuitName || '',
+    suggestedValue: opts.pos, currentValue: current, confidence: opts.conf,
+    channel: opts.channel || 'meeting', sourceIds: [opts.sourceId || ''],
+    evidence: [{ sourceId: opts.sourceId || '', summary: opts.summary || '', quote: opts.quote || '', ts: opts.ts || Date.now() }],
+    suggestedAt: Date.now(), status: 'open'
+  };
+  try { await window.fbSet(window.wsPath('postureSuggestions/'+sid), rec); window._postureSuggestionsCache[sid] = rec; return true; }
+  catch(e) { return false; }
+};
+
 // The inference engine (Channel A). Best-effort; never throws into the
 // meeting-save path.
 window._postureInferFromMeeting = async function(meeting) {
@@ -40636,19 +40690,39 @@ window._postureInferFromMeeting = async function(meeting) {
     if (!candidates.length) return;
 
     await window._postureLoadSuggestions();
-    var scan = window._postureScanTrajectory(blob); // meeting/conversational cues
-    if (!scan) return;
+    var mtgTitle = (meeting.meta && meeting.meta.title) || 'untitled';
     var wrote = 0;
-    for (var ci=0; ci<candidates.length; ci++){
-      var node = candidates[ci];
-      if (blob.indexOf(String(node.name).toLowerCase()) < 0) continue; // person must be named in the text
-      var ok = await window._postureWriteTrajSuggestion({
-        node: node, traj: scan.traj, conf: scan.conf, quote: scan.quote,
-        channel: 'meeting', sourceId: meeting.id || '',
-        summary: 'Meeting "' + ((meeting.meta&&meeting.meta.title)||'untitled') + '" language implies a ' + scan.traj + ' trajectory for ' + node.name,
-        ts: meeting.ts || Date.now()
-      });
-      if (ok) wrote++;
+    // Trajectory (person-level, workspace-shared).
+    var tscan = window._postureScanTrajectory(blob); // meeting/conversational cues
+    if (tscan) {
+      for (var ci=0; ci<candidates.length; ci++){
+        var node = candidates[ci];
+        if (blob.indexOf(String(node.name).toLowerCase()) < 0) continue; // person must be named in the text
+        var okT = await window._postureWriteTrajSuggestion({
+          node: node, traj: tscan.traj, conf: tscan.conf, quote: tscan.quote,
+          channel: 'meeting', sourceId: meeting.id || '',
+          summary: 'Meeting "' + mtgTitle + '" language implies a ' + tscan.traj + ' trajectory for ' + node.name,
+          ts: meeting.ts || Date.now()
+        });
+        if (okT) wrote++;
+      }
+    }
+    // Position (person × pursuit) — only when the meeting is linked to an opp.
+    var pscan = meeting.oppId ? window._postureScanPosition(blob) : null;
+    if (pscan && meeting.oppId) {
+      var oppM = (window.opportunities||[]).find(function(o){ return String(o.id)===String(meeting.oppId); });
+      var oppNameM = (oppM && (oppM.name||oppM.title)) || 'this pursuit';
+      for (var pj=0; pj<candidates.length; pj++){
+        var pnode = candidates[pj];
+        if (blob.indexOf(String(pnode.name).toLowerCase()) < 0) continue;
+        var okP = await window._postureWritePositionSuggestion({
+          node: pnode, pos: pscan.pos, conf: pscan.conf, quote: pscan.quote,
+          channel: 'meeting', sourceId: meeting.id || '', pursuitId: meeting.oppId, pursuitName: oppNameM,
+          summary: 'Meeting "' + mtgTitle + '" implies ' + pnode.name + ' is a ' + pscan.pos + ' on ' + oppNameM,
+          ts: meeting.ts || Date.now()
+        });
+        if (okP) wrote++;
+      }
     }
     if (wrote) { try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){} }
   } catch(e) { try{ console.warn('[posture-feed] infer failed:', e&&e.message); }catch(_){} }
@@ -40659,6 +40733,8 @@ window._postureAcceptSuggestion = async function(id){
   var s = (window._postureSuggestionsCache||{})[id]; if(!s) return;
   try {
     if (s.field === 'trajectory' && window._postureSetContactTrajectory) await window._postureSetContactTrajectory(s.entityId, s.suggestedValue);
+    else if (s.field === 'position' && window._postureSetContactPosition) await window._postureSetContactPosition(s.entityId, s.pursuitId, s.suggestedValue);
+    else if (s.field === 'path' && window._postureSetContactPath) await window._postureSetContactPath(s.entityId, s.suggestedValue);
     s.status='accepted'; s.resolvedAt=Date.now();
     await window.fbSet(window.wsPath('postureSuggestions/'+id), s);
   } catch(e){ try{ if(window.toast) toast('Accept failed'); }catch(_){ } }
@@ -40685,7 +40761,7 @@ window._renderPostureSuggestions = function(entityId){
   sugg.forEach(function(s){
     var conf = Math.round((s.confidence||0)*100);
     var tier = (s.confidence>=0.7)?'#22c55e':((s.confidence>=0.6)?'#f59e0b':'#5fb3b8');
-    var label = cap(s.field) + ': ' + cap(s.suggestedValue);
+    var label = (s.field==='position' && s.pursuitName) ? ('Position on ' + esc(s.pursuitName) + ': ' + cap(s.suggestedValue)) : (cap(s.field) + ': ' + cap(s.suggestedValue));
     var ev = (s.evidence&&s.evidence[0])||{};
     h += '<div style="background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.25);border-left:2px solid '+tier+';border-radius:3px;padding:10px 14px;margin-bottom:8px">';
     h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap"><span style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;color:'+tier+';letter-spacing:.08em">◇ SUGGESTED · '+esc(label)+'</span><span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3)">confidence '+conf+'%</span></div>';
@@ -40756,16 +40832,34 @@ window._postureInferFromCapture = async function(entry){
     for (var i=0;i<nodes.length;i++){ if (String(nodes[i].id)===String(entry.matchedNodeId) && nodes[i].type==='person'){ node = nodes[i]; break; } }
     if (!node) return; // only person matches power Channel C
     var text = String(((entry.meta && entry.meta.title)||'') + ' ' + ((entry.intel && entry.intel.summary)||'')).toLowerCase();
-    var scan = window._postureScanTrajectory(text); // conversational cues
-    if (!scan) return;
+    var subj = ((entry.meta && entry.meta.title)||'(no subject)');
     await window._postureLoadSuggestions();
-    var ok = await window._postureWriteTrajSuggestion({
-      node: node, traj: scan.traj, conf: Math.min(scan.conf, 0.6), quote: scan.quote, // email bounded lower per design
-      channel: 'email', sourceId: entry.id || '',
-      summary: 'Email "' + (((entry.meta && entry.meta.title)||'(no subject)')) + '" implies a ' + scan.traj + ' trajectory for ' + node.name,
-      ts: entry.occurredAt || entry.ts || Date.now()
-    });
-    if (ok) { try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){} }
+    var wrote = 0;
+    // Trajectory (person-level).
+    var scan = window._postureScanTrajectory(text); // conversational cues
+    if (scan) {
+      if (await window._postureWriteTrajSuggestion({
+        node: node, traj: scan.traj, conf: Math.min(scan.conf, 0.6), quote: scan.quote, // email bounded lower per design
+        channel: 'email', sourceId: entry.id || '',
+        summary: 'Email "' + subj + '" implies a ' + scan.traj + ' trajectory for ' + node.name,
+        ts: entry.occurredAt || entry.ts || Date.now()
+      })) wrote++;
+    }
+    // Position (person × pursuit) — only when the capture is linked to an opp.
+    if (entry.oppId) {
+      var pscanC = window._postureScanPosition(text);
+      if (pscanC) {
+        var oppC = (window.opportunities||[]).find(function(o){ return String(o.id)===String(entry.oppId); });
+        var oppNameC = (oppC && (oppC.name||oppC.title)) || 'this pursuit';
+        if (await window._postureWritePositionSuggestion({
+          node: node, pos: pscanC.pos, conf: Math.min(pscanC.conf, 0.6), quote: pscanC.quote,
+          channel: 'email', sourceId: entry.id || '', pursuitId: entry.oppId, pursuitName: oppNameC,
+          summary: 'Email "' + subj + '" implies ' + node.name + ' is a ' + pscanC.pos + ' on ' + oppNameC,
+          ts: entry.occurredAt || entry.ts || Date.now()
+        })) wrote++;
+      }
+    }
+    if (wrote) { try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){} }
   } catch(e) { try{ console.warn('[posture-feed C/email] infer failed:', e&&e.message); }catch(_){} }
 };
 
@@ -71175,6 +71269,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.302"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.303"></script>
 </body>
 </html>
