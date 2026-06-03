@@ -8,7 +8,7 @@
 
 import { hashFields } from "../../framework/hashing";
 import { externalProvenance } from "../../framework/provenance";
-import { db, wsPath } from "../../framework/rtdb";
+import { db, wsPath, stripUndefinedDeep } from "../../framework/rtdb";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
 import { resolveRecipientOrg } from "../usaSpending/orgResolver";
@@ -489,7 +489,7 @@ export async function upsertLdaSignal(
   const snap = await db.ref(path).once("value");
   let action: "created" | "updated" | "unchanged";
   if (!snap.exists()) {
-    await db.ref(path).set(signal);
+    await db.ref(path).set(stripUndefinedDeep(signal));
     log?.debug("senate_lda_signal_created", {
       id,
       clientName,
@@ -502,7 +502,7 @@ export async function upsertLdaSignal(
       await db.ref(`${path}/source/refreshedAt`).set(Date.now());
       action = "unchanged";
     } else {
-      await db.ref(path).set(signal);
+      await db.ref(path).set(stripUndefinedDeep(signal));
       action = "updated";
     }
   }
@@ -596,13 +596,13 @@ async function upsertLdaLobbyistPerson(
   };
   let edgeUpserted = false;
   if (!edgeSnap.exists()) {
-    await db.ref(edgePath).set(edge);
+    await db.ref(edgePath).set(stripUndefinedDeep(edge));
     edgeUpserted = true;
   } else {
     // Preserve operator-input fields; just bump lastSeenAt + lastSeenOnFiling
     const existing = edgeSnap.val() as LdaEdge;
     const mergedAttrs = { ...(existing.attrs || {}), ...edgeAttrs };
-    await db.ref(edgePath).set({ ...existing, attrs: mergedAttrs });
+    await db.ref(edgePath).set(stripUndefinedDeep({ ...existing, attrs: mergedAttrs }));
     edgeUpserted = true;
   }
 
@@ -646,7 +646,7 @@ async function upsertFormerlyAtEdge(
   };
   const snap = await db.ref(edgePath).once("value");
   if (!snap.exists()) {
-    await db.ref(edgePath).set(edge);
+    await db.ref(edgePath).set(stripUndefinedDeep(edge));
     log?.debug("senate_lda_formerly_at_edge_created", {
       personId,
       orgId,

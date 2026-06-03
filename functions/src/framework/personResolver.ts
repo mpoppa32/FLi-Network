@@ -27,7 +27,7 @@
 // review — the resolver itself never auto-merges across fuzzy matches.
 // Operator confirmation/decline surface is built in a follow-up arc.
 
-import { db, wsPath } from "./rtdb";
+import { db, wsPath, stripUndefinedDeep } from "./rtdb";
 import { Logger } from "./logger";
 import type { Person } from "./types/entities";
 import type { SourceProvenance } from "./types";
@@ -384,7 +384,16 @@ export async function resolvePersonByName(
       source: options.provenance,
     };
 
-    await db.ref(wsPath(workspaceId, "nodes", personId)).set(newPerson);
+    // P13.294 — strip undefined before write. RTDB rejects ANY undefined
+    // value in a set() payload; newPerson carries role/org/alternateNames
+    // that are `undefined` when the caller omits them (senate_lda passes
+    // role+org but no alternateNames → alternateNames:undefined → the whole
+    // node write failed with "value argument contains undefined in property
+    // ...alternateNames", erroring all 10 filings on the first real sync).
+    // Wrapping here fixes it for EVERY source that auto-creates persons via
+    // this resolver, not just senate_lda. See [[feedback_edit_long_string_trap]]
+    // sibling trap: project memory "RTDB rejects undefined values anywhere".
+    await db.ref(wsPath(workspaceId, "nodes", personId)).set(stripUndefinedDeep(newPerson));
 
     // Update cache
     if (norm) cache.byName.set(norm, personId);

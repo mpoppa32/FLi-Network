@@ -147,7 +147,17 @@ export async function listFilings(
     );
   }
   if (options.postedAfter) params.set("dt_posted_after", options.postedAfter);
-  params.set("page", String(options.page ?? 1));
+  // P13.294 — DO NOT send `page`. Verified 2026-06-03 via direct probe:
+  // lda.senate.gov/api/v1/filings now returns HTTP 400 ("must pass at least
+  // one query string parameter to filter the results and be able to
+  // paginate") for ANY request carrying a `page` param — including page=1,
+  // and including the API's OWN `next` URL (which embeds page=2 and then
+  // 400s when followed). The first page (no `page` param) returns cleanly.
+  // page_size is also capped at 25 server-side regardless of requested
+  // value (tested 50/100 — both return 25). Net: this source is
+  // single-page-only until the upstream API bug is fixed; we take the 25
+  // newest filings per issue code per sync. The mapper dedupes by
+  // filing_uuid so weekly re-ingestion of overlapping windows is a no-op.
   params.set("page_size", String(Math.min(25, options.pageSize ?? 25)));
   params.set("ordering", options.ordering ?? "-dt_posted");
   const url = `${BASE_URL}/filings/?${params.toString()}`;

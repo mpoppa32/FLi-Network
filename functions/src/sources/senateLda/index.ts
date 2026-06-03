@@ -157,7 +157,13 @@ export async function syncWorkspace(
           result.perIssueCode[code]++;
         }
 
-        hasNext = !!resp.next;
+        // P13.294 — single-page only. The upstream API rejects every
+        // request carrying a `page` param (even its own next URL → 400),
+        // so we cannot walk past page 1. Force-stop after the first page
+        // rather than honoring resp.next (which points at a page=2 URL the
+        // server itself 400s on). 25 newest filings per issue code per
+        // sync; weekly cadence + uuid-dedupe covers the trailing window.
+        hasNext = false;
         page++;
         if (collected.length >= itemCap) break;
       }
