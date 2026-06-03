@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.297</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.298</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -25035,6 +25035,355 @@ async function callClaudeTranscript(notes,meta){
   }
 }
 
+// ── P13.298 — Meeting processing reliability: save-first, chunked, retried ──
+// Architecture (Phase 1 fix in corsair-meeting-processing-fix.md):
+//   1. Raw transcript saves to RTDB BEFORE any AI call (transcript can't be lost).
+//   2. Long transcripts split on speaker-turn boundaries into ≤_CHUNK_TARGET_CHARS pieces.
+//   3. Each chunk's Claude call retries up to 2× on transient failure with backoff.
+//   4. Per-chunk extractions merge mechanically: people/companies dedup, arrays concat.
+//   5. Partial success keeps what completed; operator gets a Retry button via processingState.
+// The chunk threshold sits comfortably inside the proxy's 60s upstream fetch ceiling.
+var _CHUNK_TARGET_CHARS = 12000;
+var _CHUNK_SOFT_MAX     = 18000;
+var _CHUNK_RETRY_ATTEMPTS = 3;
+var _CHUNK_RETRY_BACKOFF_MS = [0, 1500, 4000];
+
+// Split a transcript into chunks aligned on natural boundaries. Returns
+// [{text, idx, total}]. Single-chunk return if input is below threshold.
+function _splitTranscriptForChunking(text, txInfo){
+  if (!text || text.length <= _CHUNK_TARGET_CHARS) {
+    return [{ text: text, idx: 0, total: 1 }];
+  }
+  var lines = text.split('\n');
+  var boundaryFn;
+  var fmt = txInfo && txInfo.format;
+  if (fmt === 'otter')   boundaryFn = function(l){ return /^(.+?)\s{2,}(\d{1,2}:\d{2}(:\d{2})?)\s*$/.test(l); };
+  else if (fmt === 'zoom') boundaryFn = function(l){ return /^\[?(\d{1,2}:\d{2}(:\d{2})?)\]?\s+(.+?):\s*\S/.test(l); };
+  else if (fmt === 'generic') boundaryFn = function(l){ return /^[A-Z][a-zA-Z\s\-\.]{1,30}:\s+\S/.test(l); };
+  else if (fmt === 'srt') boundaryFn = function(l){ return /^\d{2}:\d{2}:\d{2}[,\.]\d{3}\s+-->/.test(l); };
+  else boundaryFn = function(l){ return l.trim() === ''; }; // paragraph blank line
+  var chunks = [];
+  var buf = [];
+  var bufLen = 0;
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i];
+    var atBoundary = boundaryFn(ln);
+    // Close current chunk at boundary IF buffer is past target (≥_CHUNK_TARGET_CHARS).
+    if (atBoundary && bufLen >= _CHUNK_TARGET_CHARS) {
+      chunks.push(buf.join('\n'));
+      buf = [];
+      bufLen = 0;
+    }
+    buf.push(ln);
+    bufLen += ln.length + 1;
+    // Hard cap — force close even without boundary at SOFT_MAX (prevents runaway).
+    if (bufLen >= _CHUNK_SOFT_MAX) {
+      chunks.push(buf.join('\n'));
+      buf = [];
+      bufLen = 0;
+    }
+  }
+  if (buf.length) chunks.push(buf.join('\n'));
+  // Edge case: input was big enough to trigger chunking but had no detectable
+  // boundaries (e.g. a wall of text with no paragraph breaks). Fall back to
+  // sentence-window split on the original text.
+  if (chunks.length <= 1 && text.length > _CHUNK_TARGET_CHARS) {
+    chunks = [];
+    var sentences = text.split(/(?<=[\.\?\!])\s+/);
+    buf = []; bufLen = 0;
+    for (var si = 0; si < sentences.length; si++) {
+      var s = sentences[si];
+      buf.push(s);
+      bufLen += s.length + 1;
+      if (bufLen >= _CHUNK_TARGET_CHARS) {
+        chunks.push(buf.join(' '));
+        buf = []; bufLen = 0;
+      }
+    }
+    if (buf.length) chunks.push(buf.join(' '));
+  }
+  return chunks.map(function(c, i){ return { text: c, idx: i, total: chunks.length }; });
+}
+
+// Empty intel shape — used as the seed for a freshly captured meeting before
+// extraction completes, and as the merge accumulator.
+function _emptyMeetingIntel(){
+  return {
+    summary:'', energyRead:'', companyPulse:'',
+    keyDecisions:[], actionItems:[], openQuestions:[], risks:[], milestones:[],
+    keyPeople:[], companies:[],
+    learningInsights:[], redFlags:[], followUpTopics:[]
+  };
+}
+
+// Merge an array of per-chunk intel objects into one. People + companies
+// dedup by nameSimilarity / lowercase name; other arrays concat with simple
+// key dedup so the operator sees one coherent meeting, not five.
+function _mergeMeetingIntel(intels){
+  var out = _emptyMeetingIntel();
+  if (!intels || !intels.length) return out;
+  var summaries = [];
+  var energies = [];
+  var pulses = {};
+  intels.forEach(function(it){
+    if (!it) return;
+    if (it.summary) summaries.push(String(it.summary).trim());
+    if (it.energyRead) energies.push(String(it.energyRead).trim());
+    if (it.companyPulse) pulses[it.companyPulse] = (pulses[it.companyPulse]||0) + 1;
+    // keyPeople — dedup via nameSimilarity (existing function in this file)
+    (it.keyPeople||[]).forEach(function(p){
+      if (!p || !p.name) return;
+      var hit = out.keyPeople.find(function(x){
+        try { return (typeof nameSimilarity==='function') && nameSimilarity(x.name, p.name) >= 0.72; }
+        catch(e){ return String(x.name||'').toLowerCase() === String(p.name||'').toLowerCase(); }
+      });
+      if (hit) {
+        if (!hit.role && p.role) hit.role = p.role;
+        if (!hit.org  && p.org)  hit.org  = p.org;
+        if (!hit.stance && p.stance) hit.stance = p.stance;
+        if (!hit.watchFor && p.watchFor) hit.watchFor = p.watchFor;
+      } else out.keyPeople.push(p);
+    });
+    // companies — dedup by lowercase name
+    (it.companies||[]).forEach(function(c){
+      if (!c || !c.name) return;
+      var key = String(c.name).toLowerCase().trim();
+      var hit = out.companies.find(function(x){ return String(x.name||'').toLowerCase().trim() === key; });
+      if (hit) {
+        if (!hit.role && c.role) hit.role = c.role;
+        if (!hit.notes && c.notes) hit.notes = c.notes;
+      } else out.companies.push(c);
+    });
+    // actionItems — dedup by (task + owner) lowercased
+    (it.actionItems||[]).forEach(function(a){
+      if (!a || !a.task) return;
+      var key = String(a.task||'').toLowerCase().trim() + '|' + String(a.owner||'').toLowerCase().trim();
+      if (!out._aiSeen) out._aiSeen = {};
+      if (out._aiSeen[key]) return;
+      out._aiSeen[key] = 1;
+      out.actionItems.push(a);
+    });
+    // keyDecisions — dedup by decision text
+    (it.keyDecisions||[]).forEach(function(d){
+      if (!d || !d.decision) return;
+      var key = String(d.decision).toLowerCase().trim();
+      if (!out._kdSeen) out._kdSeen = {};
+      if (out._kdSeen[key]) return;
+      out._kdSeen[key] = 1;
+      out.keyDecisions.push(d);
+    });
+    // openQuestions, risks, milestones — dedup by primary field
+    (it.openQuestions||[]).forEach(function(q){
+      if (!q || !q.question) return;
+      var key = String(q.question).toLowerCase().trim();
+      if (!out._oqSeen) out._oqSeen = {};
+      if (out._oqSeen[key]) return;
+      out._oqSeen[key] = 1;
+      out.openQuestions.push(q);
+    });
+    (it.risks||[]).forEach(function(r){
+      if (!r || !r.risk) return;
+      var key = String(r.risk).toLowerCase().trim();
+      if (!out._rkSeen) out._rkSeen = {};
+      if (out._rkSeen[key]) return;
+      out._rkSeen[key] = 1;
+      out.risks.push(r);
+    });
+    (it.milestones||[]).forEach(function(ms){
+      if (!ms || !ms.milestone) return;
+      var key = String(ms.milestone).toLowerCase().trim();
+      if (!out._msSeen) out._msSeen = {};
+      if (out._msSeen[key]) return;
+      out._msSeen[key] = 1;
+      out.milestones.push(ms);
+    });
+    // string arrays — dedup by lowercase
+    ['learningInsights','redFlags','followUpTopics'].forEach(function(field){
+      (it[field]||[]).forEach(function(s){
+        if (!s) return;
+        var key = String(s).toLowerCase().trim();
+        if (!key) return;
+        var seenKey = '_'+field+'Seen';
+        if (!out[seenKey]) out[seenKey] = {};
+        if (out[seenKey][key]) return;
+        out[seenKey][key] = 1;
+        out[field].push(s);
+      });
+    });
+  });
+  // Composite summary: join chunk summaries with a separator; cap length.
+  out.summary = summaries.join(' ').slice(0, 4000);
+  out.energyRead = energies.join(' · ').slice(0, 1000);
+  // Most-common pulse wins; ties resolved by first occurrence.
+  var bestPulse = '', bestCount = 0;
+  Object.keys(pulses).forEach(function(k){ if (pulses[k] > bestCount){ bestCount = pulses[k]; bestPulse = k; } });
+  out.companyPulse = bestPulse;
+  // Strip dedup-bookkeeping keys.
+  ['_aiSeen','_kdSeen','_oqSeen','_rkSeen','_msSeen','_learningInsightsSeen','_redFlagsSeen','_followUpTopicsSeen'].forEach(function(k){ delete out[k]; });
+  return out;
+}
+
+// Extract intel for one chunk via _apiFetch, with retry on transient failure.
+// Reuses the prompts from callClaude / callClaudeTranscript but routed through
+// a single helper so chunked path and single-shot path stay in sync.
+async function _extractChunkWithRetry(chunk, meta, isTranscript){
+  var knownPeople = nodes.filter(function(n){return n.type==='person';}).map(function(n){return n.name;}).slice(0,60);
+  var knownCos    = nodes.filter(function(n){return n.type==='company';}).map(function(n){return n.name;}).slice(0,40);
+  var canonicalNote = '';
+  if (knownPeople.length || knownCos.length) {
+    canonicalNote = ' CANONICAL NAMES — use EXACTLY these spellings when recognised: ';
+    if (knownPeople.length) canonicalNote += 'People: '+knownPeople.join(', ')+'. ';
+    if (knownCos.length)    canonicalNote += 'Companies: '+knownCos.join(', ')+'.';
+  }
+  var schemaTail = ' Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';
+  var chunkContext = chunk.total > 1 ? ('\n\nNOTE: This is segment '+(chunk.idx+1)+' of '+chunk.total+' of a longer meeting transcript. Extract everything in THIS segment; downstream merging dedups across segments.') : '';
+  var systemPrompt, userContent;
+  if (isTranscript) {
+    systemPrompt = 'You are a senior defense BD intelligence analyst. You are receiving a VERBATIM MEETING TRANSCRIPT — every word is exactly what was spoken, with speaker labels.\n\n'
+      + 'Your job: extract maximum actionable intelligence with precise attribution.\n\n'
+      + 'TRANSCRIPT ANALYSIS RULES:\n'
+      + '- Attribute EVERY action item, commitment, risk, and concern to the EXACT speaker who said it\n'
+      + '- For stance: quote the speaker\'s actual words that reveal their position (e.g., "we\'re not ready to commit" = cautious)\n'
+      + '- Commitments said verbally are high-priority action items — capture the exact phrasing and deadline if stated\n'
+      + '- Watch for hedging language ("I\'ll try", "probably", "maybe next quarter") vs firm commitments\n'
+      + '- Red flags: capture exact phrases that signal concern, risk, competitor threat, or timeline slippage\n'
+      + '- Energy read: based on the overall tone and momentum of the dialogue\n'
+      + '- Every person who SPEAKS in the transcript MUST appear in keyPeople\n'
+      + '- Every organization mentioned MUST appear in companies\n'
+      + '- Return ONLY valid JSON, no markdown.'
+      + canonicalNote + chunkContext + schemaTail;
+    userContent = 'Date: '+meta.date+'\nType: '+meta.type+'\nAttendees: '+(meta.att||'see transcript')+'\n\nIMPORTANT: Every speaker in the transcript must appear in keyPeople. Attribute all findings to named speakers.\n\nVERBATIM TRANSCRIPT'+(chunk.total>1?(' (segment '+(chunk.idx+1)+'/'+chunk.total+')'):'')+':\n'+chunk.text;
+  } else {
+    systemPrompt = 'You are a meeting intelligence analyst for a defense technology company. Extract maximum actionable value. Use speaker labels for attribution. CRITICAL: Every person listed in the Attendees field MUST appear in keyPeople. Every company or organization mentioned anywhere MUST appear in companies. Return ONLY valid JSON, no markdown.'
+      + canonicalNote + chunkContext + schemaTail;
+    userContent = 'Date:'+meta.date+' Type:'+meta.type+' Attendees:'+(meta.att||'?')+'\n\nIMPORTANT: All attendees must appear in keyPeople.\n\nNOTES'+(chunk.total>1?(' (segment '+(chunk.idx+1)+'/'+chunk.total+')'):'')+':\n'+chunk.text;
+  }
+  var payload = {
+    model: 'claude-sonnet-4-6',
+    max_tokens: isTranscript ? 4000 : 3000,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userContent }]
+  };
+  var lastErr;
+  for (var attempt = 0; attempt < _CHUNK_RETRY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise(function(r){ setTimeout(r, _CHUNK_RETRY_BACKOFF_MS[attempt]); });
+    }
+    try {
+      var res = await _apiFetch(apiKey, payload);
+      var d = await res.json();
+      var txt = (d.content||[]).map(function(b){ return b.text||''; }).join('');
+      var clean = txt.replace(/```json|```/g, '').trim();
+      var fi = clean.indexOf('{'), la = clean.lastIndexOf('}');
+      if (fi === -1 || la === -1) throw new Error('No JSON in response');
+      var js = clean.slice(fi, la+1);
+      try { return JSON.parse(js); }
+      catch(parseErr) {
+        var fixed = js;
+        var eo = (fixed.match(/\[/g)||[]).length - (fixed.match(/\]/g)||[]).length;
+        var ec = (fixed.match(/\{/g)||[]).length - (fixed.match(/\}/g)||[]).length;
+        for (var bi = 0; bi < eo; bi++) fixed += ']';
+        for (var bj = 0; bj < ec; bj++) fixed += '}';
+        return JSON.parse(fixed);
+      }
+    } catch(e) {
+      lastErr = e;
+      var msg = String((e && e.message) || '');
+      // Don't retry hard failures — quota, auth, bad input
+      if (/quota|resource-exhausted|429/i.test(msg)) break;
+      if (/unauthenticated|permission-denied|key invalid/i.test(msg)) break;
+      if (/maximum context length|too long|invalid-argument/i.test(msg)) break;
+      // Other failures (deadline-exceeded, unavailable, network) — retry
+    }
+  }
+  throw lastErr || new Error('Chunk extraction failed after retries');
+}
+
+// Orchestrate chunked extraction. Updates mtgRecord.processingState as it
+// goes — saving to RTDB after each chunk completes so a hard browser crash
+// mid-processing still leaves partial progress recoverable.
+async function _processMeetingAI(notes, meta, isTranscript, mtgRecord){
+  var txInfo = detectTranscript(notes);
+  var chunks = _splitTranscriptForChunking(notes, txInfo);
+  mtgRecord.processingState = mtgRecord.processingState || {};
+  mtgRecord.processingState.chunks = { total: chunks.length, done: 0, failed: 0 };
+  mtgRecord.processingState.stage = 'processing';
+  if (chunks.length > 1) {
+    try { toast('Processing '+chunks.length+' segments…'); } catch(e){}
+  }
+  var perChunkIntel = [];
+  var failed = [];
+  for (var i = 0; i < chunks.length; i++) {
+    try {
+      var intelChunk = await _extractChunkWithRetry(chunks[i], meta, isTranscript);
+      perChunkIntel.push(intelChunk);
+      mtgRecord.processingState.chunks.done = perChunkIntel.length;
+      // Live-update partial intel after each successful chunk so operator
+      // watching the meeting view sees results stream in instead of waiting.
+      mtgRecord.intel = _mergeMeetingIntel(perChunkIntel);
+      try { await saveMeeting(mtgRecord); } catch(e){}
+      if (typeof currentMeeting !== 'undefined' && currentMeeting && currentMeeting.id === mtgRecord.id) {
+        try { renderIntel(mtgRecord); } catch(e){}
+      }
+    } catch(e) {
+      failed.push({ idx: i, error: String((e && e.message) || 'unknown') });
+      mtgRecord.processingState.chunks.failed = failed.length;
+    }
+  }
+  if (!perChunkIntel.length) {
+    var msg = failed.length ? failed[0].error : 'Extraction failed';
+    throw new Error(msg);
+  }
+  mtgRecord.processingState.failedChunks = failed;
+  return _mergeMeetingIntel(perChunkIntel);
+}
+
+// Retry processing for a meeting whose initial run failed or was partial.
+// Loads the saved meeting from memory (or RTDB if needed), re-runs the AI
+// orchestrator against m.notes, merges into m.intel, and saves.
+window._retryMeetingProcessing = async function(mtgId){
+  var m = meetingMap.get(mtgId) || (meetings || []).find(function(x){ return String(x.id) === String(mtgId); });
+  if (!m) { toast('Meeting not found'); return; }
+  if (!m.notes) { toast('No transcript on this meeting'); return; }
+  if (!apiKey) { toast('Add API key in Settings first'); return; }
+  var btn = document.getElementById('proc-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Retrying...'; }
+  clearProcErr();
+  try {
+    var isTranscript = (m.meta && m.meta.type === 'Call Transcript') || (function(){
+      var ti = detectTranscript(m.notes); return ti && ti.isTranscript;
+    })();
+    var intel = await _processMeetingAI(m.notes, m.meta || {}, isTranscript, m);
+    m.intel = intel;
+    m.processingState = m.processingState || {};
+    m.processingState.stage = 'done';
+    m.processingState.completedAt = new Date().toISOString();
+    await saveMeeting(m);
+    currentMeeting = m;
+    renderIntel(m);
+    var r  = await autoSyncEnts(m);
+    var rl = await autoSyncLinks(m);
+    var parts = [];
+    if (r.added)    parts.push(r.added+' new node'+(r.added>1?'s':''));
+    if (r.updated)  parts.push(r.updated+' updated');
+    if (rl.added)   parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');
+    toast('Reprocessed'+(parts.length?' — '+parts.join(', '):''));
+  } catch(e) {
+    m.processingState = m.processingState || {};
+    m.processingState.stage = (m.processingState.chunks && m.processingState.chunks.done > 0) ? 'partial' : 'failed';
+    m.processingState.error = String((e && e.message) || 'Retry failed');
+    try { await saveMeeting(m); } catch(e2){}
+    var done = (m.processingState.chunks && m.processingState.chunks.done) || 0;
+    var total = (m.processingState.chunks && m.processingState.chunks.total) || 0;
+    var fragment = (done > 0 && total > 0)
+      ? ('Processing still incomplete — '+done+' of '+total+' sections done. ')
+      : ('Retry failed — '+((e && e.message) || 'unknown error')+'. ');
+    showProcErr(fragment +
+      '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Process'; }
+};
+
 async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){var isOwner=currentUserRole==='Owner'||currentUserRole==='Admin';showProcErr(isOwner?'No API key configured. Open the user menu (top right) → Settings → set your Anthropic API key, or set a Workspace API Key so all members share one.':'No API key configured for this workspace. Ask your workspace owner to set a Workspace API Key in Settings.');return;}
   // Auto-fill today's date if not set — prevents empty date strings in stored meetings
   var dateInp=document.getElementById('m-date');
@@ -25043,13 +25392,114 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
   // Route to transcript-aware Claude if input is a transcript
   var txInfo=detectTranscript(notes);
   var isTranscript=txInfo.isTranscript||meta.type==='Call Transcript';
-  try{var intel=await (isTranscript?callClaudeTranscript(notes,meta):callClaude(notes,meta));var m={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),meta:Object.assign({},meta,{title:meta.title||(meta.type+' -- '+meta.date)}),notes:notes,intel:intel,ts:new Date().toISOString(),loggedBy:currentUser.displayName,loggedByUid:currentUser.uid};
-    var oppSel=document.getElementById('m-opp');
-    if(oppSel&&oppSel.value){m.oppId=oppSel.value;}
+  // P13.298 — SAVE FIRST. Persist m.notes to RTDB before any AI call so a
+  // timeout / crash / reload mid-processing can never lose the transcript.
+  var m = {
+    id: Date.now()+'-'+Math.random().toString(36).slice(2,7),
+    meta: Object.assign({}, meta, { title: meta.title || (meta.type + ' -- ' + meta.date) }),
+    notes: notes,
+    intel: _emptyMeetingIntel(),
+    ts: new Date().toISOString(),
+    loggedBy: currentUser.displayName,
+    loggedByUid: currentUser.uid,
+    processingState: { stage: 'pending', startedAt: new Date().toISOString(), chunks: { total: 0, done: 0, failed: 0 } }
+  };
+  var oppSel = document.getElementById('m-opp');
+  if (oppSel && oppSel.value) m.oppId = oppSel.value;
+  try {
     await saveMeeting(m);
-    // Link to opportunity if tagged
-    if(m.oppId){var opp=opportunities.find(function(o){return o.id===m.oppId;});if(opp){if(!opp.meetings)opp.meetings=[];if(opp.meetings.indexOf(m.id)===-1){opp.meetings.push(m.id);opp.updatedAt=new Date().toISOString();await saveOpp(opp);}}}
-    if(oppSel)oppSel.value='';['m-notes','m-title','m-att','m-dur'].forEach(function(id){document.getElementById(id).value='';});updateCC();currentMeeting=m;window._lastProcessedSummary={mtgId:m.id,addedNodes:0,updatedNodes:0,addedLinks:0,enrichedLinks:0,actionItems:(intel.actionItems||[]).length,risks:(intel.risks||[]).length,keyPeople:(intel.keyPeople||[]).length,companies:(intel.companies||[]).length,commitments:(intel.commitments||[]).length};renderIntel(m);switchIntelTab('intel');if(window.innerWidth<=768){document.querySelectorAll('.mob-tab').forEach(function(b){b.classList.remove('active');});var ib=document.getElementById('mbt-intel');if(ib)ib.classList.add('active');}var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);pendingEnts=[];if(window._lastProcessedSummary){window._lastProcessedSummary.addedNodes=r.added||0;window._lastProcessedSummary.updatedNodes=r.updated||0;window._lastProcessedSummary.addedLinks=rl.added||0;window._lastProcessedSummary.enrichedLinks=rl.enriched||0;if(window._renderProcessExtractionBanner)window._renderProcessExtractionBanner(m);}var parts=[];if(r.added)parts.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts.push(r.updated+' updated');if(rl.added)parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');if(rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');var msg='Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':'');if(rl.added>0){var toastEl=document.getElementById('toast');toastEl.innerHTML=msg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl.classList.remove('show');},6000);}else{toast(msg);}if(window._showAutoPrompt){setTimeout(function(){window._showAutoPrompt(m);},1500);}}catch(e){showProcErr(e.message||'Processing failed');}btn.disabled=false;btn.textContent='Process';}
+  } catch(saveErr) {
+    showProcErr('Could not save meeting: '+((saveErr && saveErr.message) || 'Firebase write failed'));
+    btn.disabled = false; btn.textContent = 'Process';
+    return;
+  }
+  toast('Meeting captured — processing…');
+  // Link to opportunity now (was after AI before — moving earlier means an
+  // AI failure still leaves the opp linked, so the saved transcript is
+  // visible on the opp's dossier even while extraction is pending).
+  if (m.oppId) {
+    var opp = opportunities.find(function(o){ return o.id === m.oppId; });
+    if (opp) {
+      if (!opp.meetings) opp.meetings = [];
+      if (opp.meetings.indexOf(m.id) === -1) {
+        opp.meetings.push(m.id);
+        opp.updatedAt = new Date().toISOString();
+        try { await saveOpp(opp); } catch(e){ console.warn('[P13.298 opp link]', e); }
+      }
+    }
+  }
+  // Switch operator to the saved-but-pending meeting view so they see the
+  // capture confirmation immediately and can watch chunked extraction stream
+  // in (live-update via renderIntel inside _processMeetingAI).
+  currentMeeting = m;
+  try { renderIntel(m); } catch(e){}
+  try { switchIntelTab('intel'); } catch(e){}
+  if (window.innerWidth <= 768) {
+    document.querySelectorAll('.mob-tab').forEach(function(b){ b.classList.remove('active'); });
+    var mib = document.getElementById('mbt-intel'); if (mib) mib.classList.add('active');
+  }
+  try {
+    var intel = await _processMeetingAI(notes, m.meta, isTranscript, m);
+    m.intel = intel;
+    m.processingState.stage = 'done';
+    m.processingState.completedAt = new Date().toISOString();
+    await saveMeeting(m);
+    if (oppSel) oppSel.value = '';
+    ['m-notes','m-title','m-att','m-dur'].forEach(function(id){ document.getElementById(id).value = ''; });
+    updateCC();
+    window._lastProcessedSummary = { mtgId: m.id, addedNodes: 0, updatedNodes: 0, addedLinks: 0, enrichedLinks: 0, actionItems: (intel.actionItems||[]).length, risks: (intel.risks||[]).length, keyPeople: (intel.keyPeople||[]).length, companies: (intel.companies||[]).length, commitments: (intel.commitments||[]).length };
+    renderIntel(m);
+    var r = await autoSyncEnts(m);
+    var rl = await autoSyncLinks(m);
+    pendingEnts = [];
+    if (window._lastProcessedSummary) {
+      window._lastProcessedSummary.addedNodes    = r.added || 0;
+      window._lastProcessedSummary.updatedNodes  = r.updated || 0;
+      window._lastProcessedSummary.addedLinks    = rl.added || 0;
+      window._lastProcessedSummary.enrichedLinks = rl.enriched || 0;
+      if (window._renderProcessExtractionBanner) window._renderProcessExtractionBanner(m);
+    }
+    var parts = [];
+    if (r.added)    parts.push(r.added+' new node'+(r.added>1?'s':''));
+    if (r.updated)  parts.push(r.updated+' updated');
+    if (rl.added)   parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');
+    if (rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');
+    var failedCount = (m.processingState.failedChunks || []).length;
+    var totalCount  = (m.processingState.chunks || {}).total || 1;
+    var msg = (failedCount > 0)
+      ? ('Meeting processed — '+(totalCount-failedCount)+' of '+totalCount+' sections done'+(parts.length?'; '+parts.join(', ')+' in Network Map':''))
+      : ('Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':''));
+    if (rl.added > 0) {
+      var toastEl = document.getElementById('toast');
+      toastEl.innerHTML = msg + ' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';
+      toastEl.classList.add('show');
+      clearTimeout(_tt);
+      _tt = setTimeout(function(){ toastEl.classList.remove('show'); }, 6000);
+    } else { toast(msg); }
+    if (failedCount > 0) {
+      // Some chunks failed — surface honest, recoverable state with a retry.
+      showProcErr('Processing incomplete — '+(totalCount-failedCount)+' of '+totalCount+' sections done. Saved partial extraction. ' +
+        '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
+    }
+    if (window._showAutoPrompt) setTimeout(function(){ window._showAutoPrompt(m); }, 1500);
+  } catch(e) {
+    // P13.298 — honest, recoverable failure. Transcript IS saved (above).
+    // Operator gets a Retry button that resumes from m.notes against any
+    // chunks that didn't land.
+    m.processingState = m.processingState || {};
+    var done  = (m.processingState.chunks && m.processingState.chunks.done) || 0;
+    var total = (m.processingState.chunks && m.processingState.chunks.total) || 0;
+    m.processingState.stage = (done > 0) ? 'partial' : 'failed';
+    m.processingState.error = String((e && e.message) || 'Processing failed');
+    try { await saveMeeting(m); } catch(e2){}
+    var fragment = (done > 0 && total > 0)
+      ? ('Meeting captured. Processing incomplete — '+done+' of '+total+' sections done. ')
+      : ('Meeting captured. Processing failed — '+((e && e.message) || 'unknown error')+'. ');
+    showProcErr(fragment +
+      '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
+  }
+  btn.disabled = false; btn.textContent = 'Process';
+}
 
 async function callClaude(notes,meta){
   // Build canonical names list so Claude normalises to existing spellings
@@ -70506,6 +70956,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.297"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.298"></script>
 </body>
 </html>

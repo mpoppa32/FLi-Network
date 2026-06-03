@@ -68,11 +68,18 @@ const MAX_TOKENS_CEILING = 8192;
 const QUOTA_DEFAULT_PER_HOUR = 30;
 const QUOTA_HARD_CEILING = 200; // safety: even an admin can't override above this
 
+// P13.298 — function and upstream timeouts raised so a single Claude call on a
+// long meeting chunk completes comfortably. Browser-side chunking (FLiIntel.html
+// _processMeetingAI) keeps each call inside ~45-50s in practice; these ceilings
+// are belt-and-suspenders for legitimate single-shot calls and for the rare
+// chunk that runs slow. Cloud Functions Gen2 hard ceiling is 540s; 120s is well
+// inside that and matches the realistic worst case for a ~12K-char chunk with
+// max_tokens=4000.
 export const anthropicProxy = onCall(
   {
     region: "us-central1",
     memory: "512MiB",
-    timeoutSeconds: 90,
+    timeoutSeconds: 120,
     secrets: [ANTHROPIC_KEY],
   },
   async (request) => {
@@ -254,9 +261,13 @@ export const anthropicProxy = onCall(
       hasSystem: Boolean(system),
     });
 
-    // Forward to Anthropic with a 60s timeout.
+    // P13.298 — Forward to Anthropic with a 110s timeout (was 60s, the source
+    // of "AI request timed out. Try a shorter input." on long meeting calls).
+    // Sits just inside the 120s function ceiling so an abort surfaces a clean
+    // deadline-exceeded rather than the Cloud Functions runtime killing us
+    // mid-response. Browser-side chunking keeps real calls well under this.
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
+    const timer = setTimeout(() => controller.abort(), 110_000);
     let resp: Response;
     try {
       resp = await fetch(ANTHROPIC_URL, {
