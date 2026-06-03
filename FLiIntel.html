@@ -8870,6 +8870,18 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       <div id="auth-popup-hint" style="margin:12px auto 0;padding:9px 12px;background:rgba(95,179,184,.08);border:1px solid rgba(95,179,184,.32);border-left:2px solid #5fb3b8;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.6;color:#5fb3b8;letter-spacing:.06em;text-align:left">
         IF POPUP IS BLOCKED → open <span style="color:#5fb3b8;text-decoration:underline">chrome://settings/content/popups</span> → ALLOW <span style="color:var(--bone)">https://mpoppa32.github.io</span> → REFRESH AND SIGN IN AGAIN
       </div>
+      <!-- P13.288 — email-link sign-in. Bypasses BOTH the popup
+           (auth/network-request-failed when the Firebase auth handler
+           can't be reached from inside the popup) AND the redirect
+           (Chrome storage partitioning eats the sessionStorage state
+           on the cross-site round-trip from .firebaseapp.com back to
+           .github.io). The link is in the operator's email — no popup,
+           no redirect-state-tracking, no partition issue. -->
+      <div id="auth-emaillink-row" style="display:flex;gap:8px;align-items:stretch;margin:14px auto 0;max-width:340px">
+        <input id="emaillink-input" type="email" placeholder="mpoppa32@gmail.com" autocomplete="email" style="flex:1;padding:9px 12px;background:rgba(212,130,58,.04);border:1px solid rgba(212,130,58,.30);border-radius:3px;color:var(--bone);font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.04em">
+        <button id="emaillink-send-btn" onclick="window._signInWithEmailLink&&window._signInWithEmailLink()" title="Sends a sign-in link to the email address. Click the link in the email; no popup, no redirect required." style="padding:9px 14px;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.50);border-radius:3px;color:#22c55e;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;white-space:nowrap">✉ Email Link</button>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--paper-2);letter-spacing:.10em;text-transform:uppercase;margin:6px auto 0;text-align:center;opacity:.7">PREFERRED IF GOOGLE SIGN-IN HANGS · NO POPUP · NO REDIRECT</div>
       <!-- P13.179/187 — redirect escape hatch retained for users who can't
            enable popups. Hit the storage-partitioning bug ("missing
            initial state" on return) — only useful if user has a working
@@ -8890,7 +8902,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.287</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.288</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10464,7 +10476,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
   </div>
 </div>
 
-<!-- P13.287 UNBOUND DOMAINS VIEW ───────────────────────────────
+<!-- P13.288 UNBOUND DOMAINS VIEW ───────────────────────────────
      Vendor + customer email domains that appear in pendingCapture but
      don't yet match any tracked node. Operator binds each to a company
      node so the matcher's primary companyByDomain path lights up. The
@@ -12270,7 +12282,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, sendSignInLinkToEmail, signInWithEmailLink, isSignInWithEmailLink } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getDatabase, ref, set, update, get, onValue, remove, query, orderByChild, limitToLast, endBefore, onDisconnect } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js';
 
@@ -12603,7 +12615,7 @@ window.fbGet = fbGet;
     document.body.appendChild(div);
   }
   function _hide(){ var e = document.getElementById('rtdb-stale-banner'); if (e) e.remove(); }
-  // P13.287 — Snapshot-shaped mock returned by the REST fallback so
+  // P13.288 — Snapshot-shaped mock returned by the REST fallback so
   // existing callers using snap.val() / .exists() / .child() / .forEach()
   // / .numChildren() / .key continue to work without per-caller changes.
   // Doesn't cover EVERY Firebase Snapshot method but covers what fbGet
@@ -12639,7 +12651,7 @@ window.fbGet = fbGet;
     var done = false;
     setTimeout(function(){ if (!done) _show('Read of ' + String(path).slice(0,60) + ' has been pending >10s'); }, _HANG_MS);
 
-    // P13.287 — race SDK + REST on every fbGet. P13.282 fixed the
+    // P13.288 — race SDK + REST on every fbGet. P13.282 fixed the
     // heartbeat-specific ping but every other fbGet call (Today's
     // _atlasCaptureWeeklySnapshot read of /weeklySnapshots, the
     // unbound view's _unboundLoadSkipped, dozens of others) still
@@ -12682,10 +12694,10 @@ window.fbGet = fbGet;
     var done = false;
     setTimeout(function(){ if (!done) _show('Heartbeat ping timed out'); }, _HANG_MS);
     try {
-      // P13.287 — heartbeat via REST instead of the wedged SDK. P13.248's
+      // P13.288 — heartbeat via REST instead of the wedged SDK. P13.248's
       // REST polling fallback proved the SDK realtime channel can sit
       // wedged for hours while REST stays healthy in <300ms; the
-      // pre-P13.287 heartbeat used _originalFbGet (the raw SDK get) and
+      // pre-P13.288 heartbeat used _originalFbGet (the raw SDK get) and
       // false-positive-fired the stale-connection banner every 30s on
       // every Atlas session in the wedged state. Two cheap success paths
       // are tried before the SDK fallback so the banner only fires on a
@@ -13570,6 +13582,128 @@ window._signInRedirect=function(){
     }
   },6000);
 };
+
+// P13.288 — email-link sign-in. Bypasses both broken Firebase auth flows
+// for operators in browsers where:
+//   (a) popup throws auth/network-request-failed because the popup window
+//       can't reach fli-network.firebaseapp.com/__/auth/handler (extension
+//       or cookie-policy blocks the cross-origin request), OR
+//   (b) redirect throws "Unable to process request due to missing initial
+//       state" because Chrome's storage partitioning eats the
+//       sessionStorage state on the cross-site round-trip from
+//       *.firebaseapp.com back to mpoppa32.github.io.
+//
+// Email-link sign-in has neither failure mode: there's no popup window,
+// no cross-site redirect chain that depends on sessionStorage. The user
+// requests a link, opens their email, clicks the link, lands signed-in.
+// Same top-level site (mpoppa32.github.io) throughout, so localStorage is
+// safe to use for the one bit of state we need (the email address).
+//
+// Requires Firebase Auth Console → Authentication → Sign-in method →
+// Email/Password → toggle "Email link (passwordless sign-in)" ON. If the
+// toggle isn't on, sendSignInLinkToEmail rejects with
+// auth/operation-not-allowed — the error surface explains the fix.
+
+window._signInWithEmailLink = async function() {
+  var input = document.getElementById('emaillink-input');
+  var btn = document.getElementById('emaillink-send-btn');
+  var errEl = document.getElementById('auth-error');
+  if (errEl) errEl.style.display = 'none';
+  var email = (input ? String(input.value || '').trim() : '').toLowerCase();
+  if (!email || email.indexOf('@') < 1) {
+    showAuthError('Enter an email address first.');
+    if (input) input.focus();
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  var actionCodeSettings = {
+    // Where the email link lands. Must be on a domain that's in the
+    // Firebase Auth → Settings → Authorized domains list. mpoppa32.github.io
+    // already is (it's where this page lives + where OAuth redirects come
+    // back to).
+    url: window.location.origin + window.location.pathname + '?emaillink=1',
+    handleCodeInApp: true
+  };
+  try {
+    await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+    // Stash the email so the return-trip handler can complete the sign-in
+    // without re-prompting. localStorage (not sessionStorage) so it
+    // survives the email round-trip + Chrome's storage partitioning model.
+    try { localStorage.setItem('corsair-emaillink-email', email); } catch(e) {}
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Check email'; }
+    showAuthInfo('Sign-in link sent to ' + email + '. Open your email and click the link — you\'ll come back here signed in. The tab can stay open.');
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = '✉ Email Link'; }
+    var code = (err && err.code) || 'unknown';
+    var msg = (err && err.message) || String(err);
+    if (code === 'auth/operation-not-allowed') {
+      showAuthError('Email-link sign-in is not enabled in this project\'s Firebase Console. Open Firebase Console → Authentication → Sign-in method → Email/Password → toggle "Email link (passwordless sign-in)" ON. Then come back here and click ✉ Email Link again.');
+    } else if (code === 'auth/invalid-email') {
+      showAuthError('That email doesn\'t look valid. Use the address your Atlas workspace is registered under (typically mpoppa32@gmail.com).');
+    } else if (code === 'auth/unauthorized-continue-uri') {
+      showAuthError('mpoppa32.github.io is not in the Firebase Auth authorized-domains list (Authentication → Settings → Authorized domains). Add it, then click ✉ Email Link again.');
+    } else {
+      showAuthError('Could not send the sign-in email (' + code + '): ' + msg);
+    }
+    console.error('[P13.288 sendSignInLinkToEmail]', err);
+  }
+};
+
+// Helper to show a non-error info message on the auth screen.
+function showAuthInfo(text) {
+  var el = document.getElementById('auth-error');
+  if (!el) return;
+  el.style.display = 'block';
+  el.style.background = 'rgba(34,197,94,.08)';
+  el.style.borderLeftColor = '#22c55e';
+  el.style.color = '#22c55e';
+  el.textContent = text;
+}
+
+// P13.288 — on every page load, check if the URL is a returning email-link.
+// isSignInWithEmailLink looks for Firebase's mode + oobCode + apiKey query
+// params; if present, signInWithEmailLink completes the auth and onAuthState
+// Changed at line 13474 takes over from there. Email pulled from
+// localStorage (where _signInWithEmailLink stashed it before sending).
+// Falls back to prompting if localStorage was wiped between send and return.
+(function _emailLinkAutoSignIn() {
+  try {
+    var url = window.location.href;
+    if (!isSignInWithEmailLink(auth, url)) return;
+    var stored = '';
+    try { stored = localStorage.getItem('corsair-emaillink-email') || ''; } catch(e) {}
+    var email = stored;
+    if (!email) {
+      email = window.prompt('Confirm the email this sign-in link was sent to (so we can complete sign-in):', '');
+      if (!email) return;
+      email = String(email).trim().toLowerCase();
+    }
+    showAuthInfo('Completing email-link sign-in…');
+    signInWithEmailLink(auth, email, url)
+      .then(function() {
+        try { localStorage.removeItem('corsair-emaillink-email'); } catch(e) {}
+        // Strip the auth params from the URL so a refresh doesn't try to
+        // re-use the same (now-consumed) oobCode.
+        try {
+          var clean = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, '', clean);
+        } catch(e) {}
+        // onAuthStateChanged handles the rest of the sign-in flow.
+      })
+      .catch(function(err) {
+        var code = (err && err.code) || 'unknown';
+        var msg = (err && err.message) || String(err);
+        if (code === 'auth/invalid-action-code') {
+          showAuthError('This sign-in link is expired or already used. Click ✉ Email Link to send a fresh one.');
+        } else {
+          showAuthError('Email-link sign-in failed (' + code + '): ' + msg);
+        }
+        console.error('[P13.288 signInWithEmailLink return]', err);
+      });
+  } catch (e) {
+    console.warn('[P13.288 emaillink auto] failed:', e && e.message);
+  }
+})();
 
 // P13.182 — nuke all browser state + reload. The verified-working pattern:
 // fire-and-forget deleteDatabase requests (await would block since the SDK
@@ -19418,7 +19552,7 @@ function switchView(v){
   // Normalize sacred-mode aliases (graph→network, cop→opps, brief→today)
   if(_CORSAIR_MODE_ALIAS[v])v=_CORSAIR_MODE_ALIAS[v];
 
-  // P13.287 — defensive re-run of the relocator. _relocateViewsIntoMainApp
+  // P13.288 — defensive re-run of the relocator. _relocateViewsIntoMainApp
   // runs once at selectWorkspace; if a view was added to the file AFTER
   // that initial run (e.g. operator was already in a workspace when
   // P13.281 added unbound-view, OR a sibling-build-of-cinema-cut leaves a
@@ -33941,7 +34075,7 @@ window._renderTodayNarrative = function(){
       : '';
     var sevPart = sevHi ? ' · ' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') : (sevMed ? ' · ' + sevMed + ' MED' : '');
     var matchPart = matched ? ' · <b>' + matched + '</b> mention your network' : '';
-    // P13.287 — customer rollup phrase. P13.283 lit up Brief's
+    // P13.288 — customer rollup phrase. P13.283 lit up Brief's
     // customerRollup by wiring workspace patterns into mapper-time
     // body-text resolution; this surfaces the top 2 active customer
     // agencies in the WORLD sentence so the operator sees the lake-to-
@@ -34052,7 +34186,7 @@ window._renderTodayOrientation = function() {
   // outreach queue size (if previously rendered)
   var queueSize = (window._atlasOutreachQueueTargets || []).length;
 
-  // P13.287 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
+  // P13.288 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
   // pendingCapture was previously surfaced only via a badge inside the
   // Tools menu (FLiIntel.html:9001) — a click MOST operators never make.
   // Surfacing here gives the absorption loop ("X pending review · Y
@@ -34092,7 +34226,7 @@ window._renderTodayOrientation = function() {
       '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' + (queueSize ? '<span style="color:#5fb3b8">' + queueSize + '</span> targets queued' : 'Outreach Queue') + '</div>' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' + pendingCands + ' candidates · ' + pendingOrgs + ' orgs · open →</div>' +
     '</button>' +
-    // Tile 4 — Auto-Capture (P13.287, B9). Surfaces the now-richly-tagged
+    // Tile 4 — Auto-Capture (P13.288, B9). Surfaces the now-richly-tagged
     // pendingCapture corpus (47 outbound + 20 matched on Atlas at write
     // time) at the Today level. Click goes to capture view for review.
     '<button onclick="window.switchView&&window.switchView(\'capture\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(212,130,58,.06));border:1px solid #f59e0b;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
@@ -46098,7 +46232,7 @@ function renderCaptureView() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// P13.287 — UNBOUND DOMAINS VIEW
+// P13.288 — UNBOUND DOMAINS VIEW
 // Operator-bound vendor domain enrichment. Backend v1+v2 (P13.279/280)
 // derive domains for federal-contractor + government nodes, but Atlas's
 // operator-curated drone-vendor nodes (no UEI) stay empty. This view
@@ -46126,7 +46260,7 @@ window._UNBOUND_SKIPPED = window._UNBOUND_SKIPPED || new Set();
 window._unboundLoadSkipped = async function() {
   if (!currentWsId) return;
   try {
-    // P13.287 — route through window.fbGet (P13.287 race) so a wedged
+    // P13.288 — route through window.fbGet (P13.288 race) so a wedged
     // SDK channel doesn't hang _renderUnboundView's await forever. The
     // direct get(ref(db, ...)) call here was the second known site (the
     // first being _atlasCaptureWeeklySnapshot read of /weeklySnapshots)
@@ -69987,6 +70121,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.287"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.288"></script>
 </body>
 </html>
