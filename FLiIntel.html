@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.301</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.302</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -14583,6 +14583,9 @@ function connectWorkspace(){
     pendingCapture=snap.val()?Object.values(snap.val()):[];
     // P13.138 — Nudge Engine reads pendingCapture from sibling module
     window.pendingCapture = pendingCapture;
+    // P13.302 — posture feeding Channel C: infer trajectory shifts from newly
+    // matched email/calendar captures (backfill-guarded; primes on first fire).
+    try { window._postureProcessCaptures && window._postureProcessCaptures(pendingCapture); } catch(e){}
     _updateCaptureBadge();
     // P13.144 — re-render the inbox grid so approved/discarded items
     // disappear immediately instead of waiting for a manual view switch.
@@ -14821,6 +14824,9 @@ function connectWorkspace(){
     }
     arr.sort(function(a,b){ return (b.occurredAt||0) - (a.occurredAt||0); });
     window._signals = arr;
+    // P13.302 — posture feeding Channel B: infer trajectory shifts from newly
+    // arrived OSINT signals (backfill-guarded; primes on first fire).
+    try { window._postureProcessSignals && window._postureProcessSignals(arr); } catch(e){}
     if (activeView === 'today') {
       try{ window._renderTodayNarrative && window._renderTodayNarrative(); }catch(e){}
       try{ window._renderTodayCatches && window._renderTodayCatches(); }catch(e){}
@@ -40555,6 +40561,57 @@ window._postureInCooldown = function(entityId, field, value) {
   return false;
 };
 
+// ── Shared trajectory inference helpers (used by Channels A/B/C) ──────────
+// P13.302 — scan free text for the strongest rising/falling cue. cueSet
+// defaults to the meeting/conversational vocabulary; Channel B passes the
+// OSINT personnel-transition vocabulary. Returns {traj,conf,quote} | null.
+window._postureScanTrajectory = function(text, cueSet){
+  var blob = String(text||'').toLowerCase();
+  if (!blob.trim()) return null;
+  cueSet = cueSet || window._POSTURE_TRAJ_CUES;
+  var best = null;
+  ['rising','falling'].forEach(function(traj){
+    var cues = cueSet[traj]; if (!cues) return;
+    (cues.strong||[]).forEach(function(p){ if (blob.indexOf(p)>=0 && (!best||best.conf<0.75)) best={traj:traj,conf:0.75,quote:p}; });
+    if (!best||best.conf<0.6) (cues.moderate||[]).forEach(function(p){ if (blob.indexOf(p)>=0 && (!best||best.conf<0.6)) best={traj:traj,conf:0.6,quote:p}; });
+  });
+  return best;
+};
+
+// OSINT personnel-transition cue set (Channel B). Press/disclosure phrasing,
+// distinct from the conversational meeting/email vocabulary.
+window._POSTURE_OSINT_CUES = {
+  rising: {
+    strong: ['appointed','named to','confirmed as','sworn in','promoted to','selected to lead','takes over as','tapped to','elevated to','named director','named chief','named head'],
+    moderate: ['nominated','shortlisted for','in line to','expected to lead','rumored for','named acting']
+  },
+  falling: {
+    strong: ['stepping down','steps down','resigned','retires','retiring','departing','to leave','ousted','removed from','replaced by','no longer serves','exits','vacancy'],
+    moderate: ['reportedly leaving','expected to depart','under pressure to resign','reassigned','to retire']
+  }
+};
+
+// Shared writer — applies the current-value + cooldown gates, then persists a
+// trajectory suggestion to the same /postureSuggestions store all channels use.
+// Returns true if a suggestion was written. Best-effort; swallows write errors.
+window._postureWriteTrajSuggestion = async function(opts){
+  var node = opts && opts.node;
+  if (!node || !window.currentWsId || typeof window.fbSet !== 'function') return false;
+  var current = (node.posture && node.posture.trajectory) || null;
+  if (current === opts.traj) return false;                                  // already there
+  if (window._postureInCooldown(node.id, 'trajectory', opts.traj)) return false; // dismissed recently
+  var sid = 'psug_' + String(node.id) + '_trajectory_' + opts.traj;
+  var rec = {
+    id: sid, entityId: node.id, entityType: 'person', field: 'trajectory',
+    suggestedValue: opts.traj, currentValue: current, confidence: opts.conf,
+    channel: opts.channel || 'meeting', sourceIds: [opts.sourceId || ''],
+    evidence: [{ sourceId: opts.sourceId || '', summary: opts.summary || '', quote: opts.quote || '', ts: opts.ts || Date.now() }],
+    suggestedAt: Date.now(), status: 'open'
+  };
+  try { await window.fbSet(window.wsPath('postureSuggestions/'+sid), rec); window._postureSuggestionsCache[sid] = rec; return true; }
+  catch(e) { return false; }
+};
+
 // The inference engine (Channel A). Best-effort; never throws into the
 // meeting-save path.
 window._postureInferFromMeeting = async function(meeting) {
@@ -40579,33 +40636,21 @@ window._postureInferFromMeeting = async function(meeting) {
     if (!candidates.length) return;
 
     await window._postureLoadSuggestions();
-    var writes = [];
-    candidates.forEach(function(node){
-      var nameLc = String(node.name).toLowerCase();
-      if (blob.indexOf(nameLc) < 0) return; // person must be named in the text
-      var best = null;
-      ['rising','falling'].forEach(function(traj){
-        var cues = window._POSTURE_TRAJ_CUES[traj];
-        cues.strong.forEach(function(p){ if(blob.indexOf(p)>=0 && (!best||best.conf<0.75)) best={traj:traj,conf:0.75,quote:p}; });
-        if(!best||best.conf<0.6) cues.moderate.forEach(function(p){ if(blob.indexOf(p)>=0 && (!best||best.conf<0.6)) best={traj:traj,conf:0.6,quote:p}; });
+    var scan = window._postureScanTrajectory(blob); // meeting/conversational cues
+    if (!scan) return;
+    var wrote = 0;
+    for (var ci=0; ci<candidates.length; ci++){
+      var node = candidates[ci];
+      if (blob.indexOf(String(node.name).toLowerCase()) < 0) continue; // person must be named in the text
+      var ok = await window._postureWriteTrajSuggestion({
+        node: node, traj: scan.traj, conf: scan.conf, quote: scan.quote,
+        channel: 'meeting', sourceId: meeting.id || '',
+        summary: 'Meeting "' + ((meeting.meta&&meeting.meta.title)||'untitled') + '" language implies a ' + scan.traj + ' trajectory for ' + node.name,
+        ts: meeting.ts || Date.now()
       });
-      if (!best) return;
-      var current = (node.posture && node.posture.trajectory) || null;
-      if (current === best.traj) return;                                  // already there
-      if (window._postureInCooldown(node.id, 'trajectory', best.traj)) return; // dismissed recently
-      var sid = 'psug_' + String(node.id) + '_trajectory_' + best.traj;
-      writes.push({
-        id: sid, entityId: node.id, entityType: 'person', field: 'trajectory',
-        suggestedValue: best.traj, currentValue: current, confidence: best.conf,
-        channel: 'meeting', sourceIds: [meeting.id || ''],
-        evidence: [{ sourceId: meeting.id || '', summary: 'Meeting "' + ((meeting.meta&&meeting.meta.title)||'untitled') + '" language implies a ' + best.traj + ' trajectory for ' + node.name, quote: best.quote, ts: meeting.ts || Date.now() }],
-        suggestedAt: Date.now(), status: 'open'
-      });
-    });
-    for (var i=0;i<writes.length;i++){
-      try { await window.fbSet(window.wsPath('postureSuggestions/'+writes[i].id), writes[i]); window._postureSuggestionsCache[writes[i].id]=writes[i]; } catch(e){}
+      if (ok) wrote++;
     }
-    if (writes.length) { try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){} }
+    if (wrote) { try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){} }
   } catch(e) { try{ console.warn('[posture-feed] infer failed:', e&&e.message); }catch(_){} }
 };
 
@@ -40636,7 +40681,7 @@ window._renderPostureSuggestions = function(entityId){
   var cap = function(s){ s=String(s||''); return s.charAt(0).toUpperCase()+s.slice(1); };
   var h = '<div style="margin:20px 0 6px;border-top:1px solid var(--rule);padding-top:16px">';
   h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:#5fb3b8;text-transform:uppercase;margin-bottom:4px">Platform suggestions</div>';
-  h += '<div style="font-size:12px;color:var(--t3);margin-bottom:12px">Derived from absorbed meeting intelligence. You decide — accept, dismiss, or leave open.</div>';
+  h += '<div style="font-size:12px;color:var(--t3);margin-bottom:12px">Derived from absorbed intelligence — meetings, OSINT signals, and email. You decide — accept, dismiss, or leave open.</div>';
   sugg.forEach(function(s){
     var conf = Math.round((s.confidence||0)*100);
     var tier = (s.confidence>=0.7)?'#22c55e':((s.confidence>=0.6)?'#f59e0b':'#5fb3b8');
@@ -40650,6 +40695,114 @@ window._renderPostureSuggestions = function(entityId){
   });
   h += '</div>';
   return h;
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// P13.302 — POSTURE FEEDING Channels B (OSINT signal) + C (email pattern).
+// Both layer onto the SAME /postureSuggestions store + Inspector chip surface
+// as Channel A. Same discipline: suggest-never-apply, honest confidence,
+// trajectory-only (Path stays operator-private per Doctrine VIII), reversible
+// (dismiss → 30d cooldown via the shared _postureInCooldown), best-effort
+// (never throws into the data pipeline).
+// ═══════════════════════════════════════════════════════════════════════
+
+// Channel B — OSINT signal → trajectory suggestion on a named person.
+// Input is a normalized feed item (window._signalToFeedItem shape): headline,
+// detail, severity, occurredAt, networkMatches (subjectIds → {id}), publisher.
+window._postureInferFromSignal = async function(item){
+  if (!item || !window.currentWsId || typeof window.fbSet !== 'function') return;
+  try {
+    var text = String((item.headline||'') + ' ' + (item.detail||'')).toLowerCase();
+    if (!text.trim()) return;
+    var scan = window._postureScanTrajectory(text, window._POSTURE_OSINT_CUES);
+    if (!scan) return;
+    // OSINT base confidence from the scan; bump on HIGH-severity corroboration.
+    var conf = (item.severity === 'HIGH') ? Math.min(0.8, scan.conf + 0.1) : scan.conf;
+    var nodes = window.nodes || [];
+    var personById = {};
+    nodes.forEach(function(n){ if (n && n.type==='person') personById[String(n.id)] = n; });
+    // Prefer resolver-linked subjects; fall back to name-in-text match.
+    var cand = [], seen = {};
+    (item.networkMatches||[]).forEach(function(m){ var n = personById[String(m && m.id)]; if (n && !seen[n.id]) { seen[n.id]=1; cand.push(n); } });
+    if (!cand.length) {
+      nodes.forEach(function(n){ if (n && n.type==='person' && n.name && text.indexOf(String(n.name).toLowerCase())>=0 && !seen[n.id]) { seen[n.id]=1; cand.push(n); } });
+    }
+    if (!cand.length) return;
+    await window._postureLoadSuggestions();
+    var wrote = 0;
+    for (var i=0;i<cand.length;i++){
+      var ok = await window._postureWriteTrajSuggestion({
+        node: cand[i], traj: scan.traj, conf: conf, quote: scan.quote,
+        channel: 'osint', sourceId: item.id || '',
+        summary: 'OSINT signal' + (item.publisher ? ' ('+item.publisher+')' : '') + ' implies a ' + scan.traj + ' trajectory for ' + cand[i].name,
+        ts: item.occurredAt || Date.now()
+      });
+      if (ok) wrote++;
+    }
+    if (wrote) { try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){} }
+  } catch(e) { try{ console.warn('[posture-feed B/osint] infer failed:', e&&e.message); }catch(_){} }
+};
+
+// Channel C — email pattern → trajectory suggestion on a matched person.
+// Input is a pendingCapture entry: matchedNodeId, meta.title, intel.summary.
+// v1 scans subject+summary with the conversational cue set (email language
+// matches meeting language); frequency-based cooling/re-engagement needs the
+// historical sequence and is deferred to a later pass.
+window._postureInferFromCapture = async function(entry){
+  if (!entry || !entry.matchedNodeId || !window.currentWsId || typeof window.fbSet !== 'function') return;
+  try {
+    var nodes = window.nodes || [];
+    var node = null;
+    for (var i=0;i<nodes.length;i++){ if (String(nodes[i].id)===String(entry.matchedNodeId) && nodes[i].type==='person'){ node = nodes[i]; break; } }
+    if (!node) return; // only person matches power Channel C
+    var text = String(((entry.meta && entry.meta.title)||'') + ' ' + ((entry.intel && entry.intel.summary)||'')).toLowerCase();
+    var scan = window._postureScanTrajectory(text); // conversational cues
+    if (!scan) return;
+    await window._postureLoadSuggestions();
+    var ok = await window._postureWriteTrajSuggestion({
+      node: node, traj: scan.traj, conf: Math.min(scan.conf, 0.6), quote: scan.quote, // email bounded lower per design
+      channel: 'email', sourceId: entry.id || '',
+      summary: 'Email "' + (((entry.meta && entry.meta.title)||'(no subject)')) + '" implies a ' + scan.traj + ' trajectory for ' + node.name,
+      ts: entry.occurredAt || entry.ts || Date.now()
+    });
+    if (ok) { try { window._refreshOpenInspector && window._refreshOpenInspector(); } catch(e){} }
+  } catch(e) { try{ console.warn('[posture-feed C/email] infer failed:', e&&e.message); }catch(_){} }
+};
+
+// Backfill-storm guard. The signals + pendingCapture listeners use onValue,
+// which fires with the WHOLE set on every change (incl. the initial bulk load).
+// We prime on the first fire (seed the seen-set, infer on NOTHING — older
+// backfill is out of scope per design), then infer only on genuinely-new ids
+// thereafter. Signals additionally require freshness (occurredAt within 7d) so
+// a late-arriving old signal can't trigger a stale suggestion.
+window._postureSeenSrc = window._postureSeenSrc || { sig: null, cap: null };
+window._postureProcessSignals = function(items){
+  try {
+    if (!Array.isArray(items)) return;
+    if (window._postureSeenSrc.sig === null) {
+      var s0 = {}; items.forEach(function(it){ if (it && it.id) s0[String(it.id)] = 1; }); window._postureSeenSrc.sig = s0; return; // prime, no infer
+    }
+    var seen = window._postureSeenSrc.sig, now = Date.now(), RECENT = 7*86400000;
+    items.forEach(function(it){
+      if (!it || !it.id) return; var k = String(it.id); if (seen[k]) return; seen[k] = 1;
+      if (it.occurredAt && (now - it.occurredAt) > RECENT) return; // only fresh signals
+      window._postureInferFromSignal(it);
+    });
+  } catch(e){}
+};
+window._postureProcessCaptures = function(entries){
+  try {
+    if (!Array.isArray(entries)) return;
+    if (window._postureSeenSrc.cap === null) {
+      var c0 = {}; entries.forEach(function(e){ if (e && e.id) c0[String(e.id)] = 1; }); window._postureSeenSrc.cap = c0; return; // prime, no infer
+    }
+    var seen = window._postureSeenSrc.cap;
+    entries.forEach(function(e){
+      if (!e || !e.id) return; var k = String(e.id); if (seen[k]) return; seen[k] = 1;
+      if (!e.matchedNodeId) return; // only matched entries power Channel C
+      window._postureInferFromCapture(e);
+    });
+  } catch(e){}
 };
 
 // NOTE: the meeting-save hook for posture inference is NOT here. The real
@@ -71022,6 +71175,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.301"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.302"></script>
 </body>
 </html>
