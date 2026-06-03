@@ -8870,7 +8870,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
       <div id="auth-popup-hint" style="margin:12px auto 0;padding:9px 12px;background:rgba(95,179,184,.08);border:1px solid rgba(95,179,184,.32);border-left:2px solid #5fb3b8;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.6;color:#5fb3b8;letter-spacing:.06em;text-align:left">
         IF POPUP IS BLOCKED → open <span style="color:#5fb3b8;text-decoration:underline">chrome://settings/content/popups</span> → ALLOW <span style="color:var(--bone)">https://mpoppa32.github.io</span> → REFRESH AND SIGN IN AGAIN
       </div>
-      <!-- P13.290 — email-link sign-in. Bypasses BOTH the popup
+      <!-- P13.291 — email-link sign-in. Bypasses BOTH the popup
            (auth/network-request-failed when the Firebase auth handler
            can't be reached from inside the popup) AND the redirect
            (Chrome storage partitioning eats the sessionStorage state
@@ -8887,7 +8887,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initial state" on return) — only useful if user has a working
            non-partitioned browser config. -->
       <button id="google-signin-redirect-btn" onclick="window._signInRedirect&&window._signInRedirect()" title="Use this only if popup absolutely cannot be enabled. Some browsers hit Chrome's storage partitioning bug on the return trip." style="display:block;margin:10px auto 0;padding:6px 12px;background:transparent;border:1px solid rgba(212,130,58,.22);border-radius:3px;color:var(--paper-2);font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;opacity:.7">↗ Try redirect sign-in (last resort)</button>
-      <!-- P13.290 — connection diagnostic. Surfaces what's actually
+      <!-- P13.291 — connection diagnostic. Surfaces what's actually
            blocking when auth/network-request-failed keeps firing. -->
       <button id="auth-diagnose-btn" onclick="window._diagnoseAuthConnection&&window._diagnoseAuthConnection()" title="Probe Firebase auth + data endpoints directly (bypass Firebase SDK) to identify what is being blocked by a browser extension, firewall, or DNS." style="display:block;margin:6px auto 0;padding:6px 12px;background:transparent;border:1px solid rgba(95,179,184,.30);border-radius:3px;color:#5fb3b8;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;opacity:.85">ⓘ Diagnose Connection</button>
       <!-- P13.182 — last-resort reset. Verified pattern: fire-and-forget
@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.290</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.291</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -10479,7 +10479,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
   </div>
 </div>
 
-<!-- P13.290 UNBOUND DOMAINS VIEW ───────────────────────────────
+<!-- P13.291 UNBOUND DOMAINS VIEW ───────────────────────────────
      Vendor + customer email domains that appear in pendingCapture but
      don't yet match any tracked node. Operator binds each to a company
      node so the matcher's primary companyByDomain path lights up. The
@@ -12318,7 +12318,7 @@ var fbApp = initializeApp(FB_CFG);
 // signs in each fresh page load. The completed sign-in DOES work for
 // the lifetime of the tab — workspace loads, demo runs, all features
 // functional. Acceptable for demo + practice.
-// P13.290 — ROOT-CAUSE FIX, definitively diagnosed via Chrome MCP on
+// P13.291 — ROOT-CAUSE FIX, definitively diagnosed via Chrome MCP on
 // 2026-06-02. The auth failures Mike hit across EVERY flow (popup =
 // auth/network-request-failed, redirect = "missing initial state",
 // email-link = auth/network-request-failed) all trace to ONE cause:
@@ -12362,11 +12362,11 @@ try {
     persistence: browserLocalPersistence,
     popupRedirectResolver: browserPopupRedirectResolver
   });
-  console.log('[P13.290] auth: initializeAuth + browserLocalPersistence (localStorage — bypasses wedged IndexedDB, survives reload)');
+  console.log('[P13.291] auth: initializeAuth + browserLocalPersistence (localStorage — bypasses wedged IndexedDB, survives reload)');
 } catch (e) {
   // initializeAuth throws if called twice (e.g. HMR / double-eval).
   // Fall back to getAuth which returns the already-initialized instance.
-  console.warn('[P13.290] initializeAuth threw (' + (e && e.code || e && e.message) + ') — falling back to getAuth on existing instance');
+  console.warn('[P13.291] initializeAuth threw (' + (e && e.code || e && e.message) + ') — falling back to getAuth on existing instance');
   auth = getAuth(fbApp);
 }
 var db = getDatabase(fbApp);
@@ -12657,7 +12657,7 @@ window.fbGet = fbGet;
     document.body.appendChild(div);
   }
   function _hide(){ var e = document.getElementById('rtdb-stale-banner'); if (e) e.remove(); }
-  // P13.290 — Snapshot-shaped mock returned by the REST fallback so
+  // P13.291 — Snapshot-shaped mock returned by the REST fallback so
   // existing callers using snap.val() / .exists() / .child() / .forEach()
   // / .numChildren() / .key continue to work without per-caller changes.
   // Doesn't cover EVERY Firebase Snapshot method but covers what fbGet
@@ -12693,7 +12693,7 @@ window.fbGet = fbGet;
     var done = false;
     setTimeout(function(){ if (!done) _show('Read of ' + String(path).slice(0,60) + ' has been pending >10s'); }, _HANG_MS);
 
-    // P13.290 — race SDK + REST on every fbGet. P13.282 fixed the
+    // P13.291 — race SDK + REST on every fbGet. P13.282 fixed the
     // heartbeat-specific ping but every other fbGet call (Today's
     // _atlasCaptureWeeklySnapshot read of /weeklySnapshots, the
     // unbound view's _unboundLoadSkipped, dozens of others) still
@@ -12736,10 +12736,10 @@ window.fbGet = fbGet;
     var done = false;
     setTimeout(function(){ if (!done) _show('Heartbeat ping timed out'); }, _HANG_MS);
     try {
-      // P13.290 — heartbeat via REST instead of the wedged SDK. P13.248's
+      // P13.291 — heartbeat via REST instead of the wedged SDK. P13.248's
       // REST polling fallback proved the SDK realtime channel can sit
       // wedged for hours while REST stays healthy in <300ms; the
-      // pre-P13.290 heartbeat used _originalFbGet (the raw SDK get) and
+      // pre-P13.291 heartbeat used _originalFbGet (the raw SDK get) and
       // false-positive-fired the stale-connection banner every 30s on
       // every Atlas session in the wedged state. Two cheap success paths
       // are tried before the SDK fallback so the banner only fires on a
@@ -13625,7 +13625,7 @@ window._signInRedirect=function(){
   },6000);
 };
 
-// P13.290 — email-link sign-in. Bypasses both broken Firebase auth flows
+// P13.291 — email-link sign-in. Bypasses both broken Firebase auth flows
 // for operators in browsers where:
 //   (a) popup throws auth/network-request-failed because the popup window
 //       can't reach fli-network.firebaseapp.com/__/auth/handler (extension
@@ -13666,7 +13666,7 @@ window._signInWithEmailLink = async function() {
     url: window.location.origin + window.location.pathname + '?emaillink=1',
     handleCodeInApp: true
   };
-  // P13.290 — retry the send with exponential backoff (1s, 2s, 4s).
+  // P13.291 — retry the send with exponential backoff (1s, 2s, 4s).
   // Firebase auth/network-request-failed can be transient when the
   // browser's fetch racing happens through extensions, slow first
   // connections to identitytoolkit, or DNS warm-up. Three attempts
@@ -13691,7 +13691,7 @@ window._signInWithEmailLink = async function() {
       if (code === 'auth/operation-not-allowed' || code === 'auth/invalid-email' || code === 'auth/unauthorized-continue-uri') {
         break;
       }
-      console.warn('[P13.290 emaillink attempt ' + attempts + ' failed]', code);
+      console.warn('[P13.291 emaillink attempt ' + attempts + ' failed]', code);
       // Backoff: 1000ms, 2000ms, 4000ms... only between attempts.
       if (attempts < maxAttempts) {
         await new Promise(function(r){ setTimeout(r, 1000 * Math.pow(2, attempts - 1)); });
@@ -13709,14 +13709,14 @@ window._signInWithEmailLink = async function() {
   } else if (code === 'auth/unauthorized-continue-uri') {
     showAuthError('mpoppa32.github.io is not in the Firebase Auth authorized-domains list (Authentication → Settings → Authorized domains). Add it, then click ✉ Email Link again.');
   } else if (code === 'auth/network-request-failed') {
-    showAuthError('Firebase reported a network failure after ' + maxAttempts + ' attempts. Despite the name this is usually NOT the network — in this project it is most often a wedged IndexedDB in the browser profile (the Auth SDK persistence layer). P13.290 switched Auth to localStorage to avoid that, so a hard refresh may resolve it. Click ⓘ Diagnose Connection below to confirm whether IndexedDB is the cause.');
+    showAuthError('Firebase reported a network failure after ' + maxAttempts + ' attempts. Despite the name this is usually NOT the network — in this project it is most often a wedged IndexedDB in the browser profile (the Auth SDK persistence layer). P13.291 switched Auth to localStorage to avoid that, so a hard refresh may resolve it. Click ⓘ Diagnose Connection below to confirm whether IndexedDB is the cause.');
   } else {
     showAuthError('Could not send the sign-in email after ' + maxAttempts + ' attempts (' + code + '): ' + msg);
   }
-  console.error('[P13.290 sendSignInLinkToEmail final]', lastErr);
+  console.error('[P13.291 sendSignInLinkToEmail final]', lastErr);
 };
 
-// P13.290 — connection diagnostic. Fetches identitytoolkit.googleapis.com
+// P13.291 — connection diagnostic. Fetches identitytoolkit.googleapis.com
 // directly with a minimal payload to determine whether the endpoint is
 // reachable from the browser. Reports HTTP status, response time, or
 // network-level error so the operator can identify what is blocking
@@ -13727,7 +13727,7 @@ window._diagnoseAuthConnection = async function() {
   if (btn) { btn.disabled = true; btn.textContent = 'Testing…'; }
   showAuthInfo('Running connection tests…');
   var results = [];
-  // P13.290 — the two endpoints that ACTUALLY gate auth: the
+  // P13.291 — the two endpoints that ACTUALLY gate auth: the
   // identitytoolkit POST endpoint (where every auth flow sends its
   // request) + a raw IndexedDB open (the persistence layer the SDK
   // waits on). The prior version tested firebaseapp.com/__/auth/handler
@@ -13758,7 +13758,7 @@ window._diagnoseAuthConnection = async function() {
       results.push({ name: t.name, ok: false, err: (err && err.message) || String(err), ms: ms2 });
     }
   }
-  // P13.290 — IndexedDB probe. This is the test that actually catches
+  // P13.291 — IndexedDB probe. This is the test that actually catches
   // the wedge class. A healthy profile opens firebaseLocalStorageDb in
   // <50ms; a wedged profile fires NO event at all (the open hangs). We
   // race the open against a 5s timeout — TIMEOUT means IDB is deadlocked,
@@ -13799,7 +13799,7 @@ window._diagnoseAuthConnection = async function() {
   }
   lines.push('');
   if (!idbOk) {
-    lines.push('ROOT CAUSE: IndexedDB is wedged in this browser profile. Firebase Auth (P13.290+) now persists in localStorage instead, so sign-in should work despite this — try Google sign-in or ✉ Email Link. If it still fails, the wedge is severe: open this site in a fresh Chrome profile or another browser, OR fully quit + reopen Chrome (a stuck IndexedDB lock from another tab clears on full restart).');
+    lines.push('ROOT CAUSE: this site\'s IndexedDB store (firebaseLocalStorageDb) is corrupted in this Chrome profile — the Firebase Auth SDK waits on it, so every sign-in method hangs. The JavaScript delete API can\'t clear it (it is wedged by the same corruption); only Chrome\'s "Clear site data" can. FIX (30s, removes the corruption): press F12 → Application tab → Storage (left sidebar) → "Clear site data" button → close DevTools → reload → sign in with Google. (Alternative: chrome://settings/content/all → find mpoppa32.github.io → trash icon → reload.) A fresh, clean store is created on reload and sign-in works.');
   } else if (!netOk) {
     lines.push('At least one endpoint shows a network error. If the sendOobCode line above is ✓, auth can still work — the failing line may be harmless CORS. If sendOobCode itself is ✗, check network/VPN/firewall to googleapis.com.');
   } else {
@@ -13833,7 +13833,7 @@ function showAuthInfo(text) {
   el.textContent = text;
 }
 
-// P13.290 — on every page load, check if the URL is a returning email-link.
+// P13.291 — on every page load, check if the URL is a returning email-link.
 // isSignInWithEmailLink looks for Firebase's mode + oobCode + apiKey query
 // params; if present, signInWithEmailLink completes the auth and onAuthState
 // Changed at line 13474 takes over from there. Email pulled from
@@ -13871,10 +13871,10 @@ function showAuthInfo(text) {
         } else {
           showAuthError('Email-link sign-in failed (' + code + '): ' + msg);
         }
-        console.error('[P13.290 signInWithEmailLink return]', err);
+        console.error('[P13.291 signInWithEmailLink return]', err);
       });
   } catch (e) {
-    console.warn('[P13.290 emaillink auto] failed:', e && e.message);
+    console.warn('[P13.291 emaillink auto] failed:', e && e.message);
   }
 })();
 
@@ -19725,7 +19725,7 @@ function switchView(v){
   // Normalize sacred-mode aliases (graph→network, cop→opps, brief→today)
   if(_CORSAIR_MODE_ALIAS[v])v=_CORSAIR_MODE_ALIAS[v];
 
-  // P13.290 — defensive re-run of the relocator. _relocateViewsIntoMainApp
+  // P13.291 — defensive re-run of the relocator. _relocateViewsIntoMainApp
   // runs once at selectWorkspace; if a view was added to the file AFTER
   // that initial run (e.g. operator was already in a workspace when
   // P13.281 added unbound-view, OR a sibling-build-of-cinema-cut leaves a
@@ -34248,7 +34248,7 @@ window._renderTodayNarrative = function(){
       : '';
     var sevPart = sevHi ? ' · ' + sevHi + ' HIGH' + (sevMed ? ', ' + sevMed + ' MED' : '') : (sevMed ? ' · ' + sevMed + ' MED' : '');
     var matchPart = matched ? ' · <b>' + matched + '</b> mention your network' : '';
-    // P13.290 — customer rollup phrase. P13.283 lit up Brief's
+    // P13.291 — customer rollup phrase. P13.283 lit up Brief's
     // customerRollup by wiring workspace patterns into mapper-time
     // body-text resolution; this surfaces the top 2 active customer
     // agencies in the WORLD sentence so the operator sees the lake-to-
@@ -34359,7 +34359,7 @@ window._renderTodayOrientation = function() {
   // outreach queue size (if previously rendered)
   var queueSize = (window._atlasOutreachQueueTargets || []).length;
 
-  // P13.290 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
+  // P13.291 — Auto-Capture tile (B9 from corsair-platform-assessment.md).
   // pendingCapture was previously surfaced only via a badge inside the
   // Tools menu (FLiIntel.html:9001) — a click MOST operators never make.
   // Surfacing here gives the absorption loop ("X pending review · Y
@@ -34399,7 +34399,7 @@ window._renderTodayOrientation = function() {
       '<div style="font-family:Antonio,sans-serif;font-size:22px;color:var(--text);font-weight:600">' + (queueSize ? '<span style="color:#5fb3b8">' + queueSize + '</span> targets queued' : 'Outreach Queue') + '</div>' +
       '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.04em">' + pendingCands + ' candidates · ' + pendingOrgs + ' orgs · open →</div>' +
     '</button>' +
-    // Tile 4 — Auto-Capture (P13.290, B9). Surfaces the now-richly-tagged
+    // Tile 4 — Auto-Capture (P13.291, B9). Surfaces the now-richly-tagged
     // pendingCapture corpus (47 outbound + 20 matched on Atlas at write
     // time) at the Today level. Click goes to capture view for review.
     '<button onclick="window.switchView&&window.switchView(\'capture\')" style="padding:18px 22px;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(212,130,58,.06));border:1px solid #f59e0b;border-radius:4px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px">' +
@@ -46405,7 +46405,7 @@ function renderCaptureView() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// P13.290 — UNBOUND DOMAINS VIEW
+// P13.291 — UNBOUND DOMAINS VIEW
 // Operator-bound vendor domain enrichment. Backend v1+v2 (P13.279/280)
 // derive domains for federal-contractor + government nodes, but Atlas's
 // operator-curated drone-vendor nodes (no UEI) stay empty. This view
@@ -46433,7 +46433,7 @@ window._UNBOUND_SKIPPED = window._UNBOUND_SKIPPED || new Set();
 window._unboundLoadSkipped = async function() {
   if (!currentWsId) return;
   try {
-    // P13.290 — route through window.fbGet (P13.290 race) so a wedged
+    // P13.291 — route through window.fbGet (P13.291 race) so a wedged
     // SDK channel doesn't hang _renderUnboundView's await forever. The
     // direct get(ref(db, ...)) call here was the second known site (the
     // first being _atlasCaptureWeeklySnapshot read of /weeklySnapshots)
@@ -70294,6 +70294,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.290"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.291"></script>
 </body>
 </html>
