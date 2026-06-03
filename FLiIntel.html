@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.299</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.300</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -25345,20 +25345,52 @@ window._retryMeetingProcessing = async function(mtgId){
   var m = meetingMap.get(mtgId) || (meetings || []).find(function(x){ return String(x.id) === String(mtgId); });
   if (!m) { toast('Meeting not found'); return; }
   if (!m.notes) { toast('No transcript on this meeting'); return; }
-  if (!apiKey) { toast('Add API key in Settings first'); return; }
   var btn = document.getElementById('proc-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Retrying...'; }
   clearProcErr();
-  try {
-    var isTranscript = (m.meta && m.meta.type === 'Call Transcript') || (function(){
-      var ti = detectTranscript(m.notes); return ti && ti.isTranscript;
-    })();
-    var intel = await _processMeetingAI(m.notes, m.meta || {}, isTranscript, m);
-    m.intel = intel;
-    m.processingState = m.processingState || {};
+  // P13.300 — if the AI extraction already completed (all chunks done, none
+  // failed), a prior "failure" was actually a post-extraction sync/render
+  // error. Re-run ONLY the sync/render — do NOT re-spend AI quota.
+  var ps = m.processingState || {};
+  var ch = ps.chunks || {};
+  var extractionComplete = (ch.total > 0 && (ch.done || 0) >= ch.total && (!ps.failedChunks || !ps.failedChunks.length));
+  if (!extractionComplete) {
+    if (!apiKey) { toast('Add API key in Settings first'); if (btn) { btn.disabled = false; btn.textContent = 'Process'; } return; }
+    try {
+      var isTranscript = (m.meta && m.meta.type === 'Call Transcript') || (function(){
+        var ti = detectTranscript(m.notes); return ti && ti.isTranscript;
+      })();
+      var intel = await _processMeetingAI(m.notes, m.meta || {}, isTranscript, m);
+      m.intel = intel;
+      m.processingState = m.processingState || {};
+      m.processingState.stage = 'done';
+      m.processingState.completedAt = new Date().toISOString();
+      await saveMeeting(m);
+    } catch(e) {
+      m.processingState = m.processingState || {};
+      var doneR  = (m.processingState.chunks && m.processingState.chunks.done) || 0;
+      var totalR = (m.processingState.chunks && m.processingState.chunks.total) || 0;
+      m.processingState.stage = (doneR > 0) ? 'partial' : 'failed';
+      m.processingState.error = String((e && e.message) || 'Retry failed');
+      try { await saveMeeting(m); } catch(e2){}
+      var fragmentR = (doneR > 0 && totalR > 0)
+        ? ('Processing still incomplete — '+doneR+' of '+totalR+' sections done. ')
+        : ('Retry failed — '+((e && e.message) || 'unknown error')+'. ');
+      showProcErr(fragmentR +
+        '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
+      if (btn) { btn.disabled = false; btn.textContent = 'Process'; }
+      return;
+    }
+  } else {
+    // Already fully extracted — clear any stale 'partial'/'failed' stage a
+    // prior buggy run persisted, since the intel is complete.
     m.processingState.stage = 'done';
-    m.processingState.completedAt = new Date().toISOString();
-    await saveMeeting(m);
+    m.processingState.completedAt = m.processingState.completedAt || new Date().toISOString();
+    try { await saveMeeting(m); } catch(e2){}
+  }
+  // Post-extraction sync + render — best-effort; never reported as a
+  // processing failure, never offers a quota-spending Retry.
+  try {
     currentMeeting = m;
     renderIntel(m);
     var r  = await autoSyncEnts(m);
@@ -25367,19 +25399,11 @@ window._retryMeetingProcessing = async function(mtgId){
     if (r.added)    parts.push(r.added+' new node'+(r.added>1?'s':''));
     if (r.updated)  parts.push(r.updated+' updated');
     if (rl.added)   parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');
-    toast('Reprocessed'+(parts.length?' — '+parts.join(', '):''));
-  } catch(e) {
-    m.processingState = m.processingState || {};
-    m.processingState.stage = (m.processingState.chunks && m.processingState.chunks.done > 0) ? 'partial' : 'failed';
-    m.processingState.error = String((e && e.message) || 'Retry failed');
-    try { await saveMeeting(m); } catch(e2){}
-    var done = (m.processingState.chunks && m.processingState.chunks.done) || 0;
-    var total = (m.processingState.chunks && m.processingState.chunks.total) || 0;
-    var fragment = (done > 0 && total > 0)
-      ? ('Processing still incomplete — '+done+' of '+total+' sections done. ')
-      : ('Retry failed — '+((e && e.message) || 'unknown error')+'. ');
-    showProcErr(fragment +
-      '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
+    toast(parts.length ? ('Reprocessed — '+parts.join(', ')+' in Network Map') : 'Meeting intel re-synced');
+  } catch(syncErr) {
+    console.error('[P13.300 retry post-extraction sync/render]', syncErr);
+    try { renderIntel(m); } catch(e3){}
+    toast('Meeting intel is saved. Network-map sync hit a snag — try Edit Sync on the meeting.');
   }
   if (btn) { btn.disabled = false; btn.textContent = 'Process'; }
 };
@@ -25438,12 +25462,42 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
     document.querySelectorAll('.mob-tab').forEach(function(b){ b.classList.remove('active'); });
     var mib = document.getElementById('mbt-intel'); if (mib) mib.classList.add('active');
   }
+  // ── Phase A: AI extraction (the part "processing" refers to) ──
+  // On failure HERE the transcript is already saved (above); surface an
+  // honest recoverable state with a Retry that re-runs the AI. P13.300:
+  // split out from the post-extraction sync/render below so a sync hiccup
+  // can never re-mark a fully-extracted meeting as "incomplete".
+  var intel;
   try {
-    var intel = await _processMeetingAI(notes, m.meta, isTranscript, m);
+    intel = await _processMeetingAI(notes, m.meta, isTranscript, m);
     m.intel = intel;
     m.processingState.stage = 'done';
     m.processingState.completedAt = new Date().toISOString();
     await saveMeeting(m);
+  } catch(e) {
+    m.processingState = m.processingState || {};
+    var doneA  = (m.processingState.chunks && m.processingState.chunks.done) || 0;
+    var totalA = (m.processingState.chunks && m.processingState.chunks.total) || 0;
+    m.processingState.stage = (doneA > 0) ? 'partial' : 'failed';
+    m.processingState.error = String((e && e.message) || 'Processing failed');
+    try { await saveMeeting(m); } catch(e2){}
+    var fragmentA = (doneA > 0 && totalA > 0)
+      ? ('Meeting captured. Processing incomplete — '+doneA+' of '+totalA+' sections done. ')
+      : ('Meeting captured. Processing failed — '+((e && e.message) || 'unknown error')+'. ');
+    showProcErr(fragmentA +
+      '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
+    btn.disabled = false; btn.textContent = 'Process';
+    return;
+  }
+  // ── Phase B: post-extraction sync + render (best-effort) ──
+  // The AI extraction is DONE and SAVED. A failure in entity-sync / render
+  // must NOT report the meeting as a processing failure or lose it, and must
+  // NOT offer a quota-spending Retry. Log the real error for diagnosis and
+  // surface an honest soft message; the saved intel is intact.
+  var failedCount = (m.processingState.failedChunks || []).length;
+  var totalCount  = (m.processingState.chunks || {}).total || 1;
+  var syncOk = true;
+  try {
     if (oppSel) oppSel.value = '';
     ['m-notes','m-title','m-att','m-dur'].forEach(function(id){ document.getElementById(id).value = ''; });
     updateCC();
@@ -25464,8 +25518,6 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
     if (r.updated)  parts.push(r.updated+' updated');
     if (rl.added)   parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');
     if (rl.enriched)parts.push(rl.enriched+' link'+(rl.enriched>1?'s':'')+' enriched');
-    var failedCount = (m.processingState.failedChunks || []).length;
-    var totalCount  = (m.processingState.chunks || {}).total || 1;
     var msg = (failedCount > 0)
       ? ('Meeting processed — '+(totalCount-failedCount)+' of '+totalCount+' sections done'+(parts.length?'; '+parts.join(', ')+' in Network Map':''))
       : ('Meeting processed'+(parts.length?' — '+parts.join(', ')+' in Network Map':''));
@@ -25476,26 +25528,18 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
       clearTimeout(_tt);
       _tt = setTimeout(function(){ toastEl.classList.remove('show'); }, 6000);
     } else { toast(msg); }
-    if (failedCount > 0) {
-      // Some chunks failed — surface honest, recoverable state with a retry.
-      showProcErr('Processing incomplete — '+(totalCount-failedCount)+' of '+totalCount+' sections done. Saved partial extraction. ' +
-        '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
-    }
     if (window._showAutoPrompt) setTimeout(function(){ window._showAutoPrompt(m); }, 1500);
-  } catch(e) {
-    // P13.298 — honest, recoverable failure. Transcript IS saved (above).
-    // Operator gets a Retry button that resumes from m.notes against any
-    // chunks that didn't land.
-    m.processingState = m.processingState || {};
-    var done  = (m.processingState.chunks && m.processingState.chunks.done) || 0;
-    var total = (m.processingState.chunks && m.processingState.chunks.total) || 0;
-    m.processingState.stage = (done > 0) ? 'partial' : 'failed';
-    m.processingState.error = String((e && e.message) || 'Processing failed');
-    try { await saveMeeting(m); } catch(e2){}
-    var fragment = (done > 0 && total > 0)
-      ? ('Meeting captured. Processing incomplete — '+done+' of '+total+' sections done. ')
-      : ('Meeting captured. Processing failed — '+((e && e.message) || 'unknown error')+'. ');
-    showProcErr(fragment +
+  } catch(syncErr) {
+    syncOk = false;
+    console.error('[P13.300 post-extraction sync/render]', syncErr);
+    try { renderIntel(m); } catch(e3){}
+    toast('Meeting processed and saved. Network-map sync hit a snag — open the meeting and use Edit Sync to retry it.');
+  }
+  // Honest PARTIAL surface ONLY when AI chunks genuinely failed (Phase A
+  // returned with some chunks unprocessed). A Phase-B sync hiccup never
+  // shows this — the AI processing itself succeeded.
+  if (syncOk && failedCount > 0) {
+    showProcErr('Processing incomplete — '+(totalCount-failedCount)+' of '+totalCount+' sections done. Saved partial extraction. ' +
       '<button onclick="window._retryMeetingProcessing(\''+m.id+'\')" style="margin-left:8px;padding:3px 10px;background:var(--amber);color:#070d18;border:none;border-radius:3px;font-weight:600;cursor:pointer">Retry processing</button>');
   }
   btn.disabled = false; btn.textContent = 'Process';
@@ -70956,6 +71000,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.299"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.300"></script>
 </body>
 </html>
