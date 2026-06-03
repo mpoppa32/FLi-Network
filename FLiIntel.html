@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.306</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.307</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -39488,6 +39488,7 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
     meetingsByAttendee: new Map(),  // person id → array of meetings (via attendee name match)
     oppsByStage:        new Map(),  // stage → array of opps
     oppsById:           new Map(),  // raw opp id → opp
+    oppsByOrgKey:       new Map(),  // P13.307 — lc(agency||customer) → array of opps (for _accBuildRollup)
     lastRebuildTs:      0,
     rebuildCount:       0
   };
@@ -39508,6 +39509,7 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
     idx.meetingsByAttendee.clear();
     idx.oppsByStage.clear();
     idx.oppsById.clear();
+    idx.oppsByOrgKey.clear();
     // Nodes
     for (var i = 0; i < nodes.length; i++){
       var n = nodes[i];
@@ -39533,6 +39535,12 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
       var st = String(o.stage || '').toLowerCase();
       if (!idx.oppsByStage.has(st)) idx.oppsByStage.set(st, []);
       idx.oppsByStage.get(st).push(o);
+      // P13.307 — bucket by org key (agency||customer, lc/trim) so
+      // _accBuildRollup reads its org's opps in O(opps-for-org) instead of
+      // scanning all opps per org (was O(orgs × opps) across the Accounts
+      // render + coverage loops).
+      var _ork = String(o.agency || o.customer || '').toLowerCase().trim();
+      if (_ork){ if (!idx.oppsByOrgKey.has(_ork)) idx.oppsByOrgKey.set(_ork, []); idx.oppsByOrgKey.get(_ork).push(o); }
     }
     // Meetings — P6.12: dual-schema compatibility. Different workspaces
     // store attendee data under m.meta.attendees, m.intel.keyPeople, or
@@ -47670,7 +47678,12 @@ function _accBuildRollup(org){
   var orgKey = String(org.name||'').toLowerCase().trim();
   var people = (idx.peopleByOrg && idx.peopleByOrg.get && idx.peopleByOrg.get(orgKey)) || [];
 
-  var allOpps = window.opportunities || [];
+  // P13.307 — read this org's opps from the CorsairIndex bucket (O(opps-for-
+  // org)) instead of scanning ALL opps per org. Fallback to a full scan +
+  // match when the index isn't built yet (keeps every caller correct).
+  var _orgOpps = (idx.oppsByOrgKey && idx.oppsByOrgKey.get && idx.oppsByOrgKey.get(orgKey)) || null;
+  var _useIndex = !!_orgOpps;
+  var _scan = _orgOpps || (window.opportunities || []);
   var openOpps = [];
   var closedWins = 0;
   var totalPipeline = 0;
@@ -47680,11 +47693,13 @@ function _accBuildRollup(org){
   // operator can see "3 in Pre-RFP / 2 in Proposal / 1 in Submitted" at a
   // glance without opening each opp.
   var stageDist = {};
-  for (var i = 0; i < allOpps.length; i++){
-    var o = allOpps[i];
+  for (var i = 0; i < _scan.length; i++){
+    var o = _scan[i];
     if (!o) continue;
-    var aMatch = String(o.agency || o.customer || '').toLowerCase().trim();
-    if (!aMatch || aMatch !== orgKey) continue;
+    if (!_useIndex){
+      var aMatch = String(o.agency || o.customer || '').toLowerCase().trim();
+      if (!aMatch || aMatch !== orgKey) continue;
+    }
     var stg = String(o.stage || '').toLowerCase();
     if (stg === 'won' || stg === 'lost' || stg === 'no-bid' || stg === 'no_bid') {
       if (stg === 'won') closedWins++;
@@ -71302,6 +71317,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.306"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.307"></script>
 </body>
 </html>
