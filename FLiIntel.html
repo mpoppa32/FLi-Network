@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.307</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.308</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -48132,6 +48132,7 @@ function _accRenderAttentionBanner(totals, currentHealthFilter){
     '</div>';
 }
 
+window._toggleAccountsScope = function(){ window._accShowAll = !window._accShowAll; if (window._renderAccountsView) window._renderAccountsView(); };
 window._renderAccountsView = function(){
   var grid = document.getElementById('accounts-grid');
   var empty = document.getElementById('accounts-empty');
@@ -48176,6 +48177,27 @@ window._renderAccountsView = function(){
   var orgs = [];
   if (!typeFilter || typeFilter === 'company')   orgs = orgs.concat((idx.byType.get('company') || []));
   if (!typeFilter || typeFilter === 'government') orgs = orgs.concat((idx.byType.get('government') || []));
+  // P13.308 — scope to BD-relevant accounts by default. OSINT/enrichment
+  // seeded ~1000 org nodes with no pipeline, contacts, or account fields;
+  // rendering all ~1136 cards (each through 2 rollup passes + a DOM card) was
+  // the Accounts lag. Default shows accounts that actually matter (has opps /
+  // contacts / account status|owner / flagged customer|adversary|bdTarget /
+  // Tier-1). window._accShowAll flips to the full set via the count-label
+  // toggle. Nothing deleted — excluded orgs stay in nodes/nodeMap and reappear
+  // on "show all"; same pattern as the graph scope (P13.301).
+  var _accTotalOrgs = orgs.length;
+  if (!window._accShowAll){
+    orgs = orgs.filter(function(o){
+      if (!o || !o.name) return false;
+      var k = String(o.name).toLowerCase().trim();
+      if (idx.oppsByOrgKey && idx.oppsByOrgKey.has(k)) return true;
+      if (idx.peopleByOrg && idx.peopleByOrg.has(k)) return true;
+      if (o.accountStatus || o.accountOwner) return true;
+      if (o.bdTarget || o.customer || o.adversary) return true;
+      if (Number(o.priority) === 1) return true;
+      return false;
+    });
+  }
 
   var currentUid = (window.currentUser && window.currentUser.uid) ? String(window.currentUser.uid) : '';
 
@@ -48248,7 +48270,10 @@ window._renderAccountsView = function(){
     return 0;
   });
 
-  if (label) label.textContent = rollups.length + ' org' + (rollups.length !== 1 ? 's' : '');
+  if (label) {
+    var _accToggle = ' · <span onclick="window._toggleAccountsScope&&window._toggleAccountsScope()" style="cursor:pointer;color:var(--gold);text-decoration:underline" title="' + (window._accShowAll ? 'Show only BD-relevant accounts (faster)' : 'Show every org including unlinked OSINT-imported ones (slower)') + '">' + (window._accShowAll ? 'focus' : 'show all ' + _accTotalOrgs) + '</span>';
+    label.innerHTML = rollups.length + ' org' + (rollups.length !== 1 ? 's' : '') + _accToggle;
+  }
   if (empty) empty.style.display = rollups.length ? 'none' : 'block';
   if (!rollups.length && empty) {
     if (searchQ) {
@@ -71317,6 +71342,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.307"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.308"></script>
 </body>
 </html>
