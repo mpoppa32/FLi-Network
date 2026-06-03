@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.305</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.306</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -34740,6 +34740,12 @@ window._renderTodayNarrative = function(){
   function _wordBoundaryRegex(t){
     return new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])', 'i');
   }
+  // P13.306 — compile each term's regex ONCE. This loop's regex was previously
+  // rebuilt per (weekly signal × concentration term) inside the loop below —
+  // with ~1000s of terms (1480 opps × 3 fields + ~1100 org nodes), that
+  // RegExp-construction-per-pair was the dominant cost of this ~1s render
+  // (measured 1083ms). Reuse the compiled regex across all signals.
+  concentrationTerms.forEach(function(t){ t.rx = _wordBoundaryRegex(t.term); });
   weekly.forEach(function(s){
     if (!s) return;
     // First: subjectIds (resolver-linked) — count each id once per signal
@@ -34761,7 +34767,7 @@ window._renderTodayNarrative = function(){
     var matchedThisSignal = {};
     concentrationTerms.forEach(function(t){
       if (matchedThisSignal[t.term]) return;
-      if (_wordBoundaryRegex(t.term).test(blob)) {
+      if (t.rx.test(blob)) {
         matchedThisSignal[t.term] = 1;
         orgIdToName[t.term] = t.display;
         orgHits[t.term] = (orgHits[t.term] || 0) + 1;
@@ -71296,6 +71302,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.305"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.306"></script>
 </body>
 </html>
