@@ -8905,7 +8905,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="cinema-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="cinema-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.304</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.305</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12577,6 +12577,25 @@ async function _apiFetch(key,payload,timeoutMs){
 // ── Performance: health score cache + render debounce ─────────
 var _healthCache=new Map(); // nodeId+':'+meetingCount → score
 var _boardTimer=null;       // debounce timer for Firebase-triggered renders
+// P13.305 — debounce the heavy Today/Brief renders. They were called
+// DIRECTLY inside every data listener (signals, meetings, nodes, brief, REST
+// fallback), so the initial workspace-load fan-out fired renderDailyBrief +
+// _renderTodayNarrative (~1s each) ~10x back-to-back — the second half of the
+// load freeze (after the P13.304 index-rebuild fix). Coalesce into one render
+// ~200ms after the last data change, gated on the Today view. Mirrors
+// scheduleRenderBoard's debounce pattern.
+var _todayRenderTimer=null;
+function _scheduleTodayRender(){
+  clearTimeout(_todayRenderTimer);
+  _todayRenderTimer=setTimeout(function(){
+    if (typeof activeView !== 'undefined' && activeView !== 'today') return;
+    try { window.renderDailyBrief && window.renderDailyBrief(); } catch(e){}
+    try { window._renderTodayNarrative && window._renderTodayNarrative(); } catch(e){}
+    try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
+    try { window._renderTodayOrientation && window._renderTodayOrientation(); } catch(e){}
+  }, 200);
+}
+window._scheduleTodayRender=_scheduleTodayRender;
 // ── Auto-link undo state ──────────────────────────────────────
 var _lastAutoLinks=[];      // link IDs created by last autoSyncLinks call
 var _undoLinkTimer=null;    // clears undo state after 12s
@@ -14228,12 +14247,7 @@ async function _restPollFetchAll(){
     try { updateCount && updateCount(); } catch(e){}
     try { renderSidebarMtgList && renderSidebarMtgList(); } catch(e){}
     try { scheduleRenderBoard && scheduleRenderBoard(); } catch(e){}
-    if (activeView === 'today') {
-      try { window.renderDailyBrief && window.renderDailyBrief(); } catch(e){}
-      try { window._renderTodayNarrative && window._renderTodayNarrative(); } catch(e){}
-      try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
-      try { window._renderTodayOrientation && window._renderTodayOrientation(); } catch(e){}
-    }
+    _scheduleTodayRender(); // P13.305 — debounced (was 4 direct renders per listener fire)
     if (activeView === 'atlas') { try { window._atlasRenderActivityFeed && window._atlasRenderActivityFeed(); } catch(e){} }
     if (activeView === 'outreach') { try { window._renderOutreachQueueView && window._renderOutreachQueueView(); } catch(e){} }
     if (activeView === 'coverage') { try { window._renderCoverageView && window._renderCoverageView(); } catch(e){} }
@@ -14411,12 +14425,7 @@ function connectWorkspace(){
     // Bridge beat: Bryce logs a meeting → Mike's Today updates without anyone
     // saying a word (Vision Moment 1 "team's input already reflected" +
     // Moment 3 "team feels it within the minute"). Idempotent, guarded.
-    if(activeView==='today'){
-      try{ window.renderDailyBrief && window.renderDailyBrief(); }catch(e){}
-      try{ window._renderTodayNarrative && window._renderTodayNarrative(); }catch(e){}
-      try{ window._renderTodayCatches && window._renderTodayCatches(); }catch(e){}
-      try{ window._renderTodayOrientation && window._renderTodayOrientation(); }catch(e){}
-    }
+    _scheduleTodayRender(); // P13.305 — debounced (was 4 direct renders per listener fire)
     // P13.224 — live Team Activity feed on the Atlas chamber when a meeting
     // is logged (incl. a teammate's, arriving via this shared listener).
     if(activeView==='atlas'){
@@ -14827,11 +14836,7 @@ function connectWorkspace(){
     // P13.302 — posture feeding Channel B: infer trajectory shifts from newly
     // arrived OSINT signals (backfill-guarded; primes on first fire).
     try { window._postureProcessSignals && window._postureProcessSignals(arr); } catch(e){}
-    if (activeView === 'today') {
-      try{ window._renderTodayNarrative && window._renderTodayNarrative(); }catch(e){}
-      try{ window._renderTodayCatches && window._renderTodayCatches(); }catch(e){}
-      try{ window.renderDailyBrief && window.renderDailyBrief(); }catch(e){}
-    }
+    _scheduleTodayRender(); // P13.305 — debounced (was 3 direct renders per signal-listener fire)
     try{ window._refreshOpenInspector && window._refreshOpenInspector(); }catch(e){}
     try{ window._osintRefreshUnresolvedChip && window._osintRefreshUnresolvedChip(); }catch(e){}
     // P13.251 (OSINT O-3) — trigger notify-check on signal-update so a HIGH
@@ -14856,10 +14861,7 @@ function connectWorkspace(){
   // they fall back to filtering window._signals.
   var uBrief = onValue(ref(db, wsPath('derivedViews/dailyBrief/latest')), function(snap){
     window._brief = snap.val() || null;
-    if (activeView === 'today') {
-      try{ window._renderTodayNarrative && window._renderTodayNarrative(); }catch(e){}
-      try{ window.renderDailyBrief && window.renderDailyBrief(); }catch(e){}
-    }
+    _scheduleTodayRender(); // P13.305 — debounced (was 2 direct renders per brief-listener fire)
     try{ window._refreshOpenInspector && window._refreshOpenInspector(); }catch(e){}
   });
 
@@ -71294,6 +71296,6 @@ document.addEventListener('fullscreenchange', function(){
 })();
 </script>
 
-<script type="module" src="./js/corsair/main.js?v=P13.304"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.305"></script>
 </body>
 </html>
