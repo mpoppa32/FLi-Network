@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.314</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.315</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -21574,7 +21574,22 @@ window._openDealScoreDetail = function(oppId){
 };
 
 window._copShowAll = window._copShowAll || false;
-window._toggleCopScope = function(){ window._copShowAll = !window._copShowAll; if (window._renderKanbanBoard) window._renderKanbanBoard(); };
+// P13.315 — shared "worked pipeline" scope predicate used by BOTH the Pipeline
+// sidebar (_renderOppList) and the kanban (_renderKanbanBoard). An opp is in
+// scope if it has been moved past 'awareness', flagged (mondayPriority/bdTarget),
+// or engaged (has meetings). The default Pipeline view is the sidebar; P13.314
+// scoped only the kanban (a toggle-hidden panel), so the lag persisted — this
+// scopes the sidebar too.
+window._copOppInScope = function(o){
+  if (!o) return false;
+  var st = String(o.stage||'').toLowerCase();
+  if (st && st !== 'awareness') return true;
+  if (o.mondayPriority || o.bdTarget) return true;
+  var ix = window.CorsairIndex || {};
+  var m = (ix.meetingsByOppId && ix.meetingsByOppId.get) ? (ix.meetingsByOppId.get(String(o.id))||[]) : [];
+  return m.length > 0;
+};
+window._toggleCopScope = function(){ window._copShowAll = !window._copShowAll; if (typeof renderOppSidebar==='function') renderOppSidebar(); else if (window._renderKanbanBoard) window._renderKanbanBoard(); };
 window._renderKanbanBoard=function(){
   var board=document.getElementById('cop-kanban-board');
   if(!board)return;
@@ -21668,15 +21683,7 @@ window._renderKanbanBoard=function(){
   // the graph (P13.301) + Accounts (P13.308), and the cause of the ~3s Pipeline
   // render. Default hides untouched-awareness; window._copShowAll (toggle) shows
   // all. Anything moved past awareness, flagged, or engaged (has meetings) shows.
-  var _ix = window.CorsairIndex || {};
-  function _kbInScope(o){
-    if (window._copShowAll) return true;
-    var st = String(o.stage||'').toLowerCase();
-    if (st && st !== 'awareness') return true;            // moved forward
-    if (o.mondayPriority || o.bdTarget) return true;       // flagged
-    var m = (_ix.meetingsByOppId && _ix.meetingsByOppId.get) ? (_ix.meetingsByOppId.get(String(o.id))||[]) : [];
-    return m.length > 0;                                   // engaged
-  }
+  function _kbInScope(o){ return window._copShowAll || (window._copOppInScope ? window._copOppInScope(o) : true); }
   var byStage={};
   OPP_STAGES.forEach(function(s){byStage[s.key]=[];});
   (opportunities||[]).forEach(function(o){
@@ -21850,6 +21857,15 @@ function _renderOppList(q){
       var lead = ((o.captureLead || o.lead) || '').toLowerCase().trim();
       return lead === bylc;
     });
+  }
+  // P13.315 — default-scope the sidebar list to the worked pipeline (1281 of
+  // 1531 opps are unworked 'awareness' SAM.gov imports). Shared toggle with the
+  // kanban via window._copShowAll. This is the actual default Pipeline view.
+  var _copScopedOut = 0;
+  if (!window._copShowAll && window._copOppInScope) {
+    var _before = filtered.length;
+    filtered = filtered.filter(window._copOppInScope);
+    _copScopedOut = _before - filtered.length;
   }
   if(!filtered.length){
     var emptyMsg = _copFilters.mineOnly
@@ -22118,6 +22134,7 @@ function _renderOppList(q){
     + '</button>'
     + (unassignedCount ? '<button class="cop-filter-chip cop-filter-chip--danger' + (_copFilters.unassignedOnly ? ' active' : '') + '" onclick="_copToggleUnassignedOnly()" type="button"><span class="cop-filter-dot"></span>UNASSIGNED · ' + unassignedCount + '</button>' : '')
     + (_copFilters.byLead ? '<button class="cop-filter-chip cop-filter-chip--pivot active" onclick="_copClearByLead()" type="button" title="Clear filter"><span class="cop-filter-dot"></span>OWNED BY ' + (_copFilters.byLead || '').toUpperCase() + ' &nbsp;×</button>' : '')
+    + '<button class="cop-filter-chip' + (window._copShowAll ? ' active' : '') + '" onclick="window._toggleCopScope&&window._toggleCopScope()" type="button" title="' + (window._copShowAll ? 'Showing all ' + (opportunities||[]).length + ' opps incl. unworked imports — click to focus' : 'Showing your worked pipeline' + (_copScopedOut ? ' · ' + _copScopedOut + ' unworked hidden' : '') + ' — click to show all ' + (opportunities||[]).length) + '"><span class="cop-filter-dot"></span>' + (window._copShowAll ? 'FOCUS' : 'SHOW ALL · ' + (opportunities||[]).length) + '</button>'
     + '</div>';
 
   if (active.length) {
@@ -70852,6 +70869,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.314"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.315"></script>
 </body>
 </html>
