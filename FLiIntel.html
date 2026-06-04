@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.312</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.313</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -30796,7 +30796,15 @@ function pickKeepNode(a,b){
 }
 
 // Find all candidate duplicate pairs above threshold
+var _dupeCandCache=null,_dupeCandCacheKey='';
 function findDuplicateCandidates(){
+  // P13.313 — memoize. This is O(eligible²) nameSimilarityEnhanced calls
+  // (~100K on Atlas: 40 person + 413 government nodes, most OSINT-imported),
+  // and renderBoard called it on EVERY Pipeline render. Cache keyed off the
+  // CorsairIndex rebuild stamp (advances whenever nodes change) so it recomputes
+  // only when the node set actually changed — O(1) on every repeat render.
+  var _key=((window.CorsairIndex&&window.CorsairIndex.lastRebuildTs)||0)+':'+(nodes?nodes.length:0);
+  if(_dupeCandCache&&_dupeCandCacheKey===_key)return _dupeCandCache;
   var candidates=[];
   var checked=new Set();
   // Only scan person and government nodes — companies are too variable
@@ -30833,6 +30841,7 @@ function findDuplicateCandidates(){
   }
   // Sort by score desc, then by keep node meeting count desc
   candidates.sort(function(a,b){return b.score-a.score||b.keepMtgs-a.keepMtgs;});
+  _dupeCandCache=candidates;_dupeCandCacheKey=_key;
   return candidates;
 }
 
@@ -70824,6 +70833,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.312"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.313"></script>
 </body>
 </html>
