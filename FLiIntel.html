@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.318</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.319</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8896,7 +8896,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
 <!-- P13.318 — BD Stats (bdperf) cut: true duplicate of The Reckoning (money + stage analytics) and Trends (velocity) per the de-bloat sweep overlap register. Its content lives in Reckoning; the guided-tour Step 4 was repointed there. -->
           <button class="tools-menu-item" data-view="winloss" onclick="window._toolsMenuSelect('winloss')"><span style="color:var(--gold);width:18px;display:inline-block">🏆</span><span>Win/Loss Analysis</span><span class="tm-meta">closed deals · model calibration</span></button>
           <button class="tools-menu-item" data-view="trends" onclick="window._toolsMenuSelect('trends')"><span style="color:#5fb3b8;width:18px;display:inline-block">📈</span><span>Trends &amp; Leaderboard</span><span class="tm-meta">win-rate · capture-lead · velocity</span></button>
-          <button class="tools-menu-item" data-view="team" onclick="window._toolsMenuSelect('team')"><span style="color:#38bdf8;width:18px;display:inline-block">👥</span><span>Team</span><span class="tm-meta">workspace activity</span></button>
+<!-- P13.319 — Team folded into Atlas (de-bloat sweep): the Atlas team chamber now hosts the per-member activity rollup via a companion link. De-duped from the Insights menu section. -->
           <div style="height:1px;background:rgba(26,34,54,.5);margin:7px 4px"></div>
           <div style="padding:6px 10px 2px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase">Data &amp; Help</div>
           <div style="padding:0 10px 4px;font-family:IBM Plex Mono,monospace;font-size:9.5px;letter-spacing:.10em;color:var(--t3);text-transform:uppercase">Import · export · learn · find</div>
@@ -21951,6 +21951,7 @@ function _renderOppList(q){
     var v = typeof _parseVal === 'function' ? _parseVal(o.value) : 0;
     if (o.stage === 'won')  { wonCount++;  wonValue += v; return; }
     if (o.stage === 'lost') { lostCount++; return; }
+    if (o.stage === 'no-bid' || o.stage === 'no_bid') { return; }   // P13.319 — exclude no-bid from active pipeline (reconcile with Reckoning + Trends; numbers-reconcile)
     activeCount++;
     totalValue += v;
     var p = pwOf(o);
@@ -33426,6 +33427,8 @@ window.renderAtlasView = function(){
   h += '<div>';
   h += '<div style="font-family:Anton,sans-serif;font-size:28px;letter-spacing:.08em;text-transform:uppercase;color:var(--bone);line-height:1">' + safeWsName + '</div>';
   h += '<div style="margin-top:8px;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.14em;color:var(--paper);text-transform:uppercase">Internal updates &nbsp;·&nbsp; talking points &nbsp;·&nbsp; voice memos</div>';
+  // P13.319 — Team folded into Atlas (de-bloat sweep): the team chamber hosts the per-member activity rollup as a companion link (removed from the More menu).
+  h += '<div style="margin-top:11px"><button onclick="switchView(\'team\')" title="Team activity — per-member workspace rollup (who logged what, coverage stats)" style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;background:var(--s2);border:1px solid var(--b1);border-radius:3px;color:var(--paper-2);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer" onmouseover="this.style.borderColor=\'var(--gold)\';this.style.color=\'var(--bone)\'" onmouseout="this.style.borderColor=\'var(--b1)\';this.style.color=\'var(--paper-2)\'">👥 Team activity &nbsp;·&nbsp; per-member rollup</button></div>';
   h += '</div>';
   // P13.160 — header buttons: Add Update (text) + Generate Brief (AI summary).
   h += '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
@@ -48862,12 +48865,16 @@ window._renderDroneUniverse = function() {
   });
   window._droneUniverseLast = rows;
   if (strip) {
+    // P13.319 — reframed as the drone MARKET MAP (de-bloat sweep): lead with market size +
+    // coverage %, foreground the white space (untouched companies = where new outreach comes
+    // from). This is the distinct purpose vs Accounts (your worked book): the whole field + fog.
+    var _covPct = counts.total ? Math.round(counts.mapped / counts.total * 100) : 0;
     strip.innerHTML =
-      '<span style="color:#8b5cf6;font-weight:700">' + counts.total + '</span> drone orgs · ' +
-      '<span style="color:#ef4444;font-weight:700">' + counts.dark + '</span> DARK · ' +
-      '<span style="color:#f59e0b;font-weight:700">' + counts.sparse + '</span> SPARSE · ' +
-      '<span style="color:#22c55e;font-weight:700">' + counts.mapped + '</span> MAPPED · ' +
-      '<span style="color:#5fb3b8;font-weight:700">' + counts.withPending + '</span> with pending POC candidates';
+      '<span style="color:#8b5cf6;font-weight:700">' + counts.total + '</span> companies in the drone market &nbsp;·&nbsp; ' +
+      '<span style="color:#22c55e;font-weight:700">' + _covPct + '%</span> mapped &nbsp;·&nbsp; ' +
+      '<span style="color:#ef4444;font-weight:700">' + counts.dark + '</span> untouched (white space) &nbsp;·&nbsp; ' +
+      '<span style="color:#f59e0b;font-weight:700">' + counts.sparse + '</span> partial &nbsp;·&nbsp; ' +
+      '<span style="color:#5fb3b8;font-weight:700">' + counts.withPending + '</span> with POC leads';
   }
   if (rows.length === 0) {
     grid.innerHTML = '';
@@ -70883,6 +70890,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.318"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.319"></script>
 </body>
 </html>
