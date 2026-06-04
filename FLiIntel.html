@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.313</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.314</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -21573,6 +21573,8 @@ window._openDealScoreDetail = function(oppId){
   openModal('deal-score-modal');
 };
 
+window._copShowAll = window._copShowAll || false;
+window._toggleCopScope = function(){ window._copShowAll = !window._copShowAll; if (window._renderKanbanBoard) window._renderKanbanBoard(); };
 window._renderKanbanBoard=function(){
   var board=document.getElementById('cop-kanban-board');
   if(!board)return;
@@ -21655,14 +21657,31 @@ window._renderKanbanBoard=function(){
       _chip('all', 'All') + _chip('ready', 'Ready') + _chip('aged', 'Aged') + _chip('sparse', 'Sparse data') +
       (_priorityVals.length ? _dd('priority', 'Priority', _priorityVals) : '') +
       (_tagVals.length ? _dd('tag', 'Tag', _tagVals) : '') +
+      '<button onclick="window._toggleCopScope&amp;&amp;window._toggleCopScope()" title="'+(window._copShowAll?'Showing ALL '+(opportunities||[]).length+' opps incl. unworked imports — click to focus':'Showing your worked pipeline — click to show all '+(opportunities||[]).length)+'" style="padding:5px 10px;border:1px solid '+(window._copShowAll?'var(--gold)':'var(--b2)')+';border-radius:2px;background:'+(window._copShowAll?'rgba(212,130,58,.18)':'transparent')+';color:'+(window._copShowAll?'var(--gold)':'var(--t2)')+';font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">'+(window._copShowAll?'Focus':'Show all '+(opportunities||[]).length)+'</button>' +
       '<span style="font-family:IBM Plex Mono,monospace;font-size:var(--text-xs);letter-spacing:.10em;color:var(--t3);text-transform:uppercase;margin-left:10px">click card → dossier</span>' +
       '</div>';
     chipMount.style.display = 'block';
+  }
+  // P13.314 — default-scope the Kanban to the WORKED pipeline. Atlas has 1531
+  // opps but 1281 sit unworked in 'awareness' (SAM.gov-seeded imports; only ~8
+  // have any meeting) — the opp-equivalent of the OSINT node bloat scoped out of
+  // the graph (P13.301) + Accounts (P13.308), and the cause of the ~3s Pipeline
+  // render. Default hides untouched-awareness; window._copShowAll (toggle) shows
+  // all. Anything moved past awareness, flagged, or engaged (has meetings) shows.
+  var _ix = window.CorsairIndex || {};
+  function _kbInScope(o){
+    if (window._copShowAll) return true;
+    var st = String(o.stage||'').toLowerCase();
+    if (st && st !== 'awareness') return true;            // moved forward
+    if (o.mondayPriority || o.bdTarget) return true;       // flagged
+    var m = (_ix.meetingsByOppId && _ix.meetingsByOppId.get) ? (_ix.meetingsByOppId.get(String(o.id))||[]) : [];
+    return m.length > 0;                                   // engaged
   }
   var byStage={};
   OPP_STAGES.forEach(function(s){byStage[s.key]=[];});
   (opportunities||[]).forEach(function(o){
     if(!o)return;
+    if(!_kbInScope(o))return; // P13.314 — scope to the worked pipeline (toggle: _copShowAll)
     if(!_kbMatches(o))return; // P13.158 — chip-row filter applies per-card
     var k=o.stage||'awareness';
     if(!byStage[k])byStage[k]=[];
@@ -70833,6 +70852,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.313"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.314"></script>
 </body>
 </html>
