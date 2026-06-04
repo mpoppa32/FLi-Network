@@ -9,10 +9,17 @@
 //    clear-eyed. The power is yours."
 //   "Confidence in her tools that removes all doubt."
 //
-// Path is workspace-scoped and PRIVATE to the operator. Never exposed
-// externally without explicit per-disclosure operator action. UI
-// surfaces and export functions enforce that; this data layer trusts
-// its callers.
+// Path is workspace-scoped and TEAM-VISIBLE (Doctrine §XI "The Visibility of
+// Path", ratified 2026-06-03 by Mike Poppa). A contact's Path is force
+// protection no teammate should be siloed from, and §V (the pass-down) makes
+// "who walks which path" survive the operator's departure. It is displayed as
+// one operator's ATTRIBUTED, DATED read ("[Operator]'s read, as of [date]:
+// [Path]") — never as platform-asserted fact about a person. A human records
+// the read; the platform only surfaces evidence toward it (§VI forbids the
+// platform scoring a human's character). Supersedes the earlier "PRIVATE to
+// the operator / Doctrine VIII" citation — §VIII is the Brand Voice; §XI is
+// the provision. This data layer stores Path on the shared node + its
+// attribution (pathSetBy / pathAsOf); UI enforces the attributed-read display.
 //
 // Taxonomies are v1.0 — operator-authorized at master-prompt defaults
 // 2026-05-15 with iteration license. Edit constants below as friction

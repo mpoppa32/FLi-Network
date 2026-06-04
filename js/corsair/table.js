@@ -541,7 +541,12 @@ window._generatePursuitBrief = function(oppId) {
       if (p.role) bits.push(p.role);
       if (p.org)  bits.push(p.org);
       if (postureMod && p.posture) {
-        if (p.posture.path)       bits.push('path: ' + postureMod.pathLabel(p.posture.path));
+        if (p.posture.path) {
+          // Doctrine §XI — Path renders as an attributed, dated READ, never bare fact.
+          var _pBy = p.posture.pathSetBy ? (p.posture.pathSetBy + "'s read") : 'read';
+          var _pWhen = p.posture.pathAsOf ? (', as of ' + new Date(p.posture.pathAsOf).toLocaleDateString()) : '';
+          bits.push(_pBy + _pWhen + ': ' + postureMod.pathLabel(p.posture.path));
+        }
         if (p.posture.trajectory) bits.push('traj: ' + postureMod.trajectoryLabel(p.posture.trajectory));
         var pos = p.posture.byPursuit && p.posture.byPursuit[opp.id] && p.posture.byPursuit[opp.id].position;
         if (pos) bits.push('position: ' + postureMod.positionLabel(pos));

@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.311</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.312</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -40303,7 +40303,7 @@ window._renderPostureContactsTable = function(pursuit) {
     h +=   '<div class="contact-name" onclick="event.stopPropagation();window.openEntityInspector(\'' + safePersonId + '\')" title="Open dossier">' + name + '</div>';
     h +=   '<div class="contact-meta" title="' + roleOrgMeta + '">' + roleOrgMeta + '</div>';
     h +=   '<div><select onclick="event.stopPropagation()" onchange="window._postureSetContactPosition(\'' + safePersonId + '\',\'' + safePid + '\',this.value)">' + posOptions + '</select></div>';
-    h +=   '<div><select onclick="event.stopPropagation()" onchange="window._postureSetContactPath(\'' + safePersonId + '\',this.value)">' + pathOptions + '</select></div>';
+    h +=   '<div><select title="' + (posture.path ? window._escHTML(window._posturePathReadLabel(posture) + ' — team-visible attributed read (§XI)') : 'Path — record your read of how they operate (team-visible, attributed · §XI)') + '" onclick="event.stopPropagation()" onchange="window._postureSetContactPath(\'' + safePersonId + '\',this.value)">' + pathOptions + '</select></div>';
     h +=   '<div style="display:flex;gap:3px;align-items:center"><select title="Trajectory" onclick="event.stopPropagation()" onchange="window._postureSetContactTrajectory(\'' + safePersonId + '\',this.value)">' + trajOptions + '</select><button title="Edit evidence URL — supports the trajectory read with a source" onclick="event.stopPropagation();window._postureEditTrajectoryEvidence(\'' + safePersonId + '\')" style="background:transparent;border:1px solid var(--b2);color:' + (evidence && evidence.sourceUrl ? 'var(--gold)' : 'var(--t3)') + ';font-family:IBM Plex Mono,monospace;font-size:10px;padding:1px 4px;border-radius:2px;cursor:pointer;line-height:1.2">' + (evidence && evidence.sourceUrl ? '✎' : '+') + '</button></div>';
     h +=   '<div class="last-touch">' + lastTouchTxt + '</div>';
     h +=   '<div class="tells-count' + (tellsN > 0 ? ' has-tells' : '') + '" id="posture-tells-count-' + safePersonId + '">' + tellsN + '</div>';
@@ -40345,8 +40345,10 @@ window._postureSetContactPosition = async function(personId, pursuitId, position
   try {
     if (typeof window.saveNode === 'function') await window.saveNode(node);
     // DG-1 (Team Entanglement) — broadcast the posture read to the team feed.
-    // Position + Trajectory are workspace-shared reads; Path is operator-PRIVATE
-    // (posture.js doctrine) and is intentionally NOT emitted.
+    // Position + Trajectory are workspace-shared reads. Path is ALSO team-visible
+    // now (Doctrine §XI) but is intentionally NOT push-broadcast to the feed —
+    // given its sensitivity (§VI), Path is visible-on-the-record as an attributed,
+    // dated read when a teammate views the contact, not a feed headline.
     try { var _pl = positionKey ? (positionKey.charAt(0).toUpperCase()+positionKey.slice(1)) : ''; window._corsairEmitEvent && window._corsairEmitEvent('posture_changed', node.name, (positionKey ? ('set ' + node.name + "'s position to " + _pl) : ('cleared ' + node.name + "'s position")), { view:'entity', id:node.id }); } catch(_e){}
   } catch (e) { console.warn('[Posture] save position failed:', e); }
 };
@@ -40355,12 +40357,32 @@ window._postureSetContactPath = async function(personId, pathKey) {
   var node = (window.nodes || []).find(function(n) { return String(n.id) === String(personId); });
   if (!node) return;
   node.posture = node.posture || {};
-  if (pathKey) node.posture.path = pathKey;
-  else if (node.posture.path) delete node.posture.path;
+  if (pathKey) {
+    node.posture.path = pathKey;
+    // Doctrine §XI — Path is a TEAM-VISIBLE, ATTRIBUTED read. Record WHO set it
+    // and WHEN so every surface renders "[Operator]'s read, as of [date]" and a
+    // teammate never sees Path as bare platform fact.
+    node.posture.pathSetBy = (window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || 'operator';
+    node.posture.pathSetByUid = (window.currentUser && window.currentUser.uid) || null;
+    node.posture.pathAsOf = Date.now();
+  } else if (node.posture.path) {
+    delete node.posture.path; delete node.posture.pathSetBy; delete node.posture.pathSetByUid; delete node.posture.pathAsOf;
+  }
   node.posture.lastUpdated = Date.now();
   try {
     if (typeof window.saveNode === 'function') await window.saveNode(node);
   } catch (e) { console.warn('[Posture] save path failed:', e); }
+};
+// Doctrine §XI — render a Path value as an attributed, dated read. Returns e.g.
+// "Mike's read, as of Jun 3: Shadow" — never bare "Shadow" as platform fact.
+window._posturePathReadLabel = function(posture){
+  if (!posture || !posture.path) return '';
+  var mod = window.Corsair && window.Corsair.posture;
+  var label = (mod && mod.pathLabel) ? mod.pathLabel(posture.path) : posture.path;
+  var who = posture.pathSetBy ? (posture.pathSetBy + "'s read") : 'read';
+  var when = '';
+  if (posture.pathAsOf) { try { when = ', as of ' + new Date(posture.pathAsOf).toLocaleDateString(undefined,{month:'short',day:'numeric'}); } catch(e){} }
+  return who + when + ': ' + label;
 };
 
 // P13.171 — Sovereign Intelligence audit Lens 4: trajectory was consumed
@@ -70802,6 +70824,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.311"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.312"></script>
 </body>
 </html>
