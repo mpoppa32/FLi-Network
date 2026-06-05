@@ -309,8 +309,27 @@ window.renderDailyBrief = function() {
   var coverage = [];
   if (typeof window._computeAccountCoverage === 'function') {
     var orgsAll = nodes_.filter(function(n) { return n && n.type === 'company'; });
+    // P13.321 (perf) — only orgs with an active opp can appear in this panel (the
+    // cov.factors.oppCount>0 gate below). Computing full coverage for EVERY company node
+    // — including the ~600 OSINT-seeded orgs with zero opps — was the dominant Today-render
+    // cost (732 calls / ~780ms, measured live). Pre-filter with a cheap substring check
+    // against active-opp targets (lowercased once) so the expensive _computeAccountCoverage
+    // runs only for orgs that can qualify. The STAGE_ACTIVE set + (agency||customer||name)
+    // matching MIRROR _computeAccountCoverage's internal oppCount logic, so results are
+    // identical — an org skipped here would have returned oppCount 0 and been discarded.
+    var _STAGE_ACTIVE = { proposal:1, negotiation:1, submitted:1, award:1, engaged:1, rfp:1, awareness:1, tracking:1 };
+    var _oppTargets = [];
+    for (var _oi = 0; _oi < opps_.length; _oi++) {
+      var _o = opps_[_oi];
+      if (_o && _STAGE_ACTIVE[String(_o.stage || '').toLowerCase()]) _oppTargets.push(String(_o.agency || _o.customer || _o.name || '').toLowerCase());
+    }
     for (var ci2 = 0; ci2 < orgsAll.length; ci2++) {
       var org = orgsAll[ci2];
+      var _on = String(org.name || '').toLowerCase().trim();
+      if (!_on) continue;
+      var _hasOpp = false;
+      for (var _ti = 0; _ti < _oppTargets.length; _ti++) { if (_oppTargets[_ti].indexOf(_on) !== -1) { _hasOpp = true; break; } }
+      if (!_hasOpp) continue;
       var cov = window._computeAccountCoverage(org, { nodes: nodes_, meetings: mtgs_, opps: opps_ });
       if (cov.factors.oppCount > 0 && cov.score < 40) {
         coverage.push({
