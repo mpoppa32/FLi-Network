@@ -70,6 +70,92 @@ function _briefMarkDeltas() {
   });
 })();
 
+// ─── The Catch (Vision Moment 4) ─────────────────────────────────────────
+// The platform's proactive synthesis: the top 3 things that need the operator
+// RIGHT NOW, composed from the brief's already-computed signals (due/overdue
+// commitments, deals ready to advance or slipping, key contacts cooling, pursued
+// accounts with thin coverage), each scored by urgency. This is the "platform got
+// there first" Moment — Today triages the day so the operator doesn't scan columns.
+// v1 synthesizes existing signals; OSINT-on-pursuit + concentration-risk catches
+// are a planned v2. Pure render; never throws (guarded), additive to the brief.
+window._renderCatch = function(ctx){
+  var el = document.getElementById('brief-catch');
+  if (!el) return;
+  ctx = ctx || {};
+  function esc(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];}); }
+  function jsq(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+  var cand = [];
+  // 1) Commitments — explicit promises (overdue ranks highest)
+  (ctx.commitDue||[]).forEach(function(c){
+    var d = c.days; if (d == null) return;
+    var score, when;
+    if (d < 0) { score = 100 + Math.min(-d,20); when = 'OVERDUE ' + (-d) + 'd'; }
+    else if (d <= 7) { score = 74 - d*3; when = 'due in ' + d + 'd'; }
+    else return;
+    cand.push({ score:score, icon:'⏰', color:'#dc4d4d',
+      head: esc(c.title||'Commitment') + ' — ' + when,
+      why: c.owner ? ('owner ' + esc(c.owner)) : 'open commitment',
+      onclick: "window.switchView&&switchView('intel')" });
+  });
+  // 2) Deals ready to advance — high leverage, low effort
+  (ctx.stale||[]).forEach(function(s){
+    if (!s.ready) return;
+    cand.push({ score:86, icon:'↗', color:'#2e9e54',
+      head: esc(s.name) + ' is ready to advance',
+      why: 'qualification done' + (s.days!=null?(' · stuck '+s.days+'d in '):' · ') + esc(String(s.stage||'').toLowerCase()),
+      onclick: "window.selectOpp&&selectOpp('" + jsq(s.id) + "')" });
+  });
+  // 3) Deals slipping — stalled (longer + colder = more urgent)
+  (ctx.stale||[]).forEach(function(s){
+    if (s.ready) return;
+    var d = s.days==null?0:s.days;
+    var poor = !!(s.health && (s.health.status==='cold' || (s.health.score||0) < 40));
+    cand.push({ score: 52 + Math.min(d/3,24) + (poor?12:0), icon:'⚠', color:'#d98324',
+      head: esc(s.name) + (s.days!=null?(' stalled '+s.days+'d'):' stalled'),
+      why: esc(String(s.stage||'').toLowerCase()) + (poor?' · running cold':''),
+      onclick: "window.selectOpp&&selectOpp('" + jsq(s.id) + "')" });
+  });
+  // 4) Key contacts cooling
+  (ctx.decay||[]).slice(0,6).forEach(function(p){
+    var d = p.days||0;
+    cand.push({ score: 44 + Math.min(d/7,22), icon:'↓', color:'#3a8fb0',
+      head: esc(p.name) + ' has gone quiet ' + d + 'd',
+      why: p.org ? esc(p.org) : 'no recent contact',
+      onclick: "window.openDecayPanel&&openDecayPanel()" });
+  });
+  // 5) Exposure — pursued accounts with thin coverage
+  (ctx.coverage||[]).slice(0,6).forEach(function(o){
+    var oc = (o.factors && o.factors.oppCount) || 0;
+    cand.push({ score: 50 + (40 - (o.score||0))/2, icon:'○', color:'#7a5cc0',
+      head: esc(o.name) + ' coverage is thin',
+      why: (oc ? (oc + ' open pursuit' + (oc>1?'s':'')) : 'pursued') + ' · few engaged contacts',
+      onclick: "window.switchView&&switchView('accounts')" });
+  });
+
+  cand.sort(function(a,b){ return b.score - a.score; });
+  var top = cand.slice(0,3);
+  var hdr = '<div style="font-family:IBM Plex Mono,monospace;font-size:10.5px;font-weight:700;letter-spacing:.18em;color:#b8722e;text-transform:uppercase;margin:2px 0 9px">⚡ The Catch <span style="color:#9a8f7e;font-weight:600;letter-spacing:.06em;text-transform:none">— what needs you now</span></div>';
+  if (!top.length){
+    el.setAttribute('data-empty','1');
+    el.innerHTML = hdr + '<div style="font-size:12.5px;color:#5b7a52;padding:1px 0 4px">✓ Nothing urgent right now — you are on top of it.</div>';
+    return;
+  }
+  el.removeAttribute('data-empty');
+  var rows = top.map(function(c){
+    return '<button type="button" onclick="' + c.onclick + '" '
+      + 'style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 11px;margin-bottom:6px;background:rgba(20,28,46,.04);border:1px solid rgba(20,28,46,.10);border-left:3px solid ' + c.color + ';border-radius:4px;cursor:pointer;font-family:inherit" '
+      + 'onmouseover="this.style.background=\'rgba(212,130,58,.10)\'" onmouseout="this.style.background=\'rgba(20,28,46,.04)\'">'
+      + '<span style="font-size:14px;color:' + c.color + ';flex-shrink:0;width:16px;text-align:center">' + c.icon + '</span>'
+      + '<span style="flex:1;min-width:0">'
+      + '<span style="display:block;font-size:13px;font-weight:600;color:#1a2236;line-height:1.25">' + c.head + '</span>'
+      + '<span style="display:block;font-size:11px;color:#6b7280;margin-top:2px">' + c.why + '</span>'
+      + '</span>'
+      + '<span style="color:#b8722e;flex-shrink:0;font-size:13px">→</span>'
+      + '</button>';
+  }).join('');
+  el.innerHTML = hdr + rows;
+};
+
 window.renderDailyBrief = function() {
   var card = document.getElementById('brief-card');
   if (!card) return;
@@ -343,6 +429,11 @@ window.renderDailyBrief = function() {
     }
     coverage.sort(function(a, b) { return a.score - b.score; });
   }
+
+  // ─── The Catch (Vision Moment 4) — synthesize the top-3 "what needs you now"
+  // from the signals computed above (commitments / ready+stalled deals / cooling
+  // contacts / thin coverage). Guarded: a Catch failure never breaks the brief.
+  try { window._renderCatch({ decay: decay, stale: stale, commitDue: commitDue, coverage: coverage }); } catch(e){}
 
   // ─── CRM P1.7: today/tomorrow agenda strip ──────────────────────────
   // Three-cell row at the top of the brief: today's meetings, due-today
