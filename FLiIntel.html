@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.326</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.327</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -23632,14 +23632,19 @@ window._clearLeadPicker=async function(){
 };
 
 function updateOppSelectors(){
+  // P13.327 — was O(n²): `sel.innerHTML += '<option>'` inside a loop over ~2,550 active
+  // opps re-parsed the entire growing <select> on every iteration (~3.25M re-parses =
+  // the 26-SECOND opps-handler / load freeze). Now build the option string ONCE and
+  // assign innerHTML a single time → O(n), milliseconds.
   ['m-opp'].forEach(function(sid){
     var sel=document.getElementById(sid);
     if(!sel)return;
     var cur=sel.value;
-    sel.innerHTML='<option value="">— None —</option>';
+    var html='<option value="">— None —</option>';
     opportunities.filter(function(o){return o.stage!=='won'&&o.stage!=='lost';}).forEach(function(o){
-      sel.innerHTML+='<option value="'+window._escHTML(o.id)+'"'+(o.id===cur?' selected':'')+'>'+window._escHTML(o.name)+'</option>';
+      html+='<option value="'+window._escHTML(o.id)+'"'+(o.id===cur?' selected':'')+'>'+window._escHTML(o.name)+'</option>';
     });
+    sel.innerHTML=html;
   });
 }
 window.switchView=switchView;
@@ -70912,6 +70917,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.326"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.327"></script>
 </body>
 </html>
