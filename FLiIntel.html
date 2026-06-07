@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.323</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.324</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12759,6 +12759,7 @@ function rebuildNodesArray(){
 // Maps entity name.lower → Set of meetingIds that mention them
 // Enables O(1) "meetings for person/company" queries
 function buildEntityGraph(){
+  var _lpEG=(typeof performance!=='undefined')?performance.now():Date.now();
   entityGraph.clear();
   meetings.forEach(function(m){
     (m.intel.keyPeople||[]).forEach(function(p){
@@ -12774,6 +12775,7 @@ function buildEntityGraph(){
       entityGraph.get(k).add(m.id);
     });
   });
+  (window.__loadPerf=window.__loadPerf||{}).entityGraph=(window.__loadPerf.entityGraph||0)+Math.round(((typeof performance!=='undefined')?performance.now():Date.now())-_lpEG);
 }
 
 // ── NAME MATCHING ENGINE ─────────────────────────────────────
@@ -14357,6 +14359,7 @@ function connectWorkspace(){
 
   // ── NODES: full load, build nodeMap for O(1) lookups ──
   var u3=onValue(ref(db,wsPath('nodes')),function(snap){
+    var _lpNL=(typeof performance!=='undefined')?performance.now():Date.now();
     var data=snap.val();
     var incoming=data?Object.values(data):[];
     var oldNodeMap=nodeMap;
@@ -14411,6 +14414,7 @@ function connectWorkspace(){
       var addedNodes = window._detectRippleDeltas('nodes', incoming);
       if (addedNodes.length) window._stagedRipple(addedNodes, function(id){ window._fireRipple('entity', id); });
     } catch(e){}
+    (window.__loadPerf=window.__loadPerf||{}).nodesListener=(window.__loadPerf.nodesListener||0)+Math.round(((typeof performance!=='undefined')?performance.now():Date.now())-_lpNL);
   });
 
   // ── LINKS: full load, build linkMap ──
@@ -14504,6 +14508,7 @@ function connectWorkspace(){
     }).catch(function(e){console.error('Migration error:',e);});
   });
   var u9=onValue(ref(db,wsPath('opportunities')),function(snap){
+    var _lpOL=(typeof performance!=='undefined')?performance.now():Date.now();
     opportunities=snap.val()?Object.values(snap.val()):[];
     // Mirror to window so DiscoveryEngine3D (3.11+) can read opportunities.
     window.opportunities = opportunities;
@@ -14561,6 +14566,7 @@ function connectWorkspace(){
       }
       window._ripplePrior.oppStages = stageMap;
     } catch(e){}
+    (window.__loadPerf=window.__loadPerf||{}).oppsListener=(window.__loadPerf.oppsListener||0)+Math.round(((typeof performance!=='undefined')?performance.now():Date.now())-_lpOL);
   });
   // ── COMMITMENTS ──
   var u10=onValue(ref(db,wsPath('commitments')),function(snap){
@@ -39560,6 +39566,8 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
     }
     var t1 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     idx.lastRebuildTs = Date.now();
+    idx.lastRebuildMs = Math.round(t1 - t0); // P13.324 — store rebuild time so load-perf can be read after settle (eval can't run mid-load)
+    (window.__loadPerf = window.__loadPerf || {}).indexRebuild = idx.lastRebuildMs;
     idx.rebuildCount++;
     console.log('[CorsairIndex] 4.5.1 indexes rebuilt #' + idx.rebuildCount + ': ' +
                 idx.byId.size + ' nodes, ' + idx.oppsById.size + ' opps, ' +
@@ -70900,6 +70908,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.323"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.324"></script>
 </body>
 </html>
