@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.331</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.332</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -21605,6 +21605,32 @@ window._copOppInScope = function(o){
   return m.length > 0;
 };
 window._toggleCopScope = function(){ window._copShowAll = !window._copShowAll; if (typeof renderOppSidebar==='function') renderOppSidebar(); else if (window._renderKanbanBoard) window._renderKanbanBoard(); };
+// P13.332 — "your book" scope for the headline standing/money surfaces (Where Atlas
+// Stands + The Reckoning). The ~1,868 untouched SAM.gov imports averaged into these
+// made them read "$0 across 2,761". Scope to the worked book by default; _stdShowAll
+// flips to the full lake. Inclusive guardrail: anything you created OR touched counts
+// as worked (operator-created i.e. no samgovNoticeId, OR captureLead, OR priority/
+// bdTarget, OR advanced past awareness, OR has a logged meeting) — only genuinely
+// untouched machine imports defer. Nothing you worked on can vanish from the numbers.
+window._oppIsWorked = function(o){
+  if(!o) return false;
+  if(!o.samgovNoticeId && !(o.source && o.source.system==='sam_gov')) return true;
+  if(o.captureLead || o.mondayPriority || o.bdTarget) return true;
+  var st = String(o.stage||'').toLowerCase();
+  if(st && st!=='awareness') return true;
+  var ix = window.CorsairIndex||{};
+  var m = (ix.meetingsByOppId && ix.meetingsByOppId.get) ? (ix.meetingsByOppId.get(String(o.id))||[]) : [];
+  return m.length>0;
+};
+if(typeof window._stdShowAll==='undefined') window._stdShowAll=false;
+window._stdScopeOpps = function(arr){ return window._stdShowAll ? (arr||[]) : (arr||[]).filter(window._oppIsWorked); };
+window._toggleStdScope = function(){ window._stdShowAll=!window._stdShowAll; try{ if(window._renderTodayNarrative) window._renderTodayNarrative(); }catch(e){} try{ if(window.activeView==='reckoning' && window._renderReckoningView) window._renderReckoningView(); }catch(e){} };
+window._stdScopeToggleHtml = function(){
+  var all=(window.opportunities||[]); var bulk=all.length - window._stdScopeOpps(all).length;
+  var base='cursor:pointer;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.06em;text-decoration:underline';
+  if(window._stdShowAll) return '<span onclick="window._toggleStdScope()" style="'+base+'" title="Showing the full ingestion lake including untouched SAM.gov imports. Click to scope to your worked book.">FULL LAKE — show your book</span>';
+  return '<span onclick="window._toggleStdScope()" style="'+base+'" title="Showing your worked book (deals you created or touched). Click to include all untouched SAM.gov imports.">YOUR BOOK'+(bulk>0?' · +'+bulk+' parked':'')+'</span>';
+};
 window._renderKanbanBoard=function(){
   var board=document.getElementById('cop-kanban-board');
   if(!board)return;
@@ -34595,7 +34621,7 @@ window._renderTodayNarrative = function(){
     return '$' + Math.round(v);
   }
   // STANDING — active pursuits + weighted pipeline + agencies + top stages
-  var ops = (window.opportunities || []).filter(function(o){
+  var ops = window._stdScopeOpps(window.opportunities || []).filter(function(o){
     var s = String((o && o.stage) || '').toLowerCase();
     return o && s && s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
   });
@@ -34794,7 +34820,7 @@ window._renderTodayNarrative = function(){
   html += '<button onclick="window._renderTodayNarrative&amp;&amp;window._renderTodayNarrative()" title="Regenerate from current workspace data" style="padding:6px 12px;background:transparent;border:1px solid rgba(212,130,58,.40);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;cursor:pointer;text-transform:uppercase">↻ Refresh</button>';
   html += '</div></div>';
   html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:18px;line-height:1.7;color:var(--bone)">';
-  html += '<div style="margin-bottom:12px"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">STANDING</span>' + s1 + '.</div>';
+  html += '<div style="margin-bottom:12px"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">STANDING</span>' + s1 + '. ' + window._stdScopeToggleHtml() + '</div>';
   html += '<div style="margin-bottom:12px"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">WORLD</span>' + s2 + '</div>';
   html += '<div><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">GAPS</span>' + s3 + '</div>';
   html += '</div>';
@@ -48655,7 +48681,7 @@ window._atlasWeekKey = function(d){
 };
 window._atlasComputeReckoningMetrics = function(){
   var pwinFrac = (typeof window._pwinFrac === 'function') ? window._pwinFrac : function(o){ return Number((o&&o.pwin)||0); };
-  var opps = window.opportunities || [];
+  var opps = window._stdScopeOpps(window.opportunities || []);
   var active=0, weighted=0, totalPipe=0, wonCount=0, wonVal=0, lostNoBid=0, byCust={}, byAgency={};
   opps.forEach(function(o){
     if(!o)return; var s=String(o.stage||'').toLowerCase(); var v=Number(o.value||o.contractValue||0);
@@ -48720,7 +48746,7 @@ window._renderReckoningView = function() {
   function fmt$(v){ if(!v||v<=0)return '$0'; if(v>=1e9)return '$'+(v/1e9).toFixed(1)+'B'; if(v>=1e6)return '$'+(v/1e6).toFixed(1)+'M'; if(v>=1e3)return '$'+Math.round(v/1e3)+'k'; return '$'+Math.round(v); }
   function esc(s){ return String(s==null?'':s).replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
   var pwinFrac = (typeof window._pwinFrac==='function') ? window._pwinFrac : function(o){ return Number((o&&o.pwin)||0); };
-  var opps = window.opportunities || [];
+  var opps = window._stdScopeOpps(window.opportunities || []);
   var active=[], won=[], lost=[], nobid=[];
   opps.forEach(function(o){ if(!o)return; var s=String(o.stage||'').toLowerCase(); if(s==='won')won.push(o); else if(s==='lost')lost.push(o); else if(s==='no-bid'||s==='no_bid')nobid.push(o); else if(s)active.push(o); });
   var totalPipe=0, weighted=0, byCust={}, byAgency={};
@@ -48752,6 +48778,7 @@ window._renderReckoningView = function() {
   h += '<div style="padding:22px 32px 16px;border-bottom:1px solid var(--rule);background:linear-gradient(180deg,rgba(212,130,58,.04),transparent)">';
   h += '<div style="font-family:Anton,sans-serif;font-size:28px;letter-spacing:.08em;text-transform:uppercase;color:var(--bone);line-height:1">The Reckoning</div>';
   h += '<div style="margin-top:7px;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.10em;color:var(--paper-2);text-transform:uppercase">How Atlas actually stands &middot; '+esc(ts)+'</div>';
+  h += '<div style="margin-top:9px">' + window._stdScopeToggleHtml() + '</div>';
   // P13.316 — Phase 3.4 coherence: Reckoning is the retrospective home. Cross-link the
   // companion retrospective views (Timeline / Win-Loss / Trends / BD Stats) via the existing
   // switchView — no render-merge, all four views untouched. Menu entries kept for discoverability.
@@ -70911,6 +70938,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.331"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.332"></script>
 </body>
 </html>
