@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.328</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.329</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -26492,7 +26492,10 @@ window.openFollowupModal=function(){
   var sel=document.getElementById('followup-person-inp');
   sel.innerHTML='<option value="">— Anyone —</option>';
   var people=(typeof nodes!=='undefined'?nodes:[]).filter(function(n){return n.type==='person'||n.type==='government';}).slice().sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});
-  people.forEach(function(n){var lbl=n.name+(n.org?' · '+n.org:'')+(n.role?' · '+n.role:'');sel.innerHTML+='<option value="'+n.id+'">'+lbl+'</option>';});
+  // P13.329 perf: was O(n^2) sel.innerHTML+= inside loop over person/gov nodes; build string, assign once
+  var _fpOpts='';
+  people.forEach(function(n){var lbl=n.name+(n.org?' · '+n.org:'')+(n.role?' · '+n.role:'');_fpOpts+='<option value="'+n.id+'">'+lbl+'</option>';});
+  sel.innerHTML+=_fpOpts;
   document.getElementById('followup-modal').style.display='flex';
   setTimeout(function(){document.getElementById('followup-task-inp').focus();},80);
 };
@@ -29063,9 +29066,12 @@ async function importData(event){var file=event.target.files[0];if(!file)return;
       var sel=document.createElement('select');
       sel.style.cssText='padding:6px 8px;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-size:14px;font-family:IBM Plex Sans,sans-serif';
       sel.innerHTML='<option value="-1">— skip —</option>';
+      // P13.329 perf: was O(n^2) sel.innerHTML+= inside loop over CSV headers; build string, assign once
+      var _cmOpts='';
       _csvHeaders.forEach(function(h,i){
-        sel.innerHTML+='<option value="'+i+'"'+((_csvMappings[f.key]===i)?' selected':'')+'>'+h.replace(/</g,'&lt;')+'</option>';
+        _cmOpts+='<option value="'+i+'"'+((_csvMappings[f.key]===i)?' selected':'')+'>'+h.replace(/</g,'&lt;')+'</option>';
       });
+      sel.innerHTML+=_cmOpts;
       sel.onchange=function(){_csvMappings[f.key]=parseInt(sel.value);};
       grid.appendChild(lbl);
       grid.appendChild(sel);
@@ -30564,7 +30570,7 @@ async function removeEdge(sid,tid){
 window.removeEdge=removeEdge;window.saveEdgeNote=saveEdgeNote;
 
 var addType='company';
-function openAddModal(type){addType=type;addTier=2;document.getElementById('add-node-title').textContent='Add '+type.charAt(0).toUpperCase()+type.slice(1);document.getElementById('add-node-type').value=type;['add-node-name','add-node-role','add-node-notes','add-node-phone','add-node-email'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});var isGov=type==='government'||type==='person';var isGovNode=type==='government';document.getElementById('add-node-org-fld').style.display=(type==='company'||isGovNode)?'none':'block';var govFld=document.getElementById('add-node-govorg-fld');if(govFld)govFld.style.display=isGovNode?'block':'none';var govTypeFld=document.getElementById('add-node-govtype-fld');if(govTypeFld)govTypeFld.style.display=(isGovNode||type==='person')?'block':'none';document.getElementById('add-node-govtype').value='';var showContact=(type==='person'||type==='government');var phoneFld=document.getElementById('add-node-phone-fld');if(phoneFld)phoneFld.style.display=showContact?'block':'none';var emailFld=document.getElementById('add-node-email-fld');if(emailFld)emailFld.style.display=showContact?'block':'none';var sel=document.getElementById('add-node-org');sel.innerHTML='<option value="">Unaffiliated</option>';nodes.filter(function(n){return n.type==='company';}).forEach(function(n){sel.innerHTML+='<option value="'+n.name+'">'+n.name+'</option>';});[1,2,3].forEach(function(i){var b=document.getElementById('add-tier-'+i);b.style.cssText='';});var d2=document.getElementById('add-tier-2');d2.style.background='var(--gold)';d2.style.color='#0b0d11';d2.style.borderColor='var(--gold)';d2.style.fontWeight='600';document.getElementById('add-node-modal').style.display='flex';setTimeout(function(){document.getElementById('add-node-name').focus();},80);}
+function openAddModal(type){addType=type;addTier=2;document.getElementById('add-node-title').textContent='Add '+type.charAt(0).toUpperCase()+type.slice(1);document.getElementById('add-node-type').value=type;['add-node-name','add-node-role','add-node-notes','add-node-phone','add-node-email'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});var isGov=type==='government'||type==='person';var isGovNode=type==='government';document.getElementById('add-node-org-fld').style.display=(type==='company'||isGovNode)?'none':'block';var govFld=document.getElementById('add-node-govorg-fld');if(govFld)govFld.style.display=isGovNode?'block':'none';var govTypeFld=document.getElementById('add-node-govtype-fld');if(govTypeFld)govTypeFld.style.display=(isGovNode||type==='person')?'block':'none';document.getElementById('add-node-govtype').value='';var showContact=(type==='person'||type==='government');var phoneFld=document.getElementById('add-node-phone-fld');if(phoneFld)phoneFld.style.display=showContact?'block':'none';var emailFld=document.getElementById('add-node-email-fld');if(emailFld)emailFld.style.display=showContact?'block':'none';var sel=document.getElementById('add-node-org');sel.innerHTML='<option value="">Unaffiliated</option>';var _anOpts='';nodes.filter(function(n){return n.type==='company';}).forEach(function(n){_anOpts+='<option value="'+n.name+'">'+n.name+'</option>';});sel.innerHTML+=_anOpts;/*P13.329 perf: was O(n^2) sel.innerHTML+= over company nodes*/[1,2,3].forEach(function(i){var b=document.getElementById('add-tier-'+i);b.style.cssText='';});var d2=document.getElementById('add-tier-2');d2.style.background='var(--gold)';d2.style.color='#0b0d11';d2.style.borderColor='var(--gold)';d2.style.fontWeight='600';document.getElementById('add-node-modal').style.display='flex';setTimeout(function(){document.getElementById('add-node-name').focus();},80);}
 window.openAddModal=openAddModal;
 
 function selectAddTier(t){addTier=t;[1,2,3].forEach(function(i){var b=document.getElementById('add-tier-'+i);b.style.cssText='';});var b=document.getElementById('add-tier-'+t);b.style.background='var(--gold)';b.style.color='#0b0d11';b.style.borderColor='var(--gold)';b.style.fontWeight='600';}
@@ -70905,6 +70911,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.328"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.329"></script>
 </body>
 </html>
