@@ -64,36 +64,68 @@ function _tHealthPill(health) {
   return '<span class="tbl-health-pill tbl-health-' + health.status + '">' + lbl + '</span>';
 }
 
+// P13.330 perf: per-render scratch indexes, populated by _tblRenderRows so the
+// per-row coverage helper does O(1) lookups instead of re-scanning all nodes and
+// recomputing account coverage on every one of ~2,550 rows. Null outside a render
+// so the helper falls back to the original live computation (behavior-identical).
+var _tRenderNodesByName = null;  // Map: lc(company/gov name) -> first matching node (mirrors .find)
+var _tRenderCovMemo = null;      // Map: org node id -> _computeAccountCoverage result (per render)
+
 function _tCoverageBadge(opp) {
   var fn = window._computeAccountCoverage;
   if (typeof fn !== 'function') return '—';
   // Coverage is account-level (per org). Pursuit's customer org if known.
   var orgName = opp.agency || opp.customer || '';
   if (!orgName) return '—';
-  var orgNode = (window.nodes || []).find(function(n) {
+  var key = String(orgName).toLowerCase();
+  // P13.330 perf: resolve org node via per-render map (was nodes.find per row)
+  var orgNode = _tRenderNodesByName ? _tRenderNodesByName.get(key) : (window.nodes || []).find(function(n) {
     return n && (n.type === 'company' || n.type === 'government') &&
-           String(n.name || '').toLowerCase() === String(orgName).toLowerCase();
+           String(n.name || '').toLowerCase() === key;
   });
   if (!orgNode) return '—';
   try {
-    var cov = fn(orgNode, { nodes: window.nodes || [], meetings: window.meetings || [], opps: window.opportunities || [] });
+    // P13.330 perf: memoize coverage per org id within the render (many rows share an org)
+    var cov;
+    if (_tRenderCovMemo && _tRenderCovMemo.has(orgNode.id)) {
+      cov = _tRenderCovMemo.get(orgNode.id);
+    } else {
+      cov = fn(orgNode, { nodes: window.nodes || [], meetings: window.meetings || [], opps: window.opportunities || [] });
+      if (_tRenderCovMemo) _tRenderCovMemo.set(orgNode.id, cov);
+    }
     var lbl = (cov.status || 'sparse').toUpperCase();
     return '<span class="tbl-cov-badge tbl-cov-' + (cov.status || 'sparse') + '">' + lbl + '</span>';
   } catch (e) { return '—'; }
 }
 
 function _tLastMeeting(opp) {
-  var mtgs = window.meetings || [];
   var oid = String(opp.id);
   var lastTs = null;
-  for (var i = 0; i < mtgs.length; i++) {
-    var m = mtgs[i];
-    if (!m) continue;
-    var tagged = (m.oppId != null && String(m.oppId) === oid) ||
-                 (Array.isArray(opp.meetings) && opp.meetings.indexOf(m.id) !== -1);
-    if (!tagged) continue;
-    var t = (m.ts) ? new Date(m.ts).getTime() : (m.meta && m.meta.date ? new Date(m.meta.date).getTime() : null);
-    if (t && (!lastTs || t > lastTs)) lastTs = t;
+  // P13.330 perf: prefer the CorsairIndex meetings-by-opp index (built to capture
+  // BOTH m.oppId and opp.meetings[] tagging via _doRebuild forward+reverse passes)
+  // so this is an O(meetings-for-this-opp) walk instead of scanning ALL meetings on
+  // every row. Falls back to the original linear scan before the index is built.
+  var _idx = window.CorsairIndex;
+  var _im = (_idx && _idx.meetingsByOppId && typeof _idx.meetingsByOppId.get === 'function')
+    ? _idx.meetingsByOppId.get(oid) : null;
+  if (_im) {
+    for (var _j = 0; _j < _im.length; _j++) {
+      var _mm = _im[_j];
+      if (!_mm) continue;
+      var _t = (_mm.ts) ? new Date(_mm.ts).getTime() : (_mm.meta && _mm.meta.date ? new Date(_mm.meta.date).getTime() : null);
+      if (_t && (!lastTs || _t > lastTs)) lastTs = _t;
+    }
+  } else {
+    var mtgs = window.meetings || [];
+    for (var i = 0; i < mtgs.length; i++) {
+      var m = mtgs[i];
+      if (!m) continue;
+      var tagged = (m.oppId != null && String(m.oppId) === oid) ||
+                   (Array.isArray(opp.meetings) && opp.meetings.indexOf(m.id) !== -1);
+      if (!tagged) continue;
+      var t = (m.ts) ? new Date(m.ts).getTime() : (m.meta && m.meta.date ? new Date(m.meta.date).getTime() : null);
+      if (t && (!lastTs || t > lastTs)) lastTs = t;
+    }
   }
   return lastTs ? _tFmtRel(lastTs) : '—';
 }
@@ -850,6 +882,18 @@ function _tblRenderRows(opps, pipelineMod) {
     return '<tr><td colspan="' + cols.length + '" class="tbl-empty">' + msg + '</td></tr>';
   }
   var html = '';
+  // P13.330 perf: build per-render indexes ONCE so _tCoverageBadge does O(1) org
+  // lookups + memoized coverage instead of an O(nodes) find + a full
+  // _computeAccountCoverage on every row (the dominant big-pipeline render cost).
+  _tRenderNodesByName = new Map();
+  var _allN = window.nodes || [];
+  for (var _ni = 0; _ni < _allN.length; _ni++) {
+    var _nn = _allN[_ni];
+    if (!_nn || (_nn.type !== 'company' && _nn.type !== 'government')) continue;
+    var _nlc = String(_nn.name || '').toLowerCase();
+    if (!_tRenderNodesByName.has(_nlc)) _tRenderNodesByName.set(_nlc, _nn); // first-wins (mirrors nodes.find)
+  }
+  _tRenderCovMemo = new Map();
   opps.forEach(function(o) {
     var safeId = String(o.id).replace(/'/g, '&#39;');
     var stageCfg = (pipelineMod && typeof pipelineMod.config === 'function') ? pipelineMod.config(o.stage) : { label: o.stage, color: '#7d7669' };
@@ -917,6 +961,10 @@ function _tblRenderRows(opps, pipelineMod) {
     html += '<td class="tbl-cell tbl-cell-left tbl-cell-meta">' + _tNotesPreview(o) + '</td>';
     html += '</tr>';
   });
+  // P13.330 perf: release per-render scratch so any out-of-render helper call
+  // falls back to live computation (no stale memo).
+  _tRenderNodesByName = null;
+  _tRenderCovMemo = null;
   return html;
 }
 
