@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.332</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.333</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13874,10 +13874,21 @@ async function loadUserWorkspaces(user){
   // main-app not yet shown = black screen. Race against a 20s timeout
   // so the operator gets a recoverable error surface instead.
   var snap;
+  // P13.333 — race the REST read against the realtime get() FROM THE START (was:
+  // wait 20s for realtime, THEN fall back to REST — a measured cold-load showed that
+  // 20s as the picker stall whenever the realtime channel is wedged, common on this
+  // workspace). REST returns in <0.5s when realtime is starved; realtime wins when
+  // healthy. Each racer swallows its own failure so only a genuine total outage
+  // (both dead) reaches the 12s timeout -> catch -> recoverable error surface.
+  var _wsRestRace = (async function(){
+    try { var _t = await user.getIdToken(); var _rr = await fetch('https://fli-network-default-rtdb.firebaseio.com/users/' + user.uid + '/workspaces.json?auth=' + encodeURIComponent(_t)); if (_rr && _rr.ok) { return { __rest:true, _v: await _rr.json() }; } } catch(e){}
+    return new Promise(function(){});
+  })();
   try {
     snap = await Promise.race([
-      get(ref(db,'users/'+user.uid+'/workspaces')),
-      new Promise(function(_,rej){setTimeout(function(){rej(new Error('rtdb-timeout-20s'));},20000);})
+      get(ref(db,'users/'+user.uid+'/workspaces')).catch(function(){ return new Promise(function(){}); }),
+      _wsRestRace,
+      new Promise(function(_,rej){setTimeout(function(){rej(new Error('rtdb-timeout-12s'));},12000);})
     ]);
   } catch(rtdbErr) {
     // P13.227 — the realtime get() needs the websocket/long-poll connection,
@@ -13920,7 +13931,9 @@ async function loadUserWorkspaces(user){
     console.error('[P13.177] loadUserWorkspaces RTDB timeout:', rtdbErr && rtdbErr.message);
     return;
   }
-  userWorkspaces=snap.val()?Object.values(snap.val()):[];
+  var _wsv = (snap && snap.__rest) ? snap._v : (snap && typeof snap.val==='function' ? snap.val() : null);
+  if(snap && snap.__rest) console.log('[P13.333] workspaces via REST race (realtime channel starved; data listeners reconnect in background)');
+  userWorkspaces = _wsv ? Object.values(_wsv) : [];
   if(userWorkspaces.length===0){showWsPicker(user);}
   else if(userWorkspaces.length===1){selectWorkspace(userWorkspaces[0].id);}
   else{showWsPicker(user);}
@@ -70938,6 +70951,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.332"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.333"></script>
 </body>
 </html>
