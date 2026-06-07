@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.324</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.325</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -39584,6 +39584,10 @@ window._invalidateEntityGraph = function() { window._entityGraph = null; };
 
   window.CorsairIndex.rebuild = _doRebuild;
   window.CorsairIndex.scheduleRebuild = scheduleRebuild;
+  // P13.325 — TEMP on-screen load-perf readout (REMOVE after diagnosis). MCP eval can't
+  // reach the tab during/after a heavy load, so surface window.__loadPerf on-screen for the
+  // operator to screenshot. Polls up to 40s; renders a fixed badge once timings exist.
+  (function(){ var tries=0; var iv=setInterval(function(){ tries++; try{ var lp=window.__loadPerf; if(lp && (lp.indexRebuild!=null||lp.nodesListener!=null||lp.oppsListener!=null)){ var d=document.getElementById('__lpReadout'); if(!d){ d=document.createElement('div'); d.id='__lpReadout'; d.style.cssText='position:fixed;top:8px;right:8px;z-index:2147483647;background:#0b0d11;color:#39ff14;font:12px/1.5 IBM Plex Mono,monospace;padding:8px 11px;border:1px solid #39ff14;border-radius:5px;white-space:pre;box-shadow:0 4px 16px rgba(0,0,0,.6)'; if(document.body) document.body.appendChild(d); } var idx=window.CorsairIndex||{}; if(d) d.textContent='LOAD-PERF (P13.325) - screenshot me\n--------------------\nindex rebuild : '+(lp.indexRebuild!=null?lp.indexRebuild:'?')+' ms  (x'+(idx.rebuildCount||0)+')\nentity graph  : '+(lp.entityGraph!=null?lp.entityGraph:'?')+' ms\nnodes handler : '+(lp.nodesListener!=null?lp.nodesListener:'?')+' ms\nopps handler  : '+(lp.oppsListener!=null?lp.oppsListener:'?')+' ms\n--------------------\nopps='+((window.opportunities||[]).length)+'  nodes='+((window.nodes||[]).length)+'  mtgs='+((window.meetings||[]).length); } }catch(e){} if(tries>40)clearInterval(iv); }, 1000); })();
 
   // Wrap _invalidateEntityGraph so every existing Firebase-listener call
   // site automatically triggers our rebuild too.
@@ -70908,6 +70912,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.324"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.325"></script>
 </body>
 </html>
