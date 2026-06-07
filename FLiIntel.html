@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.330</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.331</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13434,7 +13434,7 @@ onAuthStateChanged(auth,function(user){
     _killGoogleOneTap();
     // Prevent browser FedCM bar from re-appearing after sign-in
     try{if(navigator.credentials&&navigator.credentials.preventSilentAccess)navigator.credentials.preventSilentAccess();}catch(e){}
-    currentUser=user;refreshApiKey();loadUserWorkspaces(user);
+    currentUser=user;window.currentUser=user;/* P13.331 - mirror to window: the fbGet REST-fallback gate (12599) + heartbeat + ~20 attribution/activity consumers read window.currentUser, which was never set (only module-scoped currentUser). Unset -> REST rescue never engaged -> weeklySnapshots/other fbGet reads hung on the wedged SDK channel (stale-connection banner) AND team-activity logging (33110) was disabled (feed "0 this week"). */refreshApiKey();loadUserWorkspaces(user);
   } else {
     // Firebase fires null first even for signed-in users.
     // Keep loader up — wait to see if a user comes through.
@@ -13939,7 +13939,7 @@ function showWsPicker(user){
       // P13.108 — wipe credentials BEFORE Firebase signOut so even if signOut
       // races against a pending listener fire, the local keys are already gone.
       if (window._corsairSignOutCleanup) window._corsairSignOutCleanup();
-      signOut(auth).then(function(){currentUser=null;_authResolved=false;document.body.classList.remove('app-active');document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';});
+      signOut(auth).then(function(){currentUser=null;window.currentUser=null;/* P13.331 */_authResolved=false;document.body.classList.remove('app-active');document.getElementById('auth-screen').style.display='flex';document.getElementById('ws-screen').style.display='none';document.getElementById('main-app').style.display='none';});
     };
   }
   renderWsList();
@@ -70911,6 +70911,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.330"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.331"></script>
 </body>
 </html>
