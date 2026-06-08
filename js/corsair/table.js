@@ -176,7 +176,8 @@ var _tblState = {
   filterHealth: '',            // 'hot' | 'warm' | 'cold' or '' for all
   filterAged: false,           // true = only aged-in-stage
   search:  '',
-  showPosture: false           // Phase 5g — Posture column off by default
+  showPosture: false,          // Phase 5g — Posture column off by default
+  pageLimit: 200               // P13.339 — initial-render cap. 0 = render all rows. window._tblTogglePageLimit flips it.
 };
 // P13.16 — expose to window so saved-views machinery (in FLiIntel.html)
 // can snapshot + restore. Mutate fields in place; do not replace the ref.
@@ -204,12 +205,21 @@ window._tblSetSearch = function(v) {
   var pipelineMod = window.Corsair && window.Corsair.pipeline;
   var stages = (pipelineMod && pipelineMod.stages) || [];
   var processed = _tblProcessOpps(window.opportunities || [], pipelineMod, stages);
+  // P13.339 — apply pageLimit so a search that returns 3,000+ rows doesn't re-blow the DOM
+  var _renderOpps = (_tblState.pageLimit && processed.length > _tblState.pageLimit) ? processed.slice(0, _tblState.pageLimit) : processed;
   var tbody = document.querySelector('#table-view-body .tbl tbody');
   if (tbody) {
-    tbody.innerHTML = _tblRenderRows(processed, pipelineMod);
+    tbody.innerHTML = _tblRenderRows(_renderOpps, pipelineMod);
   }
   var countEl = document.getElementById('tbl-count');
-  if (countEl) countEl.textContent = processed.length;
+  if (countEl) countEl.textContent = _renderOpps.length;
+};
+
+// P13.339 — toggle the pageLimit between 200 (default) and 0 (render-all).
+// 0 is falsy → the pageLimit short-circuit in the render path falls through to "no cap".
+window._tblTogglePageLimit = function() {
+  _tblState.pageLimit = _tblState.pageLimit ? 0 : 200;
+  if (typeof window._renderTableView === 'function') window._renderTableView();
 };
 
 window._tblClearFilters = function() {
@@ -1010,8 +1020,15 @@ window._renderTableView = function() {
     h += '<button class="tbl-filter-clear" onclick="window._tblClearFilters()">Clear</button>';
   }
 
-  // Count
-  h += '<div class="tbl-meta-count" style="margin-left:auto"><strong id="tbl-count">' + processed.length + '</strong> of ' + allOpps.length + ' pursuits</div>';
+  // Count + P13.339 pagination toggle
+  var _renderedCount = (_tblState.pageLimit && processed.length > _tblState.pageLimit) ? _tblState.pageLimit : processed.length;
+  var _pageBtn = '';
+  if (processed.length > 200) {
+    _pageBtn = '<button class="tbl-filter-clear" onclick="window._tblTogglePageLimit()" style="margin-left:8px" title="' +
+      (_tblState.pageLimit ? 'Render all ' + processed.length + ' rows (slower; full DOM build)' : 'Cap initial render at 200 rows (fast)') +
+      '">' + (_tblState.pageLimit ? 'Show all ' + processed.length : 'Show first 200') + '</button>';
+  }
+  h += '<div class="tbl-meta-count" style="margin-left:auto"><strong id="tbl-count">' + _renderedCount + '</strong> of ' + allOpps.length + ' pursuits' + _pageBtn + '</div>';
   h += '</div>';
 
   // Table
@@ -1032,7 +1049,9 @@ window._renderTableView = function() {
     h += '<th class="tbl-th tbl-th-' + c.align + (c.sticky ? ' tbl-th-sticky' : '') + clickable + ' style="width:' + c.w + ';min-width:' + c.w + '">' + c.label + sortInd + '</th>';
   });
   h += '</tr></thead>';
-  h += '<tbody>' + _tblRenderRows(processed, pipelineMod) + '</tbody>';
+  // P13.339 — slice to pageLimit before rendering (cuts a 3,229-row sort to 200 visible rows on initial open).
+  var _tblRenderOpps = (_tblState.pageLimit && processed.length > _tblState.pageLimit) ? processed.slice(0, _tblState.pageLimit) : processed;
+  h += '<tbody>' + _tblRenderRows(_tblRenderOpps, pipelineMod) + '</tbody>';
   h += '</table>';
   h += '</div>';
 
