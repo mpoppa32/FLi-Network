@@ -8719,7 +8719,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.334</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.335</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -14141,12 +14141,37 @@ async function _restPollFetchAll(){
     _restPoll.inFlight = false;
   }
 }
+// P13.335 — honest operator hint when Atlas falls back to REST. The realtime-channel
+// wedge is ENVIRONMENTAL (a browser extension / VPN blocking the Firebase websocket;
+// goOffline/goOnline was tried and does NOT recover it — investigated 2026-06-07), so
+// there is no client-code fix. REST backup keeps everything working (~30s refresh), but
+// the operator deserves to know WHY it is slow and that THEY can fix it (allowlist /
+// incognito) to restore instant realtime + faster loads. Doctrine: honest about itself.
+// Shown when REST polling engages; dismissible (remembered per browser); auto-hidden if
+// the realtime channel recovers.
+function _restHintDismissedFlag(){ try { return localStorage.getItem('corsair-resthint-dismissed')==='1'; } catch(e){ return false; } }
+function _showRestModeHint(){
+  if (!_restPoll.active) return;            // realtime recovered before the delayed show
+  if (_restHintDismissedFlag()) return;     // operator already acknowledged
+  if (document.getElementById('rtdb-restmode-hint')) return;
+  if (typeof document === 'undefined' || !document.body) return;
+  var d = document.createElement('div');
+  d.id = 'rtdb-restmode-hint';
+  d.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:99998;max-width:340px;background:linear-gradient(135deg,rgba(10,16,32,.97),rgba(26,34,54,.97));border:1px solid rgba(212,130,58,.5);border-radius:4px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.5);font-family:IBM Plex Sans,sans-serif;font-size:12px;color:var(--paper);line-height:1.5';
+  d.innerHTML = '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:5px">Live link on backup</div>' +
+    'The realtime database connection did not establish, so Atlas is on the REST backup (everything works; updates refresh ~30s). This is usually a <b>browser extension</b> (ad-blocker / privacy / VPN) blocking the live socket. Allowlist <b>mpoppa32.github.io</b> or open Atlas in an <b>incognito window</b> to restore instant updates + faster loads.' +
+    '<div style="margin-top:9px;text-align:right"><button onclick="window._dismissRestHint()" style="padding:5px 12px;background:rgba(212,130,58,.16);border:1px solid rgba(212,130,58,.5);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.08em;cursor:pointer;text-transform:uppercase">Got it</button></div>';
+  document.body.appendChild(d);
+}
+function _hideRestModeHint(){ var e = document.getElementById('rtdb-restmode-hint'); if (e) e.remove(); }
+window._dismissRestHint = function(){ try{ localStorage.setItem('corsair-resthint-dismissed','1'); }catch(e){} _hideRestModeHint(); };
 window._restPollStart = function(){
   if (_restPoll.active) return;
   _restPoll.active = true;
   console.log('[P13.248] REST polling fallback ENABLED (Firebase realtime channel was starved). 30s interval.');
   _restPollFetchAll();
   _restPoll.intervalId = setInterval(_restPollFetchAll, 30000);
+  try { setTimeout(_showRestModeHint, 1200); } catch(e){}
 };
 window._restPollStop = function(){
   if (!_restPoll.active) return;
@@ -14154,6 +14179,7 @@ window._restPollStop = function(){
   _restPoll.intervalId = null;
   _restPoll.active = false;
   console.log('[P13.248] REST polling fallback DISABLED (realtime channel recovered).');
+  try { _hideRestModeHint(); } catch(e){}
 };
 window._restPollOnce = _restPollFetchAll;
 function _restPollDetectWedge(){
@@ -70951,6 +70977,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.334"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.335"></script>
 </body>
 </html>
