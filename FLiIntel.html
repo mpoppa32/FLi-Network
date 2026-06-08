@@ -50488,11 +50488,24 @@ window._discardCapture = async function(itemId) {
 };
 
 window._approveAllCapture = async function() {
-  if (!pendingCapture.length) return;
-  if (!confirm('Approve all ' + pendingCapture.length + ' captured items and add them to your meeting log?')) return;
-  for (var i = 0; i < pendingCapture.length; i++) {
-    await window._approveCapture(pendingCapture[i].id);
+  var total = pendingCapture.length;
+  if (!total) return;
+  if (!confirm('Approve all ' + total + ' captured items and add them to your meeting log?')) return;
+  // P13.337 — Snapshot ids BEFORE the loop. The onValue listener (~14491) reassigns
+  // pendingCapture every time fbRemove fires, so a forward-index loop over the live
+  // array skipped every other item (Stage-1 simulation: 56→28). Loop over the frozen
+  // id list and verify each item actually cleared from local state to count true
+  // success vs silent no-op, then toast a real summary.
+  var ids = pendingCapture.map(function(p){ return p.id; });
+  var approved = 0;
+  for (var i = 0; i < ids.length; i++) {
+    var id = ids[i];
+    try { await window._approveCapture(id); } catch(e) { continue; }
+    var stillThere = pendingCapture.some(function(p){ return p.id === id; });
+    if (!stillThere) approved++;
   }
+  var skipped = total - approved;
+  if (typeof toast === 'function') toast('Approved ' + approved + ' of ' + total + ' · skipped ' + skipped);
 };
 
 window._discardAllCapture = async function() {
