@@ -29736,6 +29736,24 @@ sim=d3.forceSimulation()
   .alphaDecay(0.028)     // slightly faster settling than 0.024
   .alphaMin(0.001)
   .on('tick',ticked);
+// P13.339 — Graph LOD: hide node labels while the sim is hot (alpha > 0.1)
+// so the cooling phase does not repaint ~1,497 SVG text+rect label pairs on
+// every transform. Labels reappear once the sim settles. One-time CSS rule
+// + one namespaced sim.on('tick.lod') handler that only mutates the class
+// when crossing the threshold (no per-tick DOM write).
+(function(){
+  if (!document.getElementById('corsair-graph-lod-style')) {
+    var st = document.createElement('style');
+    st.id = 'corsair-graph-lod-style';
+    st.textContent = '.graph-hot .lbl,.graph-hot .lbl-bg{display:none}';
+    document.head.appendChild(st);
+  }
+  var _gPrev = false;
+  sim.on('tick.lod', function(){
+    var hot = sim.alpha() > 0.1;
+    if (hot !== _gPrev) { svg.classed('graph-hot', hot); _gPrev = hot; }
+  });
+})();
 window.addEventListener('resize',resizeCanvas);}
 
 function resizeCanvas(){var netView=document.getElementById('network-view');if(!netView||netView.style.display==='none')return;W=netView.offsetWidth-220;H=netView.offsetHeight-42;if(svgEl){svgEl.setAttribute('width',W);svgEl.setAttribute('height',H);}
