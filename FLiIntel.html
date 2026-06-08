@@ -47388,6 +47388,23 @@ function renderCaptureView() {
   if (empty) empty.style.display = 'none';
   if (lbl) lbl.textContent = pendingCapture.length + ' item' + (pendingCapture.length !== 1 ? 's' : '') + ' awaiting review';
 
+  // P13.338 — Single shared datalist for the opp-linking inputs. The prior per-row
+  // approach injected every opportunity into every row (56 items × 3,229 opps =
+  // 180k <option> elements / 11.5 MB DOM, refired on every Firebase pendingCapture
+  // listener tick — including the cascade during Approve-All). One datalist outside
+  // capture-list, signature-gated so it only rebuilds when opportunities changes.
+  var _capShared = document.getElementById('cap-opp-shared');
+  if (!_capShared) {
+    _capShared = document.createElement('datalist');
+    _capShared.id = 'cap-opp-shared';
+    if (list.parentNode) list.parentNode.insertBefore(_capShared, list);
+  }
+  var _capSig = String(opportunities.length) + ':' + String((opportunities[0]||{}).id||'') + ':' + String((opportunities[opportunities.length-1]||{}).id||'');
+  if (_capShared.dataset.sig !== _capSig) {
+    _capShared.innerHTML = opportunities.map(function(o){return '<option value="' + _eiEsc(o.name) + '">';}).join('');
+    _capShared.dataset.sig = _capSig;
+  }
+
   var sorted = pendingCapture.slice().sort(function(a,b){return (b.ts||0)-(a.ts||0);});
 
   list.innerHTML = sorted.map(function(item) {
@@ -47414,11 +47431,8 @@ function renderCaptureView() {
         '<div style="margin-top:8px">' +
           '<label style="font-size:14px;color:var(--t2);display:flex;align-items:center;gap:6px;cursor:pointer">' +
             '<input type="text" id="cap-opp-' + item.id + '" placeholder="Link to opportunity (optional)..." ' +
-              'list="cap-opp-list-' + item.id + '" ' +
+              'list="cap-opp-shared" ' + /* P13.338 — points at the single shared datalist built above */
               'style="flex:1;padding:4px 8px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--rsm);color:var(--text);font-size:14px" />' +
-            '<datalist id="cap-opp-list-' + item.id + '">' +
-              opportunities.map(function(o){return '<option value="' + _eiEsc(o.name) + '">';}).join('') +
-            '</datalist>' +
           '</label>' +
         '</div>' +
       '</div>' +
