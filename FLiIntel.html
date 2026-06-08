@@ -34996,17 +34996,13 @@ window._atlasMaybeAutoSync = function() {
       '<button onclick="window._atlasAutoSyncCancel()" style="padding:6px 12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Cancel</button>' +
       '<button onclick="window._atlasAutoSyncFireNow()" style="padding:6px 12px;background:rgba(255,255,255,.30);border:1px solid #fff;color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Sync now</button>';
     document.body.appendChild(div);
-    var remain = COUNTDOWN_SEC;
-    var iv = setInterval(function(){
-      remain--;
-      var cd = document.getElementById('auto-sync-countdown');
-      if (cd) cd.textContent = remain;
-      if (remain <= 0) {
-        clearInterval(iv);
-        window._atlasAutoSyncFireNow();
-      }
-    }, 1000);
-    window._atlasAutoSyncInterval = iv;
+    // P13.336 - DATA STALE auto-sync no longer AUTO-FIRES. "Staleness" keys off
+    // max(orgMeta.lastPOCSearchAt), which a failing/never-run POC sweep can never
+    // advance, so the 30s countdown relaunched the stuck (0/60) sweep + re-pulled on
+    // EVERY load forever, and ignored Cancel. The banner is now informational; the
+    // operator runs it deliberately via "Sync now". (Server cron still syncs overnight.)
+    var cd = document.getElementById('auto-sync-countdown');
+    if (cd && cd.parentNode) { cd.parentNode.textContent = 'Data stale - last sync: ' + ageStr + '. Click Sync now to refresh.'; }
   };
   // If cache is warm, evaluate immediately; otherwise load orgMeta first
   if (window._atlasOrgMetaAll) {
@@ -50767,6 +50763,17 @@ window._atlasBulkPOCDiscovery = async function(opts){
   _bulkPocShowBanner(queue.length);
 
   var processed = 0, candidatesAdded = 0, errors = 0, quotaExhausted = false;
+  // P13.336 - abortable per-org search. The search (LLM/network) had no cancellation
+  // token, so a hung/slow-failing call wedged the sweep at 0/60 and ignored Cancel (the
+  // flag was checked only BETWEEN orgs). Race each search against a 250ms cancel-poll and
+  // a 40s per-org cap so Cancel responds at once and one bad org cannot wedge the sweep.
+  function _bpRaceSearch(p){
+    var ci, to; var clean=function(){ clearInterval(ci); clearTimeout(to); };
+    return Promise.race([
+      Promise.resolve(p).then(function(r){ clean(); return r; }, function(e){ clean(); throw e; }),
+      new Promise(function(rsv){ ci=setInterval(function(){ if(window._bulkPocCancel){ clean(); rsv({__bp:'cancel'}); } },250); to=setTimeout(function(){ clean(); rsv({__bp:'timeout'}); },40000); })
+    ]);
+  }
   for (var di = 0; di < queue.length && !quotaExhausted; di++) {
     if (window._bulkPocCancel) break;
     var item = queue[di];
@@ -50784,12 +50791,14 @@ window._atlasBulkPOCDiscovery = async function(opts){
       // and captures the anchor email + general inbox for downstream
       // format inference + guaranteed-contact-path fallback.
       if (opts.roleTargeted && typeof window.Corsair.poc.searchTechnicalDecisionMakers === 'function') {
-        var techResult = await window.Corsair.poc.searchTechnicalDecisionMakers(org.name, org.type);
+        var techResult = await _bpRaceSearch(window.Corsair.poc.searchTechnicalDecisionMakers(org.name, org.type));
+        if (techResult && techResult.__bp) { if (techResult.__bp === 'cancel') break; errors++; continue; }
         found = techResult.individualPOCs || [];
         anchorEmail = techResult.anchorEmail;
         orgInbox = techResult.orgInbox;
       } else {
-        found = await window.Corsair.poc.searchOpenSources(org.name, org.type);
+        found = await _bpRaceSearch(window.Corsair.poc.searchOpenSources(org.name, org.type));
+        if (found && found.__bp) { if (found.__bp === 'cancel') break; errors++; continue; }
       }
       if (found && found.length && typeof window.fbSet === 'function' && typeof window.wsPath === 'function') {
         for (var pi = 0; pi < found.length; pi++) {
