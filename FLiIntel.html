@@ -35140,16 +35140,28 @@ window.renderTodayView = function(){
     var existing6 = document.getElementById('today-osint-callout');
     if (existing6) existing6.remove();
     if (hostP6 && hostP6.parentElement && Array.isArray(window._dailyFeedData) && window._dailyFeedData.length) {
-      // Build match-term set from active pursuits
+      // Build match-term set from active pursuits.
+      // P13.339 — memoize across Today renders. Was: 3,229 active opps × 4 fields
+      // rebuilt into a ~2,814-term Set on every render. Now: cached on
+      // window._todayOsintTermSet, invalidated only when opportunities changes
+      // (cheap length + endpoint-id signature, same pattern as P13.338 datalist).
       var activeOps = (window.opportunities || []).filter(function(o){ return o && o.stage !== 'won' && o.stage !== 'lost'; });
-      var termSet = new Set();
-      activeOps.forEach(function(o){
-        [o.agency, o.customerOrg, o.name, o.vehicle].forEach(function(t){
-          if (t && String(t).length > 2 && String(t).toLowerCase() !== 'agency unknown') {
-            termSet.add(String(t).toLowerCase().trim());
-          }
+      var _osintSig = String(activeOps.length) + ':' + String((activeOps[0]||{}).id||'') + ':' + String((activeOps[activeOps.length-1]||{}).id||'');
+      var termSet;
+      if (window._todayOsintTermSetSig === _osintSig && window._todayOsintTermSet instanceof Set) {
+        termSet = window._todayOsintTermSet;
+      } else {
+        termSet = new Set();
+        activeOps.forEach(function(o){
+          [o.agency, o.customerOrg, o.name, o.vehicle].forEach(function(t){
+            if (t && String(t).length > 2 && String(t).toLowerCase() !== 'agency unknown') {
+              termSet.add(String(t).toLowerCase().trim());
+            }
+          });
         });
-      });
+        window._todayOsintTermSet = termSet;
+        window._todayOsintTermSetSig = _osintSig;
+      }
       // Score each signal: how many distinct terms hit
       var scored = [];
       window._dailyFeedData.forEach(function(s){
