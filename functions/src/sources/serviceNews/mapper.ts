@@ -10,7 +10,7 @@
 import { hashFields } from "../../framework/hashing";
 import { externalProvenance } from "../../framework/provenance";
 import { db, wsPath, stripUndefinedDeep } from "../../framework/rtdb";
-import { resolveRecipientOrg } from "../usaSpending/orgResolver";
+import { resolveRecipientOrg, resolveAgencyOrg } from "../usaSpending/orgResolver";
 import type { Logger } from "../../framework/logger";
 import type { Signal } from "../../framework/types/signals";
 import type { ServiceNewsSource } from "./registry";
@@ -103,10 +103,32 @@ export async function upsertServiceNewsSignal(
     }
   }
 
+  // P13.286 — anchor the publishing service branch as the signal SUBJECT.
+  // Every service_news item IS about its own branch (Army / Navy / Air
+  // Force / ...), which is a customer agency. Mirrors the state_department
+  // mapper's `resolveAgencyOrg("Department of State")` anchor: a structural,
+  // high-confidence subject (no free-text guessing), resolved through the
+  // SAME exact-normalized-name resolver Opportunities use for
+  // customerOrgId. That shared resolution is what lets Brief synthesis
+  // match this id against ctx.customerOrgIds and populate the customer
+  // rollup. Contractor body mentions stay in relatedIds (secondary), as
+  // before. Best-effort: a failed resolve leaves subjectIds empty rather
+  // than risking a wrong id.
+  const subjectIds: string[] = [];
+  try {
+    const subj = await resolveAgencyOrg(workspaceId, service.name);
+    if (subj.orgId) subjectIds.push(subj.orgId);
+  } catch (err) {
+    log?.warn?.("service_news_subject_resolve_failed", {
+      service: service.key,
+      message: (err as Error).message,
+    });
+  }
+
   const signal: Signal = {
     id,
     type: "service_news",
-    subjectIds: [],
+    subjectIds,
     relatedIds: relatedIds.length > 0 ? relatedIds : undefined,
     occurredAt,
     attrs: {
