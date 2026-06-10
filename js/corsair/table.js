@@ -222,6 +222,13 @@ window._tblTogglePageLimit = function() {
   if (typeof window._renderTableView === 'function') window._renderTableView();
 };
 
+// P13.340 — toggle the DROP-category hide. Default (undefined) = hidden;
+// explicit false = show everything including categorized-out imports.
+window._tblToggleDropped = function() {
+  _tblState.hideDropped = _tblState.hideDropped === false ? true : false;
+  if (typeof window._renderTableView === 'function') window._renderTableView();
+};
+
 window._tblClearFilters = function() {
   _tblState.filterStage = '';
   _tblState.filterHealth = '';
@@ -720,6 +727,10 @@ function _tblProcessOpps(allOpps, pipelineMod, stages) {
   // Filter
   var opps = allOpps.slice().filter(function(o) {
     if (!o) return false;
+    // P13.340 — hide DROP-categorized SAM.gov bulk (facility maint, fasteners,
+    // valves, janitorial, conex, ...) by default. hideDropped is undefined on
+    // fresh/saved-view state → treated as ON. Toggle chip in the toolbar.
+    if (_tblState.hideDropped !== false && typeof window._oppDropCategory === 'function' && window._oppDropCategory(o)) return false;
     if (_tblState.filterStage && o.stage !== _tblState.filterStage) return false;
     if (_tblState.filterHealth) {
       var h = (typeof window._computePursuitHealth === 'function') ? window._computePursuitHealth(o) : { status: 'unknown' };
@@ -1014,6 +1025,22 @@ window._renderTableView = function() {
 
   // Phase 5g — Posture column toggle (master prompt §7.5.6: off by default)
   h += '<button class="tbl-filter-toggle' + (_tblState.showPosture ? ' tbl-filter-toggle-on tbl-filter-toggle-posture' : '') + '" onclick="window._tblTogglePostureCol()" title="Show Posture column (adversary count + influence read + predecessor notes indicators)">+ POSTURE</button>';
+
+  // P13.340 — categorized-out chip. Shows how many DROP-categorized SAM.gov
+  // imports (facility maint, fasteners, valves, janitorial, conex, ...) are
+  // hidden; click to include/re-hide them. Renders only when the predicate
+  // exists and at least one opp is categorized out.
+  var _dropHiddenN = 0;
+  if (typeof window._oppDropCategory === 'function') {
+    for (var _di = 0; _di < allOpps.length; _di++) { if (window._oppDropCategory(allOpps[_di])) _dropHiddenN++; }
+  }
+  if (_dropHiddenN > 0) {
+    var _dropOn = _tblState.hideDropped !== false;
+    h += '<button class="tbl-filter-toggle' + (_dropOn ? '' : ' tbl-filter-toggle-on') + '" onclick="window._tblToggleDropped()" title="' +
+      (_dropOn ? 'Hiding ' + _dropHiddenN + ' SAM.gov imports in clearly-irrelevant categories (facility maintenance, fasteners, valves, janitorial, conex, food service, ...). Click to show them.'
+               : 'Showing all categories including the ' + _dropHiddenN + ' clearly-irrelevant SAM.gov imports. Click to hide them again.') +
+      '">' + (_dropOn ? '⊘ ' + _dropHiddenN + ' categorized out' : 'Showing all categories') + '</button>';
+  }
 
   // Clear
   if (anyFilter) {
