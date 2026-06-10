@@ -21675,6 +21675,46 @@ window._stdScopeToggleHtml = function(){
   if(window._stdShowAll) return '<span onclick="window._toggleStdScope()" style="'+base+'" title="Showing the full ingestion lake including untouched SAM.gov imports. Click to scope to your worked book.">FULL LAKE — show your book</span>';
   return '<span onclick="window._toggleStdScope()" style="'+base+'" title="Showing your worked book (deals you created or touched). Click to include all untouched SAM.gov imports.">YOUR BOOK'+(bulk>0?' · +'+bulk+' parked':'')+'</span>';
 };
+// P13.340 — DROP-category predicate (pipeline-categorization Stage 2, operator-approved).
+// Tags clearly-irrelevant SAM.gov imports (facility maintenance, fasteners, valves,
+// janitorial, conex, food service, ...) by PSC prefix so surfaces can hide them by
+// default. The list mirrors the diagnose report; the future server-side ingest filter
+// (excludePscPrefixes in functions sam_gov config) will use the same prefixes.
+// SAFETY: only untouched SAM.gov lake items can be categorized out — anything the
+// operator created or touched (captureLead/priority/stage/meeting) is never dropped,
+// and an opp whose PSC codes include ANY non-DROP prefix stays visible (a mixed-code
+// opp is never hidden by its junk code).
+window._oppDropPscPrefixes = ['Z','Y','S','R','V','W','F','H','L','U','M','N','T','X','C','G','Q','20','23','25','31','34','39','41','42','43','47','48','49','51','53','56','65','68','71','72','73','74','75','76','77','78','79','80','81','84','89','91','99'];
+window._oppDropCategory = function(o){
+  if (!o) return false;
+  if (!o.samgovNoticeId && !(o.source && o.source.system === 'sam_gov')) return false;
+  if (o.captureLead || o.mondayPriority || o.bdTarget) return false;
+  var st = String(o.stage||'').toLowerCase();
+  if (st && st !== 'awareness') return false;
+  var ix = window.CorsairIndex||{};
+  var m = (ix.meetingsByOppId && ix.meetingsByOppId.get) ? (ix.meetingsByOppId.get(String(o.id))||[]) : [];
+  if (m.length > 0) return false;
+  var t = String(o.name||'').toUpperCase();
+  if (t.indexOf('CONEX')>=0 || t.indexOf('CARGO CONTAINER')>=0 || t.indexOf('ISO CONTAINER')>=0 || t.indexOf('STORAGE CONTAINER')>=0) return true;
+  var pscs = Array.isArray(o.pscCodes) ? o.pscCodes : (o.pscCode ? [o.pscCode] : []);
+  if (pscs.length > 0) {
+    var allDrop = true;
+    for (var j=0; j<pscs.length; j++){
+      var p = String(pscs[j]||'').trim().toUpperCase();
+      if (!p) { allDrop = false; break; }
+      var pref = /^[A-Z]/.test(p) ? p.charAt(0) : p.slice(0,2);
+      if (window._oppDropPscPrefixes.indexOf(pref) < 0) { allDrop = false; break; }
+    }
+    return allDrop;
+  }
+  // No PSC at all: construction NAICS (236/237/238) is the one code-only DROP signal
+  var naics = Array.isArray(o.naicsCodes) ? o.naicsCodes : [];
+  for (var i=0; i<naics.length; i++){
+    var n = String(naics[i]);
+    if (n.indexOf('236')===0 || n.indexOf('237')===0 || n.indexOf('238')===0) return true;
+  }
+  return false;
+};
 window._renderKanbanBoard=function(){
   var board=document.getElementById('cop-kanban-board');
   if(!board)return;
