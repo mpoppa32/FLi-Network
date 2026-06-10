@@ -14,12 +14,35 @@ import {
 import { categorizeError } from "../../framework/errors";
 import { formatDateForApi, searchAllPages } from "./client";
 import { mapNoticeToOpportunity, upsertOpportunity } from "./mapper";
-import { loadConfig, validateConfig, type SamGovConfig } from "./config";
+import { loadConfig, validateConfig, DEFAULT_EXCLUDED_PSC_PREFIXES, type SamGovConfig } from "./config";
 import { handleAmendment } from "./amendment";
 import { findReconciliationMatch, applyReconciliation } from "./reconcile";
 
 export const SOURCE_NAME = "sam_gov";
-export const SOURCE_VERSION = "1.1.0";
+export const SOURCE_VERSION = "1.2.0";
+
+/**
+ * v1.2 (P13.341) — PSC-category ingest filter. Prefix extraction mirrors the
+ * client predicate (window._oppDropCategory, P13.340): letter codes → first
+ * char, numeric codes → first 2 digits. classificationCode can be
+ * comma-separated (per the SamOpportunity type); mixed-code safety mirrors the
+ * client — the notice is excluded only if ALL its codes map to excluded
+ * prefixes; one non-excluded code keeps it. A notice with NO classification
+ * code is never excluded (conservative — the client hide handles display).
+ */
+function isExcludedPsc(classificationCode: string | undefined | null, excludeSet: Set<string> | null): boolean {
+  if (!excludeSet) return false;
+  const codes = String(classificationCode ?? "")
+    .split(",")
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+  if (codes.length === 0) return false;
+  for (const code of codes) {
+    const prefix = /^[A-Z]/.test(code) ? code.charAt(0) : code.slice(0, 2);
+    if (!excludeSet.has(prefix)) return false;
+  }
+  return true;
+}
 
 export { handleAmendment } from "./amendment";
 export { extractQandA } from "./qaExtractor";
@@ -53,6 +76,8 @@ export interface SamGovSyncResult {
   deadlineChangeSignals: number;
   /** v1.1: total Q&A entries extracted across all amendments */
   qaExtractedTotal: number;
+  /** v1.2: notices skipped by the PSC-category ingest filter */
+  oppsExcludedByPsc: number;
   errors: Array<{ recordId: string; message: string }>;
   durationMs: number;
   apiCallsCount: number;
@@ -79,6 +104,7 @@ export async function syncWorkspace(
     reconciledWithOperator: 0,
     deadlineChangeSignals: 0,
     qaExtractedTotal: 0,
+    oppsExcludedByPsc: 0,
     errors: [],
     durationMs: 0,
     apiCallsCount: 0,
@@ -114,6 +140,18 @@ export async function syncWorkspace(
     result.recordsFetched = records.length;
     result.apiCallsCount = Math.max(1, Math.ceil(records.length / 100));
 
+    // v1.2 (P13.341) — PSC-category ingest filter set. Workspace override via
+    // config.excludePscPrefixes; absent → DEFAULT_EXCLUDED_PSC_PREFIXES;
+    // pscFilterDisabled:true → no filtering (RTDB cannot store an empty array).
+    const excludeSet: Set<string> | null = config.pscFilterDisabled
+      ? null
+      : new Set(
+          (Array.isArray(config.excludePscPrefixes) && config.excludePscPrefixes.length > 0
+            ? config.excludePscPrefixes
+            : DEFAULT_EXCLUDED_PSC_PREFIXES
+          ).map((p) => String(p).trim().toUpperCase())
+        );
+
     for (const notice of records) {
       try {
         const noticeType = (notice.type || "").toLowerCase().slice(0, 1);
@@ -137,17 +175,34 @@ export async function syncWorkspace(
           }
         }
 
+        // v1.2 (P13.341) — reconciliation match is computed BEFORE mapping (it
+        // only needs the notice) so the PSC filter can spare reconciled notices:
+        // a notice that matches an operator-created Opp always flows through to
+        // enrich it, whatever its PSC. Skipped in dryRun (match was previously
+        // never computed in dryRun; keeps dryRun read-profile unchanged).
+        const match = (!options.skipReconciliation && !options.dryRun)
+          ? await findReconciliationMatch(workspaceId, notice, log)
+          : null;
+
+        // v1.2 (P13.341) — PSC-category ingest filter. Excluded-category notices
+        // that do NOT reconcile with an operator-created Opp are skipped before
+        // mapNoticeToOpportunity — mapping auto-creates agency org nodes, and
+        // junk categories must not keep seeding the org graph. Amendments to
+        // existing parents were already applied above; orphaned junk amendments
+        // are filtered here instead of becoming standalone Opps.
+        if (!match && isExcludedPsc(notice.classificationCode, excludeSet)) {
+          result.oppsExcludedByPsc++;
+          continue;
+        }
+
         const opp = await mapNoticeToOpportunity(workspaceId, notice);
         if (options.dryRun) continue;
 
         // v1.1: Operator-Opp reconciliation by solicitation number
-        if (!options.skipReconciliation) {
-          const match = await findReconciliationMatch(workspaceId, notice, log);
-          if (match) {
-            await applyReconciliation(workspaceId, match, opp, log);
-            result.reconciledWithOperator++;
-            continue;
-          }
+        if (match) {
+          await applyReconciliation(workspaceId, match, opp, log);
+          result.reconciledWithOperator++;
+          continue;
         }
 
         const r = await upsertOpportunity(workspaceId, opp);
@@ -186,6 +241,7 @@ export async function syncWorkspace(
       reconciledWithOperator: result.reconciledWithOperator,
       deadlineChangeSignals: result.deadlineChangeSignals,
       qaExtractedTotal: result.qaExtractedTotal,
+      excludedByPsc: result.oppsExcludedByPsc,
     });
   } catch (err) {
     const e = err as Error;
