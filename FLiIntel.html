@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.340</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.342</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12512,7 +12512,56 @@ var colorIdx=0,activeFilter='all',visibleIds=new Set(),selectedNode=null,edgeMod
 // who moved to js/corsair/util.js (P10.5); window.who owned there.
 // (dead-block stripped P10.6: _deadWho_P10_5)
 
-function setSS(s){var dot=document.getElementById('sync-dot'),lbl=document.getElementById('sync-lbl'),pill=dot?dot.closest('.sync-pill'):null;if(!dot||!lbl)return;if(s==='live'){dot.className='sync-dot live';lbl.textContent='live';lbl.style.color='var(--green)';if(pill){pill.classList.remove('offline','saving-active');}}else if(s==='saving'){dot.className='sync-dot saving';lbl.textContent='saving...';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');}}else if(s==='offline'){dot.className='sync-dot';dot.style.background='var(--red)';lbl.textContent='offline';lbl.style.color='var(--red)';if(pill){pill.classList.add('offline');pill.classList.remove('saving-active');}}else{dot.className='sync-dot';dot.style.background='';lbl.textContent=s;lbl.style.color='var(--t3)';if(pill)pill.classList.remove('offline','saving-active');}}
+// P13.342 — CONNECTION-STATE TRUTH (Realtime Integrity Fix). The status pill
+// must reflect REALTIME-CHANNEL health, not write-success. Before this, setSS('live')
+// was fired by ~25 successful-write call sites, so a write that succeeded over the REST
+// backup painted green "live" while the realtime channel was actually dead — the Trust
+// Principle violation flagged in corsair-complete-analysis.md. Now _connState is the
+// authoritative truth (live | reconnecting | delayed | offline | unknown); setSS('live')
+// defers to it, so no path can paint false green. _connState is driven by .info/connected
+// + the REST fallback + the browser online/offline events (see connectWorkspace).
+var _connState='unknown';
+var _connDropT1=null,_connDropT2=null;
+function _connPaint(){
+  var dot=document.getElementById('sync-dot'),lbl=document.getElementById('sync-lbl'),pill=dot?dot.closest('.sync-pill'):null;
+  if(!dot||!lbl)return;
+  if(pill){ pill.style.cursor=(_connState==='delayed')?'pointer':''; pill.onclick=(_connState==='delayed')?function(){try{localStorage.removeItem('corsair-resthint-dismissed');}catch(e){} try{_showRestModeHint();}catch(e){}}:null; }
+  if(_connState==='live'){dot.className='sync-dot live';dot.style.background='';lbl.textContent='live';lbl.style.color='var(--green)';if(pill){pill.classList.remove('offline','saving-active');pill.title='Live — realtime sync active.';}}
+  else if(_connState==='reconnecting'){dot.className='sync-dot saving';dot.style.background='';lbl.textContent='reconnecting';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');pill.title='Reconnecting to the realtime channel…';}}
+  else if(_connState==='delayed'){dot.className='sync-dot saving';dot.style.background='';lbl.textContent='delayed';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');pill.title='On REST backup — updates refresh about every 30s. The realtime socket did not establish (often a browser extension / VPN). Allowlist mpoppa32.github.io or use an incognito window for instant updates. Click for details.';}}
+  else if(_connState==='offline'){dot.className='sync-dot';dot.style.background='var(--red)';lbl.textContent='offline';lbl.style.color='var(--red)';if(pill){pill.classList.add('offline');pill.classList.remove('saving-active');pill.title='Offline — no connection. Writes retry when back online.';}}
+  else {dot.className='sync-dot';dot.style.background='';lbl.textContent='connecting…';lbl.style.color='var(--t3)';if(pill){pill.classList.remove('offline','saving-active');pill.title='Connecting…';}}
+}
+function _setConnState(s){ if(_connState===s){ try{_connPaint();}catch(e){} return; } _connState=s; window._connState=s; try{_connPaint();}catch(e){} try{ if(window._reflectConnOnFeed)window._reflectConnOnFeed(); }catch(e){} }
+window._connState=_connState;
+// Per-surface honesty on the Bridge: when not live, the Team Activity feed carries an
+// unobtrusive line so an operator reading the team's shared reality knows it may be stale.
+window._reflectConnOnFeed=function(){
+  try{
+    var host=document.getElementById('atlas-activity-feed'); if(!host)return;
+    var ex=document.getElementById('atlas-conn-banner'); if(ex)ex.remove();
+    if(_connState==='delayed'||_connState==='reconnecting'||_connState==='offline'){
+      var msg=(_connState==='offline')?'Offline — this feed is paused until the connection returns.':((_connState==='reconnecting')?'Reconnecting — the live link dropped; this feed updates the moment it returns.':'Delayed — on REST backup; this feed refreshes about every 30s until the realtime link is restored.');
+      var b=document.createElement('div'); b.id='atlas-conn-banner';
+      b.style.cssText='margin:0 0 10px;padding:7px 11px;border:1px solid rgba(245,158,11,.4);border-left:3px solid var(--amber);border-radius:3px;background:rgba(245,158,11,.06);color:var(--paper-2,#b5ad9f);font-family:IBM Plex Mono,monospace;font-size:10.5px;letter-spacing:.04em;line-height:1.45';
+      b.textContent='⏱ '+msg;
+      host.insertBefore(b,host.firstChild);
+    }
+  }catch(e){}
+};
+// setSS — write status overlays + resting state defers to connection truth. 'saving'/'error'
+// are transient write overlays; 'live' reflects _connState (never false green); 'offline'
+// and 'connecting...' route to the truth model.
+function setSS(s){
+  var dot=document.getElementById('sync-dot'),lbl=document.getElementById('sync-lbl'),pill=dot?dot.closest('.sync-pill'):null;
+  if(!dot||!lbl)return;
+  if(s==='saving'){dot.className='sync-dot saving';dot.style.background='';lbl.textContent='saving…';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');}return;}
+  if(s==='error'){dot.className='sync-dot';dot.style.background='var(--red)';lbl.textContent='error';lbl.style.color='var(--red)';if(pill){pill.classList.remove('saving-active');}return;}
+  if(s==='offline'){_setConnState('offline');return;}
+  if(s==='connecting...'){ if(_connDropT1){clearTimeout(_connDropT1);_connDropT1=null;} if(_connDropT2){clearTimeout(_connDropT2);_connDropT2=null;} _connState='unknown';window._connState='unknown';_connPaint();return;}
+  if(s==='live'){ if(_connState==='unknown'){_setConnState('live');} else {_connPaint();} return; }
+  _connPaint(); // legacy literals (e.g. old 'live (REST)') defer to truth — never false green
+}
 
 async function fbSet(path,data){setSS('saving');try{await set(ref(db,path),data);setSS('live');}catch(e){setSS('error');throw e;}}
 // P13.139 — expose for POC promote + future sibling modules that need
@@ -14110,6 +14159,21 @@ async function _restPollFetchAll(){
     if (rPc && typeof rPc === 'object') { pendingCapture = Object.values(rPc); window.pendingCapture = pendingCapture; } /* P13.337 — mirror window.pendingCapture in the REST poll path (the realtime onValue listener at ~14491 already does this; sibling lines 14104/14107/14111 all maintain their window.* mirror; this one was the only miss, leaving window.pendingCapture stale at 0 while module-scope held 56 items during the realtime-wedged REST-fallback path) */
     if (rLed && typeof rLed === 'object') { window.ledger = Object.values(rLed); }
     if (rCalib && typeof rCalib === 'object') { calibrationRecords = Object.values(rCalib); }
+    // P13.342 — Bridge fix: the REST poll fetched /atlasUpdates (paths index 12) but
+    // never read responses[12], so the Team Activity feed — the Bridge surface the team
+    // proof tests — went stale-until-reload whenever realtime was on backup. Wire it
+    // through to the same cache + renderers the realtime atlasUpdates listener (~33187) drives.
+    var rAtlas = responses[12];
+    if (rAtlas && typeof rAtlas === 'object') {
+      try {
+        var aArr = Object.values(rAtlas).sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+        window._atlasUpdatesCache = window._atlasUpdatesCache || {};
+        window._atlasUpdatesCache[currentWsId] = aArr;
+        try { localStorage.setItem('corsair-atlas-updates-' + currentWsId, JSON.stringify(aArr)); } catch(e){}
+        if (activeView === 'atlas' && typeof window.renderAtlasView === 'function') { try { window.renderAtlasView(); } catch(e){} }
+        if (typeof window._renderAtlasTodayWidget === 'function') { try { window._renderAtlasTodayWidget(); } catch(e){} }
+      } catch(e){}
+    }
     if (rSig && typeof rSig === 'object' && typeof window._signalToFeedItem === 'function') {
       var arr = [];
       Object.values(rSig).forEach(function(sig){ var it = window._signalToFeedItem(sig); if (it) arr.push(it); });
@@ -14135,7 +14199,8 @@ async function _restPollFetchAll(){
     // P13.251 (OSINT O-3) — let the notify-check fire on REST-polled signal
     // updates too (same triggering pattern as the realtime uSig listener).
     try { window._corsairNotifyCheck && window._corsairNotifyCheck(); } catch(e){}
-    try { setSS('live (REST)'); } catch(e){}
+    try { _setConnState('delayed'); } catch(e){}  // P13.342 — REST success is honest 'delayed', not 'live (REST)' (the old label led with "live")
+    try { window._reflectConnOnFeed && window._reflectConnOnFeed(); } catch(e){}
     _restPoll.lastOk = Date.now();
     return true;
   } catch(e) {
@@ -14172,6 +14237,7 @@ window._dismissRestHint = function(){ try{ localStorage.setItem('corsair-resthin
 window._restPollStart = function(){
   if (_restPoll.active) return;
   _restPoll.active = true;
+  try { _setConnState('delayed'); } catch(e){}  // P13.342 — honest indicator the moment we fall to backup (covers cold-start starvation + mid-session drop)
   console.log('[P13.248] REST polling fallback ENABLED (Firebase realtime channel was starved). 30s interval.');
   _restPollFetchAll();
   _restPoll.intervalId = setInterval(_restPollFetchAll, 30000);
@@ -14779,8 +14845,31 @@ function connectWorkspace(){
   // realtime recovers.
   try {
     var uConn = onValue(ref(db, '.info/connected'), function(snap){
-      if (snap.val() === true && _restPoll.active) {
-        try { window._restPollStop(); } catch(e){}
+      var connected = snap.val() === true;
+      if (connected) {
+        // Realtime is healthy. Cancel any pending drop timers, flip the truth to
+        // live, and if we had fallen back to REST, do ONE immediate resync fetch so
+        // nothing written during the gap is missed, then stop polling and let the
+        // live listeners take over.
+        if (_connDropT1) { clearTimeout(_connDropT1); _connDropT1 = null; }
+        if (_connDropT2) { clearTimeout(_connDropT2); _connDropT2 = null; }
+        var wasRest = _restPoll.active;
+        if (wasRest) {
+          try { _restPollFetchAll(); } catch(e){}   // resync the gap
+          try { window._restPollStop(); } catch(e){}
+        }
+        _setConnState('live');
+      } else {
+        // P13.342 — mid-session drop detection the old code lacked (the 2s starvation
+        // detector only ran once at cold start). A wedged channel goes quiet rather than
+        // erroring, so .info/connected=false is the signal. Grace-tiered + honest: brief
+        // blips (backgrounded tab, transient network) show 'reconnecting' after 2.5s and
+        // do NOT alarm; a persistent drop escalates to 'delayed' + REST backup at 10s so
+        // data keeps flowing AND the operator sees the truth. Sub-2.5s blips stay 'live'.
+        if (_connState === 'live' || _connState === 'unknown') {
+          if (!_connDropT1) _connDropT1 = setTimeout(function(){ if (_connState !== 'live') _setConnState('reconnecting'); }, 2500);
+          if (!_connDropT2) _connDropT2 = setTimeout(function(){ if (_connState !== 'live') { _setConnState('delayed'); try { window._restPollStart(); } catch(e){} } }, 10000);
+        }
       }
     });
     netListeners.push(uConn);
@@ -33843,6 +33932,10 @@ window._ackAccountQuiet = function(orgKey, orgName){
 window._atlasRenderActivityFeed = function(){
   var host = document.getElementById('atlas-activity-feed');
   if (!host) return;
+  // P13.342 — re-apply the connection-honesty banner after this render completes
+  // (both the empty-state and populated paths set host.innerHTML, wiping it). Microtask
+  // so it runs after the synchronous innerHTML assignment on whichever path is taken.
+  try { setTimeout(function(){ try { window._reflectConnOnFeed && window._reflectConnOnFeed(); } catch(e){} }, 0); } catch(e){}
   var mtgs = (window.meetings || []).slice();
   function _ts(m){
     if (m && m.meta){ if (typeof m.meta.ts === 'number') return m.meta.ts; if (m.meta.date){ var t = Date.parse(String(m.meta.date)); if (!isNaN(t)) return t; } }
@@ -71089,6 +71182,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.340"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.342"></script>
 </body>
 </html>
