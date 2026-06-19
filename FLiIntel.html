@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.344</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.345</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -14256,6 +14256,24 @@ window._restPollStop = function(){
   try { _hideRestModeHint(); } catch(e){}
 };
 window._restPollOnce = _restPollFetchAll;
+// P13.345 — flapping-connection REST safety net. Diagnosed live on the operator's real
+// (network-throttled) Atlas: an UNSTABLE connection that connects just long enough to
+// deliver the initial realtime snapshot, then drops, could land the state machine in
+// "delayed but REST never started" — the indicator honestly said delayed, but no backup
+// poll was running, so data sat frozen at load (restLastOk=NEVER observed). The cold-start
+// detector only fires once at 2s (and skips when initial data is present), and the
+// .info/connected grace timer can be cleared by a transient reconnect blip before REST
+// engages. This watchdog guarantees the backup is ALWAYS running whenever we are genuinely
+// not-live: if connState is 'delayed' and REST isn't active, engage it. Closes the gap in
+// every failure mode (cold wedge, clean drop, AND flapping). Idempotent + cheap.
+setInterval(function(){
+  try {
+    if (currentWsId && currentUser && _connState === 'delayed' && _restPoll && !_restPoll.active) {
+      console.warn('[P13.345] connection delayed without an active backup poll — engaging REST safety net');
+      window._restPollStart();
+    }
+  } catch(e){}
+}, 8000);
 function _restPollDetectWedge(){
   if (!currentWsId) return;
   setTimeout(function(){
@@ -71226,6 +71244,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.344"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.345"></script>
 </body>
 </html>
