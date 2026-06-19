@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.342</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.343</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -56480,6 +56480,9 @@ window._renderSourceHealth = function(perSource) {
 
   // v1.2: stash for drawer access
   window._latestSourceHealth = perSource;
+  // P13.343 — pipeline-stall watchdog (see below). Checks the freshest server sync
+  // and raises an unmissable billing-aware banner if the whole pipeline has gone dark.
+  try { window._pipelineStallCheck && window._pipelineStallCheck(perSource); } catch(e){}
 
   var h = '';
   for (var i = 0; i < perSource.length; i++) {
@@ -56505,6 +56508,43 @@ window._renderSourceHealth = function(perSource) {
   }
   body.innerHTML = h;
 };
+
+// P13.343 — PIPELINE-STALL WATCHDOG. The server crons (SAM sync, every OSINT source,
+// the nightly brief) silently stopped for ~12 days when the GCP project's billing
+// lapsed; the only signal was a quiet, easily-missed "data stale" banner. This raises
+// an UNMISSABLE, billing-aware notice when NO source has synced in over 48h — i.e. the
+// whole background pipeline is dark. It reads the same lastSync timestamps the crons
+// write (workspaces/{wsId}/sources/{key}.lastSync), runs on every _loadSourceHealth
+// cycle (5.5s after open + every 60s), and AUTO-CLEARS the moment any source syncs
+// again. Doctrine-compliant: fires only on a real, actionable outage; no false urgency
+// (48h margin over the 24h daily cadence; only alarms when there WAS sync history that
+// has gone stale, never a brand-new never-synced workspace); dismissible for the session
+// (re-appears next time Corsair is opened while still stalled, so it cannot be silently
+// ignored across the kind of multi-day gap that bit us).
+window._pipelineStallCheck = function(perSource){
+  try {
+    var STALL_MS = 48 * 3600000;
+    var freshest = 0;
+    (perSource||[]).forEach(function(p){ if (p && p.raw && typeof p.raw.lastSync === 'number' && p.raw.lastSync > freshest) freshest = p.raw.lastSync; });
+    var existing = document.getElementById('pipeline-stall-banner');
+    var stalled = freshest > 0 && (Date.now() - freshest) > STALL_MS;
+    if (!stalled) { if (existing) existing.remove(); return; }   // healthy / caught up → clear
+    try { if (sessionStorage.getItem('corsair-stall-dismissed') === '1') return; } catch(e){}
+    if (existing) return;
+    var ms = Date.now() - freshest;
+    var ageStr = ms >= 86400000 ? (Math.floor(ms/86400000) + ' day' + (Math.floor(ms/86400000)===1?'':'s')) : (Math.floor(ms/3600000) + ' hours');
+    var b = document.createElement('div');
+    b.id = 'pipeline-stall-banner';
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:100000;background:linear-gradient(180deg,#3a2410,#241608);border-bottom:2px solid #d4823a;padding:9px 16px;display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap;box-shadow:0 4px 18px rgba(0,0,0,.5);font-family:IBM Plex Sans,sans-serif';
+    b.innerHTML =
+      '<span style="font-size:15px">⚠</span>' +
+      '<span style="font-size:13px;color:#f0d9b8;line-height:1.5">Background sync paused — no source has updated in <b>' + ageStr + '</b>. Your SAM, OSINT and brief jobs are not running. This is usually a Google Cloud <b>billing</b> issue. <span style="color:#c9a878">(Just re-enabled billing? It clears within about an hour as jobs catch up.)</span></span>' +
+      '<a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#0a1020;background:#d4823a;padding:6px 12px;border-radius:3px;text-decoration:none;white-space:nowrap">Check billing →</a>' +
+      '<button onclick="window._dismissStallBanner()" title="Hide until next time you open Corsair" style="background:transparent;border:1px solid rgba(212,130,58,.5);color:#c9a878;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;flex-shrink:0">×</button>';
+    document.body.appendChild(b);
+  } catch(e){}
+};
+window._dismissStallBanner = function(){ try{ sessionStorage.setItem('corsair-stall-dismissed','1'); }catch(e){} var b=document.getElementById('pipeline-stall-banner'); if(b)b.remove(); };
 
 // v1.2: per-source detail drawer
 window._openSourceHealthDrawer = function(sourceKey) {
@@ -71182,6 +71222,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.342"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.343"></script>
 </body>
 </html>
