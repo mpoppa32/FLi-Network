@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.345</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.346</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -20394,6 +20394,7 @@ window._renderCopForecast = function(){
           // P13.74 — Bulk Score modal trigger
           '<button onclick="event.stopPropagation();window._openBulkScoreModal&&window._openBulkScoreModal()" title="Paste a CSV of name,value,pwin to bulk-score opps in one shot" style="background:rgba(212,130,58,.10);border:1px solid rgba(212,130,58,.4);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⊞ Bulk Score</button>' +
           // P13.86 — Bulk-assign captureLead to every unassigned active opp (defaults to you).
+          '<button onclick="event.stopPropagation();window._openValueBookModal&&window._openValueBookModal()" title="Put a dollar value and win % on your deals and watch the weighted forecast update live" style="background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">$ Value Book</button>' +
           ((unassignedCount > 0) ? '<button onclick="event.stopPropagation();window._bulkAssignUnassignedToMe&&window._bulkAssignUnassignedToMe()" title="Assign capture lead = you on every unassigned active pursuit" style="background:rgba(56,189,248,.10);border:1px solid rgba(56,189,248,.4);border-radius:3px;color:#38bdf8;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⇒ Assign ' + unassignedCount + ' to Me</button>' : '') +
           // P13.74 — Hide-unscored toggle
           '<button onclick="event.stopPropagation();window._toggleForecastHideUnscored&&window._toggleForecastHideUnscored()" title="' + (hideUnscored ? 'Currently hiding unscored opps. Click to show all.' : 'Currently showing all opps. Click to hide unscored from totals.') + '" style="background:' + (hideUnscored ? 'rgba(95,179,184,.18)' : 'transparent') + ';border:1px solid ' + (hideUnscored ? 'rgba(95,179,184,.55)' : 'var(--b2)') + ';border-radius:3px;color:' + (hideUnscored ? '#5fb3b8' : 'var(--t2)') + ';padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">' + (hideUnscored ? '◉ HIDING UNSCORED' : '○ SHOW ALL') + '</button>' +
@@ -20787,6 +20788,218 @@ window._bulkScorePreview = function(){
     applyBtn.disabled = matched === 0;
     applyBtn.style.opacity = matched === 0 ? '0.5' : '1';
   }
+};
+
+// P13.346 - "Value Your Book" modal. One focused surface to put a $ value +
+// win% on the deals that matter and watch the weighted forecast climb live as
+// you type. The worked book (~750 deals) was organized but un-valued, so the
+// forecast read $0 - not for lack of deals but for lack of dollars on them.
+// Reuses the proven inline-edit parse (1.5M / 750K), the saveOpp write path,
+// and _pwinFrac so the live total is IDENTICAL to the Forecast / Reckoning
+// surfaces. Race-safe vs the opps onValue listener (which reassigns
+// window.opportunities): rows reference opps by id and re-look-up the live
+// object at commit time, never holding a stale reference.
+window._valueBookShowAll = false;
+window._valueBookDrafts = {};
+
+window._valueBookFrac = function(raw){
+  var p = Number(raw);
+  if (!isFinite(p) || p < 0) return 0;
+  if (p > 1) p = p / 100;
+  if (p > 1) p = 1;
+  return p;
+};
+window._valueBookFmt$ = function(v){
+  v = Number(v) || 0;
+  if (v >= 1e9) return '$' + (v/1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return '$' + (v/1e6).toFixed(1) + 'M';
+  if (v >= 1e3) return '$' + (v/1e3).toFixed(0) + 'K';
+  return v ? '$' + Math.round(v).toLocaleString() : '$0';
+};
+window._valueBookParseVal = function(raw){
+  var s = String(raw == null ? '' : raw).replace(/[$\s,]/g, '');
+  if (s === '') return null;
+  var mult = 1;
+  if (/[Mm]$/.test(s)) { mult = 1e6; s = s.slice(0, -1); }
+  else if (/[Kk]$/.test(s)) { mult = 1e3; s = s.slice(0, -1); }
+  else if (/[Bb]$/.test(s)) { mult = 1e9; s = s.slice(0, -1); }
+  var n = parseFloat(s);
+  return isNaN(n) ? null : Math.round(n * mult);
+};
+window._valueBookPwinOf = function(o){
+  return (o.pwin != null) ? o.pwin : ((o.winProb != null) ? o.winProb : ((o.pWin != null) ? o.pWin : null));
+};
+window._valueBookActiveOpps = function(){
+  var scope = (typeof window._stdScopeOpps === 'function') ? window._stdScopeOpps(window.opportunities || []) : (window.opportunities || []);
+  return scope.filter(function(o){
+    if (!o || !o.id) return false;
+    var s = String(o.stage || '').toLowerCase().trim();
+    if (!s) return false;
+    if (s === 'won' || s === 'lost' || s === 'no-bid' || s === 'no_bid') return false;
+    return true;
+  });
+};
+window._valueBookSortedActive = function(){
+  var order = (window.OPP_STAGES || []).map(function(x){ return (((x && x.key) || String(x)) + '').toLowerCase(); });
+  function rank(stage){ var i = order.indexOf(String(stage || '').toLowerCase().trim()); return i < 0 ? -1 : i; }
+  return window._valueBookActiveOpps().slice().sort(function(a, b){
+    var ra = rank(a.stage), rb = rank(b.stage);
+    if (rb !== ra) return rb - ra;
+    var va = Number(a.value || 0), vb = Number(b.value || 0);
+    if (vb !== va) return vb - va;
+    return Number(b.score || 0) - Number(a.score || 0);
+  });
+};
+window._valueBookRecompute = function(){
+  var list = window._valueBookActiveOpps();
+  var weighted = 0, pipeline = 0, valued = 0;
+  list.forEach(function(o){
+    var d = window._valueBookDrafts[o.id] || {};
+    var v = (d.value !== undefined) ? d.value : (o.value != null ? Number(o.value) : null);
+    var praw = (d.pwin !== undefined) ? d.pwin : window._valueBookPwinOf(o);
+    var vNum = Number(v || 0);
+    var pf = window._valueBookFrac(praw);
+    pipeline += vNum;
+    weighted += vNum * pf;
+    if (vNum > 0 && pf > 0) valued++;
+  });
+  var wEl = document.getElementById('vb-weighted');
+  if (wEl) wEl.textContent = window._valueBookFmt$(weighted);
+  var sEl = document.getElementById('vb-sub');
+  if (sEl) sEl.textContent = valued + ' of ' + list.length + ' deals valued  ·  ' + window._valueBookFmt$(pipeline) + ' total pipeline';
+};
+window._valueBookRender = function(){
+  var listWrap = document.getElementById('vb-list');
+  if (!listWrap) return;
+  var esc = function(s){ return String(s == null ? '' : s).replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); };
+  var inStyle = 'width:100%;background:var(--s2);border:1px solid var(--b2);color:var(--text);padding:5px 7px;font-family:IBM Plex Mono,monospace;font-size:12px;border-radius:2px;outline:none;box-sizing:border-box;text-align:center';
+  var all = window._valueBookSortedActive();
+  var CAP = 120;
+  var shown = window._valueBookShowAll ? all : all.slice(0, CAP);
+  var rowsHtml = shown.map(function(o){
+    var sc = (typeof window.oppStageConfig === 'function') ? (window.oppStageConfig(o.stage) || {}) : {};
+    var stageLabel = sc.label || o.stage || '';
+    var stageColor = sc.color || 'var(--t3)';
+    var d = window._valueBookDrafts[o.id] || {};
+    var vCur = (d.value !== undefined) ? d.value : (o.value != null ? o.value : '');
+    var pCur = (d.pwin !== undefined) ? d.pwin : window._valueBookPwinOf(o);
+    if (pCur == null) pCur = '';
+    var vDisp = (vCur === '' || vCur == null) ? '' : String(vCur).replace(/^\$/, '');
+    var pDisp = (pCur === '' || pCur == null) ? '' : String(pCur);
+    var w = Number(vCur || 0) * window._valueBookFrac(pCur);
+    var org = o.customerOrg || o.customer || o.agency || '';
+    return '<div class="vb-row" data-oid="' + esc(String(o.id)) + '" style="display:grid;grid-template-columns:1fr 130px 84px 92px;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--b1);transition:background 300ms">' +
+        '<div style="min-width:0">' +
+          '<div style="font-family:IBM Plex Sans,sans-serif;font-size:13px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(o.name || '(unnamed)') + '</div>' +
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.04em;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:' + stageColor + ';font-weight:700">' + esc(String(stageLabel).toUpperCase()) + '</span>' + (org ? '<span style="color:var(--t3)"> · ' + esc(String(org).toUpperCase()) + '</span>' : '') + '</div>' +
+        '</div>' +
+        '<input class="vb-val" type="text" value="' + esc(vDisp) + '" placeholder="1.5M / 750K" style="' + inStyle + '"/>' +
+        '<input class="vb-pwin" type="number" min="0" max="100" step="1" value="' + esc(pDisp) + '" placeholder="0-100" style="' + inStyle + '"/>' +
+        '<div class="vb-wt" style="text-align:right;font-family:IBM Plex Mono,monospace;font-size:13px;color:var(--gold);font-weight:700">' + (w > 0 ? window._valueBookFmt$(w) : '<span style="color:var(--t3)">-</span>') + '</div>' +
+      '</div>';
+  }).join('');
+  var moreHtml = (!window._valueBookShowAll && all.length > CAP) ? '<div style="padding:14px;text-align:center"><button id="vb-showall" style="background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);padding:7px 14px;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Show all ' + all.length + ' deals</button></div>' : '';
+  listWrap.innerHTML = rowsHtml + moreHtml;
+  Array.prototype.forEach.call(listWrap.querySelectorAll('.vb-row'), function(row){
+    var oid = row.getAttribute('data-oid');
+    var vInput = row.querySelector('.vb-val');
+    var pInput = row.querySelector('.vb-pwin');
+    var wCell = row.querySelector('.vb-wt');
+    function liveUpdate(){
+      var dv = window._valueBookParseVal(vInput.value);
+      var pvRaw = pInput.value;
+      var pv = (pvRaw === '') ? null : Math.max(0, Math.min(100, parseFloat(pvRaw)));
+      if (pv != null && isNaN(pv)) pv = null;
+      window._valueBookDrafts[oid] = { value: dv, pwin: pv };
+      var w = Number(dv || 0) * window._valueBookFrac(pv);
+      wCell.innerHTML = (w > 0) ? window._valueBookFmt$(w) : '<span style="color:var(--t3)">-</span>';
+      window._valueBookRecompute();
+    }
+    function commit(){
+      var op = (window.opportunities || []).find(function(x){ return String(x.id) === String(oid); });
+      if (!op) return;
+      var d = window._valueBookDrafts[oid];
+      if (!d) return;
+      var prevV = (op.value != null) ? op.value : null;
+      var prevP = window._valueBookPwinOf(op);
+      var changed = false;
+      if (d.value !== undefined && d.value !== prevV) { op.value = d.value; changed = true; }
+      if (d.pwin !== undefined && d.pwin !== prevP) { op.pwin = d.pwin; changed = true; }
+      if (!changed) { delete window._valueBookDrafts[oid]; return; }
+      Promise.resolve()
+        .then(function(){ return (typeof window.saveOpp === 'function') ? window.saveOpp(op) : null; })
+        .then(function(){
+          delete window._valueBookDrafts[oid];
+          row.style.background = 'rgba(34,197,94,.12)';
+          setTimeout(function(){ row.style.background = ''; }, 700);
+          window._valueBookRecompute();
+        })
+        .catch(function(e){
+          row.style.background = 'rgba(239,68,68,.14)';
+          console.warn('[P13.346 value-book save]', e && e.message);
+        });
+    }
+    vInput.addEventListener('input', liveUpdate);
+    pInput.addEventListener('input', liveUpdate);
+    vInput.addEventListener('blur', commit);
+    pInput.addEventListener('blur', commit);
+    vInput.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') { ev.preventDefault(); pInput.focus(); if (pInput.select) pInput.select(); } });
+    pInput.addEventListener('keydown', function(ev){ if (ev.key === 'Enter') { ev.preventDefault(); pInput.blur(); } });
+  });
+  var sa = document.getElementById('vb-showall');
+  if (sa) sa.addEventListener('click', function(){ window._valueBookShowAll = true; window._valueBookRender(); });
+  window._valueBookRecompute();
+};
+window._openValueBookModal = function(){
+  if (typeof window._canWrite === 'function' && !window._canWrite()) { if (typeof toast === 'function') toast('Observers cannot edit deals'); return; }
+  if (!window.currentWsId) { if (typeof toast === 'function') toast('Open a workspace first'); return; }
+  window._valueBookShowAll = false;
+  window._valueBookDrafts = {};
+  var modal = document.getElementById('value-book-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'value-book-modal';
+    modal.className = 'overlay';
+    modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(7,13,24,.85);z-index:9000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:780px;width:100%;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.99));border:1px solid rgba(212,130,58,.25);border-radius:3px;padding:0;font-family:IBM Plex Sans,sans-serif;max-height:88vh;display:flex;flex-direction:column">' +
+        '<div style="padding:18px 22px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:flex-start;justify-content:space-between;gap:14px;background:linear-gradient(180deg,var(--s1),transparent)">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:6px">Value Your Book</div>' +
+            '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">' +
+              '<div id="vb-weighted" style="font-family:Antonio,sans-serif;font-size:34px;font-weight:700;color:var(--gold);line-height:1">$0</div>' +
+              '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">Weighted forecast</div>' +
+            '</div>' +
+            '<div id="vb-sub" style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t2);letter-spacing:.04em;margin-top:6px">-</div>' +
+          '</div>' +
+          '<button id="vb-close" title="Close" style="background:transparent;border:0;color:var(--t3);font-size:24px;cursor:pointer;line-height:1;padding:0 4px;flex-shrink:0">x</button>' +
+        '</div>' +
+        '<div style="padding:10px 22px;font-size:12px;color:var(--t2);line-height:1.5;border-bottom:1px solid var(--b1)">Put a dollar value and an honest win % (0-100) on the deals that matter - the advanced ones are up top. Each row saves on its own, and the forecast above updates as you type.</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 130px 84px 92px;gap:10px;padding:8px 32px 8px 20px;border-bottom:1px solid var(--b1);font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase">' +
+          '<div>Deal</div><div style="text-align:center">Value ($)</div><div style="text-align:center">Win %</div><div style="text-align:right">Weighted</div>' +
+        '</div>' +
+        '<div id="vb-list" style="overflow-y:auto;flex:1;padding:0 10px"></div>' +
+        '<div style="padding:12px 22px;border-top:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;gap:8px">' +
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);letter-spacing:.04em">Each row saves automatically</div>' +
+          '<button id="vb-done" style="padding:8px 18px;background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase">Done</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    var closeBtn = modal.querySelector('#vb-close');
+    if (closeBtn) closeBtn.addEventListener('click', function(){ window._closeValueBookModal(); });
+    var doneBtn = modal.querySelector('#vb-done');
+    if (doneBtn) doneBtn.addEventListener('click', function(){ window._closeValueBookModal(); });
+    modal.addEventListener('mousedown', function(ev){ if (ev.target === modal) window._closeValueBookModal(); });
+    modal.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') window._closeValueBookModal(); });
+  }
+  modal.style.display = 'flex';
+  window._valueBookRender();
+};
+window._closeValueBookModal = function(){
+  var m = document.getElementById('value-book-modal');
+  if (m) m.style.display = 'none';
+  try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); } catch(e){}
+  try { var rv = document.getElementById('reckoning-view'); if (rv && rv.style.display !== 'none' && typeof window._renderReckoningView === 'function') window._renderReckoningView(); } catch(e){}
 };
 
 // P13.75 — scan imported BD-target orgs and propose opps to generate.
@@ -71244,6 +71457,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.345"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.346"></script>
 </body>
 </html>
