@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.346</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.347</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12532,7 +12532,7 @@ function _connPaint(){
   if(pill){ pill.style.cursor=(_connState==='delayed')?'pointer':''; pill.onclick=(_connState==='delayed')?function(){try{localStorage.removeItem('corsair-resthint-dismissed');}catch(e){} try{_showRestModeHint();}catch(e){}}:null; }
   if(_connState==='live'){dot.className='sync-dot live';dot.style.background='';lbl.textContent='live';lbl.style.color='var(--green)';if(pill){pill.classList.remove('offline','saving-active');pill.title='Live — realtime sync active.';}}
   else if(_connState==='reconnecting'){dot.className='sync-dot saving';dot.style.background='';lbl.textContent='reconnecting';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');pill.title='Reconnecting to the realtime channel…';}}
-  else if(_connState==='delayed'){dot.className='sync-dot saving';dot.style.background='';lbl.textContent='delayed';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');pill.title='On REST backup — updates refresh about every 30s. The realtime socket did not establish (often a browser extension / VPN). Allowlist mpoppa32.github.io or use an incognito window for instant updates. Click for details.';}}
+  else if(_connState==='delayed'){dot.className='sync-dot saving';dot.style.background='';lbl.textContent='delayed';lbl.style.color='var(--amber)';if(pill){pill.classList.remove('offline');pill.classList.add('saving-active');pill.title='On REST backup — updates refresh about every 30s. The realtime socket did not establish. Usually a network or firewall is closing long-lived connections; your data stays current. Allowing WebSocket connections to *.firebaseio.com restores instant updates. Click for details.';}}
   else if(_connState==='offline'){dot.className='sync-dot';dot.style.background='var(--red)';lbl.textContent='offline';lbl.style.color='var(--red)';if(pill){pill.classList.add('offline');pill.classList.remove('saving-active');pill.title='Offline — no connection. Writes retry when back online.';}}
   else {dot.className='sync-dot';dot.style.background='';lbl.textContent='connecting…';lbl.style.color='var(--t3)';if(pill){pill.classList.remove('offline','saving-active');pill.title='Connecting…';}}
 }
@@ -14215,11 +14215,12 @@ async function _restPollFetchAll(){
   }
 }
 // P13.335 — honest operator hint when Atlas falls back to REST. The realtime-channel
-// wedge is ENVIRONMENTAL (a browser extension / VPN blocking the Firebase websocket;
+// wedge is ENVIRONMENTAL: the operator network/router closes the long-lived WebSocket
 // goOffline/goOnline was tried and does NOT recover it — investigated 2026-06-07), so
 // there is no client-code fix. REST backup keeps everything working (~30s refresh), but
-// the operator deserves to know WHY it is slow and that THEY can fix it (allowlist /
-// incognito) to restore instant realtime + faster loads. Doctrine: honest about itself.
+// the operator deserves to know WHY it is slow and that the fix is a network/IT setting
+// (allow WebSockets to *.firebaseio.com), not an extension or incognito. P13.347: extension/
+// VPN/Norton/incognito all RULED OUT 2026-06-20; RTDB WS endpoint healthy from clean network.
 // Shown when REST polling engages; dismissible (remembered per browser); auto-hidden if
 // the realtime channel recovers.
 function _restHintDismissedFlag(){ try { return localStorage.getItem('corsair-resthint-dismissed')==='1'; } catch(e){ return false; } }
@@ -14232,7 +14233,7 @@ function _showRestModeHint(){
   d.id = 'rtdb-restmode-hint';
   d.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:99998;max-width:340px;background:linear-gradient(135deg,rgba(10,16,32,.97),rgba(26,34,54,.97));border:1px solid rgba(212,130,58,.5);border-radius:4px;padding:12px 14px;box-shadow:0 8px 24px rgba(0,0,0,.5);font-family:IBM Plex Sans,sans-serif;font-size:12px;color:var(--paper);line-height:1.5';
   d.innerHTML = '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:5px">Live link on backup</div>' +
-    'The realtime database connection did not establish, so Atlas is on the REST backup (everything works; updates refresh ~30s). This is usually a <b>browser extension</b> (ad-blocker / privacy / VPN) blocking the live socket. Allowlist <b>mpoppa32.github.io</b> or open Atlas in an <b>incognito window</b> to restore instant updates + faster loads.' +
+    'The realtime database connection did not establish, so Atlas is on the REST backup (everything works; updates refresh ~30s). This usually means a <b>network or firewall</b> is closing the long-lived connection (common on office or managed Wi-Fi). Your data stays current on the backup; to restore instant updates, your network needs to allow long-lived <b>WebSocket</b> connections to <b>*.firebaseio.com</b> (a router or IT setting).' +
     '<div style="margin-top:9px;text-align:right"><button onclick="window._dismissRestHint()" style="padding:5px 12px;background:rgba(212,130,58,.16);border:1px solid rgba(212,130,58,.5);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.08em;cursor:pointer;text-transform:uppercase">Got it</button></div>';
   document.body.appendChild(d);
 }
@@ -35378,7 +35379,7 @@ window._atlasMaybeAutoSync = function() {
     div.id = 'auto-sync-banner';
     div.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99998;background:linear-gradient(135deg,rgba(34,197,94,.95),rgba(95,179,184,.92));color:#fff;padding:14px 22px;border-radius:4px;font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.10em;box-shadow:0 8px 24px rgba(0,0,0,.6);display:flex;align-items:center;gap:14px;min-width:520px;max-width:92vw';
     div.innerHTML = '<span style="font-size:16px">⚡</span>' +
-      '<div style="flex:1"><div style="text-transform:uppercase;font-size:11px;letter-spacing:.16em">Data stale</div>' +
+      '<div style="flex:1"><div style="text-transform:uppercase;font-size:11px;letter-spacing:.16em">Contacts may be stale</div>' +
       '<div style="font-weight:400;letter-spacing:.04em;text-transform:none;font-size:13px;margin-top:3px">Last sync: ' + ageStr + '. Auto-syncing in <span id="auto-sync-countdown" style="font-weight:700">' + COUNTDOWN_SEC + '</span>s…</div></div>' +
       '<button onclick="window._atlasAutoSyncCancel()" style="padding:6px 12px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Cancel</button>' +
       '<button onclick="window._atlasAutoSyncFireNow()" style="padding:6px 12px;background:rgba(255,255,255,.30);border:1px solid #fff;color:#fff;font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;border-radius:2px">Sync now</button>';
@@ -35389,7 +35390,7 @@ window._atlasMaybeAutoSync = function() {
     // EVERY load forever, and ignored Cancel. The banner is now informational; the
     // operator runs it deliberately via "Sync now". (Server cron still syncs overnight.)
     var cd = document.getElementById('auto-sync-countdown');
-    if (cd && cd.parentNode) { cd.parentNode.textContent = 'Data stale - last sync: ' + ageStr + '. Click Sync now to refresh.'; }
+    if (cd && cd.parentNode) { cd.parentNode.textContent = 'Last contact search: ' + ageStr + '. Click Sync now to refresh.'; }
   };
   // If cache is warm, evaluate immediately; otherwise load orgMeta first
   if (window._atlasOrgMetaAll) {
@@ -71457,6 +71458,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.346"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.347"></script>
 </body>
 </html>
