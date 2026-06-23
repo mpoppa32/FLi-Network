@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.352</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.353</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -14243,6 +14243,7 @@ async function _restPollFetchAll(){
 // the realtime channel recovers.
 function _restHintDismissedFlag(){ try { return localStorage.getItem('corsair-resthint-dismissed')==='1'; } catch(e){ return false; } }
 function _showRestModeHint(){
+  if (window._restHintAutoGone) return;     // P13.353 - auto-dismissed once this session
   if (!_restPoll.active) return;            // realtime recovered before the delayed show
   if (_restHintDismissedFlag()) return;     // operator already acknowledged
   if (document.getElementById('rtdb-restmode-hint')) return;
@@ -14254,6 +14255,8 @@ function _showRestModeHint(){
     'The realtime database connection did not establish, so Atlas is on the REST backup (everything works; updates refresh ~30s). This usually means a <b>network or firewall</b> is closing the long-lived connection (common on office or managed Wi-Fi). Your data stays current on the backup; to restore instant updates, your network needs to allow long-lived <b>WebSocket</b> connections to <b>*.firebaseio.com</b> (a router or IT setting).' +
     '<div style="margin-top:9px;text-align:right"><button onclick="window._dismissRestHint()" style="padding:5px 12px;background:rgba(212,130,58,.16);border:1px solid rgba(212,130,58,.5);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.08em;cursor:pointer;text-transform:uppercase">Got it</button></div>';
   document.body.appendChild(d);
+  // P13.353 - auto-dismiss after 15s so the hint doesn't linger over content (demo polish)
+  setTimeout(function(){ window._restHintAutoGone = true; var e=document.getElementById('rtdb-restmode-hint'); if(e){ e.style.transition='opacity .45s'; e.style.opacity='0'; setTimeout(function(){ if(e&&e.parentNode) e.remove(); }, 460); } }, 15000);
 }
 function _hideRestModeHint(){ var e = document.getElementById('rtdb-restmode-hint'); if (e) e.remove(); }
 window._dismissRestHint = function(){ try{ localStorage.setItem('corsair-resthint-dismissed','1'); }catch(e){} _hideRestModeHint(); };
@@ -35659,6 +35662,8 @@ window._atlasMaybeAutoSync = function() {
     // operator runs it deliberately via "Sync now". (Server cron still syncs overnight.)
     var cd = document.getElementById('auto-sync-countdown');
     if (cd && cd.parentNode) { cd.parentNode.textContent = 'Last contact search: ' + ageStr + '. Click Sync now to refresh.'; }
+    // P13.353 - auto-dismiss after 15s so the banner doesn't linger over the nav (demo polish)
+    setTimeout(function(){ var b=document.getElementById('auto-sync-banner'); if(b){ b.style.transition='opacity .45s'; b.style.opacity='0'; setTimeout(function(){ if(b&&b.parentNode) b.remove(); }, 460); } }, 15000);
   };
   // If cache is warm, evaluate immediately; otherwise load orgMeta first
   if (window._atlasOrgMetaAll) {
@@ -71726,6 +71731,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.352"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.353"></script>
 </body>
 </html>
