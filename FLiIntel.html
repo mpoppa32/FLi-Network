@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.353</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.354</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12567,7 +12567,12 @@ function setSS(s){
   _connPaint(); // legacy literals (e.g. old 'live (REST)') defer to truth — never false green
 }
 
-async function fbSet(path,data){setSS('saving');try{await set(ref(db,path),data);setSS('live');}catch(e){setSS('error');throw e;}}
+async function fbSet(path,data){setSS('saving');
+  // P13.354 - write-resilience over the wedge: the realtime socket on the operator's network drops, so the SDK set() server-ack can hang forever (writes look like they "do nothing" + are lost on reload). Fire the SDK write for the instant optimistic local update + onValue listeners (do NOT block on its ack), then persist durably via a short REST PUT (the user's own id token; respects security rules; survives the backup). Fall back to the SDK write only if REST is unavailable.
+  var _p=null; try{ _p=set(ref(db,path),data); if(_p&&_p.catch)_p.catch(function(){}); }catch(e){}
+  try{ if(window.currentUser&&typeof window.currentUser.getIdToken==='function'){ var _tok=await window.currentUser.getIdToken(); var _r=await fetch('https://fli-network-default-rtdb.firebaseio.com/'+String(path).replace(/^\/+/,'')+'.json?auth='+_tok,{method:'PUT',body:JSON.stringify(data===undefined?null:data)}); if(_r&&_r.ok){setSS('live');return;} } }catch(e){}
+  try{ await (_p||set(ref(db,path),data)); setSS('live'); }catch(e){ setSS('error'); throw e; }
+}
 // P13.139 — expose for POC promote + future sibling modules that need
 // to write workspace-scoped data without re-implementing the path helper.
 window.fbSet = fbSet;
@@ -12724,7 +12729,12 @@ window.fbGet = fbGet;
     return { lastSuccess: new Date(_lastSuccess).toISOString(), secondsAgo: Math.floor((Date.now() - _lastSuccess) / 1000), healthy: (Date.now() - _lastSuccess) < _HANG_MS };
   };
 })();
-async function fbRemove(path){setSS('saving');try{await remove(ref(db,path));setSS('live');}catch(e){setSS('error');throw e;}}
+async function fbRemove(path){setSS('saving');
+  // P13.354 - write-resilience: REST DELETE (wedge-proof) with optimistic SDK remove for instant local update; SDK fallback if REST unavailable.
+  var _p=null; try{ _p=remove(ref(db,path)); if(_p&&_p.catch)_p.catch(function(){}); }catch(e){}
+  try{ if(window.currentUser&&typeof window.currentUser.getIdToken==='function'){ var _tok=await window.currentUser.getIdToken(); var _r=await fetch('https://fli-network-default-rtdb.firebaseio.com/'+String(path).replace(/^\/+/,'')+'.json?auth='+_tok,{method:'DELETE'}); if(_r&&_r.ok){setSS('live');return;} } }catch(e){}
+  try{ await (_p||remove(ref(db,path))); setSS('live'); }catch(e){ setSS('error'); throw e; }
+}
 function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
 window.wsPath = wsPath;
 
@@ -71731,6 +71741,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.353"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.354"></script>
 </body>
 </html>
