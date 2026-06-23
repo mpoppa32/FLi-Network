@@ -24,6 +24,14 @@ export interface SamGovConfig {
    */
   excludePscPrefixes?: string[];
   pscFilterDisabled?: boolean;
+  /**
+   * v1.3 (P13.355) — relevance ALLOW-list of full PSC codes (e.g. 6105 electric
+   * motors, 1550 drones). Absent → DEFAULT_ALLOWED_PSC_CODES. A notice is
+   * ingested only if a title/description keyword OR an allow-listed PSC code
+   * matches; this replaces the leaky v1.2 exclude-list. Set pscFilterDisabled
+   * to bypass entirely.
+   */
+  allowPscCodes?: string[];
 }
 
 /**
@@ -47,6 +55,15 @@ export const DEFAULT_EXCLUDED_PSC_PREFIXES: string[] = [
   "56", "65", "68", "71", "72", "73", "74", "75", "76", "77", "78", "79", "80", "81",
   "84", "89", "91", "99",
 ];
+
+/**
+ * v1.3 (P13.355) — relevance allow-list. Corsair builds electric motors for
+ * drones; the only PSC codes that are reliably on-target are 6105 (Motors,
+ * Electrical) and 1550 (Unmanned Aircraft / drones). Everything else earns
+ * ingest via RELEVANCE_KEYWORDS (title/description) in index.ts, so the rare
+ * drone-ecosystem notice with an off-target PSC (counter-UAS, sUAS) still flows.
+ */
+export const DEFAULT_ALLOWED_PSC_CODES: string[] = ["6105", "1550"];
 
 export const DEFAULT_SAMGOV_CONFIG: SamGovConfig = {
   naics: [],

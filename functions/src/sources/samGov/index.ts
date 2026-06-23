@@ -14,34 +14,38 @@ import {
 import { categorizeError } from "../../framework/errors";
 import { formatDateForApi, searchAllPages } from "./client";
 import { mapNoticeToOpportunity, upsertOpportunity } from "./mapper";
-import { loadConfig, validateConfig, DEFAULT_EXCLUDED_PSC_PREFIXES, type SamGovConfig } from "./config";
+import { loadConfig, validateConfig, DEFAULT_ALLOWED_PSC_CODES, type SamGovConfig } from "./config";
 import { handleAmendment } from "./amendment";
 import { findReconciliationMatch, applyReconciliation } from "./reconcile";
 
 export const SOURCE_NAME = "sam_gov";
-export const SOURCE_VERSION = "1.2.0";
+export const SOURCE_VERSION = "1.3.0";
 
 /**
- * v1.2 (P13.341) — PSC-category ingest filter. Prefix extraction mirrors the
- * client predicate (window._oppDropCategory, P13.340): letter codes → first
- * char, numeric codes → first 2 digits. classificationCode can be
- * comma-separated (per the SamOpportunity type); mixed-code safety mirrors the
- * client — the notice is excluded only if ALL its codes map to excluded
- * prefixes; one non-excluded code keeps it. A notice with NO classification
- * code is never excluded (conservative — the client hide handles display).
+ * v1.3 (P13.355) — relevance ALLOW-list (replaces the v1.2 PSC exclude-list).
+ * The exclude-list kept everything it didn't explicitly block, so for Corsair's
+ * narrow domain (electric motors, drones) it leaked ~1,000 irrelevant notices —
+ * and notices with NO PSC code passed entirely. The allow-list inverts the test:
+ * a notice is relevant only if its title/description matches a motor/drone
+ * keyword OR one of its (comma-separated) PSC codes is allow-listed. Empty PSC
+ * no longer auto-passes; it must earn ingest via a keyword.
  */
-function isExcludedPsc(classificationCode: string | undefined | null, excludeSet: Set<string> | null): boolean {
-  if (!excludeSet) return false;
-  const codes = String(classificationCode ?? "")
+const RELEVANCE_KEYWORDS = /\bmotors?\b|\bdrones?\b|\bua[vs]\b|\bunmanned\b|\bbrushless\b|propuls|\bpropellers?\b|\bquadcopters?\b|\bsuas\b|\bloitering\b|\bfpv\b|counter[\s-]?u[ax]s/i;
+
+function isRelevant(
+  notice: { title?: string; description?: string; classificationCode?: string | null },
+  allowSet: Set<string>
+): boolean {
+  const text = `${notice.title ?? ""} ${notice.description ?? ""}`;
+  if (RELEVANCE_KEYWORDS.test(text)) return true;
+  const codes = String(notice.classificationCode ?? "")
     .split(",")
     .map((c) => c.trim().toUpperCase())
     .filter(Boolean);
-  if (codes.length === 0) return false;
   for (const code of codes) {
-    const prefix = /^[A-Z]/.test(code) ? code.charAt(0) : code.slice(0, 2);
-    if (!excludeSet.has(prefix)) return false;
+    if (allowSet.has(code)) return true;
   }
-  return true;
+  return false;
 }
 
 export { handleAmendment } from "./amendment";
@@ -140,17 +144,16 @@ export async function syncWorkspace(
     result.recordsFetched = records.length;
     result.apiCallsCount = Math.max(1, Math.ceil(records.length / 100));
 
-    // v1.2 (P13.341) — PSC-category ingest filter set. Workspace override via
-    // config.excludePscPrefixes; absent → DEFAULT_EXCLUDED_PSC_PREFIXES;
-    // pscFilterDisabled:true → no filtering (RTDB cannot store an empty array).
-    const excludeSet: Set<string> | null = config.pscFilterDisabled
-      ? null
-      : new Set(
-          (Array.isArray(config.excludePscPrefixes) && config.excludePscPrefixes.length > 0
-            ? config.excludePscPrefixes
-            : DEFAULT_EXCLUDED_PSC_PREFIXES
-          ).map((p) => String(p).trim().toUpperCase())
-        );
+    // v1.3 (P13.355) — relevance ALLOW-list set. Workspace override via
+    // config.allowPscCodes; absent → DEFAULT_ALLOWED_PSC_CODES;
+    // pscFilterDisabled:true → no filtering (ingest everything).
+    const relevanceDisabled = !!config.pscFilterDisabled;
+    const allowSet: Set<string> = new Set(
+      (Array.isArray(config.allowPscCodes) && config.allowPscCodes.length > 0
+        ? config.allowPscCodes
+        : DEFAULT_ALLOWED_PSC_CODES
+      ).map((p) => String(p).trim().toUpperCase())
+    );
 
     for (const notice of records) {
       try {
@@ -184,13 +187,14 @@ export async function syncWorkspace(
           ? await findReconciliationMatch(workspaceId, notice, log)
           : null;
 
-        // v1.2 (P13.341) — PSC-category ingest filter. Excluded-category notices
-        // that do NOT reconcile with an operator-created Opp are skipped before
-        // mapNoticeToOpportunity — mapping auto-creates agency org nodes, and
-        // junk categories must not keep seeding the org graph. Amendments to
-        // existing parents were already applied above; orphaned junk amendments
-        // are filtered here instead of becoming standalone Opps.
-        if (!match && isExcludedPsc(notice.classificationCode, excludeSet)) {
+        // v1.3 (P13.355) — relevance ALLOW-list. Notices that do NOT reconcile
+        // with an operator-created Opp must earn ingest by matching a motor/drone
+        // keyword (title/description) or an allow-listed PSC code; everything else
+        // is skipped before mapNoticeToOpportunity (mapping auto-creates agency
+        // org nodes, and irrelevant notices must not keep seeding the org graph).
+        // Amendments to existing parents were already applied above; orphaned
+        // irrelevant amendments are filtered here instead of becoming Opps.
+        if (!match && !relevanceDisabled && !isRelevant(notice, allowSet)) {
           result.oppsExcludedByPsc++;
           continue;
         }
