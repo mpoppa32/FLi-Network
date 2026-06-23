@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.348</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.349</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -21190,6 +21190,35 @@ window._slShowConfirm = function(d){
 };
 window._slManualAdd = function(){ window._slShowConfirm({ customer:'', amount:'', invoiceDate:'', invoiceNumber:'', items:'' }); };
 
+// P13.349 - write-resilience over the wedge. On a network that kills the
+// realtime socket, the SDK write (fbSet) can hang forever waiting for an ack,
+// so "Book this sale" looked dead. Fix: update the UI optimistically, then
+// persist via a short REST request (the user's own id token; respects the
+// security rules; survives the backup), with the SDK write as fallback.
+// Verified: a REST PUT persisted Vector's $15,890 invoice when fbSet was stuck.
+window._slRdbBase = function(){ return 'https://fli-network-default-rtdb.firebaseio.com/workspaces/' + window.currentWsId + '/salesLedger/'; };
+window._slPersist = async function(id, entry){
+  try{
+    if(window.currentUser && typeof window.currentUser.getIdToken==='function' && window.currentWsId){
+      var token = await window.currentUser.getIdToken();
+      var resp = await fetch(window._slRdbBase() + id + '.json?auth=' + token, { method:'PUT', body: JSON.stringify(entry) });
+      if(resp && resp.ok) return true;
+    }
+  }catch(e){ /* fall through to SDK */ }
+  await window.fbSet(window.wsPath('salesLedger/'+id), entry);
+  return true;
+};
+window._slPersistDelete = async function(id){
+  try{
+    if(window.currentUser && typeof window.currentUser.getIdToken==='function' && window.currentWsId){
+      var token = await window.currentUser.getIdToken();
+      var resp = await fetch(window._slRdbBase() + id + '.json?auth=' + token, { method:'DELETE' });
+      if(resp && resp.ok) return true;
+    }
+  }catch(e){ /* fall through to SDK */ }
+  await window.fbSet(window.wsPath('salesLedger/'+id), null);
+  return true;
+};
 window._slBook = async function(){
   var get = function(id){ var e=document.getElementById(id); return e ? String(e.value||'').trim() : ''; };
   var customer = get('sl-c-customer');
@@ -21198,29 +21227,29 @@ window._slBook = async function(){
   if(typeof window._canWrite==='function' && !window._canWrite()){ if(typeof toast==='function') toast('Observers cannot book sales'); return; }
   var id = 'sale-' + Date.now() + '-' + Math.floor(Math.random()*100000);
   var entry = { id:id, customer:customer, amount:amount, currency:'USD', invoiceNumber:get('sl-c-num'), invoiceDate:get('sl-c-date'), items:get('sl-c-items'), linkedOppId:(window._slPendingMatchId||null), source:'invoice-ai', bookedAt:Date.now(), bookedBy:((window.currentUser&&window.currentUser.email)||'') };
-  try{
-    await window.fbSet(window.wsPath('salesLedger/'+id), entry);
-    window._salesLedgerCache = window._salesLedgerCache || {};
-    window._salesLedgerCache[id] = entry;
-    window._slPendingMatchId = null;
-    var stage = document.getElementById('sl-stage'); if(stage) stage.innerHTML = '<div style="padding:10px;color:var(--green);font-size:12px;font-family:IBM Plex Mono,monospace;border:1px solid var(--green);border-radius:3px">Booked '+_slMoney(amount)+' - '+_slEsc(customer)+'</div>';
-    window._slRenderTotal();
-    window._slRenderList();
-    try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
-    try{ var rv=document.getElementById('reckoning-view'); if(rv && rv.style.display!=='none' && typeof window._renderReckoningView==='function') window._renderReckoningView(); }catch(e){}
-  }catch(e){ if(typeof toast==='function') toast('Save failed: '+(e&&e.message||e)); }
+  // Optimistic: show it now; never block the UI on the write ack (the ack can
+  // hang on a wedged connection).
+  window._salesLedgerCache = window._salesLedgerCache || {};
+  window._salesLedgerCache[id] = entry;
+  window._slPendingMatchId = null;
+  var stage = document.getElementById('sl-stage'); if(stage) stage.innerHTML = '<div style="padding:10px;color:var(--green);font-size:12px;font-family:IBM Plex Mono,monospace;border:1px solid var(--green);border-radius:3px">Booked '+_slMoney(amount)+' - '+_slEsc(customer)+'</div>';
+  window._slRenderTotal();
+  window._slRenderList();
+  try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
+  try{ var rv=document.getElementById('reckoning-view'); if(rv && rv.style.display!=='none' && typeof window._renderReckoningView==='function') window._renderReckoningView(); }catch(e){}
+  try{ await window._slPersist(id, entry); }
+  catch(e){ if(typeof toast==='function') toast('Showing on screen; will sync when your connection allows.'); }
 };
 
 window._slDelete = async function(id){
   if(!id) return;
   if(typeof window._canWrite==='function' && !window._canWrite()){ if(typeof toast==='function') toast('Observers cannot edit'); return; }
-  try{
-    await window.fbSet(window.wsPath('salesLedger/'+id), null);
-    if(window._salesLedgerCache) delete window._salesLedgerCache[id];
-    window._slRenderTotal();
-    window._slRenderList();
-    try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
-  }catch(e){ if(typeof toast==='function') toast('Delete failed'); }
+  if(window._salesLedgerCache) delete window._salesLedgerCache[id];
+  window._slRenderTotal();
+  window._slRenderList();
+  try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
+  try{ await window._slPersistDelete(id); }
+  catch(e){ if(typeof toast==='function') toast('Removed on screen; will sync when your connection allows.'); }
 };
 
 
@@ -71679,6 +71708,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.348"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.349"></script>
 </body>
 </html>
