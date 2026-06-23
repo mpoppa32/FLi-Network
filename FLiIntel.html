@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.347</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.348</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -20396,6 +20396,7 @@ window._renderCopForecast = function(){
           '<button onclick="event.stopPropagation();window._openBulkScoreModal&&window._openBulkScoreModal()" title="Paste a CSV of name,value,pwin to bulk-score opps in one shot" style="background:rgba(212,130,58,.10);border:1px solid rgba(212,130,58,.4);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⊞ Bulk Score</button>' +
           // P13.86 — Bulk-assign captureLead to every unassigned active opp (defaults to you).
           '<button onclick="event.stopPropagation();window._openValueBookModal&&window._openValueBookModal()" title="Put a dollar value and win % on your deals and watch the weighted forecast update live" style="background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">$ Value Book</button>' +
+          '<button onclick="event.stopPropagation();window._openSalesLedgerModal&&window._openSalesLedgerModal()" title="Drop a sales invoice - Corsair reads it with AI and books the revenue into your actual-sales total" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.5);border-radius:3px;color:#22c55e;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">+ Record Sale</button>' +
           ((unassignedCount > 0) ? '<button onclick="event.stopPropagation();window._bulkAssignUnassignedToMe&&window._bulkAssignUnassignedToMe()" title="Assign capture lead = you on every unassigned active pursuit" style="background:rgba(56,189,248,.10);border:1px solid rgba(56,189,248,.4);border-radius:3px;color:#38bdf8;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⇒ Assign ' + unassignedCount + ' to Me</button>' : '') +
           // P13.74 — Hide-unscored toggle
           '<button onclick="event.stopPropagation();window._toggleForecastHideUnscored&&window._toggleForecastHideUnscored()" title="' + (hideUnscored ? 'Currently hiding unscored opps. Click to show all.' : 'Currently showing all opps. Click to hide unscored from totals.') + '" style="background:' + (hideUnscored ? 'rgba(95,179,184,.18)' : 'transparent') + ';border:1px solid ' + (hideUnscored ? 'rgba(95,179,184,.55)' : 'var(--b2)') + ';border-radius:3px;color:' + (hideUnscored ? '#5fb3b8' : 'var(--t2)') + ';padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">' + (hideUnscored ? '◉ HIDING UNSCORED' : '○ SHOW ALL') + '</button>' +
@@ -21002,6 +21003,226 @@ window._closeValueBookModal = function(){
   try { if (typeof window._renderCopForecast === 'function') window._renderCopForecast(); } catch(e){}
   try { var rv = document.getElementById('reckoning-view'); if (rv && rv.style.display !== 'none' && typeof window._renderReckoningView === 'function') window._renderReckoningView(); } catch(e){}
 };
+
+// ============ P13.348 - Sales Ledger / invoice ingestion ============
+// "Drop a successful invoice in -> Corsair reads it (Claude, via the same
+//  anthropicProxy document pipeline as RFP analysis) -> operator confirms ->
+//  it books as a revenue line in a running actual-sales total."
+// Operator-confirmed model (P13.348): AI-read PDF/photo + running ledger so
+// repeat orders from the same customer (Vector, Anduril...) each add a line.
+// Reuses the proven _handleRfpFile pattern (FileReader->base64->_apiFetch
+// document/image block; the proxy holds the key server-side, no client key).
+window._salesLedgerCache = window._salesLedgerCache || null;
+window._slPendingMatchId = null;
+
+function _slEsc(s){ return String(s==null?'':s).replace(/[<>&"']/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c];}); }
+function _slMoney(v){ v = Number(v)||0; return '$' + Math.round(v).toLocaleString(); }
+function _slNum(raw){ var n = parseFloat(String(raw==null?'':raw).replace(/[^0-9.]/g,'')); return isFinite(n)?n:0; }
+function _slField(label,id,val){
+  return '<div><div style="font-family:IBM Plex Mono,monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-bottom:3px">'+label+'</div>'+
+    '<input id="'+id+'" type="text" value="'+_slEsc(val)+'" style="width:100%;background:var(--s2);border:1px solid var(--b2);border-radius:2px;color:var(--text);font-family:IBM Plex Mono,monospace;font-size:12px;padding:7px 9px;outline:none;box-sizing:border-box"></div>';
+}
+function _slParseJson(text){
+  if(!text) return null;
+  try{ return JSON.parse(text); }catch(e){}
+  var m = String(text).match(/\{[\s\S]*\}/);
+  if(m){ try{ return JSON.parse(m[0]); }catch(e2){} }
+  return null;
+}
+function _slMatchOpp(name){
+  if(!name) return null;
+  function n(s){ return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+  var q = n(name); if(!q) return null;
+  var opps = window.opportunities || [];
+  return opps.find(function(o){
+    if(!o) return false;
+    var on = n(o.name), oc = n(o.customerOrg), ou = n(o.customer);
+    if(on===q || oc===q || ou===q) return true;
+    if(on && (q.indexOf(on)>-1 || on.indexOf(q)>-1)) return true;
+    return false;
+  }) || null;
+}
+
+window._loadSalesLedger = async function(force){
+  try{
+    if(!force && window._salesLedgerCache) return window._salesLedgerCache;
+    if(!window.currentWsId || typeof window.fbGet!=='function' || typeof window.wsPath!=='function'){ window._salesLedgerCache = window._salesLedgerCache || {}; return window._salesLedgerCache; }
+    var snap = await window.fbGet(window.wsPath('salesLedger'));
+    var v = snap && (typeof snap.val==='function' ? snap.val() : snap);
+    window._salesLedgerCache = v || {};
+  }catch(e){ console.warn('[P13.348 loadSalesLedger]', e&&e.message); window._salesLedgerCache = window._salesLedgerCache || {}; }
+  return window._salesLedgerCache;
+};
+window._salesLedgerTotal = function(){
+  var c = window._salesLedgerCache || {}, t = 0, n = 0;
+  for(var k in c){ if(c[k] && typeof c[k].amount==='number'){ t += c[k].amount; n++; } }
+  return { total: t, count: n };
+};
+
+window._openSalesLedgerModal = async function(){
+  if(!window.currentWsId){ if(typeof toast==='function') toast('Open a workspace first'); return; }
+  var modal = document.getElementById('sales-ledger-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'sales-ledger-modal';
+    modal.className = 'overlay';
+    modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(7,13,24,.85);z-index:9000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto';
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  modal.innerHTML =
+    '<div class="modal" style="max-width:760px;width:100%;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.99));border:1px solid rgba(212,130,58,.25);border-radius:3px;padding:0;font-family:IBM Plex Sans,sans-serif;max-height:88vh;display:flex;flex-direction:column">'+
+      '<div style="padding:18px 22px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:flex-start;justify-content:space-between;gap:14px;background:linear-gradient(180deg,var(--s1),transparent)">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:6px">Sales Ledger</div>'+
+          '<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">'+
+            '<div id="sl-total" style="font-family:Antonio,sans-serif;font-size:34px;font-weight:700;color:var(--green);line-height:1">$0</div>'+
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase">Actual sales booked</div>'+
+          '</div>'+
+          '<div id="sl-sub" style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t2);letter-spacing:.04em;margin-top:6px">-</div>'+
+        '</div>'+
+        '<button id="sl-close" title="Close" style="background:transparent;border:0;color:var(--t3);font-size:24px;cursor:pointer;line-height:1;padding:0 4px;flex-shrink:0">x</button>'+
+      '</div>'+
+      '<div style="padding:14px 22px;overflow-y:auto">'+
+        '<div style="font-size:12px;color:var(--t2);line-height:1.5;margin-bottom:12px">Drop a sales invoice (PDF or photo) below. Corsair reads the customer, amount and date - you confirm - and it books into your actual sales above. Repeat orders from the same customer each add a line.</div>'+
+        '<div id="sl-drop" ondragover="window._slDragOver(event)" ondragleave="window._slDragLeave(event)" ondrop="window._slOnDrop(event)" onclick="var f=document.getElementById(\'sl-file\');if(f)f.click()" style="cursor:pointer;padding:22px;margin-bottom:14px;background:rgba(212,130,58,.04);border:2px dashed rgba(212,130,58,.4);border-radius:4px;text-align:center;transition:all .15s ease">'+
+          '<div style="font-size:14px;color:var(--bone);margin-bottom:4px"><b>Drop invoice here</b> or <span style="color:var(--gold);text-decoration:underline">click to browse</span></div>'+
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);letter-spacing:.06em">PDF, PNG or JPG - Corsair reads it with AI</div>'+
+        '</div>'+
+        '<input id="sl-file" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/*" style="display:none" onchange="window._slOnFilePick(event)">'+
+        '<div id="sl-stage" style="margin-bottom:14px"></div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px">'+
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--t3);text-transform:uppercase">Booked sales</div>'+
+          '<button onclick="window._slManualAdd()" style="background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);padding:4px 10px;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.08em;cursor:pointer;text-transform:uppercase">+ Add manually</button>'+
+        '</div>'+
+        '<div id="sl-list"></div>'+
+      '</div>'+
+    '</div>';
+  var cb = document.getElementById('sl-close');
+  if(cb) cb.addEventListener('click', function(){ var m=document.getElementById('sales-ledger-modal'); if(m) m.style.display='none'; });
+  modal.addEventListener('mousedown', function(ev){ if(ev.target===modal) modal.style.display='none'; });
+  await window._loadSalesLedger(true);
+  window._slRenderTotal();
+  window._slRenderList();
+};
+
+window._slRenderTotal = function(){
+  var t = window._salesLedgerTotal();
+  var tot = document.getElementById('sl-total'), sub = document.getElementById('sl-sub');
+  if(tot) tot.textContent = _slMoney(t.total);
+  if(sub) sub.textContent = t.count + (t.count===1 ? ' invoice booked' : ' invoices booked');
+};
+window._slRenderList = function(){
+  var el = document.getElementById('sl-list'); if(!el) return;
+  var c = window._salesLedgerCache || {};
+  var arr = Object.keys(c).map(function(k){ return c[k]; }).filter(Boolean).sort(function(a,b){ return (b.bookedAt||0)-(a.bookedAt||0); });
+  if(!arr.length){ el.innerHTML = '<div style="padding:18px;text-align:center;color:var(--t3);font-size:12px;font-family:IBM Plex Mono,monospace">No sales booked yet - drop your first invoice above.</div>'; return; }
+  el.innerHTML = arr.map(function(s){
+    var meta = [];
+    if(s.invoiceDate) meta.push(_slEsc(s.invoiceDate));
+    if(s.invoiceNumber) meta.push('#'+_slEsc(s.invoiceNumber));
+    if(s.items) meta.push(_slEsc(String(s.items).slice(0,46)));
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--b1);border-radius:3px;margin-bottom:6px;background:var(--s1)">'+
+      '<div style="min-width:0"><div style="font-weight:600;color:var(--text);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_slEsc(s.customer||'(unknown)')+(s.linkedOppId?' <span style="color:var(--green);font-size:10px;font-family:IBM Plex Mono,monospace">linked</span>':'')+'</div>'+
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(meta.join(' - ')||'&nbsp;')+'</div></div>'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-shrink:0"><div style="font-family:IBM Plex Mono,monospace;font-weight:700;color:var(--green);font-size:14px">'+_slMoney(s.amount||0)+'</div>'+
+      '<button onclick="window._slDelete(\''+_slEsc(String(s.id))+'\')" title="Remove this sale" style="background:transparent;border:0;color:var(--t3);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">x</button></div>'+
+    '</div>';
+  }).join('');
+};
+
+window._slDragOver = function(e){ e.preventDefault(); var d=document.getElementById('sl-drop'); if(d){ d.style.background='rgba(212,130,58,.12)'; d.style.borderColor='var(--gold)'; } };
+window._slDragLeave = function(e){ e.preventDefault(); var d=document.getElementById('sl-drop'); if(d){ d.style.background='rgba(212,130,58,.04)'; d.style.borderColor='rgba(212,130,58,.4)'; } };
+window._slOnDrop = function(e){ e.preventDefault(); window._slDragLeave(e); var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if(f) window._slProcessFile(f); };
+window._slOnFilePick = function(e){ var f = e.target.files && e.target.files[0]; if(f) window._slProcessFile(f); };
+
+window._slProcessFile = async function(file){
+  var stage = document.getElementById('sl-stage'); if(!stage) return;
+  if(file.size > 6*1024*1024){ stage.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px;border:1px solid var(--red);border-radius:3px">That file is over 6MB - try a smaller PDF or a photo.</div>'; return; }
+  var isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+  var isImg = /^image\//i.test(file.type) || /\.(png|jpe?g)$/i.test(file.name);
+  if(!isPdf && !isImg){ stage.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px;border:1px solid var(--red);border-radius:3px">Drop a PDF or a photo (PNG/JPG) of the invoice.</div>'; return; }
+  stage.innerHTML = '<div style="padding:14px;color:var(--t2);font-size:12px;display:flex;align-items:center;gap:8px;border:1px solid var(--b1);border-radius:3px"><span class="proc-dots"><span></span><span></span><span></span></span> Reading '+_slEsc(file.name)+' ...</div>';
+  var base64;
+  try{
+    base64 = await new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(ev){ res(String(ev.target.result).split(',')[1]); }; r.onerror=function(){ rej(new Error('Could not read file')); }; r.readAsDataURL(file); });
+  }catch(e){ stage.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px;border:1px solid var(--red);border-radius:3px">Could not read that file.</div>'; return; }
+  var mediaType = isPdf ? 'application/pdf' : ((/png$/i.test(file.type)||/\.png$/i.test(file.name)) ? 'image/png' : 'image/jpeg');
+  var docBlock = isPdf ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data:base64 } }
+                       : { type:'image', source:{ type:'base64', media_type:mediaType, data:base64 } };
+  var prompt = 'This is a sales invoice from a drone-motor / hardware business. Extract the sale and return ONLY a JSON object (no prose, no markdown) with keys: '+
+    'customer (the buyer / bill-to company), amount (the grand total as a plain number - no symbols or commas), currency (e.g. USD), '+
+    'invoiceNumber (string or empty), invoiceDate (YYYY-MM-DD if possible, else as printed), items (one short line summarizing what was sold). '+
+    'If a field is not present use an empty string, or 0 for amount. Return strictly valid JSON only.';
+  try{
+    var response = await _apiFetch(null, { model:'claude-sonnet-4-6', max_tokens:700, system:'You are a precise invoice data extractor. Output strictly valid JSON and nothing else.', messages:[{ role:'user', content:[ docBlock, { type:'text', text:prompt } ] }] }, 180000);
+    var data = await response.json();
+    var text = data && data.content ? data.content.map(function(i){ return i.text||''; }).join('') : '';
+    var parsed = _slParseJson(text);
+    if(!parsed){ throw new Error('Could not read the numbers off that invoice. Try a clearer copy, or add it manually.'); }
+    window._slShowConfirm(parsed);
+  }catch(e){
+    stage.innerHTML = '<div style="padding:12px;border:1px solid var(--red);border-radius:3px;color:var(--red);font-size:12px">'+_slEsc(e&&e.message||'Reading failed')+' <button onclick="window._slManualAdd()" style="margin-left:8px;padding:3px 8px;border:1px solid var(--gold);border-radius:2px;background:transparent;color:var(--gold);font-size:11px;cursor:pointer">Add manually</button></div>';
+  }
+};
+
+window._slShowConfirm = function(d){
+  var stage = document.getElementById('sl-stage'); if(!stage) return;
+  d = d || {};
+  var amt = (typeof d.amount==='number') ? d.amount : (_slNum(d.amount)||'');
+  var match = _slMatchOpp(d.customer);
+  window._slPendingMatchId = match ? match.id : null;
+  var matchNote = match ? '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--green);margin-top:8px">Will link to your "'+_slEsc(match.name)+'" deal.</div>' : '';
+  stage.innerHTML = '<div style="padding:14px;border:1px solid var(--gold);border-radius:4px;background:rgba(212,130,58,.06)">'+
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:10px">Corsair read this - confirm or fix</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'+
+      _slField('Customer','sl-c-customer',d.customer||'')+
+      _slField('Amount ($)','sl-c-amount',amt)+
+      _slField('Invoice date','sl-c-date',d.invoiceDate||'')+
+      _slField('Invoice #','sl-c-num',d.invoiceNumber||'')+
+    '</div>'+
+    _slField('What was sold','sl-c-items',d.items||'')+
+    matchNote+
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'+
+      '<button onclick="var s=document.getElementById(\'sl-stage\');if(s)s.innerHTML=\'\'" style="padding:7px 14px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Cancel</button>'+
+      '<button onclick="window._slBook()" style="padding:7px 14px;background:var(--green);border:1px solid var(--green);border-radius:2px;color:#06210f;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Book this sale</button>'+
+    '</div></div>';
+};
+window._slManualAdd = function(){ window._slShowConfirm({ customer:'', amount:'', invoiceDate:'', invoiceNumber:'', items:'' }); };
+
+window._slBook = async function(){
+  var get = function(id){ var e=document.getElementById(id); return e ? String(e.value||'').trim() : ''; };
+  var customer = get('sl-c-customer');
+  var amount = _slNum(get('sl-c-amount'));
+  if(!customer || !amount){ if(typeof toast==='function') toast('Need at least a customer and an amount'); return; }
+  if(typeof window._canWrite==='function' && !window._canWrite()){ if(typeof toast==='function') toast('Observers cannot book sales'); return; }
+  var id = 'sale-' + Date.now() + '-' + Math.floor(Math.random()*100000);
+  var entry = { id:id, customer:customer, amount:amount, currency:'USD', invoiceNumber:get('sl-c-num'), invoiceDate:get('sl-c-date'), items:get('sl-c-items'), linkedOppId:(window._slPendingMatchId||null), source:'invoice-ai', bookedAt:Date.now(), bookedBy:((window.currentUser&&window.currentUser.email)||'') };
+  try{
+    await window.fbSet(window.wsPath('salesLedger/'+id), entry);
+    window._salesLedgerCache = window._salesLedgerCache || {};
+    window._salesLedgerCache[id] = entry;
+    window._slPendingMatchId = null;
+    var stage = document.getElementById('sl-stage'); if(stage) stage.innerHTML = '<div style="padding:10px;color:var(--green);font-size:12px;font-family:IBM Plex Mono,monospace;border:1px solid var(--green);border-radius:3px">Booked '+_slMoney(amount)+' - '+_slEsc(customer)+'</div>';
+    window._slRenderTotal();
+    window._slRenderList();
+    try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
+    try{ var rv=document.getElementById('reckoning-view'); if(rv && rv.style.display!=='none' && typeof window._renderReckoningView==='function') window._renderReckoningView(); }catch(e){}
+  }catch(e){ if(typeof toast==='function') toast('Save failed: '+(e&&e.message||e)); }
+};
+
+window._slDelete = async function(id){
+  if(!id) return;
+  if(typeof window._canWrite==='function' && !window._canWrite()){ if(typeof toast==='function') toast('Observers cannot edit'); return; }
+  try{
+    await window.fbSet(window.wsPath('salesLedger/'+id), null);
+    if(window._salesLedgerCache) delete window._salesLedgerCache[id];
+    window._slRenderTotal();
+    window._slRenderList();
+    try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
+  }catch(e){ if(typeof toast==='function') toast('Delete failed'); }
+};
+
 
 // P13.75 — scan imported BD-target orgs and propose opps to generate.
 // An org qualifies if EITHER it has an `importedAt` field (set by the
@@ -71458,6 +71679,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.347"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.348"></script>
 </body>
 </html>
