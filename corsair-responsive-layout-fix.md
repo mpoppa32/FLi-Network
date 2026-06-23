@@ -46,9 +46,12 @@ Scaling/scroll fix only — visual identity, fonts, and colors unchanged.
 - **Today view @ 100%, operator's real screen (verified by the operator):** full-size, readable text; the layout is clean and professional; **all previously-clipped content (orientation cards, Today's Brief, 8-card grid) is now reachable by scrolling — no zooming required.** Operator confirmed "it scrolls."
 - The behavior shift delivered: **read at 100% + scroll**, instead of **zoom-out-to-fit + unreadable text**.
 
-### Remaining / in progress
-- **Other views (Pipeline, Accounts, Inbox, Outreach, Drone, etc.):** most are expected to already scroll correctly (Today's pinned-sections structure was unusual, accumulated over many releases). Each is being verified at 100% on the operator's screen; any that share the clip pattern get the same `overflow-y:auto` treatment. Note: a few views (opps/Pipeline, intel, timeline) define overflow via CSS class rather than inline and will be handled per their structure.
-- **Live multi-resolution screenshot verification by the agent was constrained** this session: the operator's browser window is maximized (window-resize ignored), the page is heavy (screenshot timeouts), and the ~150% scaling + manual zoom confounded remote measurement. Verification therefore relied on the operator's real-screen screenshots at 100% — the authoritative target device.
+### Phase 1.2 — extended platform-wide (P13.352)
+- **All 17 inline column-view containers** (atlas, accounts, drone, outreach, reckoning, coverage, bdperf, team, pulse, capture, unbound, sbir, rfi, library, vehicles, comp, teaming) changed `overflow:hidden` → `overflow-y:auto;overflow-x:hidden` — each now scrolls as one unit at 100%. Harmless for any view already scrolling via an internal panel (the panel absorbs the height; the view never over-scrolls) and fixes any that shared Today's clip pattern. Count asserted at exactly 17 (view-only); doctype unchanged (3); no bloat.
+- **The 3 row-layout views (`.opp-view`/Pipeline, `.intel-view`, `.timeline-view`) intentionally left as-is** — they are `display:flex` *row* containers whose children scroll (the correct pattern, not the vertical-clip bug); they collapse to column at the 768px breakpoint.
+
+### Verification note
+- **Live multi-resolution screenshot verification by the agent was constrained** this session: the operator's browser window is maximized (window-resize ignored), the page is heavy (screenshot timeouts), and the ~150% scaling + manual zoom confounded remote measurement. The **Today fix was verified on the operator's real 100% screen** (confirmed readable + scrolls). The platform-wide extension (P13.352) is a uniform application of that same proven, low-risk change; normal use across screens is the final confirmation. Any view with a Today-style *internal* squeeze (pinned content + a separately-collapsing inner panel) would need a per-view tweak like Today's `#today-rhythm-host` change — Today was the only known instance.
 
 ---
 
