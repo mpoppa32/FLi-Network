@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.349</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.350</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -13057,6 +13057,24 @@ async function saveTLCommitments(){var o={};tlCommitments.forEach(function(c){o[
 // Granular single-item write/delete — preferred over full collection write
 async function saveTLCommitment(item){await fbSet(wsPath('tl_commitments/'+item.id),item);}
 async function deleteTLCommitmentDB(id){setSS('saving');try{await remove(ref(db,wsPath('tl_commitments/'+id)));setSS('live');}catch(e){setSS('error');}  }
+// P13.350 - resilient write over the wedge. The operator's network kills the
+// realtime socket, so the SDK fbSet ack can hang forever -> every in-app save
+// (deal values via Value Book, stage changes, meeting-logging re-score) silently
+// stalled and lost data on reload. Route the write through a short REST PUT (the
+// user's own id token; respects security rules; survives the backup), falling
+// back to the SDK. Same pattern proven on the Sales Ledger (_slPersist).
+window._fbSetResilient = async function(collection, key, data){
+  try{
+    if(window.currentUser && typeof window.currentUser.getIdToken==='function' && window.currentWsId){
+      var token = await window.currentUser.getIdToken();
+      var url = 'https://fli-network-default-rtdb.firebaseio.com/workspaces/' + window.currentWsId + '/' + collection + '/' + encodeURIComponent(key) + '.json?auth=' + token;
+      var resp = await fetch(url, { method:'PUT', body: JSON.stringify(data) });
+      if(resp && resp.ok) return true;
+    }
+  }catch(e){ /* fall through to SDK */ }
+  await window.fbSet(window.wsPath(collection + '/' + key), data);
+  return true;
+};
 async function saveOpp(opp){
   if(window._canWrite&&!window._canWrite()){toast('Observers cannot edit opportunities');return;}
   if (!opp || !opp.id) {
@@ -13142,7 +13160,7 @@ async function saveOpp(opp){
     delete opp.scoreFactors; delete opp.scoreComputedAt;
   }
   try {
-    await fbSet(wsPath('opportunities/'+opp.id), opp);
+    await window._fbSetResilient('opportunities', opp.id, opp);
     // DG-1 (Team Entanglement) — broadcast a genuine stage change to the team
     // feed after the write succeeds. Skips first-save (no prior stage) and
     // re-score saves (stage unchanged), so bulk scoring never spams the feed.
@@ -71708,6 +71726,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.349"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.350"></script>
 </body>
 </html>
