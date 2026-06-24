@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.361</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.362</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9083,6 +9083,11 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
          Doctrine: surface + route, never auto-act. Hides when empty
          (no manufactured urgency). Filled by _renderTodayCatches. -->
     <div id="today-catches-strip" style="margin:14px 32px 0;display:none"></div>
+    <!-- P13.362 — dedicated commitments strip. Top Catches caps at the top 3 by
+         score, so commitments (esp. deadline-less, e.g. dropped via smart intake)
+         get outranked; this always-on strip surfaces open commitments on the
+         morning landing. Filled by _renderTodayCommitments; hides when empty. -->
+    <div id="today-commitments-strip" style="margin:14px 32px 0;display:none"></div>
     <!-- P13.202 DAILY ORIENTATION — top-of-Today action strip. Reads the
          current drone universe count + pending POC count + queue state to
          surface the next-best action on a single visible row. P13.214 —
@@ -12457,6 +12462,7 @@ function _scheduleTodayRender(){
     try { window.renderDailyBrief && window.renderDailyBrief(); } catch(e){}
     try { window._renderTodayNarrative && window._renderTodayNarrative(); } catch(e){}
     try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
+    try { window._renderTodayCommitments && window._renderTodayCommitments(); } catch(e){}
     try { window._renderTodayOrientation && window._renderTodayOrientation(); } catch(e){}
   }, 200);
 }
@@ -35535,6 +35541,24 @@ window._atlasComputeCatches = function() {
   return deduped.slice(0, 3);
 };
 
+// P13.362 — dedicated Today commitments strip. Top Catches caps at 3 by score
+// (deduped.slice(0,3)), so commitments lose to higher-scored stale/effort
+// catches; this always-on strip guarantees open commitments surface on the
+// morning landing. Reuses renderCommitmentsSection (same body the Board uses).
+window._renderTodayCommitments = function() {
+  var host = document.getElementById('today-commitments-strip');
+  if (!host) return;
+  var src = (typeof commitments !== 'undefined' && Array.isArray(commitments)) ? commitments : (window.commitments || []);
+  var open = src.filter(function(c){ return c && c.status === 'open'; });
+  if (!open.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+  host.style.display = 'block';
+  var body = '';
+  try { if (typeof renderCommitmentsSection === 'function') body = renderCommitmentsSection(); } catch(e){}
+  host.innerHTML = '<div style="background:rgba(7,13,24,.55);border:1px solid var(--rule);border-left:4px solid #ef4444;border-radius:3px;padding:14px 16px">' +
+    '<div style="font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:700;letter-spacing:.18em;color:#ef4444;text-transform:uppercase;margin-bottom:10px">COMMITMENTS &middot; ' + open.length + ' open</div>' +
+    body + '</div>';
+};
+
 window._renderTodayCatches = function() {
   var host = document.getElementById('today-catches-strip');
   if (!host) return;
@@ -36087,6 +36111,8 @@ window.renderTodayView = function(){
   // action, Brief columns below for depth. Hides itself when empty so
   // there's no manufactured urgency on quiet days (Doctrine IV).
   try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
+  // P13.362 — dedicated commitments strip (always-on; not subject to the 3-catch cap)
+  try { window._renderTodayCommitments && window._renderTodayCommitments(); } catch(e){}
   // P13.232 (Block 5B) — start weekly snapshots accumulating from normal use
   // (load the history, then capture this week if not already). Once/session,
   // idempotent, fire-and-forget — so the Reckoning's week-over-week deltas
@@ -72045,6 +72071,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.361"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.362"></script>
 </body>
 </html>
