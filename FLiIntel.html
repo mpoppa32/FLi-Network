@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.358</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.359</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -34191,11 +34191,18 @@ window._atlasOnFilePick = function(ev){
       } else if(type==="contact"){
         if(!f.name){ sdToast("Need at least a name."); return; }
         var now=nowIso();
-        if(f.org && typeof companyByName!=="undefined" && companyByName && !companyByName.get(String(f.org).toLowerCase())){
+        // P13.359 — robust org-dedup: scan nodes for an existing company/gov by
+        // name. (companyByName is built lazily in renderNetwork and is stale on
+        // the wedge / before the Graph is opened, which created DUPLICATE org
+        // nodes.) Only create the org node when none truly exists.
+        var _orgKey=String(f.org||"").toLowerCase().trim();
+        var _existingOrg=null;
+        if(_orgKey && typeof nodes!=="undefined"){ for(var _oi=0;_oi<nodes.length;_oi++){ var _on=nodes[_oi]; if(_on && (_on.type==="company"||_on.type==="government") && String(_on.name||"").toLowerCase().trim()===_orgKey){ _existingOrg=_on; break; } } }
+        if(f.org && !_existingOrg){
           var onode={ id:rid("org"), type:"company", name:f.org, notes:"Added via smart drop", priority:2, meetings:[], x:jitter(typeof W==="number"?W/2:600), y:jitter(typeof H==="number"?H/2:400), pinned:true, color:null, created:now, importedAt:now };
           if(typeof nodes!=="undefined") nodes.push(onode);
           if(typeof nodeMap!=="undefined") nodeMap.set(onode.id, onode);
-          companyByName.set(onode.name.toLowerCase(), onode);
+          try{ if(typeof companyByName!=="undefined" && companyByName) companyByName.set(onode.name.toLowerCase(), onode); }catch(e){}
           if(typeof saveNode==="function") await saveNode(onode);
         }
         var pnode={ id:rid("n"), type:"person", name:f.name, role:f.title||"", org:f.org||"", notes:"Added via smart drop", priority:2, meetings:[], x:jitter(typeof W==="number"?W/2:600), y:jitter(typeof H==="number"?H/2:400), pinned:true, color:null, created:now, importedAt:now };
@@ -72015,6 +72022,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.358"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.359"></script>
 </body>
 </html>
