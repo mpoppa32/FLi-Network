@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.360</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.361</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -34227,14 +34227,16 @@ window._atlasOnFilePick = function(ev){
         var lines=(f.commitments||"").split(/\n/).map(function(s){return s.trim();}).filter(Boolean);
         for(var i=0;i<lines.length;i++){
           var c={ id:rid("commit")+"-"+i, task:lines[i], owner:meEmail(), deadline:"", priority:"med", status:"open", ownerNodeId:null, sourceMtgId:em.id, sourceMtgTitle:em.meta.title, sourceMtgDate:em.meta.date, created:nowIso(), closedAt:null, closedNote:"" };
-          // P13.360 — push to the in-memory commitments array (the convention,
-          // cf. the bulk-extract path) so each one surfaces on Today's
-          // "Commitments Due" + the dossier immediately, not only after the next
-          // REST poll / reload. saveCommitment only writes to RTDB.
-          if(typeof commitments!=="undefined" && Array.isArray(commitments)) commitments.push(c);
+          // P13.361 — persist FIRST, then add to the in-memory array with a
+          // dedup-by-id guard. (P13.360 pushed BEFORE the save, which the wedge
+          // REST poll could overwrite — reassigning commitments from RTDB before
+          // saveCommitment landed, dropping the new one. Push-after-save means a
+          // racing poll already includes it; the guard prevents a double-add.)
           if(typeof saveCommitment==="function") await saveCommitment(c);
+          if(typeof commitments!=="undefined" && Array.isArray(commitments) && !commitments.some(function(x){return x&&x.id===c.id;})) commitments.push(c);
         }
-        try{ if(lines.length && typeof window.renderCommitPanel==="function") window.renderCommitPanel(); }catch(e){}
+        // Refresh the surfaces that show commitments (Today Top Catches + dossier).
+        try{ if(lines.length){ if(typeof window._renderTodayCatches==="function") window._renderTodayCatches(); if(typeof window.renderCommitPanel==="function") window.renderCommitPanel(); } }catch(e){}
         sdToast("✓ Logged touch"+(lines.length?(" + "+lines.length+" commitment"+(lines.length>1?"s":"")):""), 6000);
       } else if(type==="contract"){
         if(!f.name){ sdToast("Need a title."); return; }
@@ -34926,23 +34928,38 @@ window._atlasComputeCatches = function() {
     }
     commits_.forEach(function(c) {
       if (!c || c.done || c.status === 'done' || c.completed) return;
+      // P13.361 — compute label + owner up front so deadline-less commitments
+      // can surface too. Label now includes c.task (the canonical field used by
+      // the commit modal + the smart-intake email route); the old chain missed
+      // it, so task-based commitments showed a generic "Commitment".
+      var label = c.task || c.description || c.text || c.title || 'Commitment';
+      var _own = _resolveCommitOwner(c);
+      var _ownLbl = (_own.member && window._teamActorLabel) ? window._teamActorLabel(_own.uid, _own.name, _myUidB) : _own.name;
+      var _ownClause = _own.member ? (' · ' + _ownLbl + ' owns it · confirm covered') : (_own.name ? (' · ' + _own.name) : '');
+      var _title = label.length > 80 ? label.slice(0, 78) + '…' : label;
       var dts = null;
       if (c.deadline)   { var dt  = Date.parse(String(c.deadline)); if (!isNaN(dt))  dts = dt; }
       else if (c.dueAt) { var dt2 = Date.parse(String(c.dueAt));    if (!isNaN(dt2)) dts = dt2; }
-      if (dts == null) return;
+      if (dts == null) {
+        // P13.361 — deadline-less OPEN commitments (e.g. just dropped via the
+        // smart intake) still need to surface on Today, or they vanish into the
+        // dossier. Surface recently-created ones (<7d); older deadline-less ones
+        // stay on the Board to avoid clutter.
+        var cAt = c.created ? Date.parse(String(c.created)) : 0;
+        if (cAt && (nowMs - cAt) < 7 * DAY) {
+          candidates.push({ kind: 'commit', title: _title, evidence: 'Open · no deadline set' + _ownClause, source: 'COMMIT', score: 70, click: 'commitments-panel' });
+        }
+        return;
+      }
       var daysUntil = Math.ceil((dts - nowMs) / DAY);
       if (daysUntil < -7 || daysUntil > 2) return;
-      var label = c.description || c.text || c.title || 'Commitment';
       var evidence;
       if (daysUntil < 0)       evidence = 'Due ' + Math.abs(daysUntil) + 'd ago · overdue';
       else if (daysUntil === 0) evidence = 'Due today';
       else                      evidence = 'Due in ' + daysUntil + 'd';
-      var _own = _resolveCommitOwner(c);
-      var _ownLbl = (_own.member && window._teamActorLabel) ? window._teamActorLabel(_own.uid, _own.name, _myUidB) : _own.name;
-      var _ownClause = _own.member ? (' · ' + _ownLbl + ' owns it · confirm covered') : (_own.name ? (' · ' + _own.name) : '');
       candidates.push({
         kind: 'commit',
-        title: label.length > 80 ? label.slice(0, 78) + '…' : label,
+        title: _title,
         evidence: evidence + _ownClause,
         source: 'DUE',
         score: daysUntil < 0 ? 90 + Math.min(Math.abs(daysUntil), 7) : 85 - daysUntil * 5,
@@ -72028,6 +72045,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.360"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.361"></script>
 </body>
 </html>
