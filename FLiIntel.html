@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.356</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.357</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -33960,9 +33960,11 @@ window._atlasOnDrop = function(ev){
   ev.preventDefault();
   var zone = document.getElementById('atlas-drop-zone');
   if (zone) { zone.style.borderColor = ''; zone.style.background = ''; }
-  if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) {
-    window._atlasUploadFiles(ev.dataTransfer.files);
-  }
+  var files = ev.dataTransfer && ev.dataTransfer.files;
+  // P13.357 - single file routes through smart intake (classify + route);
+  // multiple files bulk-file to the team feed (the original behavior).
+  if (files && files.length === 1 && typeof window._smartDropFile === 'function') { window._smartDropFile(files[0]); }
+  else if (files && files.length) { window._atlasUploadFiles(files); }
 };
 window._atlasOnDragOver = function(ev){
   ev.preventDefault();
@@ -33978,9 +33980,270 @@ window._atlasBrowsePick = function(){
   if (inp) inp.click();
 };
 window._atlasOnFilePick = function(ev){
-  if (ev.target && ev.target.files) window._atlasUploadFiles(ev.target.files);
+  var files = ev.target && ev.target.files;
+  // P13.357 - single pick -> smart intake; multiple -> bulk feed.
+  if (files && files.length === 1 && typeof window._smartDropFile === 'function') { window._smartDropFile(files[0]); }
+  else if (files && files.length) { window._atlasUploadFiles(files); }
   ev.target.value = ''; // reset so same file can be re-picked
 };
+/* >>> P13.357 smart-intake (spliced below) <<< */
+/* ==================== P13.357 - SMART INTAKE (unified smart drop) ====================
+   One drop on Atlas: read -> Claude classifies + extracts -> confirm -> route.
+   Inserted INSIDE the main module block so it can call module-scope writers
+   (saveNode, saveMeeting, saveCommitment, saveOpp, _apiFetch, nodes, nodeMap,
+   companyByName, opportunities, W, H) plus window.* helpers (_slPersist,
+   _slMatchOpp, _slMoney, _slRenderTotal/List, _renderCopForecast,
+   _atlasUploadFiles). Reuses the Sales Ledger read pattern (anthropicProxy doc
+   pipeline). All routes confirm before committing - never auto-writes. */
+(function(){
+  var SMART_TYPES = ["invoice","contact","meeting","email","contract","other"];
+  var FIELDS = {
+    invoice:  [["customer","Customer","t"],["amount","Amount ($)","t"],["invoiceDate","Invoice date","t"],["invoiceNumber","Invoice #","t"],["items","What was sold","a"]],
+    contact:  [["name","Name","t"],["title","Title","t"],["org","Company","t"],["email","Email","t"],["phone","Phone","t"]],
+    meeting:  [["org","Company","t"],["date","Date (YYYY-MM-DD)","t"],["attendees","Attendees (comma-separated)","a"],["summary","Summary","a"]],
+    email:    [["org","Company","t"],["from","From","t"],["date","Date (YYYY-MM-DD)","t"],["summary","Summary","a"],["commitments","Commitments (one per line)","a"]],
+    contract: [["name","Title","t"],["agency","Agency","t"],["solicitationNumber","Solicitation #","t"],["dueDate","Due date (YYYY-MM-DD)","t"],["summary","Summary","a"]],
+    other:    [["summary","Summary","a"]]
+  };
+  var ROUTE_LABEL = {
+    invoice:"Book as a sale",
+    contact:"Add contact to your network",
+    meeting:"Log a meeting",
+    email:"Log a touch + commitments",
+    contract:"Create / update a pursuit",
+    other:"File to the team feed"
+  };
+  var ROUTE_ICON = { invoice:"💵", contact:"👤", meeting:"📝", email:"📨", contract:"🎯", other:"📥" };
+
+  function sdEsc(s){ return String(s==null?"":s).replace(/[<>&"']/g,function(c){return ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"})[c]; }); }
+  function sdNum(v){ if(typeof v==="number") return v; var n=parseFloat(String(v==null?"":v).replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; }
+  function sdMoney(n){ return (typeof window._slMoney==="function") ? window._slMoney(n) : ("$"+(sdNum(n)).toLocaleString()); }
+  function sdToast(m,d){ if(typeof toast==="function") toast(m, d||4000); }
+  function sdParseJson(t){
+    if(!t) return null;
+    var s=String(t).trim().replace(/^```(json)?/i,"").replace(/```$/,"").trim();
+    try{ return JSON.parse(s); }catch(e){}
+    var a=s.indexOf("{"), b=s.lastIndexOf("}");
+    if(a>=0&&b>a){ try{ return JSON.parse(s.slice(a,b+1)); }catch(e2){} }
+    return null;
+  }
+
+  var CLASSIFY = [
+    "You are the intake classifier for a defense business-development platform whose operator manufactures drone electric motors.",
+    "Examine the dropped document/image/text, classify it as EXACTLY ONE type, and extract its fields.",
+    "Types and fields:",
+    "invoice  -> a sales invoice or receipt (has a bill-to/customer and a total). fields: customer, amount (number, no symbols/commas), currency, invoiceNumber, invoiceDate (YYYY-MM-DD), items",
+    "contact  -> a business card, LinkedIn profile, or email signature for ONE person. fields: name, title, org, email, phone",
+    "meeting  -> meeting notes or a call/meeting transcript. fields: org, date (YYYY-MM-DD), attendees, summary",
+    "email    -> an email or message thread. fields: org, from, date (YYYY-MM-DD), summary, commitments (array of short action items)",
+    "contract -> a government solicitation, RFP, RFI, sources-sought, or contract notice. fields: name, agency, solicitationNumber, dueDate (YYYY-MM-DD), summary",
+    "other    -> anything else. fields: summary",
+    "Return ONLY a JSON object, no prose and no markdown fences, of shape:",
+    "{\"type\":\"<type>\",\"confidence\":<0-100>,\"title\":\"<short label>\",\"fields\":{...}}",
+    "Use an empty string for any missing text field and 0 for a missing amount. If you are genuinely unsure, use type other. Output strictly valid JSON only."
+  ].join("\n");
+
+  async function readFile(file){
+    var ext=(file.name.match(/\.([a-z0-9]+)$/i)||["",""])[1].toLowerCase();
+    var isPdf=/pdf$/i.test(file.type)||ext==="pdf";
+    var isImg=/^image\//i.test(file.type)||["png","jpg","jpeg","webp"].indexOf(ext)>=0;
+    var isText=/^text\//i.test(file.type||"")||["txt","md","csv","vtt","srt","eml","log","json"].indexOf(ext)>=0;
+    if(isText){
+      var txt=await new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(e){ res(String(e.target.result||"")); }; r.onerror=function(){ rej(new Error("read failed")); }; r.readAsText(file); });
+      return { kind:"text", text:txt.slice(0,200000) };
+    }
+    if(isPdf||isImg){
+      var b64=await new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(e){ res(String(e.target.result).split(",")[1]); }; r.onerror=function(){ rej(new Error("read failed")); }; r.readAsDataURL(file); });
+      var mt=isPdf?"application/pdf":((ext==="png"||/png/i.test(file.type))?"image/png":"image/jpeg");
+      return { kind:isPdf?"pdf":"image", b64:b64, mediaType:mt };
+    }
+    return { kind:"unknown" };
+  }
+
+  // Entry point: read -> classify -> confirm. Unknown/failed -> file raw to feed.
+  window._smartDropFile = async function(file){
+    if(!file) return;
+    if(file.size > 6*1024*1024){ sdToast("That file is over 6MB - try a smaller PDF/photo."); return; }
+    sdToast("Reading "+file.name+" ...", 6000);
+    var content;
+    try{ content = await readFile(file); }
+    catch(e){ sdToast("Could not read that file."); return; }
+    if(content.kind==="unknown"){
+      if(typeof window._atlasUploadFiles==="function") await window._atlasUploadFiles([file]);
+      return;
+    }
+    var userContent;
+    if(content.kind==="text"){
+      userContent=[ {type:"text",text:"DROPPED CONTENT:\n"+content.text}, {type:"text",text:CLASSIFY} ];
+    } else {
+      var doc = content.kind==="pdf"
+        ? {type:"document", source:{type:"base64", media_type:"application/pdf", data:content.b64}}
+        : {type:"image", source:{type:"base64", media_type:content.mediaType, data:content.b64}};
+      userContent=[ doc, {type:"text",text:CLASSIFY} ];
+    }
+    var parsed=null;
+    try{
+      var resp = await _apiFetch(null, { model:"claude-sonnet-4-6", max_tokens:900, system:"You are a precise intake classifier. Output strictly valid JSON and nothing else.", messages:[{role:"user", content:userContent}] }, 180000);
+      var data = await resp.json();
+      var text = (data && data.content) ? data.content.map(function(i){ return i.text||""; }).join("") : "";
+      parsed = sdParseJson(text);
+    }catch(e){ parsed=null; }
+    if(!parsed || !parsed.type){
+      sdToast("Couldn't auto-read that - filing it to the team feed so it's not lost.", 6000);
+      if(typeof window._atlasUploadFiles==="function") await window._atlasUploadFiles([file]);
+      return;
+    }
+    if(SMART_TYPES.indexOf(parsed.type)<0) parsed.type="other";
+    parsed.fields = parsed.fields || {};
+    window._smartPending = { parsed:parsed, file:file };
+    _smartShowConfirm(parsed);
+  };
+
+  function fieldVal(parsed, key){
+    var v = parsed.fields ? parsed.fields[key] : "";
+    if(Array.isArray(v)) v = v.join("\n");
+    return v==null ? "" : String(v);
+  }
+
+  window._smartShowConfirm = function(parsed){
+    var type = parsed.type;
+    var conf = (typeof parsed.confidence==="number") ? parsed.confidence : null;
+    var fields = FIELDS[type] || FIELDS.other;
+    var rows = fields.map(function(f){
+      var key=f[0], label=f[1], kind=f[2];
+      var val=fieldVal(parsed, key);
+      var input = (kind==="a")
+        ? '<textarea id="sd-f-'+key+'" rows="2" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b2);border-radius:3px;color:var(--text);font-family:IBM Plex Sans,sans-serif;font-size:13px;padding:6px 8px;resize:vertical">'+sdEsc(val)+'</textarea>'
+        : '<input id="sd-f-'+key+'" type="text" value="'+sdEsc(val)+'" style="width:100%;box-sizing:border-box;background:var(--s1);border:1px solid var(--b2);border-radius:3px;color:var(--text);font-family:IBM Plex Sans,sans-serif;font-size:13px;padding:6px 8px">';
+      return '<div style="margin-bottom:8px"><div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--t3);margin-bottom:3px">'+sdEsc(label)+'</div>'+input+'</div>';
+    }).join("");
+
+    var old=document.getElementById("smart-intake-modal"); if(old) old.remove();
+    var modal=document.createElement("div");
+    modal.id="smart-intake-modal";
+    modal.style.cssText="position:fixed;inset:0;z-index:99999;background:rgba(5,9,16,.72);display:flex;align-items:center;justify-content:center;padding:24px";
+    modal.innerHTML =
+      '<div style="background:var(--bg);border:1px solid var(--gold);border-radius:6px;max-width:480px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.5)">'+
+        '<div style="padding:16px 18px;border-bottom:1px solid var(--b1)">'+
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:6px">Corsair read this - confirm or fix</div>'+
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            '<span style="font-size:20px">'+(ROUTE_ICON[type]||"")+'</span>'+
+            '<div><div style="font-family:Antonio,sans-serif;font-size:18px;color:var(--text);font-weight:600;line-height:1.1">'+sdEsc(parsed.title||type)+'</div>'+
+            '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t2)">'+sdEsc(ROUTE_LABEL[type]||"")+(conf!=null?(' · '+conf+'% sure'):"")+'</div></div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="padding:16px 18px">'+rows+
+          '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--t3);margin-top:4px">Wrong type? Pick another:</div>'+
+          '<div id="sd-retype" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px"></div>'+
+        '</div>'+
+        '<div style="padding:12px 18px;border-top:1px solid var(--b1);display:flex;gap:8px;justify-content:flex-end">'+
+          '<button id="sd-cancel" style="padding:8px 16px;background:transparent;border:1px solid var(--b2);border-radius:3px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Cancel</button>'+
+          '<button id="sd-confirm" style="padding:8px 16px;background:var(--green);border:1px solid var(--green);border-radius:3px;color:#06210f;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">'+sdEsc(ROUTE_LABEL[type]||"Confirm")+'</button>'+
+        '</div>'+
+      '</div>';
+    document.body.appendChild(modal);
+    modal.addEventListener("mousedown", function(ev){ if(ev.target===modal) window._smartCancel(); });
+    document.getElementById("sd-cancel").addEventListener("click", function(){ window._smartCancel(); });
+    document.getElementById("sd-confirm").addEventListener("click", function(){ window._smartRoute(); });
+    // re-type chips
+    var rt=document.getElementById("sd-retype");
+    SMART_TYPES.forEach(function(t){
+      if(t===type) return;
+      var b=document.createElement("button");
+      b.textContent=(ROUTE_ICON[t]||"")+" "+t;
+      b.style.cssText="padding:3px 8px;background:transparent;border:1px solid var(--b2);border-radius:10px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:10px;cursor:pointer";
+      b.addEventListener("click", function(){
+        var p=window._smartPending && window._smartPending.parsed; if(!p) return;
+        p.type=t; _smartShowConfirm(p);
+      });
+      rt.appendChild(b);
+    });
+  };
+
+  window._smartCancel = function(){ var m=document.getElementById("smart-intake-modal"); if(m) m.remove(); };
+
+  function readFields(type){
+    var out={}; (FIELDS[type]||[]).forEach(function(f){ var el=document.getElementById("sd-f-"+f[0]); out[f[0]] = el ? String(el.value||"").trim() : ""; }); return out;
+  }
+  function nowIso(){ return new Date().toISOString(); }
+  function rid(p){ return p+"-"+Date.now()+"-"+Math.random().toString(36).slice(2,7); }
+  function jitter(base){ return (typeof base==="number"?base:500)+(Math.random()-0.5)*240; }
+  function meEmail(){ return (window.currentUser && window.currentUser.email) || "You"; }
+
+  window._smartRoute = async function(){
+    var pend=window._smartPending; if(!pend || !pend.parsed) { window._smartCancel(); return; }
+    var type=pend.parsed.type;
+    var f=readFields(type);
+    if(typeof window._canWrite==="function" && !window._canWrite()){ sdToast("Observers cannot write."); return; }
+    try{
+      if(type==="invoice"){
+        var amt=sdNum(f.amount);
+        if(!f.customer || !amt){ sdToast("Need a customer and an amount."); return; }
+        var sid=rid("sale");
+        var match=(typeof window._slMatchOpp==="function")?window._slMatchOpp(f.customer):null;
+        var entry={ id:sid, customer:f.customer, amount:amt, currency:"USD", invoiceNumber:f.invoiceNumber||"", invoiceDate:f.invoiceDate||"", items:f.items||"", linkedOppId:(match?match.id:null), source:"smart-drop", bookedAt:Date.now(), bookedBy:meEmail() };
+        window._salesLedgerCache=window._salesLedgerCache||{}; window._salesLedgerCache[sid]=entry;
+        if(typeof window._slPersist==="function") await window._slPersist(sid, entry);
+        if(typeof window._slRenderTotal==="function") try{ window._slRenderTotal(); }catch(e){}
+        if(typeof window._slRenderList==="function") try{ window._slRenderList(); }catch(e){}
+        if(typeof window._renderCopForecast==="function") try{ window._renderCopForecast(); }catch(e){}
+        sdToast("✓ Booked "+sdMoney(amt)+" - "+f.customer, 6000);
+      } else if(type==="contact"){
+        if(!f.name){ sdToast("Need at least a name."); return; }
+        var now=nowIso();
+        if(f.org && typeof companyByName!=="undefined" && companyByName && !companyByName.get(String(f.org).toLowerCase())){
+          var onode={ id:rid("org"), type:"company", name:f.org, notes:"Added via smart drop", priority:2, meetings:[], x:jitter(typeof W==="number"?W/2:600), y:jitter(typeof H==="number"?H/2:400), pinned:true, color:null, created:now, importedAt:now };
+          if(typeof nodes!=="undefined") nodes.push(onode);
+          if(typeof nodeMap!=="undefined") nodeMap.set(onode.id, onode);
+          companyByName.set(onode.name.toLowerCase(), onode);
+          if(typeof saveNode==="function") await saveNode(onode);
+        }
+        var pnode={ id:rid("n"), type:"person", name:f.name, role:f.title||"", org:f.org||"", notes:"Added via smart drop", priority:2, meetings:[], x:jitter(typeof W==="number"?W/2:600), y:jitter(typeof H==="number"?H/2:400), pinned:true, color:null, created:now, importedAt:now };
+        if(f.email) pnode.email=f.email;
+        if(f.phone) pnode.phone=f.phone;
+        if(typeof nodes!=="undefined") nodes.push(pnode);
+        if(typeof nodeMap!=="undefined") nodeMap.set(pnode.id, pnode);
+        if(typeof saveNode==="function") await saveNode(pnode);
+        if(typeof renderNetwork==="function") try{ renderNetwork(); }catch(e){}
+        sdToast("✓ Added "+f.name+(f.org?(" ("+f.org+")"):"")+" to your network", 6000);
+      } else if(type==="meeting"){
+        var mts=f.date?(new Date(f.date).getTime()||Date.now()):Date.now();
+        var kp=(f.attendees||"").split(/[,;\n]/).map(function(s){return s.trim();}).filter(Boolean).map(function(n){return {name:n};});
+        var m={ id:rid("mtg"), ts:mts, meta:{ title:(f.org?(f.org+" - "):"")+"Meeting (smart drop)", date:f.date||nowIso().slice(0,10) }, intel:{ summary:f.summary||"", keyPeople:kp } };
+        if(typeof saveMeeting==="function") await saveMeeting(m);
+        sdToast("✓ Logged meeting"+(f.org?(" - "+f.org):""), 6000);
+      } else if(type==="email"){
+        var ets=f.date?(new Date(f.date).getTime()||Date.now()):Date.now();
+        var ekp=f.from?[{name:f.from}]:[];
+        var em={ id:rid("mtg"), ts:ets, meta:{ title:(f.org?(f.org+" - "):"")+"Email touch (smart drop)", date:f.date||nowIso().slice(0,10) }, intel:{ summary:f.summary||"", keyPeople:ekp } };
+        if(typeof saveMeeting==="function") await saveMeeting(em);
+        var lines=(f.commitments||"").split(/\n/).map(function(s){return s.trim();}).filter(Boolean);
+        for(var i=0;i<lines.length;i++){
+          var c={ id:rid("commit")+"-"+i, task:lines[i], owner:meEmail(), deadline:"", priority:"med", status:"open", ownerNodeId:null, sourceMtgId:em.id, sourceMtgTitle:em.meta.title, sourceMtgDate:em.meta.date, created:nowIso(), closedAt:null, closedNote:"" };
+          if(typeof saveCommitment==="function") await saveCommitment(c);
+        }
+        sdToast("✓ Logged touch"+(lines.length?(" + "+lines.length+" commitment"+(lines.length>1?"s":"")):""), 6000);
+      } else if(type==="contract"){
+        if(!f.name){ sdToast("Need a title."); return; }
+        var cnow=nowIso();
+        var opp={ id:rid("opp"), name:f.name, agency:f.agency||"", stage:"tracking", stageEnteredAt:Date.now(), value:"", vehicle:"", notes:(f.summary||""), solicitationNumber:f.solicitationNumber||"", rfpDate:f.dueDate||"", lead:meEmail(), meetings:[], created:cnow, updatedAt:cnow };
+        if(typeof opportunities!=="undefined" && Array.isArray(opportunities)) opportunities.push(opp);
+        if(typeof saveOpp==="function") await saveOpp(opp);
+        sdToast("✓ Created pursuit - "+f.name, 6000);
+      } else {
+        if(pend.file && typeof window._atlasUploadFiles==="function") await window._atlasUploadFiles([pend.file]);
+        else sdToast("Nothing to file.");
+      }
+    }catch(e){
+      console.warn("[smart-drop route]", e);
+      sdToast("Saved on screen; will sync when your connection allows.", 6000);
+    }
+    window._smartPending=null;
+    window._smartCancel();
+  };
+})();
+
+
 // AI Brief: summarize Atlas updates → "Where {workspace} stands today" via
 // anthropicProxy. Recent 20 updates included; text content truncated per
 // entry. Renders in modal so it doesn't disrupt the feed.
@@ -34200,20 +34463,21 @@ window.renderAtlasView = function(){
   // describes ("Mike logs at 4pm; Bryce sees at 4:01"). Leads the team
   // chamber. Populated by _atlasRenderActivityFeed after innerHTML, and
   // live-refreshed by the meetings RTDB listener.
+  // P13.357 — Smart drop PROMOTED to the top of the team chamber (was buried
+  // ~1,500px below the activity feed). One drop -> Claude classifies + routes:
+  // invoice->sale, card->contact, transcript->meeting, email->touch, RFP->pursuit.
+  h += '<div id="atlas-drop-zone" ondragover="window._atlasOnDragOver(event)" ondragleave="window._atlasOnDragLeave(event)" ondrop="window._atlasOnDrop(event)" onclick="window._atlasBrowsePick()" style="cursor:pointer;padding:18px 22px;margin-bottom:18px;background:rgba(212,130,58,.06);border:2px dashed rgba(212,130,58,.5);border-radius:4px;text-align:center;transition:all .15s ease">';
+  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:15px;color:var(--bone);margin-bottom:4px"><b>Drop anything here</b> or <span style="color:var(--gold);text-decoration:underline">click to browse</span></div>';
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.05em">invoice · business card · meeting notes · contract · screenshot — Corsair reads it and files it where it belongs</div>';
+  h += '</div>';
+  h += '<input id="atlas-file-input" type="file" multiple style="display:none" onchange="window._atlasOnFilePick(event)" />';
+  // Team Activity feed — chronological stream, now below the promoted drop.
   h += '<div id="atlas-activity-feed" style="margin-bottom:24px"></div>';
   // Updates feed section
   h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:baseline;justify-content:space-between">';
   h += '<span>Updates Feed</span>';
   h += '<span style="font-weight:400;color:var(--paper-2);font-size:10px">' + updates.length + ' total · ' + thisWeekCount + ' this week</span>';
   h += '</div>';
-  // P13.160 — Drop zone (drag + click). Always visible above the feed so
-  // team members have a one-action entry point whether the feed is empty
-  // or populated. Hidden file input is the click-to-browse fallback.
-  h += '<div id="atlas-drop-zone" ondragover="window._atlasOnDragOver(event)" ondragleave="window._atlasOnDragLeave(event)" ondrop="window._atlasOnDrop(event)" onclick="window._atlasBrowsePick()" style="cursor:pointer;padding:16px 22px;margin-bottom:14px;background:rgba(212,130,58,.04);border:2px dashed rgba(212,130,58,.4);border-radius:4px;text-align:center;transition:all .15s ease">';
-  h += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:14px;color:var(--bone);margin-bottom:4px"><b>Drop files here</b> or <span style="color:var(--gold);text-decoration:underline">click to browse</span></div>';
-  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper-2);letter-spacing:.06em">otter.ai transcripts · screenshots · pdfs · voice memos · notes · anything (1.5MB max for now)</div>';
-  h += '</div>';
-  h += '<input id="atlas-file-input" type="file" multiple style="display:none" onchange="window._atlasOnFilePick(event)" />';
   if (updates.length === 0) {
     h += '<div style="padding:30px 22px;background:linear-gradient(135deg,rgba(212,130,58,.05),rgba(95,179,184,.03));border:1px dashed rgba(212,130,58,.4);border-radius:4px;text-align:center;margin-bottom:30px">';
     h += '<div style="font-family:Antonio,sans-serif;font-size:20px;color:var(--bone);margin-bottom:8px">Drop your first update.</div>';
@@ -71745,6 +72009,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.356"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.357"></script>
 </body>
 </html>
