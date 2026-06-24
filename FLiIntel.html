@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.364</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.365</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -34002,13 +34002,14 @@ window._atlasOnFilePick = function(ev){
    _atlasUploadFiles). Reuses the Sales Ledger read pattern (anthropicProxy doc
    pipeline). All routes confirm before committing - never auto-writes. */
 (function(){
-  var SMART_TYPES = ["invoice","contact","meeting","email","contract","other"];
+  var SMART_TYPES = ["invoice","contact","meeting","email","contract","dealvalues","other"];
   var FIELDS = {
     invoice:  [["customer","Customer","t"],["amount","Amount ($)","t"],["invoiceDate","Invoice date","t"],["invoiceNumber","Invoice #","t"],["items","What was sold","a"]],
     contact:  [["name","Name","t"],["title","Title","t"],["org","Company","t"],["email","Email","t"],["phone","Phone","t"]],
     meeting:  [["org","Company","t"],["date","Date (YYYY-MM-DD)","t"],["attendees","Attendees (comma-separated)","a"],["summary","Summary","a"],["commitments","Commitments (one per line)","a"]],
     email:    [["org","Company","t"],["from","From","t"],["date","Date (YYYY-MM-DD)","t"],["summary","Summary","a"],["commitments","Commitments (one per line)","a"]],
     contract: [["name","Title","t"],["agency","Agency","t"],["solicitationNumber","Solicitation #","t"],["dueDate","Due date (YYYY-MM-DD)","t"],["summary","Summary","a"]],
+    dealvalues: [["deals","Deals — one per line:  Company | $value | win%","a"]],
     other:    [["summary","Summary","a"]]
   };
   var ROUTE_LABEL = {
@@ -34017,9 +34018,10 @@ window._atlasOnFilePick = function(ev){
     meeting:"Log a meeting",
     email:"Log a touch + commitments",
     contract:"Create / update a pursuit",
+    dealvalues:"Update deal values + forecast",
     other:"File to the team feed"
   };
-  var ROUTE_ICON = { invoice:"💵", contact:"👤", meeting:"📝", email:"📨", contract:"🎯", other:"📥" };
+  var ROUTE_ICON = { invoice:"💵", contact:"👤", meeting:"📝", email:"📨", contract:"🎯", dealvalues:"📊", other:"📥" };
 
   function sdEsc(s){ return String(s==null?"":s).replace(/[<>&"']/g,function(c){return ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;","'":"&#39;"})[c]; }); }
   function sdNum(v){ if(typeof v==="number") return v; var n=parseFloat(String(v==null?"":v).replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; }
@@ -34057,6 +34059,7 @@ window._atlasOnFilePick = function(ev){
     "meeting  -> meeting notes or a call/meeting transcript. fields: org, date (YYYY-MM-DD), attendees, summary, commitments (array of short action items / follow-ups stated in the meeting)",
     "email    -> an email or message thread. fields: org, from, date (YYYY-MM-DD), summary, commitments (array of short action items)",
     "contract -> a government solicitation, RFP, RFI, sources-sought, or contract notice. fields: name, agency, solicitationNumber, dueDate (YYYY-MM-DD), summary",
+    "dealvalues -> a list or table of PIPELINE/DEAL values: two or more company/deal names each with a dollar value and/or a win probability percent. For sales-pipeline updates, deal sheets, forecast spreadsheets. NOT a single invoice/receipt (that is invoice). fields: deals (array, one string per deal formatted EXACTLY 'Company | dollarValue | winPercent' where dollarValue is a plain integer of dollars with NO symbols/commas/abbreviations - write 2000000 not $2M - and winPercent is 0-100 or omitted if not given; example 'Firestorm Labs | 2000000 | 60')",
     "other    -> anything else. fields: summary",
     "Return ONLY a JSON object, no prose and no markdown fences, of shape:",
     "{\"type\":\"<type>\",\"confidence\":<0-100>,\"title\":\"<short label>\",\"fields\":{...}}",
@@ -34279,6 +34282,47 @@ window._atlasOnFilePick = function(ev){
         if(typeof opportunities!=="undefined" && Array.isArray(opportunities)) opportunities.push(opp);
         if(typeof saveOpp==="function") await saveOpp(opp);
         sdToast("✓ Created pursuit - "+f.name, 6000);
+      } else if(type==="dealvalues"){
+        // P13.365 — deal-values lane: drop a list/sheet of deal $ + win% -> match each
+        // to an existing pursuit by name -> update value + pwin -> forecast goes live.
+        var _dvNrm=function(s){ return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,""); };
+        var _dvMatch=function(nm){
+          var q=_dvNrm(nm); if(!q) return null;
+          var ops=window.opportunities||[];
+          var ex=ops.find(function(o){ return o && _dvNrm(o.name)===q; });
+          if(ex) return ex; // exact name wins (the operator deal, not the "— Motor supply" twin)
+          var subs=ops.filter(function(o){ var on=_dvNrm(o.name); return o&&on&&(on.indexOf(q)>-1||q.indexOf(on)>-1); });
+          if(!subs.length) return null;
+          subs.sort(function(a,b){
+            var aw=function(o){ return String(o.stage||"").toLowerCase()==="awareness"?1:0; };
+            if(aw(a)!==aw(b)) return aw(a)-aw(b);
+            return (String(a.id||"").indexOf("opp-mon-")===0?0:1)-(String(b.id||"").indexOf("opp-mon-")===0?0:1);
+          });
+          return subs[0];
+        };
+        var _dvLines=(f.deals||"").split(/\n/).map(function(s){ return s.trim(); }).filter(Boolean);
+        var _dvUpdated=0, _dvUnmatched=[];
+        for(var _dvi=0; _dvi<_dvLines.length; _dvi++){
+          var _raw=_dvLines[_dvi];
+          var _dvp=(_raw.indexOf("|")>-1?_raw.split("|"):_raw.split(/[,\t]/)).map(function(s){ return s.trim(); });
+          var _dvName=_dvp[0]; if(!_dvName) continue;
+          var _dvVal=sdNum(_dvp[1]);
+          var _dvHasPw=(_dvp.length>2 && String(_dvp[2]).replace(/[^0-9.]/g,"")!=="");
+          var _dvPw=_dvHasPw?sdNum(_dvp[2]):null;
+          var _opp=_dvMatch(_dvName);
+          if(!_opp){ _dvUnmatched.push(_dvName); continue; }
+          if(_dvVal) _opp.value=_dvVal;
+          if(_dvHasPw){ _opp.pwin=Math.max(0,Math.min(100,_dvPw)); }
+          else if(_opp.pwin==null || _opp.pwin===""){
+            var _st=String(_opp.stage||"").toLowerCase();
+            _opp.pwin=_st.indexOf("negoti")>-1?60:(_st.indexOf("propos")>-1?40:(_st.indexOf("won")>-1?100:25));
+          }
+          _opp.updatedAt=new Date().toISOString();
+          if(typeof saveOpp==="function") await saveOpp(_opp);
+          _dvUpdated++;
+        }
+        if(typeof window._renderCopForecast==="function") try{ window._renderCopForecast(); }catch(e){}
+        sdToast("✓ Updated "+_dvUpdated+" deal"+(_dvUpdated!==1?"s":"")+(_dvUnmatched.length?(" · no match: "+_dvUnmatched.join(", ")):""), 8000);
       } else {
         if(pend.file && typeof window._atlasUploadFiles==="function") await window._atlasUploadFiles([pend.file]);
         else sdToast("Nothing to file.");
@@ -72103,6 +72147,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.364"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.365"></script>
 </body>
 </html>
