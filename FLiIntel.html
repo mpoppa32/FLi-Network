@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.362</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.363</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -34006,7 +34006,7 @@ window._atlasOnFilePick = function(ev){
   var FIELDS = {
     invoice:  [["customer","Customer","t"],["amount","Amount ($)","t"],["invoiceDate","Invoice date","t"],["invoiceNumber","Invoice #","t"],["items","What was sold","a"]],
     contact:  [["name","Name","t"],["title","Title","t"],["org","Company","t"],["email","Email","t"],["phone","Phone","t"]],
-    meeting:  [["org","Company","t"],["date","Date (YYYY-MM-DD)","t"],["attendees","Attendees (comma-separated)","a"],["summary","Summary","a"]],
+    meeting:  [["org","Company","t"],["date","Date (YYYY-MM-DD)","t"],["attendees","Attendees (comma-separated)","a"],["summary","Summary","a"],["commitments","Commitments (one per line)","a"]],
     email:    [["org","Company","t"],["from","From","t"],["date","Date (YYYY-MM-DD)","t"],["summary","Summary","a"],["commitments","Commitments (one per line)","a"]],
     contract: [["name","Title","t"],["agency","Agency","t"],["solicitationNumber","Solicitation #","t"],["dueDate","Due date (YYYY-MM-DD)","t"],["summary","Summary","a"]],
     other:    [["summary","Summary","a"]]
@@ -34033,6 +34033,20 @@ window._atlasOnFilePick = function(ev){
     if(a>=0&&b>a){ try{ return JSON.parse(s.slice(a,b+1)); }catch(e2){} }
     return null;
   }
+  // P13.363 — date sanity guard. The classifier can guess a wrong YEAR when a
+  // dropped doc states no explicit date (a transcript usually doesn't), e.g.
+  // tagging a 2026 meeting as 2024. Snap any implausible year back to today so
+  // absorbed meetings/emails land on the real timeline, not ~2 years in the past.
+  function sdSafeTs(d){
+    var now=Date.now();
+    if(!d) return now;
+    var t=new Date(d).getTime();
+    if(isNaN(t)) return now;
+    var yr=new Date(t).getFullYear(), cy=new Date(now).getFullYear();
+    if(yr<cy-1 || yr>cy+2) return now;
+    return t;
+  }
+  function sdDateStr(d){ return new Date(sdSafeTs(d)).toISOString().slice(0,10); }
 
   var CLASSIFY = [
     "You are the intake classifier for a defense business-development platform whose operator manufactures drone electric motors.",
@@ -34040,7 +34054,7 @@ window._atlasOnFilePick = function(ev){
     "Types and fields:",
     "invoice  -> a sales invoice or receipt (has a bill-to/customer and a total). fields: customer, amount (number, no symbols/commas), currency, invoiceNumber, invoiceDate (YYYY-MM-DD), items",
     "contact  -> a business card, LinkedIn profile, or email signature for ONE person. fields: name, title, org, email, phone",
-    "meeting  -> meeting notes or a call/meeting transcript. fields: org, date (YYYY-MM-DD), attendees, summary",
+    "meeting  -> meeting notes or a call/meeting transcript. fields: org, date (YYYY-MM-DD), attendees, summary, commitments (array of short action items / follow-ups stated in the meeting)",
     "email    -> an email or message thread. fields: org, from, date (YYYY-MM-DD), summary, commitments (array of short action items)",
     "contract -> a government solicitation, RFP, RFI, sources-sought, or contract notice. fields: name, agency, solicitationNumber, dueDate (YYYY-MM-DD), summary",
     "other    -> anything else. fields: summary",
@@ -34079,13 +34093,14 @@ window._atlasOnFilePick = function(ev){
       return;
     }
     var userContent;
+    var dateHint={type:"text",text:"Today's date is "+nowIso().slice(0,10)+". For any date field: if the document does not state an explicit calendar date, use today's date, and never output a different year than today's unless the document explicitly shows that year."};
     if(content.kind==="text"){
-      userContent=[ {type:"text",text:"DROPPED CONTENT:\n"+content.text}, {type:"text",text:CLASSIFY} ];
+      userContent=[ {type:"text",text:"DROPPED CONTENT:\n"+content.text}, {type:"text",text:CLASSIFY}, dateHint ];
     } else {
       var doc = content.kind==="pdf"
         ? {type:"document", source:{type:"base64", media_type:"application/pdf", data:content.b64}}
         : {type:"image", source:{type:"base64", media_type:content.mediaType, data:content.b64}};
-      userContent=[ doc, {type:"text",text:CLASSIFY} ];
+      userContent=[ doc, {type:"text",text:CLASSIFY}, dateHint ];
     }
     var parsed=null;
     try{
@@ -34220,15 +34235,22 @@ window._atlasOnFilePick = function(ev){
         if(typeof renderNetwork==="function") try{ renderNetwork(); }catch(e){}
         sdToast("✓ Added "+f.name+(f.org?(" ("+f.org+")"):"")+" to your network", 6000);
       } else if(type==="meeting"){
-        var mts=f.date?(new Date(f.date).getTime()||Date.now()):Date.now();
+        var mts=sdSafeTs(f.date);
         var kp=(f.attendees||"").split(/[,;\n]/).map(function(s){return s.trim();}).filter(Boolean).map(function(n){return {name:n};});
-        var m={ id:rid("mtg"), ts:mts, meta:{ title:(f.org?(f.org+" - "):"")+"Meeting (smart drop)", date:f.date||nowIso().slice(0,10) }, intel:{ summary:f.summary||"", keyPeople:kp } };
+        var m={ id:rid("mtg"), ts:mts, meta:{ title:(f.org?(f.org+" - "):"")+"Meeting (smart drop)", date:sdDateStr(f.date) }, intel:{ summary:f.summary||"", keyPeople:kp } };
         if(typeof saveMeeting==="function") await saveMeeting(m);
-        sdToast("✓ Logged meeting"+(f.org?(" - "+f.org):""), 6000);
+        var mlines=(f.commitments||"").split(/\n/).map(function(s){return s.trim();}).filter(Boolean);
+        for(var mi=0;mi<mlines.length;mi++){
+          var mc={ id:rid("commit")+"-"+mi, task:mlines[mi], owner:meEmail(), deadline:"", priority:"med", status:"open", ownerNodeId:null, sourceMtgId:m.id, sourceMtgTitle:m.meta.title, sourceMtgDate:m.meta.date, created:nowIso(), closedAt:null, closedNote:"" };
+          if(typeof saveCommitment==="function") await saveCommitment(mc);
+          if(typeof commitments!=="undefined" && Array.isArray(commitments) && !commitments.some(function(x){return x&&x.id===mc.id;})) commitments.push(mc);
+        }
+        try{ if(mlines.length){ if(typeof window._renderTodayCommitments==="function") window._renderTodayCommitments(); if(typeof window._renderTodayCatches==="function") window._renderTodayCatches(); if(typeof window.renderCommitPanel==="function") window.renderCommitPanel(); } }catch(e){}
+        sdToast("✓ Logged meeting"+(f.org?(" - "+f.org):"")+(mlines.length?(" + "+mlines.length+" commitment"+(mlines.length>1?"s":"")):""), 6000);
       } else if(type==="email"){
-        var ets=f.date?(new Date(f.date).getTime()||Date.now()):Date.now();
+        var ets=sdSafeTs(f.date);
         var ekp=f.from?[{name:f.from}]:[];
-        var em={ id:rid("mtg"), ts:ets, meta:{ title:(f.org?(f.org+" - "):"")+"Email touch (smart drop)", date:f.date||nowIso().slice(0,10) }, intel:{ summary:f.summary||"", keyPeople:ekp } };
+        var em={ id:rid("mtg"), ts:ets, meta:{ title:(f.org?(f.org+" - "):"")+"Email touch (smart drop)", date:sdDateStr(f.date) }, intel:{ summary:f.summary||"", keyPeople:ekp } };
         if(typeof saveMeeting==="function") await saveMeeting(em);
         var lines=(f.commitments||"").split(/\n/).map(function(s){return s.trim();}).filter(Boolean);
         for(var i=0;i<lines.length;i++){
@@ -72071,6 +72093,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.362"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.363"></script>
 </body>
 </html>
