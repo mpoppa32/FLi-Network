@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.354</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.355</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -19878,7 +19878,7 @@ function switchView(v){
       var _ne = document.getElementById('net-empty');
       console.log('[Corsair graph] enter · nodes=' + ((window.nodes||[]).length) + ' links=' + ((window.links||[]).length) + ' visibleIds=' + (typeof visibleIds==='object'?visibleIds.size:'?') + ' sim=' + (typeof sim!=='undefined'&&sim?'ready':'null') + ' svg=' + (typeof svgEl!=='undefined'&&svgEl?'ready':'null') + ' nvDisplay=' + (_nv?_nv.style.display:'?') + ' netEmptyDisplay=' + (_ne?_ne.style.display:'?') + ' ws=' + (window.currentWsId||'?'));
     } catch(e){}
-    if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}renderNetwork();/* P13.323 — render the graph on entry; the data listeners no longer render it off-view, so this is where the Theater first paints */if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
+    if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}renderNetwork();/* P13.355 — hide the net-empty overlay on graph ENTRY: its only other toggle (~line 14564) lives in the SDK nodes onValue listener, which never fires on the REST-backup (wedge) path, so "Entity Graph is empty" lingered over a fully-populated graph */var _neT=document.getElementById('net-empty');if(_neT)_neT.style.display=((window.nodes||[]).length)?'none':'block';/* P13.323 — render the graph on entry; the data listeners no longer render it off-view, so this is where the Theater first paints */if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
     // Resume 3D engine if user previously had it active
     try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); setTimeout(function(){ if(window.nodes&&window.nodes.length) window.DiscoveryEngine3D.loadGraph(window.nodes, window.links||[]); }, 80); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active');
       // P13.61 — explicit fit-to-cluster after physics has time to settle on
@@ -22850,7 +22850,7 @@ function _renderOppList(q){
   });
 
   // Pipeline strip + cards
-  var fmt = function(n){return (typeof _fmtVal === 'function') ? '$' + _fmtVal(n) : ('$' + n);};
+  var fmt = function(n){ if (!n) return '$0'; return (typeof _fmtVal === 'function') ? '$' + _fmtVal(n) : ('$' + n); };
   var h = '';
   h += '<div class="cop-pipeline-strip">';
   h +=   '<div class="cop-stat"><div class="cop-stat-lbl">PIPELINE</div><div class="cop-stat-val">' + fmt(totalValue) + '</div></div>';
@@ -35574,7 +35574,9 @@ window._renderTodayOrientation = function() {
       if (m.lastPOCSearchAt && m.lastPOCSearchAt > lastSearch) lastSearch = m.lastPOCSearchAt;
     }
   }
-  var lastSearchStr = lastSearch ? Math.floor((Date.now() - lastSearch) / 60000) + ' min ago' : 'never';
+  var lastSearchStr;
+  if (!lastSearch) { lastSearchStr = 'never'; }
+  else { var _lsMin = Math.floor((Date.now() - lastSearch) / 60000); lastSearchStr = _lsMin < 60 ? _lsMin + ' min ago' : (_lsMin < 1440 ? Math.floor(_lsMin / 60) + ' hr ago' : Math.floor(_lsMin / 1440) + ' days ago'); }
   // outreach queue size (if previously rendered)
   var queueSize = (window._atlasOutreachQueueTargets || []).length;
 
@@ -50333,7 +50335,9 @@ window._renderOutreachQueueView = async function() {
       }
     }
     var queueSize = droneTotal - droneRecentlySearched;
-    var lastSearchStr = lastSearchAt ? Math.floor((NOW - lastSearchAt) / 60000) + ' min ago' : 'never';
+    var lastSearchStr;
+    if (!lastSearchAt) { lastSearchStr = 'never'; }
+    else { var _osMin = Math.floor((NOW - lastSearchAt) / 60000); lastSearchStr = _osMin < 60 ? _osMin + ' min ago' : (_osMin < 1440 ? Math.floor(_osMin / 60) + ' hr ago' : Math.floor(_osMin / 1440) + ' days ago'); }
     var sweepDiag =
       '<div style="grid-column:1/-1;padding:8px 14px;margin-top:6px;background:rgba(95,179,184,.06);border:1px solid rgba(95,179,184,.3);border-radius:3px;font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--paper);letter-spacing:.04em;display:flex;gap:14px;flex-wrap:wrap;align-items:center;width:100%;box-sizing:border-box">' +
         '<span style="color:#5fb3b8;font-weight:700;letter-spacing:.10em;text-transform:uppercase">Sweep state</span>' +
@@ -71741,6 +71745,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.354"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.355"></script>
 </body>
 </html>
