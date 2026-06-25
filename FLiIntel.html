@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.369</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.370</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -60289,11 +60289,20 @@ window._canAdmin = function() {
 window._loadCurrentUserRole = async function(wsId) {
   if (!currentUser || !wsId) return;
   try {
-    var snap = await get(ref(db, 'workspaces/' + wsId + '/members/' + currentUser.uid));
-    var member = snap.val();
-    window.currentUserRole = (member && member.role) ? member.role : 'Analyst';
+    // P13.370 — read the role through the REST-resilient fbGet (races SDK+REST)
+    // so a wedged SDK channel can't stall/fail the role read on the operator's
+    // network; and fail CLOSED — only a role the read actually returns grants
+    // write. A missing/unreadable role now defaults to read-only ('Observer')
+    // instead of the old write-capable 'Analyst' (which silently granted write
+    // on any load error). A true outage degrades to read-only (recoverable on
+    // reload) rather than over-granting; the server rules are the real boundary.
+    var snap = (typeof window.fbGet === 'function')
+      ? await window.fbGet('workspaces/' + wsId + '/members/' + currentUser.uid)
+      : await get(ref(db, 'workspaces/' + wsId + '/members/' + currentUser.uid));
+    var member = snap && (typeof snap.val === 'function' ? snap.val() : snap);
+    window.currentUserRole = (member && member.role) ? member.role : 'Observer';
   } catch(e) {
-    window.currentUserRole = 'Analyst';
+    window.currentUserRole = 'Observer';
   }
   _updateRoleBadge();
 };
@@ -72244,6 +72253,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.369"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.370"></script>
 </body>
 </html>
