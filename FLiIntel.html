@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.368</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.369</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12011,6 +12011,10 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
           <option value="lost">Lost / No-Bid</option>
         </select>
       </div>
+    </div>
+    <div class="g2" style="gap:10px">
+      <div class="fld"><div class="lbl">Win Probability %</div><input type="number" id="opp-pwin-inp" min="0" max="100" step="5" placeholder="e.g. 40"></div>
+      <div class="fld"><div class="lbl">&nbsp;</div><div style="font-size:11px;color:var(--t3);line-height:1.4;padding-top:9px">Drives the weighted forecast (value × win%). Blank = sensible default by stage.</div></div>
     </div>
     <div class="g2" style="gap:10px">
       <div class="fld"><div class="lbl">RFP / Solicitation Date</div><input type="date" id="opp-rfp-inp"></div>
@@ -20053,6 +20057,7 @@ window.openNewOppModal=function(){
   document.getElementById('opp-agency-inp').value='';
   document.getElementById('opp-vehicle-inp').value='';
   document.getElementById('opp-value-inp').value='';
+  var _pwInp=document.getElementById('opp-pwin-inp'); if(_pwInp)_pwInp.value='';
   document.getElementById('opp-stage-inp').value='engaged';
   document.getElementById('opp-rfp-inp').value='';
   document.getElementById('opp-award-inp').value='';
@@ -20069,13 +20074,25 @@ window.confirmNewOpp=async function(){
   var name=document.getElementById('opp-name-inp').value.trim();
   if(!name){toast('Name required');return;}
   var leadInp=document.getElementById('opp-lead-inp');
+  var stageVal=document.getElementById('opp-stage-inp').value;
+  // P13.369 — store value as a parsed NUMBER (not the raw "$2.5M" string) so
+  // every reader agrees: the _parseVal-based surfaces AND the raw Number()
+  // readers (Reckoning render) both see the same money instead of NaN -> $0.
+  var _rawVal=document.getElementById('opp-value-inp').value.trim();
+  var _numVal=(typeof _parseVal==='function')?_parseVal(_rawVal):(parseFloat(String(_rawVal).replace(/[^0-9.]/g,''))||0);
+  // P13.369 — capture a win-% (the modal had none, so new deals weighted $0).
+  // Blank -> sensible default by stage, matching the deal-values lane.
+  var _pwRaw=(document.getElementById('opp-pwin-inp')||{}).value;
+  var _pw=(_pwRaw!=null && String(_pwRaw).replace(/[^0-9.]/g,'')!=='')?Math.max(0,Math.min(100,parseFloat(String(_pwRaw).replace(/[^0-9.]/g,''))||0)):null;
+  if(_pw==null){ var _sl=String(stageVal).toLowerCase(); _pw=_sl.indexOf('negoti')>-1?60:(_sl.indexOf('propos')>-1?40:(_sl==='won'?100:(_sl==='lost'?0:25))); }
   var opp={
     id:'opp-'+Date.now(),
     name:name,
     agency:document.getElementById('opp-agency-inp').value.trim(),
     vehicle:document.getElementById('opp-vehicle-inp').value.trim(),
-    value:document.getElementById('opp-value-inp').value.trim(),
-    stage:document.getElementById('opp-stage-inp').value,
+    value:_numVal,
+    pwin:_pw,
+    stage:stageVal,
     rfpDate:document.getElementById('opp-rfp-inp').value,
     awardDate:document.getElementById('opp-award-inp').value,
     captureLead:leadInp?leadInp.value.trim():'',
@@ -20087,6 +20104,8 @@ window.confirmNewOpp=async function(){
   await saveOpp(opp);
   closeModal('new-opp-modal');
   toast('Opportunity created');
+  try{ if(typeof renderOppSidebar==='function') renderOppSidebar(); }catch(e){}
+  try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
   renderOppDetail(opp);
 };
 
@@ -21187,9 +21206,15 @@ window._openSalesLedgerModal = async function(){
 
 window._slRenderTotal = function(){
   var t = window._salesLedgerTotal();
+  // P13.369 — item-1 reconciliation made explicit: a sale linked to a pursuit is
+  // the SAME money as that won deal (the ledger is the cash detail of the won
+  // set, never summed on top). Showing the linked count keeps the operator from
+  // ever reading "booked" + "won" as additive.
+  var c = window._salesLedgerCache || {}, linked = 0;
+  for(var k in c){ if(c[k] && c[k].linkedOppId) linked++; }
   var tot = document.getElementById('sl-total'), sub = document.getElementById('sl-sub');
   if(tot) tot.textContent = _slMoney(t.total);
-  if(sub) sub.textContent = t.count + (t.count===1 ? ' invoice booked' : ' invoices booked');
+  if(sub) sub.textContent = t.count + (t.count===1 ? ' invoice booked' : ' invoices booked') + (linked ? ' · ' + linked + ' linked to a won pursuit (same money)' : '');
 };
 window._slRenderList = function(){
   var el = document.getElementById('sl-list'); if(!el) return;
@@ -21298,6 +21323,33 @@ window._slPersistDelete = async function(id){
   await window.fbSet(window.wsPath('salesLedger/'+id), null);
   return true;
 };
+// P13.369 (money reconciliation Part 2) — keep "won" and "booked" in sync.
+// When a sale books and matches a pursuit (linkedOppId), flip that pursuit to
+// won so the Reckoning/forecast "won" set and the Sales Ledger reconcile to the
+// SAME money — the ledger is the cash detail of the won set, never summed on
+// top (dedup is by linkedOppId). Non-destructive: only fills value when the
+// pursuit has none; never shrinks a known contract value. Idempotent.
+window._markOppWonFromSale = async function(oppId, amount){
+  try{
+    if(!oppId) return null;
+    var opps = window.opportunities || [];
+    var opp = null;
+    for(var i=0;i<opps.length;i++){ if(opps[i] && String(opps[i].id)===String(oppId)){ opp = opps[i]; break; } }
+    if(!opp) return null;
+    var changed = false;
+    if(String(opp.stage||'').toLowerCase()!=='won'){ opp.stage='won'; opp.stageEnteredAt=Date.now(); changed=true; }
+    var curVal = (typeof _parseVal==='function') ? _parseVal(opp.value!=null?opp.value:opp.contractValue) : Number(opp.value||0);
+    if((!curVal || curVal<=0) && Number(amount)>0){ opp.value=Number(amount); changed=true; }
+    if(!changed) return opp;
+    opp.updatedAt=new Date().toISOString();
+    if(typeof saveOpp==='function') await saveOpp(opp);
+    else if(typeof window.saveOpp==='function') await window.saveOpp(opp);
+    try{ if(typeof renderOppSidebar==='function') renderOppSidebar(); }catch(e){}
+    try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
+    try{ var rv=document.getElementById('reckoning-view'); if(rv && rv.style.display!=='none' && typeof window._renderReckoningView==='function') window._renderReckoningView(); }catch(e){}
+    return opp;
+  }catch(e){ if(typeof console!=='undefined') console.warn('[P13.369 markOppWon]', e&&e.message); return null; }
+};
 window._slBook = async function(){
   var get = function(id){ var e=document.getElementById(id); return e ? String(e.value||'').trim() : ''; };
   var customer = get('sl-c-customer');
@@ -21316,6 +21368,8 @@ window._slBook = async function(){
   window._slRenderList();
   try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
   try{ var rv=document.getElementById('reckoning-view'); if(rv && rv.style.display!=='none' && typeof window._renderReckoningView==='function') window._renderReckoningView(); }catch(e){}
+  // P13.369 — keep won + booked in sync: a matched sale flips its pursuit to won.
+  if(entry.linkedOppId){ try{ await window._markOppWonFromSale(entry.linkedOppId, amount); }catch(e){} }
   try{ await window._slPersist(id, entry); }
   catch(e){ if(typeof toast==='function') toast('Showing on screen; will sync when your connection allows.'); }
 };
@@ -34256,6 +34310,8 @@ window._atlasOnFilePick = function(ev){
         if(typeof window._slRenderTotal==="function") try{ window._slRenderTotal(); }catch(e){}
         if(typeof window._slRenderList==="function") try{ window._slRenderList(); }catch(e){}
         if(typeof window._renderCopForecast==="function") try{ window._renderCopForecast(); }catch(e){}
+        // P13.369 — keep won + booked in sync: a matched sale flips its pursuit to won.
+        if(entry.linkedOppId){ try{ await window._markOppWonFromSale(entry.linkedOppId, amt); }catch(e){} }
         sdToast("✓ Booked "+sdMoney(amt)+" - "+f.customer, 6000);
       } else if(type==="contact"){
         if(!f.name){ sdToast("Need at least a name."); return; }
@@ -72188,6 +72244,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.368"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.369"></script>
 </body>
 </html>
