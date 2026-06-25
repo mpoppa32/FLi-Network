@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.365</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.366</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9088,6 +9088,10 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
          get outranked; this always-on strip surfaces open commitments on the
          morning landing. Filled by _renderTodayCommitments; hides when empty. -->
     <div id="today-commitments-strip" style="margin:14px 32px 0;display:none"></div>
+    <!-- Atlas Readiness — compliance/capacity posture for BD calls, fed from the DDP
+         master sheet (workspaces/<ws>/atlasPosture). Read-only; filled by
+         _renderAtlasReadiness; hides when no posture data. -->
+    <div id="today-readiness-card" style="margin:14px 32px 0;display:none"></div>
     <!-- P13.202 DAILY ORIENTATION — top-of-Today action strip. Reads the
          current drone universe count + pending POC count + queue state to
          surface the next-best action on a single visible row. P13.214 —
@@ -12464,9 +12468,49 @@ function _scheduleTodayRender(){
     try { window._renderTodayCatches && window._renderTodayCatches(); } catch(e){}
     try { window._renderTodayCommitments && window._renderTodayCommitments(); } catch(e){}
     try { window._renderTodayOrientation && window._renderTodayOrientation(); } catch(e){}
+    try { window._renderAtlasReadiness && window._renderAtlasReadiness(); } catch(e){}
   }, 200);
 }
 window._scheduleTodayRender=_scheduleTodayRender;
+// Atlas Readiness card — compliance/capacity posture (from the DDP master sheet)
+// for BD calls. Read-only; reads workspaces/<ws>/atlasPosture via fbGet
+// (REST-resilient); hides when absent. Rendered with the morning Today cards.
+window._renderAtlasReadiness=async function(){
+  var card=document.getElementById('today-readiness-card');
+  if(!card) return;
+  try{
+    if(!window.currentWsId||!window.fbGet||!window.wsPath){ card.style.display='none'; return; }
+    var snap=await window.fbGet(window.wsPath('atlasPosture'));
+    var p=(snap&&snap.exists&&snap.exists())?snap.val():null;
+    if(!p){ card.style.display='none'; return; }
+    var esc=function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+    var pc={current:'#3a8a5c','in prep':'#d4823a',future:'#7d7669'};
+    var rows=(p.compliance||[]).map(function(c){
+      var col=pc[c.status]||'#7d7669';
+      return '<div style="display:flex;gap:10px;align-items:baseline;margin:5px 0">'+
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.08em;color:'+col+';min-width:46px">'+esc(c.phase)+'</span>'+
+        '<span style="font-size:13px;color:var(--t2);line-height:1.45">'+esc(c.text)+'</span></div>';
+    }).join('');
+    var cap=p.capacity||{};
+    var lbl='font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--paper-2);margin:14px 0 5px';
+    card.innerHTML=
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 16px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid #5fb3b8;border-radius:2px 2px 0 0">'+
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;letter-spacing:.18em;color:#5fb3b8;text-transform:uppercase">Atlas Readiness</span>'+
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:var(--paper-2);letter-spacing:.10em;text-transform:uppercase">'+esc(p.currentPhase||'')+'</span>'+
+      '</div>'+
+      '<div style="padding:6px 16px 14px;background:var(--s1);border:1px solid var(--b1);border-top:none;border-radius:0 0 2px 2px">'+
+        '<div style="'+lbl+';margin-top:8px">NDAA / DDP compliance</div>'+rows+
+        '<div style="'+lbl+'">Capacity</div>'+
+        '<div style="font-size:13px;color:var(--t2);line-height:1.5">'+esc(cap.target)+'</div>'+
+        '<div style="font-size:12px;color:var(--t3);line-height:1.5">'+esc(cap.autoLine)+'</div>'+
+        '<div style="font-size:12px;color:var(--t3);line-height:1.5">'+esc(cap.skus)+'</div>'+
+        '<div style="'+lbl+'">Key constraint</div>'+
+        '<div style="font-size:13px;color:#d49a6a;line-height:1.45">'+esc(p.constraint)+'</div>'+
+        '<div style="font-size:10px;color:var(--t3);margin-top:12px;font-style:italic">From '+esc(p.source)+' &middot; updated '+esc(p.updatedAt)+'</div>'+
+      '</div>';
+    card.style.display='block';
+  }catch(e){ try{card.style.display='none';}catch(_){} }
+};
 // ── Auto-link undo state ──────────────────────────────────────
 var _lastAutoLinks=[];      // link IDs created by last autoSyncLinks call
 var _undoLinkTimer=null;    // clears undo state after 12s
@@ -72147,6 +72191,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.365"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.366"></script>
 </body>
 </html>
