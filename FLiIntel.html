@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.370</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.371</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -20495,6 +20495,8 @@ window._renderCopForecast = function(){
           // P13.86 — Bulk-assign captureLead to every unassigned active opp (defaults to you).
           '<button onclick="event.stopPropagation();window._openValueBookModal&&window._openValueBookModal()" title="Put a dollar value and win % on your deals and watch the weighted forecast update live" style="background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:3px;color:var(--gold);padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">$ Value Book</button>' +
           '<button onclick="event.stopPropagation();window._openSalesLedgerModal&&window._openSalesLedgerModal()" title="Drop a sales invoice - Corsair reads it with AI and books the revenue into your actual-sales total" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.5);border-radius:3px;color:#22c55e;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">+ Record Sale</button>' +
+          // P13.371 — operator-facing Master Sheet sync (preview -> apply over the existing callable)
+          '<button onclick="event.stopPropagation();window._openMasterSyncModal&&window._openMasterSyncModal()" title="Pull your Atlas master sheet into the pipeline - preview the changes first, then apply" style="background:rgba(95,179,184,.12);border:1px solid rgba(95,179,184,.5);border-radius:3px;color:#5fb3b8;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">&#8635; Sync Sheet</button>' +
           ((unassignedCount > 0) ? '<button onclick="event.stopPropagation();window._bulkAssignUnassignedToMe&&window._bulkAssignUnassignedToMe()" title="Assign capture lead = you on every unassigned active pursuit" style="background:rgba(56,189,248,.10);border:1px solid rgba(56,189,248,.4);border-radius:3px;color:#38bdf8;padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">⇒ Assign ' + unassignedCount + ' to Me</button>' : '') +
           // P13.74 — Hide-unscored toggle
           '<button onclick="event.stopPropagation();window._toggleForecastHideUnscored&&window._toggleForecastHideUnscored()" title="' + (hideUnscored ? 'Currently hiding unscored opps. Click to show all.' : 'Currently showing all opps. Click to hide unscored from totals.') + '" style="background:' + (hideUnscored ? 'rgba(95,179,184,.18)' : 'transparent') + ';border:1px solid ' + (hideUnscored ? 'rgba(95,179,184,.55)' : 'var(--b2)') + ';border-radius:3px;color:' + (hideUnscored ? '#5fb3b8' : 'var(--t2)') + ';padding:5px 10px;font-family:IBM Plex Mono,monospace;font-size:var(--text-2xs);letter-spacing:.08em;cursor:pointer;text-transform:uppercase;font-weight:700">' + (hideUnscored ? '◉ HIDING UNSCORED' : '○ SHOW ALL') + '</button>' +
@@ -21422,6 +21424,94 @@ window._genBdOppsScan = function(){
   return { totalBdOrgs: orgs.length, alreadyHave: orgs.length - specs.length, specs: specs };
 };
 
+// P13.371 — operator-facing Master Sheet sync control. The sheet->opps sync ran
+// only as an invisible 6h cron + dev-only callables; this surfaces a visible
+// preview->apply path over the SAME server callable (triggerAtlasMasterSync,
+// dryRun-default). Preview reports customers-read / field-changes / unmatched
+// WITHOUT writing; Apply runs the real sync. Safe server-side: won deals stay
+// won and Corsair-owned fields are never overwritten by the mapper.
+window._openMasterSyncModal = async function(){
+  var modal = document.getElementById('master-sync-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'master-sync-modal';
+    modal.className = 'overlay';
+    modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(7,13,24,.85);z-index:9000;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto';
+    document.body.appendChild(modal);
+  }
+  modal.style.display = 'flex';
+  var esc = function(s){ return String(s==null?'':s).replace(/[<>&"']/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  var close = 'var m=document.getElementById(\'master-sync-modal\');if(m)m.style.display=\'none\'';
+  var shell = function(body){
+    modal.innerHTML = '<div class="modal" style="max-width:640px;width:100%;background:linear-gradient(180deg,rgba(10,16,32,.99),rgba(7,13,24,.99));border:1px solid rgba(212,130,58,.25);border-radius:3px;padding:0;font-family:IBM Plex Sans,sans-serif;max-height:88vh;display:flex;flex-direction:column">'+
+      '<div style="padding:18px 22px 14px;border-bottom:1px solid var(--b1);display:flex;align-items:flex-start;justify-content:space-between;gap:14px;background:linear-gradient(180deg,var(--s1),transparent)">'+
+        '<div><div style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--gold);letter-spacing:.14em;text-transform:uppercase;font-weight:700;margin-bottom:6px">Master Sheet Sync</div>'+
+        '<div style="font-size:12px;color:var(--t2);line-height:1.5">Reconciles your Atlas master sheet into the pipeline. <b>Preview</b> shows what would change with no writes; <b>Apply</b> runs it. Won deals stay won; your Corsair-only fields are never overwritten.</div></div>'+
+        '<button onclick="'+close+'" title="Close" style="background:transparent;border:0;color:var(--t3);font-size:24px;cursor:pointer;line-height:1;padding:0 4px;flex-shrink:0">&times;</button>'+
+      '</div>'+
+      '<div style="padding:16px 22px;overflow-y:auto">'+body+'</div>'+
+    '</div>';
+  };
+  var rows = function(rep){
+    var r = function(label,val,col){ return '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 12px;border:1px solid var(--b1);border-radius:3px;margin-bottom:6px;background:var(--s1)"><div style="font-size:13px;color:var(--t2)">'+label+'</div><div style="font-family:IBM Plex Mono,monospace;font-weight:700;color:'+(col||'var(--text)')+';font-size:14px">'+val+'</div></div>'; };
+    var unm = rep.unmatched;
+    var unmCount = Array.isArray(unm) ? unm.length : (Number(unm)||0);
+    var html = r('Customers read from sheet', (rep.customersRead!=null?rep.customersRead:'-'))
+      + r('Field changes', (rep.fieldChanges!=null?rep.fieldChanges:'-'), '#d4823a')
+      + r('Note refreshes', (rep.noteRefreshes!=null?rep.noteRefreshes:'-'))
+      + r('Won deals kept (not downgraded)', (rep.skippedWon!=null?rep.skippedWon:'-'), '#22c55e')
+      + r('Unmatched (no pursuit yet)', unmCount, unmCount? '#f0a560':'var(--t3)');
+    if(Array.isArray(unm) && unm.length){ html += '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;color:var(--t3);margin-top:4px;line-height:1.5">Unmatched: '+esc(unm.slice(0,12).join(', '))+(unm.length>12?(' +'+(unm.length-12)+' more'):'')+'</div>'; }
+    return html;
+  };
+  var callSync = async function(dryRun){
+    if(typeof window._httpsCallable!=='function' || !window._fbFunctions){ throw new Error('App not ready (functions unavailable). Reload and try again.'); }
+    var fn = window._httpsCallable(window._fbFunctions, 'triggerAtlasMasterSync');
+    var res = await fn({ dryRun: dryRun });
+    return (res && res.data) || {};
+  };
+  var showErr, runPreview, runApply;
+  showErr = function(e){
+    var msg = (e && e.message) || 'Sync failed';
+    var friendly = msg;
+    if(/unauthenticated/i.test(msg)) friendly = 'Sign in to Atlas first, then try again.';
+    else if(/grant|google/i.test(msg)) friendly = 'Connect your Google account (with Sheets access) in Corsair first, then try again.';
+    shell('<div style="padding:12px;border:1px solid var(--red);border-radius:3px;color:var(--red);font-size:12px;line-height:1.5">'+esc(friendly)+'</div>'+
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'+
+        '<button onclick="'+close+'" style="padding:8px 14px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Close</button>'+
+        '<button id="ms-retry" style="padding:8px 14px;background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Retry preview</button>'+
+      '</div>');
+    var rb=document.getElementById('ms-retry'); if(rb) rb.addEventListener('click', runPreview);
+  };
+  runApply = async function(){
+    shell('<div style="padding:14px;color:var(--t2);font-size:12px;display:flex;align-items:center;gap:8px;border:1px solid var(--b1);border-radius:3px"><span class="proc-dots"><span></span><span></span><span></span></span> Applying the sync ...</div>');
+    try{
+      var rep = await callSync(false);
+      shell('<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#22c55e;font-weight:700;margin-bottom:10px">&#10003; Synced from master sheet</div>'+
+        rows(rep)+
+        '<div style="display:flex;justify-content:flex-end;margin-top:14px"><button onclick="'+close+'" style="padding:8px 14px;background:var(--gold);border:1px solid var(--gold);border-radius:2px;color:#1a1206;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Done</button></div>');
+      try{ if(typeof renderOppSidebar==='function') renderOppSidebar(); }catch(e){}
+      try{ if(typeof window._renderCopForecast==='function') window._renderCopForecast(); }catch(e){}
+      if(typeof toast==='function') toast('Pipeline synced from master sheet');
+    }catch(e){ showErr(e); }
+  };
+  runPreview = async function(){
+    shell('<div style="padding:14px;color:var(--t2);font-size:12px;display:flex;align-items:center;gap:8px;border:1px solid var(--b1);border-radius:3px"><span class="proc-dots"><span></span><span></span><span></span></span> Reading your master sheet (preview, no changes) ...</div>');
+    try{
+      var rep = await callSync(true);
+      shell('<div style="font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);font-weight:700;margin-bottom:10px">Preview - nothing written yet</div>'+
+        rows(rep)+
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">'+
+          '<button onclick="'+close+'" style="padding:8px 14px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Close</button>'+
+          '<button id="ms-apply" style="padding:8px 14px;background:var(--green);border:1px solid var(--green);border-radius:2px;color:#06210f;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Apply these changes</button>'+
+        '</div>');
+      var ab=document.getElementById('ms-apply'); if(ab) ab.addEventListener('click', runApply);
+    }catch(e){ showErr(e); }
+  };
+  shell('<div style="font-size:13px;color:var(--t2);line-height:1.6;margin-bottom:14px">Run a <b>preview</b> first - it reads the sheet and shows what would change, with no writes. Then you can apply it.</div>'+
+    '<div style="display:flex;justify-content:flex-end"><button id="ms-start" style="padding:9px 16px;background:rgba(212,130,58,.18);border:1px solid var(--gold);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:12px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.08em">Run preview</button></div>');
+  var sb=document.getElementById('ms-start'); if(sb) sb.addEventListener('click', runPreview);
+};
 window._openGenBdOppsModal = function(){
   var scan = window._genBdOppsScan();
   var modal = document.getElementById('gen-bd-opps-modal');
@@ -72253,6 +72343,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.370"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.371"></script>
 </body>
 </html>
