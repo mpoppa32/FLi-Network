@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.366</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.367</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -14610,7 +14610,7 @@ function connectWorkspace(){
     companyByName.clear();
     nodes.forEach(function(n){if(n.type==='company')companyByName.set(n.name.toLowerCase(),n);});
     visibleIds=new Set(nodes.map(function(n){return n.id;}));
-    renderNetwork();updateFilterTags();updateOrgLegend();updateNodeCount();
+    renderNetwork();if(activeView==='network'){updateFilterTags();updateOrgLegend();}updateNodeCount();/* P13.367 load-perf: filter-tags + org-legend are graph-chrome only; building them over all orgs on EVERY nodes event (incl. the 1798-node initial load) blocked the load off-view. Gated to the network view; switchView('network') rebuilds them on entry. */
     document.getElementById('net-empty').style.display=nodes.length?'none':'block';
     // P13.60 — re-render Inspector view when nodes update. Same pattern as
     // the P13.31 race fix in the opps listener: a user who switches to
@@ -14618,7 +14618,7 @@ function connectWorkspace(){
     // load) sees "No entities yet" with 0/0/0 counts even though Atlas has
     // 81 contacts. The listener fires after data lands but never tells
     // Inspector to redraw — fixed here with a typeof guard + try/catch.
-    if(typeof window._renderInspectorView === 'function') try { window._renderInspectorView(); } catch(e){ console.error('[P13.122 listener _renderInspectorView]', e); }
+    if(activeView==='inspector' && typeof window._renderInspectorView === 'function') try { window._renderInspectorView(); } catch(e){ console.error('[P13.122 listener _renderInspectorView]', e); } /* P13.367 load-perf: _renderInspectorView copies+sorts ALL ~1798 nodes on every nodes event; gated to the inspector view (re-rendered on entry at switchView ~19946). */
     // P9.6: ripple on newly-added nodes
     try {
       var addedNodes = window._detectRippleDeltas('nodes', incoming);
@@ -19928,7 +19928,7 @@ function switchView(v){
       var _ne = document.getElementById('net-empty');
       console.log('[Corsair graph] enter · nodes=' + ((window.nodes||[]).length) + ' links=' + ((window.links||[]).length) + ' visibleIds=' + (typeof visibleIds==='object'?visibleIds.size:'?') + ' sim=' + (typeof sim!=='undefined'&&sim?'ready':'null') + ' svg=' + (typeof svgEl!=='undefined'&&svgEl?'ready':'null') + ' nvDisplay=' + (_nv?_nv.style.display:'?') + ' netEmptyDisplay=' + (_ne?_ne.style.display:'?') + ' ws=' + (window.currentWsId||'?'));
     } catch(e){}
-    if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}renderNetwork();/* P13.355 — hide the net-empty overlay on graph ENTRY: its only other toggle (~line 14564) lives in the SDK nodes onValue listener, which never fires on the REST-backup (wedge) path, so "Entity Graph is empty" lingered over a fully-populated graph */var _neT=document.getElementById('net-empty');if(_neT)_neT.style.display=((window.nodes||[]).length)?'none':'block';/* P13.356 — also populate the Network-Intelligence stats panel (ni-total/t1/active/cooling) on entry: _renderNetIntelPanel computes from nodes+meetings (no filter-mode dependency, guards !nodes.length) but was only ever called from the filter-button handler, so the stats sat at "–" until a filter click — same SDK-listener gap as the overlay */try{_renderNetIntelPanel();}catch(e){}/* P13.323 — render the graph on entry; the data listeners no longer render it off-view, so this is where the Theater first paints */if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
+    if(window.innerWidth<=768){renderMobileNetworkList();updateDedupBadge();return;}renderNetwork();updateFilterTags();updateOrgLegend();/* P13.367 — rebuild graph chrome on entry; the data listeners no longer build it off-view *//* P13.355 — hide the net-empty overlay on graph ENTRY: its only other toggle (~line 14564) lives in the SDK nodes onValue listener, which never fires on the REST-backup (wedge) path, so "Entity Graph is empty" lingered over a fully-populated graph */var _neT=document.getElementById('net-empty');if(_neT)_neT.style.display=((window.nodes||[]).length)?'none':'block';/* P13.356 — also populate the Network-Intelligence stats panel (ni-total/t1/active/cooling) on entry: _renderNetIntelPanel computes from nodes+meetings (no filter-mode dependency, guards !nodes.length) but was only ever called from the filter-button handler, so the stats sat at "–" until a filter click — same SDK-listener gap as the overlay */try{_renderNetIntelPanel();}catch(e){}/* P13.323 — render the graph on entry; the data listeners no longer render it off-view, so this is where the Theater first paints */if(sim&&nodes.length)sim.alpha(0.04).restart();resizeCanvas();updateDedupBadge();setTimeout(function(){if(nodes.length)fitGraph();renderCoolingStrip();},200);
     // Resume 3D engine if user previously had it active
     try{ if(localStorage.getItem('corsair-graph-engine')==='3d' && window.DiscoveryEngine3D){ var nv=document.getElementById('network-view'); if(nv) window.DiscoveryEngine3D.init(nv); setTimeout(function(){ if(window.nodes&&window.nodes.length) window.DiscoveryEngine3D.loadGraph(window.nodes, window.links||[]); }, 80); var hud=document.getElementById('de3d-fps-hud'); if(hud) hud.style.display='flex'; var b3=document.getElementById('de3d-toggle-3d'); var b2=document.getElementById('de3d-toggle-2d'); var sc=document.getElementById('net-canvas'); if(sc) sc.style.display='none'; if(b3) b3.classList.add('active'); if(b2) b2.classList.remove('active');
       // P13.61 — explicit fit-to-cluster after physics has time to settle on
@@ -72191,6 +72191,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.366"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.367"></script>
 </body>
 </html>
