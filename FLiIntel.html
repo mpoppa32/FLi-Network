@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.367</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.368</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -20190,7 +20190,7 @@ window._drillFromForecast = function(target){
 window._renderCopForecast = function(){
   var panel = document.getElementById('cop-forecast-panel');
   if (!panel) return;
-  var allOpenOpps = (window.opportunities || []).filter(function(o){
+  var allOpenOpps = window._stdScopeOpps(window.opportunities || []).filter(function(o){
     if (!o) return false;
     var s = String(o.stage||'').toLowerCase();
     return s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
@@ -20209,8 +20209,8 @@ window._renderCopForecast = function(){
   var totalOpenCount = allOpenOpps.length;
   var unscoredFiltered = 0;
   var opps = hideUnscored ? allOpenOpps.filter(function(o){
-    var v = Number(o.value || o.contractValue || 0);
-    var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
+    var v = _parseVal(o.value || o.contractValue);
+    var p = window._pwinFrac(o);
     var scored = (v > 0 || p > 0);
     if (!scored) unscoredFiltered++;
     return scored;
@@ -20237,9 +20237,8 @@ window._renderCopForecast = function(){
   var autoScoredCount = 0;
   var tierA = 0, tierB = 0, tierC = 0;
   opps.forEach(function(o){
-    var v = Number(o.value || o.contractValue || 0);
-    var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
-    if (p > 1) p = p / 100;
+    var v = _parseVal(o.value || o.contractValue);
+    var p = window._pwinFrac(o);
     totalPipeline += v;
     weightedPipeline += v * p;
     if (v > 0 || p > 0) scoredCount++;
@@ -20268,9 +20267,8 @@ window._renderCopForecast = function(){
   var noDateBucket = { pipe:0, weighted:0, count:0 };
   opps.forEach(function(o){
     var closeStr = o.rfpDate || o.due || o.nextActionDate || o.next_action_date || o.closeDate || '';
-    var v = Number(o.value || o.contractValue || 0);
-    var p = Number(o.pwin != null ? o.pwin : (o.winProb || 0));
-    if (p > 1) p = p / 100;
+    var v = _parseVal(o.value || o.contractValue);
+    var p = window._pwinFrac(o);
     if (!closeStr){
       noDateBucket.pipe += v;
       noDateBucket.weighted += v * p;
@@ -20316,7 +20314,7 @@ window._renderCopForecast = function(){
   opps.forEach(function(o){
     if (byStage[o.stage]){
       byStage[o.stage].count++;
-      byStage[o.stage].value += Number(o.value||0);
+      byStage[o.stage].value += _parseVal(o.value);
     }
   });
 
@@ -22297,12 +22295,9 @@ window._copShowAll = window._copShowAll || false;
 // scopes the sidebar too.
 window._copOppInScope = function(o){
   if (!o) return false;
-  var st = String(o.stage||'').toLowerCase();
-  if (st && st !== 'awareness') return true;
-  if (o.mondayPriority || o.bdTarget) return true;
-  var ix = window.CorsairIndex || {};
-  var m = (ix.meetingsByOppId && ix.meetingsByOppId.get) ? (ix.meetingsByOppId.get(String(o.id))||[]) : [];
-  return m.length > 0;
+  // P13.367 — reconcile Pipeline scope with the headline "worked book" (_oppIsWorked)
+  // so the sidebar's weighted matches Today / Reckoning (was a subtly different test).
+  return (typeof window._oppIsWorked === 'function') ? window._oppIsWorked(o) : true;
 };
 window._toggleCopScope = function(){ window._copShowAll = !window._copShowAll; if (typeof renderOppSidebar==='function') renderOppSidebar(); else if (window._renderKanbanBoard) window._renderKanbanBoard(); };
 // P13.332 — "your book" scope for the headline standing/money surfaces (Where Atlas
@@ -22730,9 +22725,9 @@ function _renderOppList(q){
     if (o.stage === 'no-bid' || o.stage === 'no_bid') { return; }   // P13.319 — exclude no-bid from active pipeline (reconcile with Reckoning + Trends; numbers-reconcile)
     activeCount++;
     totalValue += v;
-    var p = pwOf(o);
-    weightedValue += v * (p/100);
-    pwSum += p; pwCount++;
+    var pf = window._pwinFrac(o);  /* P13.367 money uses operator pwin (computeWinProb stays a display-only per-card estimate) so the sidebar weighted reconciles with Today/Reckoning */
+    weightedValue += v * pf;
+    pwSum += pf*100; pwCount++;
   });
   var avgPW = pwCount > 0 ? Math.round(pwSum/pwCount) : 0;
   var winRate = (wonCount + lostCount) > 0 ? Math.round((wonCount/(wonCount+lostCount))*100) : null;
@@ -35786,7 +35781,7 @@ window._renderTodayNarrative = function(){
   var agencies = new Set();
   var stageCounts = {};
   ops.forEach(function(o){
-    var v = Number(o.value || o.contractValue || 0);
+    var v = _parseVal(o.value || o.contractValue);
     var p = (typeof window._pwinFrac === 'function') ? window._pwinFrac(o) : Number(o.pwin || 0);
     pipeline += v;
     weighted += v * p;
@@ -38866,10 +38861,12 @@ function _fmtVal(v) {
 }
 
 function _parseVal(str) {
-  if (!str) return 0;
+  if (str == null || str === '') return 0;
+  if (typeof str === 'number') return isFinite(str) ? str : 0;
   var s = String(str).replace(/[$,\s]/g, '').toLowerCase();
-  if (s.endsWith('m')) return parseFloat(s) * 1000000;
-  if (s.endsWith('k')) return parseFloat(s) * 1000;
+  if (s.endsWith('b')) return (parseFloat(s) || 0) * 1000000000;
+  if (s.endsWith('m')) return (parseFloat(s) || 0) * 1000000;
+  if (s.endsWith('k')) return (parseFloat(s) || 0) * 1000;
   return parseFloat(s) || 0;
 }
 
@@ -49869,7 +49866,7 @@ window._atlasComputeReckoningMetrics = function(){
   var opps = window._stdScopeOpps(window.opportunities || []);
   var active=0, weighted=0, totalPipe=0, wonCount=0, wonVal=0, lostNoBid=0, byCust={}, byAgency={};
   opps.forEach(function(o){
-    if(!o)return; var s=String(o.stage||'').toLowerCase(); var v=Number(o.value||o.contractValue||0);
+    if(!o)return; var s=String(o.stage||'').toLowerCase(); var v=_parseVal(o.value||o.contractValue);
     if(s==='won'){ wonCount++; wonVal+=v; return; }
     if(s==='lost'||s==='no-bid'||s==='no_bid'){ lostNoBid++; return; }
     if(!s)return;
@@ -72191,6 +72188,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.367"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.368"></script>
 </body>
 </html>
