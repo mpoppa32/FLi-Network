@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.371</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.374</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9092,6 +9092,12 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
          master sheet (workspaces/<ws>/atlasPosture). Read-only; filled by
          _renderAtlasReadiness; hides when no posture data. -->
     <div id="today-readiness-card" style="margin:14px 32px 0;display:none"></div>
+    <!-- P13.374 Pipeline health — one-line status of the operator's data pipelines
+         (sheet sync + Gmail/Calendar capture). Reads sources/atlas_master_sync +
+         captureState/*; turns amber/red the moment one goes stale or errors so a
+         silent outage (dead cron, billing lapse, broken grant) is visible without
+         hunting. Filled by _renderPipelinesHealth; hides until there's data. -->
+    <div id="today-pipelines-health" style="margin:14px 32px 0;display:none"></div>
     <!-- P13.202 DAILY ORIENTATION — top-of-Today action strip. Reads the
          current drone universe count + pending POC count + queue state to
          surface the next-best action on a single visible row. P13.214 —
@@ -12473,12 +12479,50 @@ function _scheduleTodayRender(){
     try { window._renderTodayCommitments && window._renderTodayCommitments(); } catch(e){}
     try { window._renderTodayOrientation && window._renderTodayOrientation(); } catch(e){}
     try { window._renderAtlasReadiness && window._renderAtlasReadiness(); } catch(e){}
+    try { window._renderPipelinesHealth && window._renderPipelinesHealth(); } catch(e){}
   }, 200);
 }
 window._scheduleTodayRender=_scheduleTodayRender;
 // Atlas Readiness card — compliance/capacity posture (from the DDP master sheet)
 // for BD calls. Read-only; reads workspaces/<ws>/atlasPosture via fbGet
 // (REST-resilient); hides when absent. Rendered with the morning Today cards.
+// P13.374 — operator-visible pipeline health. The sheet sync + Gmail/Calendar
+// capture used to fail silently (logs only). This one-line Today strip reads each
+// pipeline's last-run + last-error and turns amber/red the moment one goes stale
+// or errors — so an outage (dead cron, billing lapse, broken grant) shows up
+// instead of running invisibly for days (as the truncated-uid cron bug did).
+window._renderPipelinesHealth=async function(){
+  var el=document.getElementById('today-pipelines-health'); if(!el) return;
+  if(!window.currentWsId || typeof window.fbGet!=='function'){ el.style.display='none'; return; }
+  var esc=function(s){ return String(s==null?'':s).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); };
+  var ws=window.currentWsId;
+  var read=async function(p){ try{ var s=await window.fbGet('workspaces/'+ws+'/'+p); return s && (typeof s.val==='function'?s.val():s); }catch(e){ return null; } };
+  var toMs=function(v){ if(v==null)return null; if(typeof v==='number')return v; var t=Date.parse(v); return isFinite(t)?t:null; };
+  var classify=function(label,lastMs,lastError,cadenceMin){
+    if(lastError && lastError.category) return {label:label,txt:'ERROR',color:'var(--red)',detail:(lastError.message||lastError.category)};
+    if(!lastMs) return {label:label,txt:'no run yet',color:'var(--t3)'};
+    var ageMin=(Date.now()-lastMs)/60000;
+    var age=ageMin<60?Math.max(0,Math.floor(ageMin))+'m':(ageMin<1440?Math.floor(ageMin/60)+'h':Math.floor(ageMin/1440)+'d');
+    if(ageMin<=cadenceMin*1.5) return {label:label,txt:'OK · '+age,color:'var(--green)'};
+    if(ageMin<=cadenceMin*3) return {label:label,txt:'late · '+age,color:'#f0a560'};
+    return {label:label,txt:'STALE · '+age,color:'var(--red)'};
+  };
+  var ss=await read('sources/atlas_master_sync');
+  var gm=await read('captureState/gmail');
+  var cal=await read('captureState/calendar');
+  var items=[
+    classify('Sheet sync', ss && toMs(ss.lastSync), ss && ss.lastError, 360),
+    classify('Email capture', gm && toMs(gm.lastSyncAt), null, 120),
+    classify('Calendar', cal && toMs(cal.lastSyncAt), null, 120)
+  ];
+  if(!items.some(function(it){ return it.txt!=='no run yet'; })){ el.style.display='none'; return; }
+  var worst=items.some(function(it){return it.color==='var(--red)';})?'var(--red)':(items.some(function(it){return it.color==='#f0a560';})?'#f0a560':'var(--green)');
+  el.innerHTML='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 14px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid '+worst+';border-radius:4px;font-family:IBM Plex Mono,monospace;font-size:11px">'
+    +'<span style="color:var(--t3);letter-spacing:.12em;text-transform:uppercase;font-weight:700">Pipelines</span>'
+    +items.map(function(it){ return '<span style="color:var(--t2)">'+esc(it.label)+' <b style="color:'+it.color+'">'+esc(it.txt)+'</b>'+(it.detail?' <span style="color:var(--red);font-size:10px">'+esc(String(it.detail).slice(0,50))+'</span>':'')+'</span>'; }).join('<span style="color:var(--b2)">|</span>')
+    +'</div>';
+  el.style.display='block';
+};
 window._renderAtlasReadiness=async function(){
   var card=document.getElementById('today-readiness-card');
   if(!card) return;
@@ -72343,6 +72387,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.371"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.374"></script>
 </body>
 </html>
