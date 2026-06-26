@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.374</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.376</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -59952,17 +59952,31 @@ window.showAuditLog=function(){openModal('audit-log-modal');window.renderAuditLo
     var endOfDay=startOfDay.getTime()+86400000-1;
     mtgs.forEach(function(m){
       if(!m||!m.meta)return;
+      // P13.376 — derive the meeting instant robustly. meta.ts is the
+      // authoritative start: a numeric ms epoch on calendar-sourced meetings,
+      // but an ISO *string* on older email-sourced ones. Parse the string form
+      // too, then fall back to m.ts. We deliberately do NOT fall back to a
+      // date-only meta.date here: a date with no clock time can't drive a
+      // minute-accurate "meeting soon" alert, and parsing "YYYY-MM-DD" as UTC
+      // midnight was a source of wrong-time alerts.
       var ts=null;
       if(typeof m.meta.ts==='number')ts=m.meta.ts;
-      else if(m.meta.date){var p=Date.parse(String(m.meta.date));if(!isNaN(p))ts=p;}
+      else if(typeof m.meta.ts==='string'){var ps=Date.parse(m.meta.ts);if(!isNaN(ps))ts=ps;}
       else if(typeof m.ts==='number')ts=m.ts;
+      else if(typeof m.ts==='string'){var pt=Date.parse(m.ts);if(!isNaN(pt))ts=pt;}
       if(ts==null||ts<startOfDay.getTime()||ts>endOfDay)return;
       // Only alert if within next 60 minutes OR already started but not past
       var diff=ts-nowMs;
       if(diff>60*60*1000||diff<-30*60*1000)return;
+      // Show the meeting's REAL local time (browser timezone), derived from the
+      // timestamp — not the stored meta.date string, which is computed in UTC
+      // and rolls an evening Pacific meeting onto the next day.
+      var whenStr;
+      try{whenStr=new Date(ts).toLocaleString([],{weekday:'short',hour:'numeric',minute:'2-digit'});}
+      catch(e){whenStr=new Date(ts).toLocaleString();}
       _fire(
         'Meeting soon: '+((m.meta.title||'Untitled').slice(0,80)),
-        (m.meta.att?'With '+String(m.meta.att).slice(0,80):'')+(m.meta.date?' · '+m.meta.date:''),
+        (m.meta.att?'With '+String(m.meta.att).slice(0,80)+' · ':'')+whenStr,
         function(){if(window.switchView)window.switchView('intel');if(window.goIntelById)window.goIntelById(m.id);},
         'mtg-'+m.id+'-'+today
       );
@@ -72387,6 +72401,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.374"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.376"></script>
 </body>
 </html>
