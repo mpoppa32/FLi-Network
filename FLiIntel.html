@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.376</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.377</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -12901,6 +12901,22 @@ function updateApiKeyUI(){
 // ── ARRAY REBUILDERS (keep sorted arrays in sync with Maps) ──
 function rebuildMeetingsArray(){
   meetings=Array.from(meetingMap.values()).sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});if(typeof _updateTicker!=="undefined")setTimeout(_updateTicker,80);
+  // P13.377 — normalize each meeting's display date to the LOCAL calendar date
+  // of its real start instant (meta.ts, or top-level ts), so every downstream
+  // view (list, cards, "days ago") reads the right day. The stored meta.date is
+  // computed in UTC and rolls an evening Pacific meeting onto the next day.
+  // In-memory only — this does NOT write back to RTDB.
+  meetings.forEach(function(m){
+    if(!m||!m.meta)return;
+    var _mts = (typeof m.meta.ts==='number') ? m.meta.ts
+             : (typeof m.meta.ts==='string') ? Date.parse(m.meta.ts)
+             : (typeof m.ts==='number') ? m.ts
+             : (typeof m.ts==='string') ? Date.parse(m.ts) : NaN;
+    if(_mts && !isNaN(_mts)){
+      var _d=new Date(_mts);
+      m.meta.date = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+    }
+  });
   // Mirror to window so cross-module consumers (DiscoveryEngine3D Phase 3+,
   // future debugging, future API) see the latest array reference. Module
   // top-level `var` does not attach to window; explicit assignment required
@@ -72401,6 +72417,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.376"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.377"></script>
 </body>
 </html>
