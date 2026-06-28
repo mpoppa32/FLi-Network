@@ -23,6 +23,22 @@ const CONNECTED_PAGE_HTML = `<!doctype html>
 events will appear in the Auto-Capture review queue on the next sync.</p>
 </body></html>`;
 
+// P13.372 — shown when the operator consents with the WRONG Google account.
+const WRONG_ACCOUNT_HTML = (attempted: string, expected: string): string => `<!doctype html>
+<html><head><meta charset="utf-8"><title>Corsair — Wrong account</title>
+<style>
+  body{background:#070d18;color:#f4ede0;font-family:'IBM Plex Sans',sans-serif;
+       margin:0;padding:64px 24px;text-align:center}
+  h1{font-family:Antonio,sans-serif;color:#ef4444;font-size:28px;margin:0 0 12px}
+  p{color:#b5ad9f;font-size:14px;line-height:1.6;max-width:520px;margin:0 auto 10px}
+  b{color:#f4ede0}
+</style></head>
+<body>
+<h1>Wrong Google account — nothing changed</h1>
+<p>You signed in as <b>${attempted}</b>, but Corsair capture is set to <b>${expected}</b>. Your existing connection was left untouched.</p>
+<p>Close this tab, go back to <b>Inbox &rarr; Setup &rarr; Connect Google</b>, and choose <b>${expected}</b> (use &ldquo;Use another account&rdquo; if Google skips the chooser).</p>
+</body></html>`;
+
 export const captureOAuthCallback = onRequest(
   { region: "us-central1", secrets: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"] },
   async (req, res): Promise<void> => {
@@ -74,6 +90,7 @@ export const captureOAuthCallback = onRequest(
       };
       let connectedEmail = String(existing.connectedEmail || "");
       let connectedName = String(existing.connectedName || "");
+      let consentedEmail = "";
       try {
         const userinfoResp = await fetch(
           "https://www.googleapis.com/oauth2/v2/userinfo",
@@ -83,6 +100,7 @@ export const captureOAuthCallback = onRequest(
           const ui = (await userinfoResp.json()) as { email?: string; name?: string };
           const newEmail = String(ui.email || "").toLowerCase().trim();
           const newName = String(ui.name || "").trim();
+          consentedEmail = newEmail;
           if (newEmail) connectedEmail = newEmail;
           if (newName) connectedName = newName;
         } else {
@@ -91,6 +109,24 @@ export const captureOAuthCallback = onRequest(
       } catch (uiErr) {
         const e = uiErr as Error;
         log.warn("userinfo_fetch_failed", { uid, message: e.message });
+      }
+      // P13.372 — wrong-account guard. Capture is pinned to ONE account. If the
+      // operator consents with a DIFFERENT Google account, REFUSE and do NOT
+      // overwrite the existing grant — this is exactly what silently hijacked
+      // capture from mike@atlasmotion.com to mpoppa32 when Google was reconnected
+      // for the sheet sync (2026-06-24); the two systems share one grant.
+      const EXPECTED_CAPTURE_EMAIL = "mike@atlasmotion.com";
+      if (consentedEmail && consentedEmail !== EXPECTED_CAPTURE_EMAIL) {
+        log.warn("capture_wrong_account_refused", {
+          uid,
+          attempted: consentedEmail,
+          expected: EXPECTED_CAPTURE_EMAIL,
+        });
+        res
+          .status(403)
+          .set("Content-Type", "text/html")
+          .send(WRONG_ACCOUNT_HTML(consentedEmail, EXPECTED_CAPTURE_EMAIL));
+        return;
       }
       await db.ref(`users/${uid}/captureAuth/google`).set({
         accessToken: tokens.access_token,

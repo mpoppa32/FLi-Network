@@ -563,6 +563,33 @@ async function loadWorkspaceContext(workspaceId: string): Promise<BriefScoringCo
   };
 }
 
+/** Decode the small set of HTML entities that scraped source text (think-tank
+ *  RSS, DoD News, etc.) carries, so titles/subtitles read as clean Unicode in
+ *  the Brief view AND the email digest. Handles numeric (&#8212; / &#x2014;) +
+ *  the common named set. Deliberately leaves '<' / '>' encoded (codepoints
+ *  60/62 skipped, no &lt;/&gt; rules) so decoded text can never inject markup
+ *  into an unescaped innerHTML render. &amp; is decoded last. */
+export function decodeHtmlEntities(input: string): string {
+  if (!input) return input;
+  const codept = (c: number, m: string): string =>
+    Number.isFinite(c) && c !== 60 && c !== 62 ? String.fromCodePoint(c) : m;
+  return input
+    .replace(/&#(\d+);/g, (m, n) => codept(parseInt(n, 10), m))
+    .replace(/&#x([0-9a-fA-F]+);/g, (m, n) => codept(parseInt(n, 16), m))
+    .replace(/&mdash;/g, "—")
+    .replace(/&ndash;/g, "–")
+    .replace(/&lsquo;/g, "‘")
+    .replace(/&rsquo;/g, "’")
+    .replace(/&ldquo;/g, "“")
+    .replace(/&rdquo;/g, "”")
+    .replace(/&hellip;/g, "…")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
 function signalToItem(signal: Signal, category: BriefItem["category"]): BriefItem {
   const attrs = signal.attrs as Record<string, unknown>;
   const sourceMap: Record<string, string> = {
@@ -574,7 +601,11 @@ function signalToItem(signal: Signal, category: BriefItem["category"]): BriefIte
     dod_news: "DoD News",
     faca: "FACA",
   };
-  const sourceName = sourceMap[signal.source.system] ?? signal.source.system;
+  // think_tank signals carry the publication name in attrs.tankName
+  // ("War on the Rocks", "Defense One"); prefer it over the raw system slug.
+  const sourceName =
+    sourceMap[signal.source.system] ??
+    (typeof attrs.tankName === "string" && attrs.tankName ? (attrs.tankName as string) : signal.source.system);
   let title = "Signal";
   let subtitle = "";
   let link: string | null = signal.source.url ?? null;
@@ -591,8 +622,12 @@ function signalToItem(signal: Signal, category: BriefItem["category"]): BriefIte
     title = (attrs.title as string) || "Committee Meeting";
     subtitle = (attrs.location as string) || "FACA committee";
   } else {
-    title = signal.type.replace(/_/g, " ");
-    subtitle = String((attrs.summary as string) || (attrs.title as string) || "");
+    // Generic branch (think_tank analysis_publication, service_news, etc.):
+    // the real headline lives in attrs.title/headline — use it rather than the
+    // signal type slug ("analysis publication"). Fall back to the slug only
+    // when no real title exists.
+    title = String((attrs.title as string) || (attrs.headline as string) || signal.type.replace(/_/g, " "));
+    subtitle = String((attrs.summary as string) || (attrs.subtitle as string) || "");
   }
   // P13.170 — confidence / dataAsOf / parseStatus surfaced from attrs +
   // source. Plumbing data already computed by parsers but previously
@@ -607,8 +642,8 @@ function signalToItem(signal: Signal, category: BriefItem["category"]): BriefIte
     kind: "signal",
     category,
     occurredAt: signal.occurredAt,
-    title,
-    subtitle,
+    title: decodeHtmlEntities(title),
+    subtitle: decodeHtmlEntities(subtitle),
     source: sourceName,
     link,
     entityId: signal.id,

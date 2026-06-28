@@ -13,20 +13,14 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import { createLogger } from "../framework/logger";
-import {
-  SENDGRID_API_KEY,
-  BRIEF_FROM_EMAIL,
-  composeBrief,
-  sendOne,
-  BriefSubscription,
-} from "../jobs/dailyBriefDigest";
+import { composeBrief, sendOne, BriefSubscription } from "../jobs/dailyBriefDigest";
 
 export const triggerBriefDigestTest = onCall(
   {
     region: "us-central1",
     memory: "512MiB",
     timeoutSeconds: 60,
-    secrets: [SENDGRID_API_KEY, BRIEF_FROM_EMAIL],
+    secrets: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
   },
   async (request) => {
     const log = createLogger({ source: "http_triggerBriefDigestTest" });
@@ -36,15 +30,6 @@ export const triggerBriefDigestTest = onCall(
     const workspaceId = String(request.data?.workspaceId ?? "");
     if (!workspaceId) {
       throw new HttpsError("invalid-argument", "workspaceId is required.");
-    }
-
-    const apiKey = SENDGRID_API_KEY.value();
-    const fromEmail = BRIEF_FROM_EMAIL.value();
-    if (!apiKey || !fromEmail) {
-      throw new HttpsError(
-        "failed-precondition",
-        "SENDGRID_API_KEY and BRIEF_FROM_EMAIL secrets must be set. Run: firebase functions:secrets:set SENDGRID_API_KEY"
-      );
     }
 
     const db = admin.database();
@@ -87,13 +72,14 @@ export const triggerBriefDigestTest = onCall(
       incRisks: true,
       incPipeline: true,
       incContacts: true,
+      incIntel: true,
     };
 
     log.info("test_send_request", { workspaceId, uid: request.auth.uid, to: toEmail });
 
     try {
       const composed = await composeBrief(workspaceId, wsName, sub, db);
-      const ok = await sendOne(sub, composed, fromEmail, apiKey, log);
+      const ok = await sendOne(sub, composed, log);
       if (!ok) {
         throw new HttpsError("internal", "SendGrid send failed — check function logs.");
       }

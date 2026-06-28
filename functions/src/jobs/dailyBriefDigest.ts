@@ -32,14 +32,16 @@
 // COST: ~1¢/day per subscriber on SendGrid paid tier; free up to 100/day.
 
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import { createLogger, generateJobId } from "../framework/logger";
+import type { BriefOutput, BriefItem } from "./briefSynthesisCommon";
+import { sendViaGmail } from "../capture/gmailSend";
 
-// Lazy-load SendGrid only when send is needed (keeps cold start fast for
-// the no-op case when nothing's due to send).
-export const SENDGRID_API_KEY = defineSecret("SENDGRID_API_KEY");
-export const BRIEF_FROM_EMAIL = defineSecret("BRIEF_FROM_EMAIL");
+// P13.379 — the morning brief is emailed from the operator's OWN Gmail
+// (capture/gmailSend → gmail.users.messages.send on the existing
+// users/{uid}/captureAuth/google grant), NOT SendGrid (whose key was dead/401).
+// The Google OAuth env (GOOGLE_CLIENT_ID/_SECRET/_REDIRECT_URI) is declared in
+// each send function's `secrets` array so refreshAccessToken can mint a token.
 
 export interface BriefSubscription {
   email: string;
@@ -51,6 +53,10 @@ export interface BriefSubscription {
   incPipeline?: boolean;
   incContacts?: boolean;
   incSbir?: boolean;
+  /** P13.375 — include the synthesized OSINT "Overnight Intelligence"
+   *  section (signals/awards/opportunities from derivedViews/dailyBrief/
+   *  latest). Defaults on when unset, like the other inc* flags. */
+  incIntel?: boolean;
   subscribedAt?: string;
   lastSent?: string;
 }
@@ -85,11 +91,12 @@ export async function composeBrief(
   db: admin.database.Database
 ): Promise<{ subject: string; text: string; html: string }> {
   const wsRef = db.ref(`workspaces/${workspaceId}`);
-  const [oppsSnap, meetingsSnap, commitmentsSnap, calRecordsSnap] = await Promise.all([
+  const [oppsSnap, meetingsSnap, commitmentsSnap, calRecordsSnap, briefSnap] = await Promise.all([
     wsRef.child("opportunities").once("value"),
     wsRef.child("meetings").once("value"),
     wsRef.child("commitments").once("value"),
     wsRef.child("calibration").once("value"),
+    wsRef.child("derivedViews/dailyBrief/latest").once("value"),
   ]);
 
   const opps = oppsSnap.val() ? Object.values(oppsSnap.val() as Record<string, any>) : [];
@@ -103,6 +110,64 @@ export async function composeBrief(
   lines.push(`CORSAIR DAILY BRIEF — ${workspaceName}`);
   lines.push(`Generated: ${new Date().toUTCString()}`);
   lines.push("");
+
+  // Overnight intelligence — the synthesized OSINT Brief (signals / awards /
+  // opportunities scored by relevance). briefSynthesisNightly persists this to
+  // derivedViews/dailyBrief/latest at 05:00 UTC; this email fires at 11:00 UTC,
+  // so `latest` is ~6h fresh. We lead with it so the morning email reads like an
+  // intelligence brief, not just a CRM recap. Degrades to nothing if synthesis
+  // hasn't run (missing snap or zero items).
+  if (sub.incIntel !== false) {
+    const brief = briefSnap.val() as BriefOutput | null;
+    if (brief && brief.itemsByCategory) {
+      const cats: Array<BriefItem["category"]> = ["pursuit", "adversary", "customer", "capability", "context"];
+      const catTag: Record<string, string> = {
+        pursuit: "PURSUIT", adversary: "ADVERSARY", customer: "CUSTOMER",
+        capability: "CAPABILITY", context: "CONTEXT",
+      };
+      const allItems: BriefItem[] = [];
+      for (const c of cats) {
+        const arr = brief.itemsByCategory[c];
+        if (Array.isArray(arr)) allItems.push(...arr);
+      }
+      // Highest-relevance first across all categories; the synthesis already
+      // sorts within a category, this orders the cross-category top slice.
+      allItems.sort((a, b) => (b.relevance?.total ?? 0) - (a.relevance?.total ?? 0));
+      const top = allItems.slice(0, 8);
+      if (top.length) {
+        const ageH = Math.max(0, Math.round((Date.now() - (brief.generatedAt || 0)) / 3600000));
+        const ageLabel = ageH < 48
+          ? `synthesized ${ageH}h ago`
+          : `synthesized ${Math.round(ageH / 24)}d ago (stale — check source syncs)`;
+        const sig = brief.counts?.signals ?? 0;
+        const awd = brief.counts?.awards ?? 0;
+        // Decode the common scraped HTML entities, then strip any literal angle
+        // brackets — external text (filer/protest names, think-tank summaries)
+        // carries both, and the email HTML render is unescaped. Belt-and-
+        // suspenders: `latest` may predate the source-side decode in signalToItem.
+        const clean = (s: string) => (s || "")
+          .replace(/&#(\d+);/g, (m, n) => { const c = parseInt(n, 10); return Number.isFinite(c) && c !== 60 && c !== 62 ? String.fromCodePoint(c) : m; })
+          .replace(/&mdash;/g, "—").replace(/&ndash;/g, "–")
+          .replace(/&lsquo;/g, "‘").replace(/&rsquo;/g, "’")
+          .replace(/&ldquo;/g, "“").replace(/&rdquo;/g, "”")
+          .replace(/&hellip;/g, "…").replace(/&nbsp;/g, " ")
+          .replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+          .replace(/[<>]/g, "").trim();
+        lines.push("=== OVERNIGHT INTELLIGENCE ===");
+        lines.push(`${brief.totalItems} scored items · ${sig} signals, ${awd} awards · ${ageLabel}`);
+        top.forEach((it) => {
+          const title = clean(it.title) || "(untitled)";
+          const subtitle = clean(it.subtitle).slice(0, 90);
+          const conf = (typeof it.confidence === "number" && it.confidence < 0.85)
+            ? ` · conf ${Math.round(it.confidence * 100)}%`
+            : "";
+          const tag = catTag[it.category] || String(it.category).toUpperCase();
+          lines.push(`• [${tag}] ${title}${subtitle ? " — " + subtitle : ""} (${it.source})${conf}`);
+        });
+        lines.push("");
+      }
+    }
+  }
 
   if (sub.incPipeline !== false && activeOpps.length) {
     lines.push("=== PIPELINE ===");
@@ -218,43 +283,16 @@ export async function composeBrief(
 export async function sendOne(
   sub: BriefSubscription,
   composed: { subject: string; text: string; html: string },
-  fromEmail: string,
-  apiKey: string,
   log: any
 ): Promise<boolean> {
-  // P13.125 — @sendgrid/mail is optional (not installed by default; opt-in
-  // when an operator wires daily-brief email via SendGrid). Dynamic import
-  // + null fallback handles missing-at-runtime; the @ts-ignore handles
-  // missing-at-compile so the deploy builds cleanly without forcing the
-  // operator-setup-tax of installing the package up front.
-  // @ts-ignore — package not installed by default; runtime fallback handles absence
-  const sgMail = await import("@sendgrid/mail").then((m: any) => m.default || m).catch(() => null);
-  if (!sgMail) {
-    log.error("sendgrid_module_missing", { hint: "Run: cd functions && npm install @sendgrid/mail" });
-    return false;
-  }
-  (sgMail as any).setApiKey(apiKey);
-
-  try {
-    await (sgMail as any).send({
-      to: sub.email,
-      from: fromEmail,
-      subject: composed.subject,
-      text: composed.text,
-      html: composed.html,
-    });
-    log.info("send_success", { email: sub.email, uid: sub.uid });
-    return true;
-  } catch (err) {
-    const e = err as any;
-    log.error("send_failed", {
-      email: sub.email,
-      uid: sub.uid,
-      message: e.message || String(e),
-      code: e.code,
-    });
-    return false;
-  }
+  // P13.379 — send from the subscriber's own connected Gmail grant
+  // (users/{uid}/captureAuth/google) rather than SendGrid. gmailSend logs
+  // success/failure and never throws, so one bad send won't abort the batch.
+  return sendViaGmail(
+    sub.uid,
+    { to: sub.email, subject: composed.subject, text: composed.text, html: composed.html },
+    log
+  );
 }
 
 export const dailyBriefDigest = onSchedule(
@@ -265,19 +303,12 @@ export const dailyBriefDigest = onSchedule(
     memory: "512MiB",
     timeoutSeconds: 540,
     retryCount: 1,
-    secrets: [SENDGRID_API_KEY, BRIEF_FROM_EMAIL],
+    secrets: ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
   },
   async (event) => {
     const jobId = generateJobId("dailyBriefDigest");
     const log = createLogger({ source: "brief_digest", jobId });
     log.info("job_started", { scheduleTime: event.scheduleTime });
-
-    const apiKey = SENDGRID_API_KEY.value();
-    const fromEmail = BRIEF_FROM_EMAIL.value();
-    if (!apiKey || !fromEmail) {
-      log.error("secrets_missing", { hasKey: !!apiKey, hasFrom: !!fromEmail });
-      return;
-    }
 
     const db = admin.database();
     const today = _isoDate();
@@ -337,7 +368,7 @@ export const dailyBriefDigest = onSchedule(
 
         try {
           const composed = await composeBrief(wsId, wsName, sub, db);
-          const ok = await sendOne(sub, composed, fromEmail, apiKey, wsLog);
+          const ok = await sendOne(sub, composed, wsLog);
           if (ok) {
             await db
               .ref(`workspaces/${wsId}/brief_subscriptions/${uid}/lastSent`)

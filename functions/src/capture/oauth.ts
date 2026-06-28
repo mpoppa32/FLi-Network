@@ -17,9 +17,18 @@ import { google, Auth } from "googleapis";
 // are non-sensitive — no Google verification required.
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
+  // P13.379 — outbound email. The morning brief + meeting reminders send from
+  // the operator's OWN Gmail (gmail.users.messages.send) instead of SendGrid,
+  // which had a dead API key. Granted alongside the existing scopes on the
+  // single shared re-consent (guarded to mike@atlasmotion.com in the callback).
+  "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
+  // Atlas master-sheet sync (read-only). Reads the operator's pipeline/orders
+  // Google Sheets so Corsair can mirror them. Added to the shared connect flow
+  // so a single re-consent grants it alongside gmail/calendar.
+  "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
 
 function readGoogleConfig(): { clientId: string; clientSecret: string; redirectUri: string } {

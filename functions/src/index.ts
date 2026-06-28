@@ -58,6 +58,19 @@ export { facaDatabaseWeekly } from "./jobs/facaDatabaseWeekly";
 export { triggerDodNewsSync } from "./http/triggerDodNewsSync";
 export { dodNewsDaily } from "./jobs/dodNewsDaily";
 
+// Atlas Master Sheet — living source-of-truth sync (sheet -> Corsair).
+// NOTE: the atlasMaster source (./sources/atlasMaster, ./jobs/atlasMasterSync,
+// ./http/triggerAtlasMaster*) is GITIGNORED — it carries internal operator
+// config (private Sheet IDs, customer names) and is intentionally absent from
+// this public repo. It exists on the operator's local checkout + in production;
+// build/deploy from a checkout that has it.
+// Phase 1: server-side read proof (reader through Corsair's own Google grant).
+export { triggerAtlasMasterRead } from "./http/triggerAtlasMasterRead";
+// Phase 2: mapper — reflect the Customers rollup onto opps (dryRun by default).
+export { triggerAtlasMasterSync } from "./http/triggerAtlasMasterSync";
+// Phase 3: 6-hour cron — auto-sync the sheet onto opps (writes; runs as syncUid).
+export { atlasMasterSync } from "./jobs/atlasMasterSync";
+
 // Think Tanks (Phase 8.6.6 — bundled RSS aggregator)
 export { triggerThinkTanksSync } from "./http/triggerThinkTanksSync";
 export { thinkTanksDaily } from "./jobs/thinkTanksDaily";
@@ -170,6 +183,12 @@ export { listMyInvites } from "./http/listMyInvites";
 // immediately to the caller (or to a `to` override) for SendGrid setup testing.
 export { dailyBriefDigest } from "./jobs/dailyBriefDigest";
 export { triggerBriefDigestTest } from "./http/triggerBriefDigestTest";
+
+// P13.378 — per-meeting EMAIL reminders (every 15 min). Server-side complement
+// to the in-app desktop notification, so a reminder lands even when Corsair is
+// closed / the laptop is asleep. Opt out via
+// brief_subscriptions/{uid}/meetingReminders:false.
+export { meetingReminder } from "./jobs/meetingReminder";
 
 // P13.270 — one-shot backfill of Signal.relatedIds across existing
 // sig_tt_/sig_sn_/sig_ds_ records. Hash-stable signals predating the
