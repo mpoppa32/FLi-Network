@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.377</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.380</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -11049,7 +11049,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
     <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn" onclick="closeModal('intel-brief-modal')">Cancel</button>
       <button class="btn btn-sm" onclick="window.sendTestIntelBrief()" style="border-color:var(--blue);color:var(--blue)" title="Send via EmailJS (browser-side — requires EmailJS keys above)">EmailJS Test</button>
-      <button class="btn btn-sm" onclick="window._briefSendViaCloud()" style="border-color:#34d399;color:#34d399" title="Send via Cloud Function + SendGrid (server-side — requires Cloud Function deploy + SENDGRID_API_KEY secret)">Cloud Test</button>
+      <button class="btn btn-sm" onclick="window._briefSendViaCloud()" style="border-color:#34d399;color:#34d399" title="Send a test brief now (server-side, from your own Gmail)">Cloud Test</button>
       <button class="btn btn-gold" onclick="window.saveIntelBriefConfig()">Save &amp; Subscribe</button>
     </div>
   </div>
@@ -33517,8 +33517,8 @@ window._rhythmSnoozeItem = function(key, days){
 // Mirrors what composeBrief() in functions/src/jobs/dailyBriefDigest.ts
 // emits at the scheduled 11 UTC (~7am ET) cron. Renders in a modal so
 // Mike can demo "here is what the email looks like" without requiring
-// the SendGrid signup + secrets + deploy first. Production daily send
-// still requires the deploy steps documented in the modal footer.
+// any email setup first. Production daily send goes out via the operator's
+// own Gmail (gmail.send) once they subscribe — see the modal footer.
 window._previewBriefEmail = function(){
   var wsName = (window.currentWs && window.currentWs.name) || 'Workspace';
   var nowDate = new Date();
@@ -33610,10 +33610,7 @@ window._previewBriefEmail = function(){
   html += '</div>';
   // Footer with production deploy CTA
   html += '<div style="padding:14px 22px;background:#f0eee5;border-top:1px solid #e0dcd0;font-family:IBM Plex Mono,monospace;font-size:10.5px;color:#7a7368;letter-spacing:.04em;line-height:1.55">';
-  html += '<b style="color:#3a3128">Production daily send</b> requires three one-time steps:<br>';
-  html += '1. SendGrid signup + verify sender (10 min · free tier covers 100 emails/day)<br>';
-  html += '2. <code style="background:#e8e4d8;padding:1px 4px;border-radius:2px">firebase functions:secrets:set SENDGRID_API_KEY</code> + <code style="background:#e8e4d8;padding:1px 4px;border-radius:2px">BRIEF_FROM_EMAIL</code><br>';
-  html += '3. <code style="background:#e8e4d8;padding:1px 4px;border-radius:2px">firebase deploy --only functions:dailyBriefDigest,functions:triggerBriefDigestTest</code><br>';
+  html += '<b style="color:#3a3128">Email send is live</b> — the brief + meeting reminders go out from your connected Google account (Gmail), no extra setup.<br>';
   html += '<br>Then users click <b>📧 Email Digest</b> on the Brief tab to subscribe with their address + frequency. Cron fires daily at 11 UTC (7am ET).';
   html += '</div>';
   html += '</div>';
@@ -39841,8 +39838,8 @@ window.saveIntelBriefConfig = async function() {
 };
 
 // P13.42 — Send one digest via the dailyBriefDigest Cloud Function's HTTP companion
-// (triggerBriefDigestTest). Server-side SendGrid path. Requires Cloud Function
-// deploy + SENDGRID_API_KEY + BRIEF_FROM_EMAIL secrets. Closes SME-eval gap #2
+// (triggerBriefDigestTest). P13.379: sends from the operator's own Gmail
+// (gmail.send on the connected captureAuth grant), not SendGrid. Closes SME-eval gap #2
 // at the operator-UX level — no gcloud CLI needed to verify the deploy.
 window._briefSendViaCloud = async function() {
   var email = (document.getElementById('brief-email').value || '').trim();
@@ -39857,15 +39854,15 @@ window._briefSendViaCloud = async function() {
     var result = await callable({ workspaceId: currentWsId, to: email });
     var data = (result && result.data) || {};
     if (data.ok) {
-      toast('☁️ Cloud digest sent via SendGrid → ' + (data.sentTo || email));
+      toast('☁️ Test brief sent via your Gmail → ' + (data.sentTo || email));
     } else {
       throw new Error('Cloud call returned ok:false');
     }
   } catch (e) {
     var msg = 'Cloud send failed: ' + ((e && (e.message || e.details)) || String(e));
     // Common-cause hints
-    if (msg.indexOf('failed-precondition') >= 0 || msg.indexOf('SENDGRID') >= 0) {
-      msg += ' — set secrets: firebase functions:secrets:set SENDGRID_API_KEY BRIEF_FROM_EMAIL, then redeploy.';
+    if (msg.indexOf('unauthenticated') >= 0 || msg.indexOf('permission') >= 0 || msg.indexOf('gmail') >= 0 || msg.indexOf('grant') >= 0) {
+      msg += ' — reconnect Google (Connect Gmail & Calendar) so the gmail.send permission is granted.';
     } else if (msg.indexOf('not-found') >= 0 || msg.indexOf('triggerBriefDigestTest') >= 0) {
       msg += ' — deploy the function: cd functions && npm install && firebase deploy --only functions:triggerBriefDigestTest,functions:dailyBriefDigest';
     }
@@ -72417,6 +72414,6 @@ document.addEventListener('fullscreenchange', function(){
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.377"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.380"></script>
 </body>
 </html>
