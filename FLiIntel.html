@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.380</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.381</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -9571,6 +9571,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
             <button id="ask-mode-intel" onclick="_setAskMode('intel')" style="padding:3px 10px;border:1px solid rgba(34,197,94,.4);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:13px;font-weight:700;cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.05em" title="Scan defense industry signals — SAM.gov, contracts, policy, news">🌐 Industry Intel</button>
             <button id="ask-mode-deep" onclick="_setAskMode('deep')" style="padding:3px 10px;border:1px solid rgba(6,182,212,.4);border-radius:var(--rsm);background:transparent;color:var(--t3);font-size:13px;font-weight:700;cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.05em" title="Cross-entity AI reasoning across meetings, contacts, opps, and commitments">◎ Deep</button>
             <span id="ask-mode-auto-lbl" style="font-size:12px;color:var(--t3);font-family:IBM Plex Mono,monospace;padding:3px 0;display:none">auto-detected</span>
+            <button onclick="window._factOpenModal()" style="margin-left:auto;padding:3px 10px;border:1px solid rgba(212,130,58,.5);border-radius:var(--rsm);background:transparent;color:var(--gold);font-size:13px;font-weight:700;cursor:pointer;font-family:IBM Plex Mono,monospace;letter-spacing:0.05em" title="Log one current operational value — price, volume, ETA, quote. Ask for it later in plain English.">⚓ Log fact</button>
           </div>
           <!-- Status bar -->
           <div id="memory-status" style="font-size:13px;color:var(--t3);font-family:IBM Plex Mono,monospace;margin-bottom:10px;display:none"></div>
@@ -24765,6 +24766,21 @@ window.runMemorySearch=async function(){
   var q=(document.getElementById('memory-query').value||'').trim();
   if(!q)return;
   if(memorySearchActive)return;
+
+  // ── P13.381: Truth Hub fact queries (local, deterministic, no API) ──────
+  // Checked FIRST. Strict guard inside _runFactQuery (attribute word AND a
+  // known product/customer) keeps every other route below untouched.
+  if (typeof window._runFactQuery === 'function') {
+    var factRes = null;
+    try { if (window._factsRefresh) await window._factsRefresh(); factRes = window._runFactQuery(q); } catch(eFact) { factRes = null; }
+    if (factRes) {
+      var factResEl = document.getElementById('memory-results');
+      var factExEl  = document.getElementById('memory-examples');
+      if (factExEl)  factExEl.style.display  = 'none';
+      if (factResEl) { factResEl.style.display = 'block'; factResEl.innerHTML = factRes.html; }
+      return;
+    }
+  }
 
   // ── Phase 6.8: Pipeline queries (local, deterministic, no API) ──────────
   if (typeof window._runPipelineQuery === 'function') {
@@ -72408,12 +72424,569 @@ document.addEventListener('fullscreenchange', function(){
   }
 });
 </script>
+<script>
+// ════════════════════════════════════════════════════════════════════
+// P13.381 — OPERATIONAL TRUTH HUB, PASS 1 (SPINE)
+// Single source of current operational truth for volatile Atlas data
+// (motor prices, volumes, ETAs, quotes). Manually-entered facts only —
+// automated intake is Pass 2 and is deliberately NOT built here.
+//
+// Data: workspaces/{wsId}/facts/{id} (covered by the $other rule in
+// database.rules.json — members read, non-observers write; no rules
+// change needed). Writes ride window.fbSet (REST-first, survives the
+// realtime wedge). Reads ride window.fbGet (SDK/REST race).
+//
+// Record: { id, product, customer:{name,nodeId}|null, attribute,
+//   value, unit, sourceLabel, confirmedBy, confirmedAt,
+//   status: 'confirmed'|'unconfirmed', history:[ prior currents ] }
+// Latest-wins with history: same product×customer×attribute maps to
+// the same deterministic id, so a new confirmed value OVERWRITES the
+// current field and the prior value is pushed onto history (capped,
+// never destroyed by a save).
+// Staleness is COMPUTED at read time (no cron can lag, no stored flag
+// can rot): confirmed facts older than FACT_STALE_DAYS display stale
+// everywhere until re-confirmed.
+//
+// Doctrine (Confidence Principle): the email drafter builds ONLY from
+// confirmed facts; stale/unconfirmed facts appear as explicit inline
+// [⚠ …] flags — never silently included. Drafts are STAGED (copy /
+// open-in-Gmail compose, same zero-OAuth pattern as _outreachOpenInGmail
+// P13.38); the operator sends. No auto-send exists in this code.
+// ════════════════════════════════════════════════════════════════════
+
+(function(){
+'use strict';
+
+var FACT_STALE_DAYS = 14;               // configurable staleness threshold
+var FACT_HISTORY_CAP = 50;              // history entries kept per fact
+var _CACHE_TTL_MS = 5000;
+
+// Seed products: Atlas standard motors (from the outreach template copy —
+// products are not yet first-class records anywhere else in the platform).
+var FACT_SEED_PRODUCTS = ['3008 1300KV', '3115 900KV', '3530 650KV', '4112 450KV'];
+
+var FACT_ATTRS = [
+  { key: 'price',        label: 'Price',        email: 'current price' },
+  { key: 'quoted-price', label: 'Quoted price', email: 'quoted price'  },
+  { key: 'volume',       label: 'Volume',       email: 'volume'        },
+  { key: 'eta',          label: 'ETA',          email: 'ETA'           },
+  { key: 'stage',        label: 'Stage',        email: 'status'        }
+];
+
+// Attribute vocabulary for the plain-language query router. Strict on
+// purpose (100% precision): a fact query only claims the Ask box when an
+// attribute word AND a known product/customer both appear.
+var FACT_ATTR_WORDS = {
+  'price':        ['price', 'prices', 'pricing', 'cost', 'costs', 'how much'],
+  'quoted-price': ['quote', 'quoted', 'quotes'],
+  'volume':       ['volume', 'volumes', 'quantity', 'qty', 'capacity', 'how many'],
+  'eta':          ['eta', 'delivery', 'deliver', 'lead time', 'leadtime', 'ship date', 'shipping', 'arrive', 'when will'],
+  'stage':        ['stage', 'order status']
+};
+
+window._factsCache = window._factsCache || {};
+var _factsCacheAt = 0;
+
+function _fEsc(s){
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function _fToast(m, dur){
+  if (typeof window.showToast === 'function') { window.showToast(m, dur); return; }
+  try { console.log('[TruthHub]', m); } catch(e){}
+}
+// Slug ids are [a-z0-9_-] only — safe by construction inside data-
+// attributes and onclick args (no quote-termination risk, P13.151 class).
+function _fSlug(s){
+  return String(s||'').toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'x';
+}
+function _factId(product, customerName, attribute){
+  return 'fact_' + _fSlug(product) + '__' + _fSlug(customerName || 'general') + '__' + _fSlug(attribute);
+}
+function _fNow(){ return Date.now(); }
+function _fDate(ts){
+  if (!ts) return '—';
+  try { var d = new Date(ts); return d.toLocaleDateString(); } catch(e){ return '—'; }
+}
+function _fAgeDays(ts){ return (_fNow() - (ts||0)) / 86400000; }
+
+// Display status is computed, never trusted from storage:
+// unconfirmed → unconfirmed; confirmed but older than threshold → stale.
+function _factDisplayStatus(f){
+  if (!f) return 'unconfirmed';
+  if (f.status !== 'confirmed') return 'unconfirmed';
+  if (_fAgeDays(f.confirmedAt) > FACT_STALE_DAYS) return 'stale';
+  return 'confirmed';
+}
+function _factStatusBadge(f){
+  var st = _factDisplayStatus(f);
+  if (st === 'confirmed')
+    return '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.4)">CONFIRMED ' + _fEsc(_fDate(f.confirmedAt)) + '</span>';
+  if (st === 'stale')
+    return '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:3px;background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.45)">STALE — confirmed ' + Math.floor(_fAgeDays(f.confirmedAt)) + 'd ago</span>';
+  return '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:3px;background:rgba(148,163,184,.12);color:var(--t3);border:1px solid var(--b2)">UNCONFIRMED</span>';
+}
+function _factAttrLabel(key){
+  for (var i=0;i<FACT_ATTRS.length;i++) if (FACT_ATTRS[i].key === key) return FACT_ATTRS[i].label;
+  return key ? (key.charAt(0).toUpperCase() + key.slice(1)) : '';
+}
+function _factAttrEmailLabel(key){
+  for (var i=0;i<FACT_ATTRS.length;i++) if (FACT_ATTRS[i].key === key) return FACT_ATTRS[i].email;
+  return key || '';
+}
+
+// ── Store ─────────────────────────────────────────────────────────────
+window._factsRefresh = async function(force){
+  if (!force && (_fNow() - _factsCacheAt) < _CACHE_TTL_MS) return window._factsCache;
+  if (!window.currentWsId || typeof window.fbGet !== 'function' || typeof window.wsPath !== 'function') return window._factsCache;
+  try {
+    var snap = await window.fbGet(window.wsPath('facts'));
+    window._factsCache = (snap && snap.val && snap.val()) || {};
+    _factsCacheAt = _fNow();
+  } catch(e){ /* keep prior cache — never blank the truth on a read hiccup */ }
+  return window._factsCache;
+};
+function _factsList(){
+  var out = [];
+  var c = window._factsCache || {};
+  for (var k in c) if (c[k] && c[k].product) out.push(c[k]);
+  out.sort(function(a,b){ return (b.confirmedAt||0) - (a.confirmedAt||0); });
+  return out;
+}
+
+// ── Manual entry / edit modal ────────────────────────────────────────
+function _factEnsureModal(){
+  if (document.getElementById('fact-modal')) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'fact-modal';
+  wrap.className = 'overlay';   // Esc-to-close handler targets .overlay
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(5,8,14,.74);display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:6vh 16px 40px';
+  var lbl = 'display:block;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin:12px 0 4px';
+  var inp = 'width:100%;box-sizing:border-box;padding:9px 11px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);color:var(--text);font-size:13px;font-family:IBM Plex Sans,sans-serif;outline:none';
+  wrap.innerHTML =
+    '<div style="width:100%;max-width:520px;background:var(--bg);border:1px solid var(--gold);border-radius:4px;box-shadow:0 18px 60px rgba(0,0,0,.6);padding:18px 20px 20px" onclick="event.stopPropagation()">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)">⚓ Log a fact</div>' +
+        '<button onclick="closeModal(\'fact-modal\')" style="background:transparent;border:none;color:var(--t3);font-size:16px;cursor:pointer;padding:2px 6px">✕</button>' +
+      '</div>' +
+      '<div style="font-size:12px;color:var(--t2);margin-bottom:4px">One current value the team can trust — price, volume, ETA, quote. Saving over an old value keeps its history.</div>' +
+      '<label style="' + lbl + '">Product *</label>' +
+      '<input id="fact-product" list="fact-product-list" style="' + inp + '" placeholder="e.g. 3115 900KV" autocomplete="off">' +
+      '<datalist id="fact-product-list"></datalist>' +
+      '<label style="' + lbl + '">Customer (optional — leave blank for a general fact)</label>' +
+      '<input id="fact-customer" list="fact-customer-list" style="' + inp + '" placeholder="e.g. Vector" autocomplete="off">' +
+      '<datalist id="fact-customer-list"></datalist>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        '<div><label style="' + lbl + '">What kind of fact *</label>' +
+          '<select id="fact-attr" style="' + inp + '" onchange="window._factAttrChanged()">' +
+            '<option value="price">Price</option><option value="quoted-price">Quoted price</option>' +
+            '<option value="volume">Volume</option><option value="eta">ETA</option>' +
+            '<option value="stage">Stage</option><option value="other">Other…</option>' +
+          '</select>' +
+          '<input id="fact-attr-custom" style="' + inp + ';margin-top:6px;display:none" placeholder="name it — e.g. MOQ" autocomplete="off">' +
+        '</div>' +
+        '<div><label style="' + lbl + '">Unit</label>' +
+          '<input id="fact-unit" style="' + inp + '" placeholder="$/unit · units/mo · date" autocomplete="off"></div>' +
+      '</div>' +
+      '<label style="' + lbl + '">Current value *</label>' +
+      '<input id="fact-value" style="' + inp + '" placeholder="e.g. $86 · 2,500 · Aug 15" autocomplete="off">' +
+      '<div id="fact-current-note" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(245,158,11,.4);border-left:3px solid var(--amber);border-radius:3px;background:rgba(245,158,11,.06);font-size:12px;color:var(--t2)"></div>' +
+      '<label style="' + lbl + '">Source (who / where this came from)</label>' +
+      '<input id="fact-source" style="' + inp + '" placeholder="e.g. Tom · customer call · supplier email" autocomplete="off">' +
+      '<label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--text);cursor:pointer">' +
+        '<input type="checkbox" id="fact-confirmed" checked style="accent-color:var(--green);width:15px;height:15px">' +
+        'I confirmed this value is current' +
+      '</label>' +
+      '<div style="font-size:11px;color:var(--t3);margin:3px 0 0 23px">Unchecked = heard but not verified — it will be flagged everywhere until confirmed.</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">' +
+        '<button onclick="closeModal(\'fact-modal\')" style="padding:8px 16px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Cancel</button>' +
+        '<button id="fact-save-btn" onclick="window._factSave()" style="padding:8px 18px;background:var(--gold);border:1px solid var(--gold);border-radius:2px;color:#1a1206;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Save fact</button>' +
+      '</div>' +
+    '</div>';
+  wrap.addEventListener('click', function(ev){ if (ev.target === wrap) wrap.style.display = 'none'; });
+  document.body.appendChild(wrap);
+}
+
+function _factFillDatalists(){
+  var pl = document.getElementById('fact-product-list');
+  var cl = document.getElementById('fact-customer-list');
+  if (!pl || !cl) return;
+  var prods = {}, custs = {};
+  FACT_SEED_PRODUCTS.forEach(function(p){ prods[p] = 1; });
+  _factsList().forEach(function(f){
+    if (f.product) prods[f.product] = 1;
+    if (f.customer && f.customer.name) custs[f.customer.name] = 1;
+  });
+  (window.nodes || []).forEach(function(n){
+    if (n && n.type === 'company' && n.name) custs[n.name] = 1;
+  });
+  pl.innerHTML = Object.keys(prods).sort().map(function(p){ return '<option value="' + _fEsc(p) + '">'; }).join('');
+  cl.innerHTML = Object.keys(custs).sort().map(function(c){ return '<option value="' + _fEsc(c) + '">'; }).join('');
+}
+
+window._factAttrChanged = function(){
+  var sel = document.getElementById('fact-attr');
+  var cus = document.getElementById('fact-attr-custom');
+  if (sel && cus) cus.style.display = (sel.value === 'other') ? 'block' : 'none';
+  window._factShowCurrentNote();
+};
+
+// Shows "you are about to overwrite X" so latest-wins is never a surprise.
+window._factShowCurrentNote = function(){
+  var note = document.getElementById('fact-current-note');
+  if (!note) return;
+  var f = _factFromForm(true);
+  if (!f) { note.style.display = 'none'; return; }
+  var ex = (window._factsCache || {})[f.id];
+  if (!ex) { note.style.display = 'none'; return; }
+  note.style.display = 'block';
+  note.innerHTML = 'Currently: <b>' + _fEsc(ex.value) + (ex.unit ? ' ' + _fEsc(ex.unit) : '') + '</b> (' +
+    _fEsc(_factDisplayStatus(ex)) + ' · ' + _fEsc(_fDate(ex.confirmedAt)) +
+    ') — saving will overwrite it and keep the old value in history.';
+};
+
+function _factFromForm(quiet){
+  var g = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  var product = g('fact-product');
+  var attrSel = g('fact-attr');
+  var attribute = attrSel === 'other' ? _fSlug(g('fact-attr-custom')).replace(/-/g,'_') : attrSel;
+  var value = g('fact-value');
+  if (!product || !attribute || attribute === 'x' || (!quiet && !value)) {
+    if (!quiet) _fToast('Product, fact kind and value are required');
+    return null;
+  }
+  if (quiet && !product) return null;
+  var custName = g('fact-customer');
+  var customer = null;
+  if (custName) {
+    var nodeId = null, lc = custName.toLowerCase();
+    (window.nodes || []).some(function(n){
+      if (n && n.type === 'company' && String(n.name||'').toLowerCase().trim() === lc) { nodeId = n.id || null; return true; }
+      return false;
+    });
+    customer = { name: custName, nodeId: nodeId };
+  }
+  var confirmedEl = document.getElementById('fact-confirmed');
+  return {
+    id: _factId(product, custName, attribute),
+    product: product,
+    customer: customer,
+    attribute: attribute,
+    value: value,
+    unit: g('fact-unit'),
+    sourceLabel: g('fact-source'),
+    confirmedBy: (window.currentUser && (window.currentUser.email || window.currentUser.displayName)) || 'unknown',
+    confirmedAt: _fNow(),
+    status: (confirmedEl && confirmedEl.checked) ? 'confirmed' : 'unconfirmed'
+  };
+}
+
+window._factOpenModal = function(prefillId){
+  if (!window.currentWsId) { _fToast('Workspace still loading — try again in a moment'); return; }
+  _factEnsureModal();
+  window._factsRefresh().then(function(){
+    _factFillDatalists();
+    var f = prefillId ? (window._factsCache || {})[prefillId] : null;
+    var s = function(id, v){ var el = document.getElementById(id); if (el) el.value = v || ''; };
+    s('fact-product',  f ? f.product : '');
+    s('fact-customer', f && f.customer ? f.customer.name : '');
+    s('fact-value',    f ? f.value : '');
+    s('fact-unit',     f ? f.unit : '');
+    s('fact-source',   f ? f.sourceLabel : '');
+    var attrSel = document.getElementById('fact-attr');
+    if (attrSel) {
+      var known = FACT_ATTRS.some(function(a){ return f && a.key === f.attribute; });
+      attrSel.value = f ? (known ? f.attribute : 'other') : 'price';
+      var cus = document.getElementById('fact-attr-custom');
+      if (cus) {
+        cus.value = (f && !known) ? f.attribute : '';
+        cus.style.display = (attrSel.value === 'other') ? 'block' : 'none';
+      }
+    }
+    var conf = document.getElementById('fact-confirmed');
+    if (conf) conf.checked = true;   // re-opening to edit = re-confirming by default
+    window._factShowCurrentNote();
+    ['fact-product','fact-customer'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (el && !el._factWired) { el._factWired = true; el.addEventListener('change', window._factShowCurrentNote); }
+    });
+    var attrEl = document.getElementById('fact-attr');
+    if (attrEl && !attrEl._factWired) { attrEl._factWired = true; }
+    var m = document.getElementById('fact-modal');
+    if (m) m.style.display = 'flex';
+    var p = document.getElementById('fact-product');
+    if (p) setTimeout(function(){ p.focus(); }, 60);
+  });
+};
+
+window._factSave = async function(){
+  var f = _factFromForm(false);
+  if (!f) return;
+  if (!window.currentWsId || typeof window.fbSet !== 'function') { _fToast('Not connected — fact not saved'); return; }
+  var btn = document.getElementById('fact-save-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    // Fresh read of THIS fact right before writing so history never loses
+    // a concurrent teammate write to the same fact.
+    var prior = null;
+    try {
+      var snap = await window.fbGet(window.wsPath('facts/' + f.id));
+      prior = (snap && snap.val && snap.val()) || null;
+    } catch(e){ prior = ((window._factsCache || {})[f.id]) || null; }
+    var history = (prior && prior.history) ? prior.history.slice(0) : [];
+    if (prior) {
+      history.unshift({
+        value: prior.value, unit: prior.unit || '', sourceLabel: prior.sourceLabel || '',
+        confirmedBy: prior.confirmedBy || '', confirmedAt: prior.confirmedAt || 0,
+        status: prior.status || 'confirmed'
+      });
+      if (history.length > FACT_HISTORY_CAP) history = history.slice(0, FACT_HISTORY_CAP);
+    }
+    f.history = history;
+    await window.fbSet(window.wsPath('facts/' + f.id), f);
+    window._factsCache[f.id] = f;
+    _fToast('✓ Fact saved — ' + f.product + (f.customer ? ' × ' + f.customer.name : '') + ' ' + _factAttrLabel(f.attribute));
+    var m = document.getElementById('fact-modal');
+    if (m) m.style.display = 'none';
+    // If the operator saved from a fact-query result, repaint that answer.
+    if (window._factLastQuery) {
+      var res = window._runFactQuery(window._factLastQuery);
+      var resEl = document.getElementById('memory-results');
+      if (res && resEl && resEl.style.display !== 'none') resEl.innerHTML = res.html;
+    }
+  } catch(e){
+    _fToast('Save failed — ' + ((e && e.message) || 'unknown error'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save fact'; }
+  }
+};
+
+window._factEditById = function(id){ if (id) window._factOpenModal(id); };
+
+window._factToggleHistory = function(id){
+  var el = document.getElementById('fact-hist-' + id);
+  if (el) el.style.display = (el.style.display === 'none') ? 'block' : 'none';
+};
+
+// ── (b) Query surface — local, deterministic, checked FIRST in
+//        runMemorySearch. Returns {html} on match, null to fall through
+//        (same contract as _runPipelineQuery / _runPostureQuery). ──────
+function _factSubjectMatch(f, ql){
+  var hit = false;
+  var probe = function(name){
+    if (!name) return false;
+    var nl = String(name).toLowerCase();
+    if (ql.indexOf(nl) >= 0) return true;
+    // token-level: any distinctive token of the name appearing in the query
+    return nl.split(/[^a-z0-9]+/).some(function(t){
+      return t.length >= 3 && ql.indexOf(t) >= 0;
+    });
+  };
+  if (probe(f.product)) hit = true;
+  if (f.customer && probe(f.customer.name)) hit = true;
+  return hit;
+}
+function _factQueryAttr(ql){
+  for (var key in FACT_ATTR_WORDS) {
+    var words = FACT_ATTR_WORDS[key];
+    for (var i=0;i<words.length;i++) if (ql.indexOf(words[i]) >= 0) return key;
+  }
+  return null;
+}
+
+window._runFactQuery = function(q){
+  if (!q) return null;
+  var facts = _factsList();
+  if (!facts.length) return null;
+  var ql = ' ' + q.toLowerCase().trim().replace(/[?.,!]+$/,'') + ' ';
+  var attr = _factQueryAttr(ql);
+  var explicit = /(^|\s)facts?(\s|$)/.test(ql);
+  if (!attr && !explicit) return null;                 // no attribute word → not ours
+  var matched = facts.filter(function(f){ return _factSubjectMatch(f, ql); });
+  if (!matched.length) return null;                    // no known subject → not ours
+  if (attr) {
+    var attrMatched = matched.filter(function(f){ return f.attribute === attr; });
+    // If the attribute word matched but that subject has no such fact,
+    // show everything we DO know about the subject rather than staying silent.
+    if (attrMatched.length) matched = attrMatched;
+  }
+  window._factLastQuery = q;
+  window._factLastMatch = matched.map(function(f){ return f.id; });
+  return { html: _factRenderResults(matched, q) };
+};
+
+function _factRenderResults(matched, q){
+  var h = '<div style="border:1px solid var(--gold);border-radius:4px;overflow:hidden;margin-bottom:12px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 13px;background:rgba(212,130,58,.08);border-bottom:1px solid rgba(212,130,58,.35)">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)">⚓ Operational truth · ' + matched.length + ' fact' + (matched.length !== 1 ? 's' : '') + ' · newest first</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button onclick="window._factDraftEmail()" style="padding:4px 10px;background:transparent;border:1px solid rgba(59,130,246,.5);border-radius:2px;color:var(--blue);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">✉ Draft email</button>' +
+        '<button onclick="window._factOpenModal()" style="padding:4px 10px;background:transparent;border:1px solid rgba(212,130,58,.5);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">＋ Log fact</button>' +
+      '</div>' +
+    '</div>';
+  matched.forEach(function(f){
+    var st = _factDisplayStatus(f);
+    var staleNote = '';
+    if (st === 'stale')
+      staleNote = '<div style="margin-top:6px;font-size:12px;color:var(--amber)">⚠ This value is more than ' + FACT_STALE_DAYS + ' days old — re-confirm it before quoting it to anyone.</div>';
+    if (st === 'unconfirmed')
+      staleNote = '<div style="margin-top:6px;font-size:12px;color:var(--t3)">⚠ Heard but not verified — confirm before using it outside the team.</div>';
+    var hist = '';
+    if (f.history && f.history.length) {
+      hist = '<button onclick="window._factToggleHistory(\'' + f.id + '\')" style="margin-top:7px;padding:2px 8px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:10px;cursor:pointer">▸ history (' + f.history.length + ')</button>' +
+        '<div id="fact-hist-' + f.id + '" style="display:none;margin-top:6px;border-left:2px solid var(--b2);padding-left:10px">' +
+        f.history.map(function(hh){
+          return '<div style="font-size:12px;color:var(--t3);margin-bottom:3px">' + _fEsc(hh.value) + (hh.unit ? ' ' + _fEsc(hh.unit) : '') +
+            ' · ' + _fEsc(_fDate(hh.confirmedAt)) + (hh.sourceLabel ? ' · ' + _fEsc(hh.sourceLabel) : '') + '</div>';
+        }).join('') + '</div>';
+    }
+    h += '<div style="padding:12px 13px;border-bottom:1px solid var(--b1);background:var(--s2)">' +
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+        '<div style="font-size:13px;color:var(--t2);font-family:IBM Plex Mono,monospace">' +
+          '<b style="color:var(--text)">' + _fEsc(f.product) + '</b>' +
+          (f.customer && f.customer.name ? ' <span style="color:var(--t3)">×</span> ' + _fEsc(f.customer.name) : '') +
+          ' <span style="color:var(--t3)">·</span> ' + _fEsc(_factAttrLabel(f.attribute)) +
+        '</div>' + _factStatusBadge(f) +
+      '</div>' +
+      '<div style="font-size:19px;font-weight:700;color:var(--text);margin-top:5px">' + _fEsc(f.value) + (f.unit ? ' <span style="font-size:13px;font-weight:400;color:var(--t2)">' + _fEsc(f.unit) + '</span>' : '') + '</div>' +
+      '<div style="font-size:11px;color:var(--t3);margin-top:4px;font-family:IBM Plex Mono,monospace">' +
+        (f.sourceLabel ? 'source: ' + _fEsc(f.sourceLabel) + ' · ' : '') + 'by ' + _fEsc(f.confirmedBy || '—') +
+        ' &nbsp;<button onclick="window._factEditById(\'' + f.id + '\')" style="padding:1px 8px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:10px;cursor:pointer">✎ update</button>' +
+      '</div>' + staleNote + hist +
+    '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+// ── (c) Email drafter — confirmed facts only; stale/unconfirmed appear
+//        as explicit inline flags. Staged draft: operator edits, then
+//        copies or opens Gmail compose. NO auto-send. ─────────────────
+function _factEnsureDraftModal(){
+  if (document.getElementById('fact-draft-modal')) return;
+  var wrap = document.createElement('div');
+  wrap.id = 'fact-draft-modal';
+  wrap.className = 'overlay';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(5,8,14,.74);display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:5vh 16px 40px';
+  var inp = 'width:100%;box-sizing:border-box;padding:9px 11px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--rsm);color:var(--text);font-size:13px;font-family:IBM Plex Sans,sans-serif;outline:none';
+  wrap.innerHTML =
+    '<div style="width:100%;max-width:620px;background:var(--bg);border:1px solid var(--blue);border-radius:4px;box-shadow:0 18px 60px rgba(0,0,0,.6);padding:18px 20px 20px" onclick="event.stopPropagation()">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)">✉ Draft from confirmed facts</div>' +
+        '<button onclick="closeModal(\'fact-draft-modal\')" style="background:transparent;border:none;color:var(--t3);font-size:16px;cursor:pointer;padding:2px 6px">✕</button>' +
+      '</div>' +
+      '<div id="fact-draft-flagnote" style="display:none;margin:6px 0 2px;padding:8px 10px;border:1px solid rgba(245,158,11,.4);border-left:3px solid var(--amber);border-radius:3px;background:rgba(245,158,11,.06);font-size:12px;color:var(--t2)"></div>' +
+      '<div style="font-size:12px;color:var(--t2);margin:6px 0 10px">Built only from confirmed values. Anything flagged <b>[⚠ …]</b> needs your eyes before it leaves. Nothing sends until you send it.</div>' +
+      '<label style="display:block;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin:0 0 4px">Subject</label>' +
+      '<input id="fact-draft-subject" style="' + inp + '" autocomplete="off">' +
+      '<label style="display:block;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin:12px 0 4px">Body — edit freely</label>' +
+      '<textarea id="fact-draft-body" style="' + inp + ';min-height:280px;resize:vertical;line-height:1.5"></textarea>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+        '<button onclick="window._factDraftCopy()" style="padding:8px 16px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Copy</button>' +
+        '<button onclick="window._factDraftOpenGmail()" style="padding:8px 18px;background:var(--blue);border:1px solid var(--blue);border-radius:2px;color:#fff;font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">Open in Gmail</button>' +
+      '</div>' +
+    '</div>';
+  wrap.addEventListener('click', function(ev){ if (ev.target === wrap) wrap.style.display = 'none'; });
+  document.body.appendChild(wrap);
+}
+
+window._factDraftEmail = function(){
+  var ids = window._factLastMatch || [];
+  var facts = ids.map(function(id){ return (window._factsCache || {})[id]; }).filter(function(f){ return !!f; });
+  if (!facts.length) { _fToast('Run a fact query first'); return; }
+  _factEnsureDraftModal();
+
+  var confirmed = [], flagged = [];
+  facts.forEach(function(f){
+    var st = _factDisplayStatus(f);
+    if (st === 'confirmed') confirmed.push(f); else flagged.push(f);
+  });
+
+  var custNames = {};
+  facts.forEach(function(f){ if (f.customer && f.customer.name) custNames[f.customer.name] = 1; });
+  var custList = Object.keys(custNames);
+  var prodNames = {};
+  facts.forEach(function(f){ if (f.product) prodNames[f.product] = 1; });
+
+  var subject = 'Atlas Motors — ' + Object.keys(prodNames).slice(0,3).join(', ') +
+    (custList.length === 1 ? ' — ' + custList[0] : '');
+
+  var line = function(f, flag){
+    var l = '- ' + f.product +
+      (f.customer && f.customer.name && custList.length > 1 ? ' (' + f.customer.name + ')' : '') +
+      ' — ' + _factAttrEmailLabel(f.attribute) + ': ' + f.value + (f.unit ? ' ' + f.unit : '') +
+      ' (as of ' + _fDate(f.confirmedAt) + ')';
+    if (flag === 'stale')       l += '  [⚠ STALE — last confirmed ' + _fDate(f.confirmedAt) + '; re-confirm before sending]';
+    if (flag === 'unconfirmed') l += '  [⚠ UNCONFIRMED — verify before sending]';
+    return l;
+  };
+
+  var body = 'Hi [name],\n\n';
+  if (confirmed.length) {
+    body += 'Here is the current information on your request:\n\n';
+    body += confirmed.map(function(f){ return line(f, null); }).join('\n');
+    body += '\n';
+  }
+  if (flagged.length) {
+    body += '\n';
+    body += flagged.map(function(f){ return line(f, _factDisplayStatus(f)); }).join('\n');
+    body += '\n';
+  }
+  body += '\nHappy to jump on a call if useful.\n\nCheers,\nMike\n';
+
+  var note = document.getElementById('fact-draft-flagnote');
+  if (note) {
+    if (flagged.length) {
+      note.style.display = 'block';
+      note.innerHTML = '⚠ ' + flagged.length + ' relevant value' + (flagged.length !== 1 ? 's are' : ' is') +
+        ' stale or unconfirmed. They are in the draft with explicit flags — fix or delete those lines before sending.';
+    } else {
+      note.style.display = 'none';
+    }
+  }
+  var sEl = document.getElementById('fact-draft-subject');
+  var bEl = document.getElementById('fact-draft-body');
+  if (sEl) sEl.value = subject;
+  if (bEl) bEl.value = body;
+  var m = document.getElementById('fact-draft-modal');
+  if (m) m.style.display = 'flex';
+};
+
+window._factDraftCopy = function(){
+  var s = (document.getElementById('fact-draft-subject') || {}).value || '';
+  var b = (document.getElementById('fact-draft-body') || {}).value || '';
+  var txt = 'Subject: ' + s + '\n\n' + b;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(function(){ _fToast('Draft copied'); }, function(){ _fToast('Copy failed'); });
+  } else { _fToast('Clipboard unavailable'); }
+};
+
+// Same zero-OAuth staging pattern as _outreachOpenInGmail (P13.38):
+// Gmail compose deep-link, operator reviews and sends.
+window._factDraftOpenGmail = function(){
+  var s = (document.getElementById('fact-draft-subject') || {}).value || '';
+  var b = (document.getElementById('fact-draft-body') || {}).value || '';
+  if (!s.trim() && !b.trim()) { _fToast('Nothing to send'); return; }
+  var url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+    '&su=' + encodeURIComponent(s) +
+    '&body=' + encodeURIComponent(b);
+  window.open(url, '_blank', 'noopener');
+  _fToast('Opened in Gmail — add recipient, review the flags, send');
+};
+
+// Warm the cache soon after load so the first fact query answers instantly.
+setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } catch(e){} }, 4000);
+
+})();
+</script>
 <!-- P9.7: Corsair module scaffold — sibling ES modules load from js/corsair/ -->
 <!-- P13.80: ?v=<buildtag> deterministically cache-busts main.js when a deploy
      ships. Without it, a broken main.js stuck in browser cache silently
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.380"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.381"></script>
 </body>
 </html>
