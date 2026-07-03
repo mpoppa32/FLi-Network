@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.381</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.382</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -72470,17 +72470,29 @@ var FACT_ATTRS = [
   { key: 'quoted-price', label: 'Quoted price', email: 'quoted price'  },
   { key: 'volume',       label: 'Volume',       email: 'volume'        },
   { key: 'eta',          label: 'ETA',          email: 'ETA'           },
-  { key: 'stage',        label: 'Stage',        email: 'status'        }
+  { key: 'stage',        label: 'Stage',        email: 'status'        },
+  // P13.382 — real Atlas catalog data. COGM is internal-only by rule
+  // (_factAttrForcesInternal); its email label exists only for internal
+  // display paths — the drafter guard means it never reaches a draft.
+  { key: 'cogm',         label: 'COGM',         email: 'unit cost'         },
+  { key: 'capacity',     label: 'Capacity',     email: 'monthly capacity'  },
+  { key: 'availability', label: 'Availability', email: 'first available'   }
 ];
 
 // Attribute vocabulary for the plain-language query router. Strict on
 // purpose (100% precision): a fact query only claims the Ask box when an
 // attribute word AND a known product/customer both appear.
 var FACT_ATTR_WORDS = {
+  // P13.382 — cogm/capacity/availability added; 'capacity' moved from
+  // volume to its own attribute. cogm words listed BEFORE price so
+  // "cost of goods" resolves to cogm, not price ('cost' alone stays price).
+  'cogm':         ['cogm', 'cost of goods', 'our cost', 'build cost', 'unit cost', 'margin'],
   'price':        ['price', 'prices', 'pricing', 'cost', 'costs', 'how much'],
   'quoted-price': ['quote', 'quoted', 'quotes'],
-  'volume':       ['volume', 'volumes', 'quantity', 'qty', 'capacity', 'how many'],
+  'volume':       ['volume', 'volumes', 'quantity', 'qty', 'how many'],
+  'capacity':     ['capacity', 'per month', 'monthly output', 'units a month', 'units per month', 'production rate'],
   'eta':          ['eta', 'delivery', 'deliver', 'lead time', 'leadtime', 'ship date', 'shipping', 'arrive', 'when will'],
+  'availability': ['availability', 'available', 'first available', 'in stock'],
   'stage':        ['stage', 'order status']
 };
 
@@ -72537,6 +72549,26 @@ function _factAttrEmailLabel(key){
   return key || '';
 }
 
+// ── P13.382 — Visibility class (Pass 1.5) ────────────────────────────
+// Two classes today; the field is an open string so a future third value
+// slots in with no schema change. FAIL-SAFE BY CONSTRUCTION: anything
+// that is not exactly 'customer-safe' — missing field, unknown future
+// value, typo — reads as internal. The email guard is an ALLOW-LIST on
+// 'customer-safe', so unclassified data can never leak outward.
+var FACT_VIS_INTERNAL = 'internal';
+var FACT_VIS_SAFE     = 'customer-safe';
+function _factVisibility(f){
+  return (f && f.visibility === FACT_VIS_SAFE) ? FACT_VIS_SAFE : FACT_VIS_INTERNAL;
+}
+function _factVisBadge(f){
+  if (_factVisibility(f) === FACT_VIS_SAFE)
+    return '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:3px;background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.45)">CUSTOMER-SAFE</span>';
+  return '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:3px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.45)">🔒 INTERNAL</span>';
+}
+// COGM is margin math — it hard-defaults internal and the modal refuses
+// to mark it customer-safe (save-time coercion backs the UI).
+function _factAttrForcesInternal(attrKey){ return attrKey === 'cogm'; }
+
 // ── Store ─────────────────────────────────────────────────────────────
 window._factsRefresh = async function(force){
   if (!force && (_fNow() - _factsCacheAt) < _CACHE_TTL_MS) return window._factsCache;
@@ -72545,6 +72577,16 @@ window._factsRefresh = async function(force){
     var snap = await window.fbGet(window.wsPath('facts'));
     window._factsCache = (snap && snap.val && snap.val()) || {};
     _factsCacheAt = _fNow();
+    // P13.382 — backfill: Pass 1 facts have no visibility field. Class
+    // them internal (fail safe) both in cache and durably. Idempotent —
+    // writes only when the field is absent, so this fires once per fact.
+    var _bfc = window._factsCache;
+    for (var bk in _bfc) {
+      if (_bfc[bk] && _bfc[bk].product && _bfc[bk].visibility === undefined) {
+        _bfc[bk].visibility = FACT_VIS_INTERNAL;
+        try { window.fbSet(window.wsPath('facts/' + bk + '/visibility'), FACT_VIS_INTERNAL); } catch(eBf){}
+      }
+    }
   } catch(e){ /* keep prior cache — never blank the truth on a read hiccup */ }
   return window._factsCache;
 };
@@ -72583,7 +72625,9 @@ function _factEnsureModal(){
           '<select id="fact-attr" style="' + inp + '" onchange="window._factAttrChanged()">' +
             '<option value="price">Price</option><option value="quoted-price">Quoted price</option>' +
             '<option value="volume">Volume</option><option value="eta">ETA</option>' +
-            '<option value="stage">Stage</option><option value="other">Other…</option>' +
+            '<option value="stage">Stage</option>' +
+            '<option value="cogm">COGM (internal)</option><option value="capacity">Capacity (units/mo)</option>' +
+            '<option value="availability">Availability</option><option value="other">Other…</option>' +
           '</select>' +
           '<input id="fact-attr-custom" style="' + inp + ';margin-top:6px;display:none" placeholder="name it — e.g. MOQ" autocomplete="off">' +
         '</div>' +
@@ -72595,6 +72639,12 @@ function _factEnsureModal(){
       '<div id="fact-current-note" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid rgba(245,158,11,.4);border-left:3px solid var(--amber);border-radius:3px;background:rgba(245,158,11,.06);font-size:12px;color:var(--t2)"></div>' +
       '<label style="' + lbl + '">Source (who / where this came from)</label>' +
       '<input id="fact-source" style="' + inp + '" placeholder="e.g. Tom · customer call · supplier email" autocomplete="off">' +
+      '<label style="' + lbl + '">Who can see this? *</label>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button type="button" id="fact-vis-internal" onclick="window._factSetVis(\'internal\')" style="flex:1;padding:9px 10px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.55);border-radius:var(--rsm);color:var(--red);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer">🔒 INTERNAL ONLY</button>' +
+        '<button type="button" id="fact-vis-safe" onclick="window._factSetVis(\'customer-safe\')" style="flex:1;padding:9px 10px;background:transparent;border:1px solid var(--b2);border-radius:var(--rsm);color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer">CUSTOMER-SAFE</button>' +
+      '</div>' +
+      '<div id="fact-vis-hint" style="font-size:11px;color:var(--t3);margin-top:4px">Internal facts never enter a customer email draft — the drafter physically cannot read them.</div>' +
       '<label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--text);cursor:pointer">' +
         '<input type="checkbox" id="fact-confirmed" checked style="accent-color:var(--green);width:15px;height:15px">' +
         'I confirmed this value is current' +
@@ -72630,7 +72680,42 @@ window._factAttrChanged = function(){
   var sel = document.getElementById('fact-attr');
   var cus = document.getElementById('fact-attr-custom');
   if (sel && cus) cus.style.display = (sel.value === 'other') ? 'block' : 'none';
+  // P13.382 — COGM locks to internal the moment it's selected.
+  if (sel && _factAttrForcesInternal(sel.value)) window._factSetVis(FACT_VIS_INTERNAL);
   window._factShowCurrentNote();
+};
+
+// P13.382 — visibility toggle. One source of truth (window._factVis),
+// painted onto the two buttons. COGM refuses customer-safe with a
+// visible warning; the operator classifies, the platform enforces.
+window._factVis = FACT_VIS_INTERNAL;
+window._factSetVis = function(v){
+  var attrSel = document.getElementById('fact-attr');
+  var attrKey = attrSel ? (attrSel.value === 'other' ? '' : attrSel.value) : '';
+  var hint = document.getElementById('fact-vis-hint');
+  if (v === FACT_VIS_SAFE && _factAttrForcesInternal(attrKey)) {
+    if (hint) {
+      hint.style.color = 'var(--red)';
+      hint.textContent = '⚠ COGM is margin math — it stays internal-only. It cannot be marked customer-safe.';
+    }
+    _fToast('COGM facts are always internal-only');
+    v = FACT_VIS_INTERNAL;
+  } else if (hint) {
+    hint.style.color = 'var(--t3)';
+    hint.textContent = (v === FACT_VIS_SAFE)
+      ? 'Customer-safe facts can flow into email drafts. Everything else stays inside the team.'
+      : 'Internal facts never enter a customer email draft — the drafter physically cannot read them.';
+  }
+  window._factVis = (v === FACT_VIS_SAFE) ? FACT_VIS_SAFE : FACT_VIS_INTERNAL;
+  var bi = document.getElementById('fact-vis-internal');
+  var bs = document.getElementById('fact-vis-safe');
+  var on  = window._factVis === FACT_VIS_SAFE ? bs : bi;
+  var off = window._factVis === FACT_VIS_SAFE ? bi : bs;
+  if (on) {
+    if (window._factVis === FACT_VIS_SAFE) { on.style.background = 'rgba(59,130,246,.14)'; on.style.borderColor = 'rgba(59,130,246,.6)'; on.style.color = 'var(--blue)'; }
+    else { on.style.background = 'rgba(239,68,68,.12)'; on.style.borderColor = 'rgba(239,68,68,.55)'; on.style.color = 'var(--red)'; }
+  }
+  if (off) { off.style.background = 'transparent'; off.style.borderColor = 'var(--b2)'; off.style.color = 'var(--t3)'; }
 };
 
 // Shows "you are about to overwrite X" so latest-wins is never a surprise.
@@ -72669,6 +72754,13 @@ function _factFromForm(quiet){
     customer = { name: custName, nodeId: nodeId };
   }
   var confirmedEl = document.getElementById('fact-confirmed');
+  // P13.382 — visibility rides the record. Save-time coercion backs the
+  // UI lock: a COGM fact is internal no matter what the toggle says.
+  var vis = (window._factVis === FACT_VIS_SAFE) ? FACT_VIS_SAFE : FACT_VIS_INTERNAL;
+  if (_factAttrForcesInternal(attribute) && vis !== FACT_VIS_INTERNAL) {
+    vis = FACT_VIS_INTERNAL;
+    if (!quiet) _fToast('COGM facts are always internal-only — saved as internal');
+  }
   return {
     id: _factId(product, custName, attribute),
     product: product,
@@ -72679,7 +72771,8 @@ function _factFromForm(quiet){
     sourceLabel: g('fact-source'),
     confirmedBy: (window.currentUser && (window.currentUser.email || window.currentUser.displayName)) || 'unknown',
     confirmedAt: _fNow(),
-    status: (confirmedEl && confirmedEl.checked) ? 'confirmed' : 'unconfirmed'
+    status: (confirmedEl && confirmedEl.checked) ? 'confirmed' : 'unconfirmed',
+    visibility: vis
   };
 }
 
@@ -72707,6 +72800,9 @@ window._factOpenModal = function(prefillId){
     }
     var conf = document.getElementById('fact-confirmed');
     if (conf) conf.checked = true;   // re-opening to edit = re-confirming by default
+    // P13.382 — visibility: editing keeps the fact's class; new facts
+    // default INTERNAL (fail safe — private until explicitly marked safe).
+    window._factSetVis(f ? _factVisibility(f) : FACT_VIS_INTERNAL);
     window._factShowCurrentNote();
     ['fact-product','fact-customer'].forEach(function(id){
       var el = document.getElementById(id);
@@ -72740,7 +72836,8 @@ window._factSave = async function(){
       history.unshift({
         value: prior.value, unit: prior.unit || '', sourceLabel: prior.sourceLabel || '',
         confirmedBy: prior.confirmedBy || '', confirmedAt: prior.confirmedAt || 0,
-        status: prior.status || 'confirmed'
+        status: prior.status || 'confirmed',
+        visibility: _factVisibility(prior)   // P13.382 — class rides history too
       });
       if (history.length > FACT_HISTORY_CAP) history = history.slice(0, FACT_HISTORY_CAP);
     }
@@ -72848,7 +72945,7 @@ function _factRenderResults(matched, q){
           '<b style="color:var(--text)">' + _fEsc(f.product) + '</b>' +
           (f.customer && f.customer.name ? ' <span style="color:var(--t3)">×</span> ' + _fEsc(f.customer.name) : '') +
           ' <span style="color:var(--t3)">·</span> ' + _fEsc(_factAttrLabel(f.attribute)) +
-        '</div>' + _factStatusBadge(f) +
+        '</div><div style="display:flex;gap:5px;align-items:center">' + _factVisBadge(f) + _factStatusBadge(f) + '</div>' +
       '</div>' +
       '<div style="font-size:19px;font-weight:700;color:var(--text);margin-top:5px">' + _fEsc(f.value) + (f.unit ? ' <span style="font-size:13px;font-weight:400;color:var(--t2)">' + _fEsc(f.unit) + '</span>' : '') + '</div>' +
       '<div style="font-size:11px;color:var(--t3);margin-top:4px;font-family:IBM Plex Mono,monospace">' +
@@ -72877,6 +72974,7 @@ function _factEnsureDraftModal(){
         '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--blue)">✉ Draft from confirmed facts</div>' +
         '<button onclick="closeModal(\'fact-draft-modal\')" style="background:transparent;border:none;color:var(--t3);font-size:16px;cursor:pointer;padding:2px 6px">✕</button>' +
       '</div>' +
+      '<div id="fact-draft-guardnote" style="display:none;margin:6px 0 2px;padding:8px 10px;border:1px solid rgba(239,68,68,.45);border-left:3px solid var(--red);border-radius:3px;background:rgba(239,68,68,.07);font-size:12px;color:var(--t2)"></div>' +
       '<div id="fact-draft-flagnote" style="display:none;margin:6px 0 2px;padding:8px 10px;border:1px solid rgba(245,158,11,.4);border-left:3px solid var(--amber);border-radius:3px;background:rgba(245,158,11,.06);font-size:12px;color:var(--t2)"></div>' +
       '<div style="font-size:12px;color:var(--t2);margin:6px 0 10px">Built only from confirmed values. Anything flagged <b>[⚠ …]</b> needs your eyes before it leaves. Nothing sends until you send it.</div>' +
       '<label style="display:block;font-family:IBM Plex Mono,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--t3);margin:0 0 4px">Subject</label>' +
@@ -72896,6 +72994,20 @@ window._factDraftEmail = function(){
   var ids = window._factLastMatch || [];
   var facts = ids.map(function(id){ return (window._factsCache || {})[id]; }).filter(function(f){ return !!f; });
   if (!facts.length) { _fToast('Run a fact query first'); return; }
+
+  // ── P13.382 — HARD EMAIL-SAFETY GUARD (structural, not cosmetic) ────
+  // ALLOW-LIST at the data read: only facts that are exactly
+  // 'customer-safe' pass. Internal facts — and any unknown future class —
+  // are dropped HERE, before the subject line is derived and before the
+  // body builder runs, so no downstream code can ever see them. Not
+  // flagged, EXCLUDED. Separate from stale/unconfirmed flagging below.
+  var withheld = 0;
+  facts = facts.filter(function(f){
+    if (_factVisibility(f) === FACT_VIS_SAFE) return true;
+    withheld++;
+    return false;
+  });
+
   _factEnsureDraftModal();
 
   var confirmed = [], flagged = [];
@@ -72910,7 +73022,8 @@ window._factDraftEmail = function(){
   var prodNames = {};
   facts.forEach(function(f){ if (f.product) prodNames[f.product] = 1; });
 
-  var subject = 'Atlas Motors — ' + Object.keys(prodNames).slice(0,3).join(', ') +
+  var prodPart = Object.keys(prodNames).slice(0,3).join(', ');
+  var subject = 'Atlas Motors' + (prodPart ? ' — ' + prodPart : '') +
     (custList.length === 1 ? ' — ' + custList[0] : '');
 
   var line = function(f, flag){
@@ -72934,7 +73047,26 @@ window._factDraftEmail = function(){
     body += flagged.map(function(f){ return line(f, _factDisplayStatus(f)); }).join('\n');
     body += '\n';
   }
+  if (!confirmed.length && !flagged.length) {
+    // Everything the query matched was internal-only. Empty shell, no
+    // values — the guard note above the fields says why.
+    body += '[No customer-safe facts matched this query — nothing was added.]\n';
+  }
   body += '\nHappy to jump on a call if useful.\n\nCheers,\nMike\n';
+
+  // P13.382 — guard notice: how many facts the safety guard withheld.
+  // Separate surface from the stale/unconfirmed flag note below.
+  var gnote = document.getElementById('fact-draft-guardnote');
+  if (gnote) {
+    if (withheld) {
+      gnote.style.display = 'block';
+      gnote.innerHTML = '🔒 ' + withheld + ' internal-only fact' + (withheld !== 1 ? 's' : '') +
+        ' withheld from this email. ' + (withheld !== 1 ? 'They are' : 'It is') +
+        ' not in the draft and cannot be added by the drafter.';
+    } else {
+      gnote.style.display = 'none';
+    }
+  }
 
   var note = document.getElementById('fact-draft-flagnote');
   if (note) {
@@ -72987,6 +73119,6 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.381"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.382"></script>
 </body>
 </html>
