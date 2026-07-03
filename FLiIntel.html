@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.382</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.383</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -72515,7 +72515,9 @@ function _fSlug(s){
     .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60) || 'x';
 }
 function _factId(product, customerName, attribute){
-  return 'fact_' + _fSlug(product) + '__' + _fSlug(customerName || 'general') + '__' + _fSlug(attribute);
+  // P13.383 — product optional: customer-level facts (e.g. an account's
+  // stage) slug as 'account'. Existing product-fact ids are unchanged.
+  return 'fact_' + _fSlug(product || 'account') + '__' + _fSlug(customerName || 'general') + '__' + _fSlug(attribute);
 }
 function _fNow(){ return Date.now(); }
 function _fDate(ts){
@@ -72582,7 +72584,7 @@ window._factsRefresh = async function(force){
     // writes only when the field is absent, so this fires once per fact.
     var _bfc = window._factsCache;
     for (var bk in _bfc) {
-      if (_bfc[bk] && _bfc[bk].product && _bfc[bk].visibility === undefined) {
+      if (_bfc[bk] && (_bfc[bk].product || (_bfc[bk].customer && _bfc[bk].customer.name)) && _bfc[bk].visibility === undefined) {
         _bfc[bk].visibility = FACT_VIS_INTERNAL;
         try { window.fbSet(window.wsPath('facts/' + bk + '/visibility'), FACT_VIS_INTERNAL); } catch(eBf){}
       }
@@ -72593,7 +72595,8 @@ window._factsRefresh = async function(force){
 function _factsList(){
   var out = [];
   var c = window._factsCache || {};
-  for (var k in c) if (c[k] && c[k].product) out.push(c[k]);
+  // P13.383 — a fact is listable if it has a subject: product OR customer.
+  for (var k in c) if (c[k] && (c[k].product || (c[k].customer && c[k].customer.name))) out.push(c[k]);
   out.sort(function(a,b){ return (b.confirmedAt||0) - (a.confirmedAt||0); });
   return out;
 }
@@ -72614,8 +72617,8 @@ function _factEnsureModal(){
         '<button onclick="closeModal(\'fact-modal\')" style="background:transparent;border:none;color:var(--t3);font-size:16px;cursor:pointer;padding:2px 6px">✕</button>' +
       '</div>' +
       '<div style="font-size:12px;color:var(--t2);margin-bottom:4px">One current value the team can trust — price, volume, ETA, quote. Saving over an old value keeps its history.</div>' +
-      '<label style="' + lbl + '">Product *</label>' +
-      '<input id="fact-product" list="fact-product-list" style="' + inp + '" placeholder="e.g. 3115 900KV" autocomplete="off">' +
+      '<label style="' + lbl + '">Product (blank = customer-level fact)</label>' +
+      '<input id="fact-product" list="fact-product-list" style="' + inp + '" placeholder="e.g. 3115 900KV — or leave blank" autocomplete="off">' +
       '<datalist id="fact-product-list"></datalist>' +
       '<label style="' + lbl + '">Customer (optional — leave blank for a general fact)</label>' +
       '<input id="fact-customer" list="fact-customer-list" style="' + inp + '" placeholder="e.g. Vector" autocomplete="off">' +
@@ -72735,15 +72738,16 @@ window._factShowCurrentNote = function(){
 function _factFromForm(quiet){
   var g = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
   var product = g('fact-product');
+  var custName = g('fact-customer');
   var attrSel = g('fact-attr');
   var attribute = attrSel === 'other' ? _fSlug(g('fact-attr-custom')).replace(/-/g,'_') : attrSel;
   var value = g('fact-value');
-  if (!product || !attribute || attribute === 'x' || (!quiet && !value)) {
-    if (!quiet) _fToast('Product, fact kind and value are required');
+  // P13.383 — a fact needs a SUBJECT (product OR customer) + kind + value.
+  if ((!product && !custName) || !attribute || attribute === 'x' || (!quiet && !value)) {
+    if (!quiet) _fToast('A product or customer, plus fact kind and value, are required');
     return null;
   }
-  if (quiet && !product) return null;
-  var custName = g('fact-customer');
+  if (quiet && !product && !custName) return null;
   var customer = null;
   if (custName) {
     var nodeId = null, lc = custName.toLowerCase();
@@ -72942,8 +72946,10 @@ function _factRenderResults(matched, q){
     h += '<div style="padding:12px 13px;border-bottom:1px solid var(--b1);background:var(--s2)">' +
       '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
         '<div style="font-size:13px;color:var(--t2);font-family:IBM Plex Mono,monospace">' +
-          '<b style="color:var(--text)">' + _fEsc(f.product) + '</b>' +
-          (f.customer && f.customer.name ? ' <span style="color:var(--t3)">×</span> ' + _fEsc(f.customer.name) : '') +
+          (f.product
+            ? '<b style="color:var(--text)">' + _fEsc(f.product) + '</b>' +
+              (f.customer && f.customer.name ? ' <span style="color:var(--t3)">×</span> ' + _fEsc(f.customer.name) : '')
+            : '<b style="color:var(--text)">' + _fEsc(f.customer && f.customer.name ? f.customer.name : '—') + '</b>') +
           ' <span style="color:var(--t3)">·</span> ' + _fEsc(_factAttrLabel(f.attribute)) +
         '</div><div style="display:flex;gap:5px;align-items:center">' + _factVisBadge(f) + _factStatusBadge(f) + '</div>' +
       '</div>' +
@@ -73027,8 +73033,8 @@ window._factDraftEmail = function(){
     (custList.length === 1 ? ' — ' + custList[0] : '');
 
   var line = function(f, flag){
-    var l = '- ' + f.product +
-      (f.customer && f.customer.name && custList.length > 1 ? ' (' + f.customer.name + ')' : '') +
+    var l = '- ' + (f.product || (f.customer && f.customer.name) || 'Atlas') +
+      (f.product && f.customer && f.customer.name && custList.length > 1 ? ' (' + f.customer.name + ')' : '') +
       ' — ' + _factAttrEmailLabel(f.attribute) + ': ' + f.value + (f.unit ? ' ' + f.unit : '') +
       ' (as of ' + _fDate(f.confirmedAt) + ')';
     if (flag === 'stale')       l += '  [⚠ STALE — last confirmed ' + _fDate(f.confirmedAt) + '; re-confirm before sending]';
@@ -73036,9 +73042,12 @@ window._factDraftEmail = function(){
     return l;
   };
 
+  // P13.383 — body follows the Voice tab of the Atlas master sheet:
+  // answer directly in the first line, precise numbers, no filler, no
+  // exclamation points, exactly one low-friction ask, first-name sign-off.
   var body = 'Hi [name],\n\n';
   if (confirmed.length) {
-    body += 'Here is the current information on your request:\n\n';
+    body += 'Current numbers on your request:\n\n';
     body += confirmed.map(function(f){ return line(f, null); }).join('\n');
     body += '\n';
   }
@@ -73052,7 +73061,7 @@ window._factDraftEmail = function(){
     // values — the guard note above the fields says why.
     body += '[No customer-safe facts matched this query — nothing was added.]\n';
   }
-  body += '\nHappy to jump on a call if useful.\n\nCheers,\nMike\n';
+  body += '\nIf it helps, I can firm these up in a formal quote.\n\nMike\n';
 
   // P13.382 — guard notice: how many facts the safety guard withheld.
   // Separate surface from the stale/unconfirmed flag note below.
@@ -73119,6 +73128,6 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.382"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.383"></script>
 </body>
 </html>
