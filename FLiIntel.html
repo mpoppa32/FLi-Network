@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.383</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.384</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -8988,6 +8988,24 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
     <div class="user-chip" id="user-chip-btn" onclick="if(typeof openModal==='function')openModal('user-modal');setTimeout(function(){window._slackRefreshUI&amp;&amp;window._slackRefreshUI();},30)" style="cursor:pointer" title="Settings"><img id="user-chip-img" src="" alt=""></div>
     <button class="mob-ham" id="mob-ham-btn" onclick="openMobDrawer()"><svg width="16" height="12" viewBox="0 0 16 12" fill="none"><rect width="16" height="2" rx="1" fill="currentColor"/><rect y="5" width="16" height="2" rx="1" fill="currentColor"/><rect y="10" width="16" height="2" rx="1" fill="currentColor"/></svg></button>
   </div>
+
+  <!-- P13.384 — PERSISTENT ASK BAR. The Truth Hub's fact-query surface
+       (P13.381+) had no reachable front door: the ⚡ Ask tab lives inside the
+       intel view, which is absent from the mode-rail, and ⌘K is claimed by
+       the cmdk entity palette (36822+) stacked over the older memory-tab
+       route (19873). This bar is the permanent front door: one row, every
+       view, wired to the EXISTING _runFactQuery path (no logic fork). A
+       non-fact question hands off to the full Ask Corsair tab. Handlers:
+       window._askBarSubmit/_askBarClose in the Truth Hub block. -->
+  <div id="ask-bar" style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:#070d18;border-bottom:1px solid rgba(212,130,58,.28)">
+    <span style="color:#d4823a;font-size:14px;flex-shrink:0" aria-hidden="true">⚓</span>
+    <input id="ask-bar-input" type="text" placeholder="Ask Corsair anything — price, stage, ETA, or draft an email" autocomplete="off"
+      style="flex:1;min-width:0;background:rgba(212,130,58,.05);border:1px solid rgba(212,130,58,.35);border-radius:3px;color:#f4ede0;font-family:'IBM Plex Sans',sans-serif;font-size:13px;padding:7px 12px;outline:none"
+      onkeydown="if(event.key==='Enter'&amp;&amp;window._askBarSubmit)window._askBarSubmit()"
+      onfocus="this.style.borderColor='#d4823a'" onblur="this.style.borderColor='rgba(212,130,58,.35)'">
+    <button onclick="window._askBarSubmit&amp;&amp;window._askBarSubmit()" style="padding:7px 16px;background:rgba(212,130,58,.14);border:1px solid rgba(212,130,58,.5);border-radius:3px;color:#d4823a;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;flex-shrink:0">Ask ↵</button>
+  </div>
+  <div id="ask-bar-results" style="display:none;padding:10px 14px 14px;background:rgba(7,13,24,.98);border-bottom:1px solid rgba(212,130,58,.35);box-shadow:0 18px 50px rgba(0,0,0,.5);max-height:70vh;overflow-y:auto"></div>
 
   <!-- INTEL TICKER — P13.162 calmed to identity-only (LIVE // workspace).
        Counts (meetings / active opps / contacts) removed: each view's own
@@ -73117,6 +73135,57 @@ window._factDraftOpenGmail = function(){
   _fToast('Opened in Gmail — add recipient, review the flags, send');
 };
 
+// ── P13.384 — persistent Ask bar (the Truth Hub's front door) ────────
+// Submit reuses the EXISTING query path verbatim: _factsRefresh →
+// _runFactQuery (same strict guard, same render, same Draft Email).
+// A non-fact question is handed off to the full Ask Corsair tab so the
+// bar never dead-ends. No query logic is duplicated here.
+window._askBarClose = function(){
+  var p = document.getElementById('ask-bar-results');
+  if (p) { p.style.display = 'none'; p.innerHTML = ''; }
+};
+window._askBarSubmit = async function(){
+  var inp = document.getElementById('ask-bar-input');
+  var panel = document.getElementById('ask-bar-results');
+  if (!inp || !panel) return;
+  var q = (inp.value || '').trim();
+  if (!q) return;
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.1em;color:var(--t3);padding:4px 0">Checking the truth store…</div>';
+  var res = null;
+  try {
+    if (window._factsRefresh) await window._factsRefresh();
+    res = (typeof window._runFactQuery === 'function') ? window._runFactQuery(q) : null;
+  } catch(e){ res = null; }
+  if (res) {
+    panel.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">' +
+        '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--t3)">Ask Corsair · ' + _fEsc(q) + '</div>' +
+        '<button onclick="window._askBarClose()" style="padding:3px 10px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t3);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">✕ Close</button>' +
+      '</div>' + res.html;
+    return;
+  }
+  // Not a fact question — hand off to the full Ask Corsair surface.
+  window._askBarClose();
+  try {
+    if (typeof window.switchView === 'function') window.switchView('intel');
+    if (typeof window.switchIntelTab === 'function') window.switchIntelTab('memory');
+    var mq = document.getElementById('memory-query');
+    if (mq) {
+      mq.value = q;
+      if (typeof window.runMemorySearch === 'function') window.runMemorySearch();
+      setTimeout(function(){ mq.focus(); }, 120);
+    }
+  } catch(e){ _fToast('Could not open Ask Corsair — try the ⚡ Ask tab'); }
+};
+// Esc closes the bar's results panel (it is not an .overlay, so the
+// platform's global Esc handler ignores it — this one is ours).
+document.addEventListener('keydown', function(ev){
+  if (ev.key !== 'Escape') return;
+  var p = document.getElementById('ask-bar-results');
+  if (p && p.style.display !== 'none') { p.style.display = 'none'; p.innerHTML = ''; }
+});
+
 // Warm the cache soon after load so the first fact query answers instantly.
 setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } catch(e){} }, 4000);
 
@@ -73128,6 +73197,6 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.383"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.384"></script>
 </body>
 </html>
