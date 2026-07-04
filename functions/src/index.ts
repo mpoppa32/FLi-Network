@@ -71,6 +71,15 @@ export { triggerAtlasMasterSync } from "./http/triggerAtlasMasterSync";
 // Phase 3: 6-hour cron — auto-sync the sheet onto opps (writes; runs as syncUid).
 export { atlasMasterSync } from "./jobs/atlasMasterSync";
 
+// Truth Hub facts sync (P13.383-era) — master sheet -> workspaces/{ws}/facts.
+// Standard Motors tab (price/COGM/capacity/availability per SKU) + Pipeline
+// tab (BD stage per company). Sticky operator visibility classification; COGM
+// forced internal; history on change; no deletes. The factsSync module itself
+// is COMMITTED (public logic) but imports the gitignored atlasMaster config,
+// so it shares the build-from-a-checkout-that-has-atlasMaster caveat above.
+export { triggerFactsSheetSync } from "./http/triggerFactsSheetSync";
+export { factsSheetSync } from "./jobs/factsSheetSync";
+
 // Think Tanks (Phase 8.6.6 — bundled RSS aggregator)
 export { triggerThinkTanksSync } from "./http/triggerThinkTanksSync";
 export { thinkTanksDaily } from "./jobs/thinkTanksDaily";
