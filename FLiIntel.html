@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.387</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.388</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -72994,7 +72994,7 @@ function _factRenderResults(matched, q){
           ' <span style="color:var(--t3)">·</span> ' + _fEsc(_factAttrLabel(f.attribute)) +
         '</div><div style="display:flex;gap:5px;align-items:center">' + _factVisBadge(f) + _factStatusBadge(f) + '</div>' +
       '</div>' +
-      '<div style="font-size:19px;font-weight:700;color:var(--text);margin-top:5px">' + _fEsc(f.value) + (f.unit ? ' <span style="font-size:13px;font-weight:400;color:var(--t2)">' + _fEsc(f.unit) + '</span>' : '') + '</div>' +
+      '<div style="font-size:19px;font-weight:700;color:var(--text);margin-top:5px">' + _fEsc(f.value) + ((f.unit && f.attribute !== 'availability') ? ' <span style="font-size:13px;font-weight:400;color:var(--t2)">' + _fEsc(f.unit) + '</span>' : '') + '</div>' +
       '<div style="font-size:11px;color:var(--t3);margin-top:4px;font-family:IBM Plex Mono,monospace">' +
         (f.sourceLabel ? 'source: ' + _fEsc(f.sourceLabel) + ' · ' : '') + 'by ' + _fEsc(f.confirmedBy || '—') +
         ' &nbsp;<button onclick="window._factEditById(\'' + f.id + '\')" style="padding:1px 8px;background:transparent;border:1px solid var(--b2);border-radius:2px;color:var(--t2);font-family:IBM Plex Mono,monospace;font-size:10px;cursor:pointer">✎ update</button>' +
@@ -73076,7 +73076,7 @@ window._factDraftEmail = function(){
   var line = function(f, flag){
     var l = '- ' + (f.product || (f.customer && f.customer.name) || 'Atlas') +
       (f.product && f.customer && f.customer.name && custList.length > 1 ? ' (' + f.customer.name + ')' : '') +
-      ' — ' + _factAttrEmailLabel(f.attribute) + ': ' + f.value + (f.unit ? ' ' + f.unit : '') +
+      ' — ' + _factAttrEmailLabel(f.attribute) + ': ' + f.value + ((f.unit && f.attribute !== 'availability') ? ' ' + f.unit : '') +
       ' (as of ' + _fDate(f.confirmedAt) + ')';
     if (flag === 'stale')       l += '  [⚠ STALE — last confirmed ' + _fDate(f.confirmedAt) + '; re-confirm before sending]';
     if (flag === 'unconfirmed') l += '  [⚠ UNCONFIRMED — verify before sending]';
@@ -73220,16 +73220,45 @@ function _prodResolveMMToSeries(mm, avail){
   }
   return null;
 }
+// P13.388 — date helpers. Relative dates resolve against today (real clock).
+function _prodCurMonth(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+function _prodAddMonths(mkey, n){ var p = String(mkey).split('-'); var y = parseInt(p[0],10), mo = parseInt(p[1],10)-1 + n; y += Math.floor(mo/12); mo = ((mo%12)+12)%12; return y + '-' + String(mo+1).padStart(2,'0'); }
+function _prodQuarterEnd(mkey){ var p = String(mkey).split('-'); var y = parseInt(p[0],10), mo = parseInt(p[1],10); return y + '-' + String(Math.ceil(mo/3)*3).padStart(2,'0'); }
+// P13.388 — a query carries a TIME framing cue (so a production-intent query
+// stays in the layer even if the exact date can't be pinned). Without a cue,
+// a quantity word like "3115 capacity" falls through to the fact query.
+function _prodHasTimeCue(ql){
+  return /\b(by |through|thru|end of|this month|next month|last month|this quarter|next quarter|this year|next year|year.?end|eoy|q[1-4]\b|quarter|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|20\d{2})\b/.test(ql);
+}
 function _prodParseTargetMonth(ql){
   var avail = (window._factSeries && window._factSeries.monthsAvailable) ? window._factSeries.monthsAvailable('capacity') : [];
-  var m = ql.match(/(\d{4})-(\d{2})/);                 // explicit YYYY-MM
+  var cur = _prodCurMonth();
+  // relative dates first (resolve against today)
+  if (/\bthis month\b/.test(ql)) return cur;
+  if (/\bnext month\b/.test(ql)) return _prodAddMonths(cur, 1);
+  if (/\blast month\b/.test(ql)) return _prodAddMonths(cur, -1);
+  if (/\bthis quarter\b/.test(ql)) return _prodQuarterEnd(cur);
+  if (/\bnext quarter\b/.test(ql)) return _prodQuarterEnd(_prodAddMonths(cur, 3));
+  if (/\b(this year|end of (the )?year|year.?end|eoy|by year.?end)\b/.test(ql)) return cur.slice(0,4) + '-12';
+  if (/\bnext year\b/.test(ql)) return (parseInt(cur.slice(0,4),10)+1) + '-12';
+  // explicit YYYY-MM
+  var m = ql.match(/\b(\d{4})-(\d{2})\b/);
   if (m) return m[1] + '-' + m[2];
+  // quarter
   var qm = ql.match(/\bq([1-4])\b/) || ql.match(/\b([1-4])(?:st|nd|rd|th)?\s+quarter\b/) || ql.match(/\bquarter\s+([1-4])\b/);
   if (qm){ var qEnd = { '1':'03','2':'06','3':'09','4':'12' }[qm[1]]; return _prodResolveMMToSeries(qEnd, avail); }
+  // month name (respect an accompanying year if given, e.g. "september 2027")
   var MO = { january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12',
              jan:'01',feb:'02',mar:'03',apr:'04',jun:'06',jul:'07',aug:'08',sep:'09',sept:'09',oct:'10',nov:'11',dec:'12' };
-  for (var name in MO){ if (new RegExp('\\b' + name + '\\b').test(ql)) return _prodResolveMMToSeries(MO[name], avail); }
-  if (/\b(this year|end of (the )?year|year.?end|eoy)\b/.test(ql)) return _prodResolveMMToSeries('12', avail);
+  for (var name in MO){
+    if (new RegExp('\\b' + name + '\\b').test(ql)){
+      var yr = ql.match(/\b(20\d{2})\b/);
+      return yr ? yr[1] + '-' + MO[name] : _prodResolveMMToSeries(MO[name], avail);
+    }
+  }
+  // bare year ("by 2030", "by 2027") = end of that year
+  var ym = ql.match(/\b(20\d{2})\b/);
+  if (ym) return ym[1] + '-12';
   return null;
 }
 function _prodSumFacts(attr){
@@ -73252,20 +73281,62 @@ function _prodRefuseCard(q, reason){
     '<div style="margin-top:8px;font-size:12px;color:var(--t3)">A production number is never shown without its assumptions and the SKUs’ status — so with this input missing, no figure is emitted.</div>' +
     '</div></div>' };
 }
+// P13.388 — OUT-OF-RANGE date: refuse the asked date, but state the ramp
+// horizon and OFFER the reachable number, labeled as the max horizon (never
+// a silent substitute for the asked date), carrying the same Pre-Production
+// caveat a normal projection does.
+function _prodHorizonCard(q, askedMonth, lastRamp){
+  var cap = window._factSeries.getSeriesThrough('capacity', lastRamp);
+  var statuses = _factsList().filter(function(f){ return f.attribute === 'production_status'; });
+  if (!cap.haveData || cap.cumulative <= 0 || !statuses.length){
+    return _prodRefuseCard(q, 'Ramp data runs through ' + _prodMonthName(lastRamp) + ', but a horizon figure can’t be assembled (missing capacity or status).');
+  }
+  var preProd = statuses.filter(function(f){ return /pre[\s-]?production/i.test(String(f.value)); });
+  window._prodLastScopeIds = _factsList().filter(function(f){ return f.product; }).map(function(f){ return f.id; });
+  var caveat = preProd.length
+    ? '<div style="margin-top:10px;padding:9px 11px;border:1px solid rgba(239,68,68,.5);border-left:3px solid var(--red);border-radius:3px;background:rgba(239,68,68,.07);font-size:12px;color:var(--t2)">⚠ <b>Aspirational, not committed.</b> Theoretical ceiling assuming full planned ramp. ' +
+        (preProd.length === statuses.length ? 'All ' + statuses.length + ' SKUs are <b>Pre-Production</b>' : preProd.length + ' of ' + statuses.length + ' SKUs are <b>Pre-Production</b>') + ' — no confirmed ramp yet. Planning ceiling, never a deliverable commitment.</div>'
+    : '<div style="margin-top:10px;padding:9px 11px;border:1px solid rgba(245,158,11,.45);border-left:3px solid var(--amber);border-radius:3px;background:rgba(245,158,11,.06);font-size:12px;color:var(--t2)">⚠ Theoretical ceiling assuming full planned ramp.</div>';
+  var h =
+    '<div style="border:1px solid var(--amber);border-radius:4px;overflow:hidden;margin-bottom:12px">' +
+    '<div style="padding:9px 13px;background:rgba(245,158,11,.09);border-bottom:1px solid rgba(245,158,11,.4);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)">⚠ Beyond the ramp horizon — ' + _fEsc(q) + '</div>' +
+    '<div style="padding:13px;background:var(--s2)">' +
+      '<div style="font-size:13px;color:var(--t2)">Can’t project to <b>' + _fEsc(_prodMonthName(askedMonth)) + '</b> — the planned ramp only has data through <b>' + _fEsc(_prodMonthName(lastRamp)) + '</b>.</div>' +
+      '<div style="margin-top:10px;font-size:20px;font-weight:700;color:var(--text)">~' + cap.cumulative.toLocaleString() + ' units <span style="font-size:13px;font-weight:400;color:var(--t2)">— the max horizon (through ' + _fEsc(_prodMonthName(lastRamp)) + '), not a projection to ' + _fEsc(_prodMonthName(askedMonth)) + '</span></div>' +
+      '<div style="margin-top:6px;font-size:12px;color:var(--t2);font-family:IBM Plex Mono,monospace">cumulative planned capacity across all ' + cap.monthsSummed + ' ramp months on record</div>' +
+      caveat +
+      '<div style="margin-top:6px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace">inputs synced within ' + Math.max(cap.stalestAgeDays,0) + 'd · source: Atlas master sheet · Production Planning</div>' +
+    '</div></div>';
+  return { html: h };
+}
 window._prodLastScopeIds = null;
 window._runProductionQuery = function(q){
   if (!q) return null;
   var ql = ' ' + q.toLowerCase().trim().replace(/[?.!]+$/,'') + ' ';
-  // Guard: fire ONLY on a quantity intent AND a time bound. "3115 capacity"
-  // (no time) falls through to _runFactQuery; "order status" is untouched.
-  var qtyIntent = /(how many|how much|\bunits\b|\bmotors\b|\bproduce\b|producing|production|\bmake\b|\boutput\b|\bship\b|\bcapacity\b|by end of|by the end)/.test(ql);
+  // INTENT: a production-quantity verb/noun. Not present → not ours.
+  var qtyIntent = /(how many|\bunits?\b|\bmotors?\b|\bproduce\b|producing|production|manufactur|\bmake\b|\bbuild\b|\boutput\b|\bship\b|\bshipped\b|\bcapacity\b|how much can (we|you|atlas))/.test(ql);
   if (!qtyIntent) return null;
+  // TIME CUE gate: without any date framing ("3115 capacity") fall through to
+  // the fact query. WITH a cue we COMMIT to the production layer — from here
+  // we ALWAYS answer or refuse with a reason, and NEVER fall through to
+  // meeting-scan (P13.388 — that fall-through was the bug).
+  if (!_prodHasTimeCue(ql)) return null;
+  if (!window._factSeries) return _prodRefuseCard(q, 'Production data is still loading — ask again in a moment.');
+
+  var avail = window._factSeries.monthsAvailable('capacity');
+  var lastRamp = avail.length ? avail[avail.length-1] : null;
   var target = _prodParseTargetMonth(ql);
-  if (!target) return null; // no time bound → not a production-by-date question
-  if (!window._factSeries) return null;
+  // Production intent, but the date couldn't be read → clarify, never fall through.
+  if (!target){
+    return _prodRefuseCard(q, 'This reads as a production question, but I couldn’t pin down the date. Try a specific month or quarter — e.g. "by September", "by Q4", "by end of this month", or "by 2026-12".');
+  }
+  // Date parses but is past the ramp horizon → refuse the date, offer the horizon.
+  if (lastRamp && target > lastRamp){
+    return _prodHorizonCard(q, target, lastRamp);
+  }
 
   var cap = window._factSeries.getSeriesThrough('capacity', target);
-  // Refuse if we have no capacity ramp data through the target.
+  // Pre-ramp (date before any capacity exists): refuse, no basis for a number.
   if (!cap.haveData || cap.cumulative <= 0){
     return _prodRefuseCard(q, 'No confirmed capacity ramp is on record through ' + _prodMonthName(target) + '. The plant shows no planned capacity in that window, so there is no basis to project a number.');
   }
@@ -73393,6 +73464,6 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.387"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.388"></script>
 </body>
 </html>
