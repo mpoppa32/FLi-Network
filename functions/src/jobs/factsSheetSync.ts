@@ -44,6 +44,9 @@ export const factsSheetSync = onSchedule(
         lastReport: {
           catalogRows: report.catalogRows,
           pipelineRows: report.pipelineRows,
+          seriesRows: report.seriesRows,
+          orderRows: report.orderRows,
+          shipmentRows: report.shipmentRows,
           created: report.created,
           updated: report.updated,
           reconfirmed: report.reconfirmed,

@@ -83,6 +83,30 @@ function productFromSku(sku: string): string | null {
   const base = m[1].replace(/-/g, " ").toUpperCase().replace(/(\d)KV/g, "$1KV");
   return m[2].toUpperCase() === "C" ? `${base} Commercial` : base;
 }
+// P13.386 — lenient variant for tabs (Shipments Log) whose SKU column drops
+// the -N/-C suffix. "ATL-3008-1300KV" -> "3008 1300KV" (== the NDAA display
+// name, so it lands on the same product as the catalog's -N variant).
+function productFromSkuLoose(sku: string): string | null {
+  const s = String(sku ?? "").trim();
+  const m = s.match(/^ATL-(.+?)(?:-(N|C))?$/i);
+  if (!m) return null;
+  const base = m[1].replace(/-/g, " ").toUpperCase().replace(/(\d)KV/g, "$1KV");
+  return m[2] && m[2].toUpperCase() === "C" ? `${base} Commercial` : base;
+}
+// P13.386 — Excel serial date -> "YYYY-MM". 25569 = the Excel serial for
+// 1970-01-01 (UTC), the Unix epoch. Month-granularity only (series keys).
+function serialToMonth(serial: unknown): string | null {
+  const n = parseFloat(String(serial ?? "").replace(/[^0-9.\-]/g, ""));
+  if (isNaN(n) || n < 20000 || n > 80000) return null; // guard the serial band
+  const d = new Date(Math.round((n - 25569) * 86400000));
+  return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0");
+}
+function intUnits(raw: unknown): number | null {
+  const t = String(raw ?? "").replace(/[^0-9.\-]/g, "");
+  if (!t || t === "-" || t === ".") return null;
+  const v = parseFloat(t);
+  return isNaN(v) ? null : Math.round(v);
+}
 
 function findTable(rows: string[][], sig: readonly string[]): { header: string[]; start: number } | null {
   for (let i = 0; i < rows.length; i++) {
@@ -108,6 +132,10 @@ interface FactRecord {
   visibility: string;
   history?: unknown[];
   lastSyncedAt?: number;
+  // P13.386 — monthly series facts (capacity / shipped_output). Present ONLY
+  // on series records; read exclusively through the client getSeriesThrough.
+  series?: string;
+  month?: string;
 }
 interface MappedFact {
   product: string;
@@ -116,7 +144,14 @@ interface MappedFact {
   value: string;
   unit: string;
   tab: string;
+  series?: string; // P13.386
+  month?: string;  // P13.386
+  label?: string;  // P13.386 — display label for series/aggregate facts
 }
+// P13.386 — metrics that are internal posture and NEVER leave (email guard).
+const FORCE_INTERNAL = new Set([
+  "cogm", "production_status", "committed", "quoted", "shipped_to_date",
+]);
 export interface FactsSyncChange {
   id: string;
   label: string;
@@ -128,6 +163,9 @@ export interface FactsSyncReport {
   dryRun: boolean;
   catalogRows: number;
   pipelineRows: number;
+  seriesRows: number;   // P13.386 — monthly capacity + shipped-output cells read
+  orderRows: number;    // P13.386 — Orders Master lines summed
+  shipmentRows: number; // P13.386 — Shipments Log lines summed
   created: number;
   updated: number;
   reconfirmed: number;
@@ -135,8 +173,8 @@ export interface FactsSyncReport {
   changes: FactsSyncChange[];
 }
 
-/** Read the catalog + pipeline tabs and map them to Truth Hub fact rows. */
-async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; catalogRows: number; pipelineRows: number; skipped: number }> {
+/** Read the catalog + pipeline + production tabs and map them to fact rows. */
+async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; catalogRows: number; pipelineRows: number; skipped: number; seriesRows: number; orderRows: number; shipmentRows: number }> {
   const facts: MappedFact[] = [];
   let skipped = 0;
 
@@ -186,7 +224,105 @@ async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; cata
     facts.push({ product: "", customer: company, attribute: "stage", value: stage, unit: "", tab: "Pipeline" });
   }
 
-  return { facts, catalogRows, pipelineRows, skipped };
+  // ── P13.386 — Production Planning: monthly capacity + shipped-output series ──
+  // No clean header signature (section-based), so locate the "AGGREGATE
+  // CAPACITY FLOW" marker, take the month-serial header row beneath it, then
+  // read the "Capacity" and "Shipped (Output)" rows, pairing each column's
+  // value with its month. Stored blank-product so ONLY getSeriesThrough sees
+  // them. Attribute carries the month for id uniqueness.
+  let seriesRows = 0;
+  const ppRows = await readRange(uid, CFG.sheets.master, "Production Planning!A1:Z60");
+  const markerIdx = ppRows.findIndex((r) => String((r || [])[0] ?? "").trim() === "AGGREGATE CAPACITY FLOW");
+  if (markerIdx >= 0) {
+    // month header: first row after the marker with serial-like values in col >= 3
+    let monthRowIdx = -1;
+    for (let i = markerIdx; i < Math.min(markerIdx + 4, ppRows.length); i++) {
+      const r = ppRows[i] || [];
+      if (serialToMonth(r[3]) || serialToMonth(r[4]) || serialToMonth(r[5])) { monthRowIdx = i; break; }
+    }
+    if (monthRowIdx >= 0) {
+      const monthRow = ppRows[monthRowIdx] || [];
+      const colMonths: Record<number, string> = {};
+      for (let c = 0; c < monthRow.length; c++) {
+        const mo = serialToMonth(monthRow[c]);
+        if (mo) colMonths[c] = mo;
+      }
+      const seriesRowSpec: Array<{ label: string; series: string; unit: string }> = [
+        { label: "Capacity", series: "capacity", unit: "units/mo" },
+        { label: "Shipped (Output)", series: "shipped_output", unit: "units/mo" },
+      ];
+      for (const spec of seriesRowSpec) {
+        const rowIdx = ppRows.findIndex((r, i) => i > markerIdx && String((r || [])[0] ?? "").trim() === spec.label);
+        if (rowIdx < 0) continue;
+        const dataRow = ppRows[rowIdx] || [];
+        for (const cStr in colMonths) {
+          const c = Number(cStr);
+          const month = colMonths[c];
+          const val = intUnits(dataRow[c]);
+          if (val === null) continue; // blank cell — skip (0 is a real value, kept)
+          seriesRows++;
+          facts.push({
+            product: "", customer: "",
+            attribute: spec.series + "@" + month, // id-uniqueness carrier
+            series: spec.series, month,
+            value: String(val), unit: spec.unit,
+            label: "Aggregate " + spec.series.replace("_", " ") + " " + month,
+            tab: "Production Planning",
+          });
+        }
+      }
+    }
+  }
+
+  // ── P13.386 — Orders Master: committed (firm) + quoted per SKU ───────────────
+  let orderRows = 0;
+  const omRows = await readRange(uid, CFG.sheets.master, "Orders Master!A1:Z400");
+  const om = findTable(omRows, ["Order ID", "SKU / Project", "Quantity"]);
+  if (om) {
+    const oc = (name: string) => om.header.indexOf(name);
+    const oSku = oc("SKU / Project"), oQty = oc("Quantity"), oStage = oc("Stage");
+    const committed: Record<string, number> = {};
+    const quoted: Record<string, number> = {};
+    for (let i = om.start; i < omRows.length; i++) {
+      const row = omRows[i] || [];
+      const product = productFromSku(String(row[oSku] ?? ""));
+      const qty = intUnits(row[oQty]);
+      if (!product || qty === null) continue;
+      orderRows++;
+      const stage = String(row[oStage] ?? "").trim().toLowerCase();
+      if (stage === "quote") quoted[product] = (quoted[product] || 0) + qty;
+      else committed[product] = (committed[product] || 0) + qty; // PO Received / Shipped = firm
+    }
+    for (const product in committed) {
+      facts.push({ product, customer: "", attribute: "committed", value: String(committed[product]), unit: "units ordered (firm)", tab: "Orders Master" });
+    }
+    for (const product in quoted) {
+      facts.push({ product, customer: "", attribute: "quoted", value: String(quoted[product]), unit: "units quoted (not firm)", tab: "Orders Master" });
+    }
+  }
+
+  // ── P13.386 — Shipments Log: shipped-to-date per SKU ─────────────────────────
+  let shipmentRows = 0;
+  const slRows = await readRange(uid, CFG.sheets.master, "Shipments Log!A1:Z400");
+  const sl = findTable(slRows, ["Shipment ID", "SKU", "Quantity"]);
+  if (sl) {
+    const sc = (name: string) => sl.header.indexOf(name);
+    const sSku = sc("SKU"), sQty = sc("Quantity");
+    const shipped: Record<string, number> = {};
+    for (let i = sl.start; i < slRows.length; i++) {
+      const row = slRows[i] || [];
+      const product = productFromSkuLoose(String(row[sSku] ?? ""));
+      const qty = intUnits(row[sQty]);
+      if (!product || qty === null) continue;
+      shipmentRows++;
+      shipped[product] = (shipped[product] || 0) + qty;
+    }
+    for (const product in shipped) {
+      facts.push({ product, customer: "", attribute: "shipped_to_date", value: String(shipped[product]), unit: "units shipped", tab: "Shipments Log" });
+    }
+  }
+
+  return { facts, catalogRows, pipelineRows, skipped, seriesRows, orderRows, shipmentRows };
 }
 
 /**
@@ -198,20 +334,20 @@ export async function syncSheetToFacts(uid: string, opts: { dryRun: boolean }): 
   const now = Date.now();
   const dateLabel = new Date(now).toISOString().slice(0, 10);
 
-  const { facts: mapped, catalogRows, pipelineRows, skipped } = await readMappedFacts(uid);
+  const { facts: mapped, catalogRows, pipelineRows, skipped, seriesRows, orderRows, shipmentRows } = await readMappedFacts(uid);
 
   const snap = await db.ref(`workspaces/${WS}/facts`).get();
   const existing: Record<string, FactRecord> = (snap.exists() ? snap.val() : {}) || {};
 
   const report: FactsSyncReport = {
-    dryRun, catalogRows, pipelineRows,
+    dryRun, catalogRows, pipelineRows, seriesRows, orderRows, shipmentRows,
     created: 0, updated: 0, reconfirmed: 0, skippedBadRows: skipped, changes: [],
   };
 
   for (const m of mapped) {
     const id = factId(m.product, m.customer, m.attribute);
     const prior = existing[id] || null;
-    const label = `${m.product || m.customer} ${m.attribute}`;
+    const label = m.label || `${m.product || m.customer} ${m.attribute}`;
     const src = `Atlas master sheet - ${m.tab} tab - synced ${dateLabel}`;
 
     if (prior && String(prior.value) === m.value && String(prior.unit || "") === m.unit) {
@@ -239,7 +375,8 @@ export async function syncSheetToFacts(uid: string, opts: { dryRun: boolean }): 
       // Sticky classification: keep the operator's call on the existing fact.
       visibility = prior.visibility === "customer-safe" ? "customer-safe" : "internal";
     }
-    if (m.attribute === "cogm" || m.attribute === "production_status") visibility = "internal"; // margin math + production posture never leave
+    // P13.386 — force-internal: named posture metrics + ALL monthly series.
+    if (m.series || FORCE_INTERNAL.has(m.attribute)) visibility = "internal";
 
     const rec: FactRecord = {
       id,
@@ -255,6 +392,7 @@ export async function syncSheetToFacts(uid: string, opts: { dryRun: boolean }): 
       visibility,
       history,
       lastSyncedAt: now,
+      ...(m.series ? { series: m.series, month: m.month } : {}),
     };
 
     if (prior) {

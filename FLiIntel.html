@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.385</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.386</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -73143,6 +73143,49 @@ window._factDraftOpenGmail = function(){
   _fToast('Opened in Gmail — add recipient, review the flags, send');
 };
 
+// ── P13.386 — SERIES ACCESS (the ONE door to monthly series facts) ───
+// Architecture lock: every read of monthly capacity / shipped-output
+// series data goes through getSeriesThrough. Nothing else in the
+// codebase touches f.series / f.month directly. A future migration to a
+// dedicated series store is then a one-function change, not a rewrite.
+// Series facts are stored blank-product so _factsList / _runFactQuery
+// never see them — this function is their only reader.
+window._factSeries = {
+  // metric: 'capacity' | 'shipped_output' ; throughMonth: 'YYYY-MM'.
+  // Returns the cumulative total across all stored months <= throughMonth,
+  // plus the per-month rows and freshness of the inputs. Never throws.
+  getSeriesThrough: function(metric, throughMonth){
+    var cache = window._factsCache || {};
+    var rows = [];
+    for (var k in cache){
+      var f = cache[k];
+      if (!f || f.series !== metric || !f.month) continue;
+      if (String(f.month) > String(throughMonth)) continue;
+      var v = parseFloat(String(f.value).replace(/[^0-9.\-]/g,''));
+      rows.push({ month: f.month, value: isNaN(v) ? 0 : v, confirmedAt: f.confirmedAt || 0 });
+    }
+    rows.sort(function(a,b){ return a.month < b.month ? -1 : (a.month > b.month ? 1 : 0); });
+    var cumulative = 0, newest = 0, oldest = Infinity;
+    rows.forEach(function(r){ cumulative += r.value; if (r.confirmedAt > newest) newest = r.confirmedAt; if (r.confirmedAt < oldest) oldest = r.confirmedAt; });
+    var haveData = rows.length > 0;
+    return {
+      metric: metric, throughMonth: throughMonth,
+      months: rows, monthsSummed: rows.length, haveData: haveData,
+      cumulative: cumulative,
+      firstMonth: haveData ? rows[0].month : null,
+      lastMonth: haveData ? rows[rows.length-1].month : null,
+      newestConfirmedAt: haveData ? newest : 0,
+      stalestAgeDays: haveData ? Math.floor(_fAgeDays(oldest)) : 0
+    };
+  },
+  // The set of months present for a metric (used to detect coverage gaps).
+  monthsAvailable: function(metric){
+    var cache = window._factsCache || {}, out = [];
+    for (var k in cache){ var f = cache[k]; if (f && f.series === metric && f.month) out.push(f.month); }
+    return out.sort();
+  }
+};
+
 // ── P13.384 — persistent Ask bar (the Truth Hub's front door) ────────
 // Submit reuses the EXISTING query path verbatim: _factsRefresh →
 // _runFactQuery (same strict guard, same render, same Draft Email).
@@ -73205,6 +73248,6 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.385"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.386"></script>
 </body>
 </html>
