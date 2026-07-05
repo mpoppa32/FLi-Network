@@ -146,7 +146,8 @@ async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; cata
   if (!cat) throw new Error("Standard Motors table not found (SKU/List Price/Total COGM header row missing).");
   const cc = (name: string) => cat.header.indexOf(name);
   const cSku = cc("SKU"), cCap = cc("Monthly Capacity"), cPrice = cc("List Price"),
-    cCogm = cc("Total COGM"), cAvail = cc("First Available");
+    cCogm = cc("Total COGM"), cAvail = cc("First Available"),
+    cStatus = cc("Status"); // P13.385 — the honesty flag (Pre-Production vs Production)
   let catalogRows = 0;
   for (let i = cat.start; i < catRows.length; i++) {
     const row = catRows[i] || [];
@@ -160,6 +161,9 @@ async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; cata
     const cogm = money(row[cCogm]);
     const cap = units(row[cCap]);
     const avail = cAvail >= 0 ? isoDate(row[cAvail]) : null;
+    // P13.385 — production status: label in, label out, no interpretation.
+    const status = cStatus >= 0 ? String(row[cStatus] ?? "").trim() : "";
+    if (status) facts.push({ product, customer: "", attribute: "production_status", value: status, unit: "", tab: "Standard Motors" });
     if (price) facts.push({ product, customer: "", attribute: "price", value: price, unit: "$/unit", tab: "Standard Motors" });
     if (cogm) facts.push({ product, customer: "", attribute: "cogm", value: cogm, unit: "$/unit", tab: "Standard Motors" });
     if (cap) facts.push({ product, customer: "", attribute: "capacity", value: cap, unit: "units/mo (full ramp)", tab: "Standard Motors" });
@@ -235,7 +239,7 @@ export async function syncSheetToFacts(uid: string, opts: { dryRun: boolean }): 
       // Sticky classification: keep the operator's call on the existing fact.
       visibility = prior.visibility === "customer-safe" ? "customer-safe" : "internal";
     }
-    if (m.attribute === "cogm") visibility = "internal"; // margin math never leaves
+    if (m.attribute === "cogm" || m.attribute === "production_status") visibility = "internal"; // margin math + production posture never leave
 
     const rec: FactRecord = {
       id,

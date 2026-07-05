@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.384</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.385</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -72494,7 +72494,11 @@ var FACT_ATTRS = [
   // display paths — the drafter guard means it never reaches a draft.
   { key: 'cogm',         label: 'COGM',         email: 'unit cost'         },
   { key: 'capacity',     label: 'Capacity',     email: 'monthly capacity'  },
-  { key: 'availability', label: 'Availability', email: 'first available'   }
+  { key: 'availability', label: 'Availability', email: 'first available'   },
+  // P13.385 — the honesty flag: Pre-Production vs Production per SKU.
+  // Internal-only by rule (same lock as COGM); the email label exists for
+  // internal display paths only — the drafter guard excludes it.
+  { key: 'production_status', label: 'Production status', email: 'production status' }
 ];
 
 // Attribute vocabulary for the plain-language query router. Strict on
@@ -72511,7 +72515,10 @@ var FACT_ATTR_WORDS = {
   'capacity':     ['capacity', 'per month', 'monthly output', 'units a month', 'units per month', 'production rate'],
   'eta':          ['eta', 'delivery', 'deliver', 'lead time', 'leadtime', 'ship date', 'shipping', 'arrive', 'when will'],
   'availability': ['availability', 'available', 'first available', 'in stock'],
-  'stage':        ['stage', 'order status']
+  'stage':        ['stage', 'order status'],
+  // P13.385 — AFTER stage on purpose: 'order status' must keep resolving to
+  // stage (first match wins); bare 'status' then falls through to here.
+  'production_status': ['production status', 'in production', 'pre-production', 'pre production', 'producing', 'status']
 };
 
 window._factsCache = window._factsCache || {};
@@ -72587,7 +72594,7 @@ function _factVisBadge(f){
 }
 // COGM is margin math — it hard-defaults internal and the modal refuses
 // to mark it customer-safe (save-time coercion backs the UI).
-function _factAttrForcesInternal(attrKey){ return attrKey === 'cogm'; }
+function _factAttrForcesInternal(attrKey){ return attrKey === 'cogm' || attrKey === 'production_status'; }
 
 // ── Store ─────────────────────────────────────────────────────────────
 window._factsRefresh = async function(force){
@@ -72648,7 +72655,8 @@ function _factEnsureModal(){
             '<option value="volume">Volume</option><option value="eta">ETA</option>' +
             '<option value="stage">Stage</option>' +
             '<option value="cogm">COGM (internal)</option><option value="capacity">Capacity (units/mo)</option>' +
-            '<option value="availability">Availability</option><option value="other">Other…</option>' +
+            '<option value="availability">Availability</option><option value="production_status">Production status (internal)</option>' +
+            '<option value="other">Other…</option>' +
           '</select>' +
           '<input id="fact-attr-custom" style="' + inp + ';margin-top:6px;display:none" placeholder="name it — e.g. MOQ" autocomplete="off">' +
         '</div>' +
@@ -72717,9 +72725,9 @@ window._factSetVis = function(v){
   if (v === FACT_VIS_SAFE && _factAttrForcesInternal(attrKey)) {
     if (hint) {
       hint.style.color = 'var(--red)';
-      hint.textContent = '⚠ COGM is margin math — it stays internal-only. It cannot be marked customer-safe.';
+      hint.textContent = '⚠ ' + _factAttrLabel(attrKey) + ' is internal posture — it stays internal-only. It cannot be marked customer-safe.';
     }
-    _fToast('COGM facts are always internal-only');
+    _fToast(_factAttrLabel(attrKey) + ' facts are always internal-only');
     v = FACT_VIS_INTERNAL;
   } else if (hint) {
     hint.style.color = 'var(--t3)';
@@ -72781,7 +72789,7 @@ function _factFromForm(quiet){
   var vis = (window._factVis === FACT_VIS_SAFE) ? FACT_VIS_SAFE : FACT_VIS_INTERNAL;
   if (_factAttrForcesInternal(attribute) && vis !== FACT_VIS_INTERNAL) {
     vis = FACT_VIS_INTERNAL;
-    if (!quiet) _fToast('COGM facts are always internal-only — saved as internal');
+    if (!quiet) _fToast(_factAttrLabel(attribute) + ' facts are always internal-only — saved as internal');
   }
   return {
     id: _factId(product, custName, attribute),
@@ -73197,6 +73205,6 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.384"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.385"></script>
 </body>
 </html>
