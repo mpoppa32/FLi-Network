@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.386</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.387</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -24784,6 +24784,21 @@ window.runMemorySearch=async function(){
   var q=(document.getElementById('memory-query').value||'').trim();
   if(!q)return;
   if(memorySearchActive)return;
+
+  // ── P13.386 Half 2: production-by-date reasoning (checked before facts).
+  // Strict guard (quantity intent + time bound) inside _runProductionQuery;
+  // anything else falls straight through to the fact query below.
+  if (typeof window._runProductionQuery === 'function') {
+    var prodRes = null;
+    try { if (window._factsRefresh) await window._factsRefresh(); prodRes = window._runProductionQuery(q); } catch(eProd) { prodRes = null; }
+    if (prodRes) {
+      var prodResEl = document.getElementById('memory-results');
+      var prodExEl  = document.getElementById('memory-examples');
+      if (prodExEl)  prodExEl.style.display  = 'none';
+      if (prodResEl) { prodResEl.style.display = 'block'; prodResEl.innerHTML = prodRes.html; }
+      return;
+    }
+  }
 
   // ── P13.381: Truth Hub fact queries (local, deterministic, no API) ──────
   // Checked FIRST. Strict guard inside _runFactQuery (attribute word AND a
@@ -73186,6 +73201,133 @@ window._factSeries = {
   }
 };
 
+// ── P13.386 Half 2 — TIME-BOUNDED PRODUCTION REASONING ───────────────
+// The capability half. Answers "how many by <date>" and STRUCTURALLY
+// refuses to emit a naked number: every projection carries (a) the
+// figure, (b) the assumptions (months summed, full-ramp basis), (c) the
+// production status of the SKUs, (d) a mandatory aspirational caveat when
+// any SKU is Pre-Production, and freshness of the inputs. There is no
+// code path here that returns a number alone — no status/no data = a
+// refusal card, never a figure. Reads capacity ONLY via getSeriesThrough.
+function _prodResolveMMToSeries(mm, avail){
+  for (var i = 0; i < avail.length; i++){ if (avail[i].slice(5) === mm) return avail[i]; }
+  if (avail.length){
+    var lo = avail[0], hi = avail[avail.length-1];
+    var c0 = lo.slice(0,4) + '-' + mm, c1 = hi.slice(0,4) + '-' + mm;
+    if (c0 >= lo && c0 <= hi) return c0;
+    if (c1 >= lo && c1 <= hi) return c1;
+    return c1;
+  }
+  return null;
+}
+function _prodParseTargetMonth(ql){
+  var avail = (window._factSeries && window._factSeries.monthsAvailable) ? window._factSeries.monthsAvailable('capacity') : [];
+  var m = ql.match(/(\d{4})-(\d{2})/);                 // explicit YYYY-MM
+  if (m) return m[1] + '-' + m[2];
+  var qm = ql.match(/\bq([1-4])\b/) || ql.match(/\b([1-4])(?:st|nd|rd|th)?\s+quarter\b/) || ql.match(/\bquarter\s+([1-4])\b/);
+  if (qm){ var qEnd = { '1':'03','2':'06','3':'09','4':'12' }[qm[1]]; return _prodResolveMMToSeries(qEnd, avail); }
+  var MO = { january:'01',february:'02',march:'03',april:'04',may:'05',june:'06',july:'07',august:'08',september:'09',october:'10',november:'11',december:'12',
+             jan:'01',feb:'02',mar:'03',apr:'04',jun:'06',jul:'07',aug:'08',sep:'09',sept:'09',oct:'10',nov:'11',dec:'12' };
+  for (var name in MO){ if (new RegExp('\\b' + name + '\\b').test(ql)) return _prodResolveMMToSeries(MO[name], avail); }
+  if (/\b(this year|end of (the )?year|year.?end|eoy)\b/.test(ql)) return _prodResolveMMToSeries('12', avail);
+  return null;
+}
+function _prodSumFacts(attr){
+  var total = 0, n = 0;
+  _factsList().forEach(function(f){
+    if (f.attribute === attr){ var v = parseFloat(String(f.value).replace(/[^0-9.\-]/g,'')); if (!isNaN(v)){ total += v; n++; } }
+  });
+  return { total: total, count: n };
+}
+function _prodMonthName(mkey){
+  var names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var p = String(mkey).split('-'); if (p.length < 2) return mkey;
+  return names[parseInt(p[1],10)-1] + ' ' + p[0];
+}
+function _prodRefuseCard(q, reason){
+  return { html:
+    '<div style="border:1px solid var(--red);border-radius:4px;overflow:hidden;margin-bottom:12px">' +
+    '<div style="padding:9px 13px;background:rgba(239,68,68,.08);border-bottom:1px solid rgba(239,68,68,.35);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--red)">⛔ Cannot project — ' + _fEsc(q) + '</div>' +
+    '<div style="padding:13px;font-size:13px;color:var(--t2);background:var(--s2)">' + _fEsc(reason) +
+    '<div style="margin-top:8px;font-size:12px;color:var(--t3)">A production number is never shown without its assumptions and the SKUs’ status — so with this input missing, no figure is emitted.</div>' +
+    '</div></div>' };
+}
+window._prodLastScopeIds = null;
+window._runProductionQuery = function(q){
+  if (!q) return null;
+  var ql = ' ' + q.toLowerCase().trim().replace(/[?.!]+$/,'') + ' ';
+  // Guard: fire ONLY on a quantity intent AND a time bound. "3115 capacity"
+  // (no time) falls through to _runFactQuery; "order status" is untouched.
+  var qtyIntent = /(how many|how much|\bunits\b|\bmotors\b|\bproduce\b|producing|production|\bmake\b|\boutput\b|\bship\b|\bcapacity\b|by end of|by the end)/.test(ql);
+  if (!qtyIntent) return null;
+  var target = _prodParseTargetMonth(ql);
+  if (!target) return null; // no time bound → not a production-by-date question
+  if (!window._factSeries) return null;
+
+  var cap = window._factSeries.getSeriesThrough('capacity', target);
+  // Refuse if we have no capacity ramp data through the target.
+  if (!cap.haveData || cap.cumulative <= 0){
+    return _prodRefuseCard(q, 'No confirmed capacity ramp is on record through ' + _prodMonthName(target) + '. The plant shows no planned capacity in that window, so there is no basis to project a number.');
+  }
+  // Status is mandatory context. No status facts = no number.
+  var statuses = _factsList().filter(function(f){ return f.attribute === 'production_status'; });
+  if (!statuses.length){
+    return _prodRefuseCard(q, 'No production-status facts are on record, so the readiness of the SKUs can’t be stated. A projection without status would be dishonest, so none is shown.');
+  }
+  var shipped = window._factSeries.getSeriesThrough('shipped_output', target);
+  var committed = _prodSumFacts('committed');
+  var quoted = _prodSumFacts('quoted');
+  var shippedToDate = _prodSumFacts('shipped_to_date');
+  var preProd = statuses.filter(function(f){ return /pre[\s-]?production/i.test(String(f.value)); });
+  var allPreProd = preProd.length === statuses.length;
+  var anyPreProd = preProd.length > 0;
+
+  window._prodLastScopeIds = _factsList().filter(function(f){ return f.product; }).map(function(f){ return f.id; });
+
+  var monthsSummed = cap.months.map(function(m){ return _prodMonthName(m.month); }).join(' + ');
+  var stale = cap.stalestAgeDays > FACT_STALE_DAYS;
+  var freshLine = stale
+    ? '<div style="margin-top:6px;font-size:12px;color:var(--amber)">⚠ Freshness: some capacity inputs are ' + cap.stalestAgeDays + ' days old — re-sync before relying on this.</div>'
+    : '<div style="margin-top:6px;font-size:11px;color:var(--t3);font-family:IBM Plex Mono,monospace">inputs synced within ' + Math.max(cap.stalestAgeDays,0) + 'd · source: Atlas master sheet · Production Planning</div>';
+
+  var caveat = anyPreProd
+    ? '<div style="margin-top:10px;padding:9px 11px;border:1px solid rgba(239,68,68,.5);border-left:3px solid var(--red);border-radius:3px;background:rgba(239,68,68,.07);font-size:12px;color:var(--t2)">' +
+        '⚠ <b>Aspirational, not committed.</b> This is a theoretical ceiling assuming the plant hits its full planned ramp. ' +
+        (allPreProd ? 'All ' + statuses.length + ' SKUs are <b>Pre-Production</b>' : preProd.length + ' of ' + statuses.length + ' SKUs are <b>Pre-Production</b>') +
+        ' — there is no confirmed ramp yet. Treat as a planning ceiling, never as a deliverable commitment.</div>'
+    : '<div style="margin-top:10px;padding:9px 11px;border:1px solid rgba(245,158,11,.45);border-left:3px solid var(--amber);border-radius:3px;background:rgba(245,158,11,.06);font-size:12px;color:var(--t2)">⚠ Theoretical ceiling assuming full planned ramp.</div>';
+
+  var h =
+    '<div style="border:1px solid var(--gold);border-radius:4px;overflow:hidden;margin-bottom:12px">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 13px;background:rgba(212,130,58,.08);border-bottom:1px solid rgba(212,130,58,.35)">' +
+      '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)">⚙ Production projection · through ' + _fEsc(_prodMonthName(target)) + '</div>' +
+      '<div style="display:flex;gap:6px">' +
+        '<button onclick="window._prodDraftEmail()" style="padding:4px 10px;background:transparent;border:1px solid rgba(59,130,246,.5);border-radius:2px;color:var(--blue);font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer">✉ Draft email</button>' +
+        '<span style="font-family:IBM Plex Mono,monospace;font-size:10px;font-weight:700;letter-spacing:.08em;padding:2px 7px;border-radius:3px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.45)">🔒 INTERNAL</span>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:13px;background:var(--s2)">' +
+      '<div style="font-size:24px;font-weight:700;color:var(--text)">~' + cap.cumulative.toLocaleString() + ' units <span style="font-size:13px;font-weight:400;color:var(--t2)">theoretical ceiling</span></div>' +
+      '<div style="margin-top:8px;font-size:12px;color:var(--t2);font-family:IBM Plex Mono,monospace">assumptions: cumulative planned capacity, ' + cap.monthsSummed + ' month' + (cap.monthsSummed!==1?'s':'') + ' summed &mdash; ' + _fEsc(monthsSummed) + '</div>' +
+      '<div style="margin-top:8px;font-size:13px;color:var(--t2)">Against that ceiling, the real book: ' +
+        '<b>' + committed.total.toLocaleString() + '</b> units firm-ordered' +
+        (quoted.total ? ' · <b>' + quoted.total.toLocaleString() + '</b> quoted' : '') +
+        (shippedToDate.total ? ' · <b>' + shippedToDate.total.toLocaleString() + '</b> shipped to date' : '') +
+        (shipped.cumulative ? ' · <b>' + shipped.cumulative.toLocaleString() + '</b> produced so far' : '') + '.</div>' +
+      caveat + freshLine +
+    '</div></div>';
+  return { html: h };
+};
+// Draft an email in the context of a production projection. The projection
+// and its inputs (capacity, status, COGM, committed…) are all internal —
+// the existing guard withholds every one; only customer-safe facts (price,
+// availability) survive into the body.
+window._prodDraftEmail = function(){
+  if (!window._prodLastScopeIds || !window._prodLastScopeIds.length){ _fToast('Run a production query first'); return; }
+  window._factLastMatch = window._prodLastScopeIds;
+  window._factDraftEmail();
+};
+
 // ── P13.384 — persistent Ask bar (the Truth Hub's front door) ────────
 // Submit reuses the EXISTING query path verbatim: _factsRefresh →
 // _runFactQuery (same strict guard, same render, same Draft Email).
@@ -73206,7 +73348,10 @@ window._askBarSubmit = async function(){
   var res = null;
   try {
     if (window._factsRefresh) await window._factsRefresh();
-    res = (typeof window._runFactQuery === 'function') ? window._runFactQuery(q) : null;
+    // P13.386 Half 2 — production-by-date questions first (strict guard:
+    // quantity intent + time bound). Falls through to fact queries otherwise.
+    res = (typeof window._runProductionQuery === 'function') ? window._runProductionQuery(q) : null;
+    if (!res) res = (typeof window._runFactQuery === 'function') ? window._runFactQuery(q) : null;
   } catch(e){ res = null; }
   if (res) {
     panel.innerHTML =
@@ -73248,6 +73393,6 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.386"></script>
+<script type="module" src="./js/corsair/main.js?v=P13.387"></script>
 </body>
 </html>
