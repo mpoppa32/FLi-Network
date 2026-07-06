@@ -34,6 +34,7 @@ export const factsSheetSync = onSchedule(
       log.info("job_completed", {
         catalogRows: report.catalogRows,
         pipelineRows: report.pipelineRows,
+        pricingRows: report.pricingRows, // A — 0 means Atlas_Pricing wasn't readable
         created: report.created,
         updated: report.updated,
         reconfirmed: report.reconfirmed,
@@ -47,6 +48,7 @@ export const factsSheetSync = onSchedule(
           seriesRows: report.seriesRows,
           orderRows: report.orderRows,
           shipmentRows: report.shipmentRows,
+          pricingRows: report.pricingRows,
           created: report.created,
           updated: report.updated,
           reconfirmed: report.reconfirmed,

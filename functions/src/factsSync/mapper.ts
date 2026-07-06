@@ -29,7 +29,7 @@
 //   fact_<product|account>__<customer|general>__<attribute>
 
 import { db } from "../framework/rtdb";
-import { readRange } from "../sources/atlasMaster/client";
+import { readRange, readSpreadsheetSummary } from "../sources/atlasMaster/client";
 import { ATLAS_MASTER_CONFIG as CFG } from "../sources/atlasMaster/config";
 
 const WS = CFG.workspaceId;
@@ -165,6 +165,7 @@ interface MappedFact {
   series?: string; // P13.386
   month?: string;  // P13.386
   label?: string;  // P13.386 — display label for series/aggregate facts
+  source?: string; // A (2026-07-06) — overrides the "Atlas master sheet" source label (e.g. Atlas_Pricing)
 }
 // P13.386 — metrics that are internal posture and NEVER leave (email guard).
 const FORCE_INTERNAL = new Set([
@@ -184,6 +185,7 @@ export interface FactsSyncReport {
   seriesRows: number;   // P13.386 — monthly capacity + shipped-output cells read
   orderRows: number;    // P13.386 — Orders Master lines summed
   shipmentRows: number; // P13.386 — Shipments Log lines summed
+  pricingRows: number;  // A (2026-07-06) — SKUs priced from Atlas_Pricing (0 = sheet unreadable, master fallback used)
   created: number;
   updated: number;
   reconfirmed: number;
@@ -192,9 +194,89 @@ export interface FactsSyncReport {
 }
 
 /** Read the catalog + pipeline + production tabs and map them to fact rows. */
-async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; catalogRows: number; pipelineRows: number; skipped: number; seriesRows: number; orderRows: number; shipmentRows: number }> {
+// A (2026-07-06) — AUTHORITATIVE pricing from Tom's Atlas_Pricing sheet.
+// Reads the "Atlas Standard Motor" tab (the current customer Volume Price List)
+// and produces, per SKU: a `price` fact (list price) + a `volume_pricing` fact
+// (the full qty → unit-price ladder). The tab title is resolved from the sheet
+// summary so an exact-name change won't break it. Best-effort by design: the
+// caller swallows read failures (e.g. sheet not shared with the sync grant),
+// leaving the master List Price fallback in place. Returns the products it
+// priced so the caller can skip the master List Price for them (one source).
+async function readPricingFacts(uid: string): Promise<{ facts: MappedFact[]; pricedProducts: Set<string>; pricingRows: number }> {
+  const facts: MappedFact[] = [];
+  const pricedProducts = new Set<string>();
+  let pricingRows = 0;
+
+  // Resolve the volume-list tab by CONTENT, not just name: the sheet also has a
+  // "Standard Motors" catalog tab (no volume table). Try the "standard motor"
+  // tabs — atlas-named first — and use whichever actually holds the volume table.
+  const summary = await readSpreadsheetSummary(uid, CFG.sheets.pricing);
+  const candidates = summary.tabs
+    .filter((t) => /standard\s*motor/i.test(t.title))
+    .sort((a, b) => (/atlas/i.test(b.title) ? 1 : 0) - (/atlas/i.test(a.title) ? 1 : 0));
+  let rows: string[][] = [];
+  let vt: { header: string[]; start: number } | null = null;
+  for (const cand of candidates) {
+    rows = await readRange(uid, CFG.sheets.pricing, `${cand.title}!A1:Z60`);
+    vt = findTable(rows, ["Order Quantity", "Discount off List"]);
+    if (vt) break;
+  }
+  if (!vt) return { facts, pricedProducts, pricingRows };
+  const qtyCol = vt.header.indexOf("Order Quantity");
+
+  // Remaining header cells that look like part numbers are the priced SKUs.
+  const skuCols: Array<{ col: number; product: string }> = [];
+  vt.header.forEach((h, col) => {
+    const s = String(h ?? "").trim();
+    if (/^ATL-/i.test(s)) {
+      const product = productFromSku(s);
+      if (product) skuCols.push({ col, product });
+    }
+  });
+
+  for (const { col, product } of skuCols) {
+    const ladder: string[] = [];
+    let listPrice: string | null = null;
+    for (let i = vt.start; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const qty = String(row[qtyCol] ?? "").trim();
+      if (!qty || !/\d/.test(qty)) break; // end of the contiguous volume table
+      const cell = row[col];
+      const p = money(cell);
+      const label = p ?? (String(cell ?? "").trim() ? "negotiated" : null);
+      if (!label) continue;
+      if (!listPrice && p) listPrice = p;
+      ladder.push(`${qty} ${label}`);
+    }
+    if (!ladder.length) continue;
+    pricingRows++;
+    pricedProducts.add(product);
+    if (listPrice) {
+      facts.push({ product, customer: "", attribute: "price", value: listPrice, unit: "$/unit (list)", tab: "Atlas Standard Motor", source: "Atlas_Pricing sheet (Standard Motor list)" });
+    }
+    facts.push({ product, customer: "", attribute: "volume_pricing", value: ladder.join("  ·  "), unit: "$/unit by order qty", tab: "Atlas Standard Motor", source: "Atlas_Pricing sheet (Standard Motor list)" });
+  }
+  return { facts, pricedProducts, pricingRows };
+}
+
+async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; catalogRows: number; pipelineRows: number; skipped: number; seriesRows: number; orderRows: number; shipmentRows: number; pricingRows: number }> {
   const facts: MappedFact[] = [];
   let skipped = 0;
+
+  // ── Pricing (AUTHORITATIVE): Tom's Atlas_Pricing supersedes the master
+  //    sheet's List Price so the two can't drift. Best-effort — if the sync
+  //    grant can't read Tom's sheet, pricingRows stays 0 and the master List
+  //    Price fallback below stands (sync never breaks over a pricing read).
+  let pricingRows = 0;
+  const pricedProducts = new Set<string>();
+  try {
+    const pr = await readPricingFacts(uid);
+    facts.push(...pr.facts);
+    pr.pricedProducts.forEach((p) => pricedProducts.add(p));
+    pricingRows = pr.pricingRows;
+  } catch {
+    /* Atlas_Pricing unreadable (e.g. not shared with the sync grant) — fall back to master List Price */
+  }
 
   // ── Standard Motors: per-SKU unit economics ───────────────────────────────
   const catRows = await readRange(uid, CFG.sheets.master, "Standard Motors!A1:Z100");
@@ -220,7 +302,9 @@ async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; cata
     // P13.385 — production status: label in, label out, no interpretation.
     const status = cStatus >= 0 ? String(row[cStatus] ?? "").trim() : "";
     if (status) facts.push({ product, customer: "", attribute: "production_status", value: status, unit: "", tab: "Standard Motors" });
-    if (price) facts.push({ product, customer: "", attribute: "price", value: price, unit: "$/unit", tab: "Standard Motors" });
+    // Skip the master List Price when Atlas_Pricing already priced this SKU
+    // (authoritative) — otherwise the two sources would fight over one fact.
+    if (price && !pricedProducts.has(product)) facts.push({ product, customer: "", attribute: "price", value: price, unit: "$/unit", tab: "Standard Motors" });
     if (cogm) facts.push({ product, customer: "", attribute: "cogm", value: cogm, unit: "$/unit", tab: "Standard Motors" });
     if (cap) facts.push({ product, customer: "", attribute: "capacity", value: cap, unit: "units/mo (full ramp)", tab: "Standard Motors" });
     if (avail) facts.push({ product, customer: "", attribute: "availability", value: avail, unit: "first available", tab: "Standard Motors" });
@@ -340,7 +424,7 @@ async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; cata
     }
   }
 
-  return { facts, catalogRows, pipelineRows, skipped, seriesRows, orderRows, shipmentRows };
+  return { facts, catalogRows, pipelineRows, skipped, seriesRows, orderRows, shipmentRows, pricingRows };
 }
 
 /**
@@ -352,13 +436,13 @@ export async function syncSheetToFacts(uid: string, opts: { dryRun: boolean }): 
   const now = Date.now();
   const dateLabel = new Date(now).toISOString().slice(0, 10);
 
-  const { facts: mapped, catalogRows, pipelineRows, skipped, seriesRows, orderRows, shipmentRows } = await readMappedFacts(uid);
+  const { facts: mapped, catalogRows, pipelineRows, skipped, seriesRows, orderRows, shipmentRows, pricingRows } = await readMappedFacts(uid);
 
   const snap = await db.ref(`workspaces/${WS}/facts`).get();
   const existing: Record<string, FactRecord> = (snap.exists() ? snap.val() : {}) || {};
 
   const report: FactsSyncReport = {
-    dryRun, catalogRows, pipelineRows, seriesRows, orderRows, shipmentRows,
+    dryRun, catalogRows, pipelineRows, seriesRows, orderRows, shipmentRows, pricingRows,
     created: 0, updated: 0, reconfirmed: 0, skippedBadRows: skipped, changes: [],
   };
 
@@ -366,7 +450,9 @@ export async function syncSheetToFacts(uid: string, opts: { dryRun: boolean }): 
     const id = factId(m.product, m.customer, m.attribute);
     const prior = existing[id] || null;
     const label = m.label || `${m.product || m.customer} ${m.attribute}`;
-    const src = `Atlas master sheet - ${m.tab} tab - synced ${dateLabel}`;
+    const src = m.source
+      ? `${m.source} - synced ${dateLabel}`
+      : `Atlas master sheet - ${m.tab} tab - synced ${dateLabel}`;
 
     if (prior && String(prior.value) === m.value && String(prior.unit || "") === m.unit) {
       // Unchanged: cheap leaf re-confirm. Preserves visibility, history,
