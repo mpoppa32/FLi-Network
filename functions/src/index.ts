@@ -79,6 +79,8 @@ export { atlasMasterSync } from "./jobs/atlasMasterSync";
 // so it shares the build-from-a-checkout-that-has-atlasMaster caveat above.
 export { triggerFactsSheetSync } from "./http/triggerFactsSheetSync";
 export { factsSheetSync } from "./jobs/factsSheetSync";
+// Bridge to Tom's Atlas Relationship Console: customer-safe product facts for drafting.
+export { draftingFacts } from "./http/draftingFacts";
 
 // Think Tanks (Phase 8.6.6 — bundled RSS aggregator)
 export { triggerThinkTanksSync } from "./http/triggerThinkTanksSync";
