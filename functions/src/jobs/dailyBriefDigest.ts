@@ -57,6 +57,10 @@ export interface BriefSubscription {
    *  section (signals/awards/opportunities from derivedViews/dailyBrief/
    *  latest). Defaults on when unset, like the other inc* flags. */
   incIntel?: boolean;
+  /** P13.389 — include the "Master Sheet Changes" section: the value edits
+   *  factsSheetSync caught on the Atlas master sheet since the last digest
+   *  (workspaces/{ws}/factChanges ring buffer). Defaults on when unset. */
+  incFactChanges?: boolean;
   subscribedAt?: string;
   lastSent?: string;
 }
@@ -91,12 +95,14 @@ export async function composeBrief(
   db: admin.database.Database
 ): Promise<{ subject: string; text: string; html: string }> {
   const wsRef = db.ref(`workspaces/${workspaceId}`);
-  const [oppsSnap, meetingsSnap, commitmentsSnap, calRecordsSnap, briefSnap] = await Promise.all([
+  const [oppsSnap, meetingsSnap, commitmentsSnap, calRecordsSnap, briefSnap, factChangesSnap, memberSnap] = await Promise.all([
     wsRef.child("opportunities").once("value"),
     wsRef.child("meetings").once("value"),
     wsRef.child("commitments").once("value"),
     wsRef.child("calibration").once("value"),
     wsRef.child("derivedViews/dailyBrief/latest").once("value"),
+    wsRef.child("factChanges").once("value"),
+    wsRef.child(`members/${sub.uid}`).once("value"),
   ]);
 
   const opps = oppsSnap.val() ? Object.values(oppsSnap.val() as Record<string, any>) : [];
@@ -166,6 +172,75 @@ export async function composeBrief(
         });
         lines.push("");
       }
+    }
+  }
+
+  // Master sheet changes — the value edits factsSheetSync detected on the Atlas
+  // master since the last digest. Closes the loop from "the sync caught a real
+  // edit autonomously" to "the operator actually sees it in the morning email."
+  // The ring buffer at factChanges holds up to 50 recent entries; we window to
+  // the subscriber's cadence (daily → ~26h, weekly → ~8d) so nothing is missed
+  // and near-boundary edits at worst repeat once.
+  //
+  // VISIBILITY: fail-safe like the rest of the Truth Hub. Only Owner/Admin
+  // subscribers (the same privilege check the app uses everywhere:
+  // role ∈ {Owner, Admin}) see internal-classified edits. Analyst/Observer —
+  // and any subscriber with an unrecognized/missing role — get customer-safe
+  // edits only, with a count of how many internal edits were withheld. We read
+  // each fact's CURRENT visibility (not a snapshot taken at change time) so an
+  // operator reclassification always wins, and default-deny anything we can't
+  // resolve (missing fact, missing/!customer-safe visibility → treated internal).
+  if (sub.incFactChanges !== false) {
+    const rawChanges = factChangesSnap.val();
+    const changes: any[] = Array.isArray(rawChanges)
+      ? rawChanges
+      : rawChanges && typeof rawChanges === "object"
+        ? Object.values(rawChanges)
+        : [];
+    const windowMs = sub.frequency === "weekly" ? 8 * 86400000 : 26 * 3600000;
+    const cutoff = Date.now() - windowMs;
+    const esc = (s: unknown) => String(s ?? "").replace(/[<>]/g, "").trim();
+    const pretty = (s: unknown) => esc(s).replace(/_/g, " ");
+    const recent = changes
+      .filter((c: any) => c && typeof c.at === "number" && c.at >= cutoff)
+      .sort((a: any, b: any) => (b.at ?? 0) - (a.at ?? 0));
+
+    // Privilege gate — mirrors the app's isOwner/isAdmin check (role ∈ {Owner,Admin}).
+    const role = String(memberSnap.val()?.role ?? "").toLowerCase();
+    const trustedInternal = role === "owner" || role === "admin";
+
+    let visible = recent;
+    let withheld = 0;
+    if (!trustedInternal && recent.length) {
+      // Resolve each changed fact's CURRENT visibility; default-deny on miss.
+      const ids = [...new Set(recent.map((c: any) => c.id).filter(Boolean))];
+      const visSnaps = await Promise.all(
+        ids.map((id) => wsRef.child(`facts/${id}/visibility`).once("value"))
+      );
+      const visMap: Record<string, unknown> = {};
+      ids.forEach((id, i) => { visMap[String(id)] = visSnaps[i].val(); });
+      visible = recent.filter((c: any) => visMap[String(c.id)] === "customer-safe");
+      withheld = recent.length - visible.length;
+    }
+
+    if (visible.length || withheld) {
+      const label = sub.frequency === "weekly" ? "last 7d" : "last 24h";
+      lines.push(`=== MASTER SHEET CHANGES (${label}) ===`);
+      if (visible.length) {
+        lines.push(`${visible.length} value ${visible.length === 1 ? "edit" : "edits"} synced from the Atlas master`);
+      }
+      visible.slice(0, 12).forEach((c: any) => {
+        const name = pretty(c.label) || "(fact)";
+        lines.push(
+          c.from === null || c.from === undefined
+            ? `• ${name}: ${esc(c.to)} (new)`
+            : `• ${name}: ${esc(c.from)} → ${esc(c.to)}`
+        );
+      });
+      if (withheld) {
+        lines.push(`${withheld} internal ${withheld === 1 ? "edit" : "edits"} hidden — view in Corsair`);
+      }
+      lines.push("");
     }
   }
 
