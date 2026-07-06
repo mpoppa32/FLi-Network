@@ -93,13 +93,31 @@ function productFromSkuLoose(sku: string): string | null {
   const base = m[1].replace(/-/g, " ").toUpperCase().replace(/(\d)KV/g, "$1KV");
   return m[2] && m[2].toUpperCase() === "C" ? `${base} Commercial` : base;
 }
-// P13.386 — Excel serial date -> "YYYY-MM". 25569 = the Excel serial for
-// 1970-01-01 (UTC), the Unix epoch. Month-granularity only (series keys).
-function serialToMonth(serial: unknown): string | null {
-  const n = parseFloat(String(serial ?? "").replace(/[^0-9.\-]/g, ""));
-  if (isNaN(n) || n < 20000 || n > 80000) return null; // guard the serial band
-  const d = new Date(Math.round((n - 25569) * 86400000));
-  return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0");
+// P13.386 — a sheet date cell -> "YYYY-MM". The Sheets API returns FORMATTED
+// values (verified: availability arrives as "7/1/2026", not a serial), so the
+// month header row is formatted date strings. Handle every plausible form:
+// M/D/YYYY (the observed format), ISO, "May 2026"/"May-26", and raw Excel
+// serials as a fallback (25569 = the serial for 1970-01-01 UTC). Returns null
+// for anything that isn't a real month (e.g. the "Q2 '26" quarter labels).
+const _MONTH_ABBR: Record<string, string> = {
+  jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+  jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+};
+function monthKey(cell: unknown): string | null {
+  const s = String(cell ?? "").trim();
+  if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{2})(?:-\d{2})?/); // ISO YYYY-MM[-DD]
+  if (m) return m[1] + "-" + m[2];
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // M/D/YYYY (observed)
+  if (m) return m[3] + "-" + m[1].padStart(2, "0");
+  m = s.toLowerCase().match(/^([a-z]{3})[a-z]*[\s'\-]+(\d{2,4})/); // "May 2026" / "May-26"
+  if (m && _MONTH_ABBR[m[1]]) return (m[2].length === 2 ? "20" + m[2] : m[2]) + "-" + _MONTH_ABBR[m[1]];
+  const n = parseFloat(s.replace(/[^0-9.\-]/g, "")); // raw Excel serial fallback
+  if (!isNaN(n) && n > 20000 && n < 80000) {
+    const d = new Date(Math.round((n - 25569) * 86400000));
+    return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0");
+  }
+  return null;
 }
 function intUnits(raw: unknown): number | null {
   const t = String(raw ?? "").replace(/[^0-9.\-]/g, "");
@@ -234,17 +252,17 @@ async function readMappedFacts(uid: string): Promise<{ facts: MappedFact[]; cata
   const ppRows = await readRange(uid, CFG.sheets.master, "Production Planning!A1:Z60");
   const markerIdx = ppRows.findIndex((r) => String((r || [])[0] ?? "").trim() === "AGGREGATE CAPACITY FLOW");
   if (markerIdx >= 0) {
-    // month header: first row after the marker with serial-like values in col >= 3
+    // month header: first row after the marker with real month values in col >= 3
     let monthRowIdx = -1;
     for (let i = markerIdx; i < Math.min(markerIdx + 4, ppRows.length); i++) {
       const r = ppRows[i] || [];
-      if (serialToMonth(r[3]) || serialToMonth(r[4]) || serialToMonth(r[5])) { monthRowIdx = i; break; }
+      if (monthKey(r[3]) || monthKey(r[4]) || monthKey(r[5])) { monthRowIdx = i; break; }
     }
     if (monthRowIdx >= 0) {
       const monthRow = ppRows[monthRowIdx] || [];
       const colMonths: Record<number, string> = {};
       for (let c = 0; c < monthRow.length; c++) {
-        const mo = serialToMonth(monthRow[c]);
+        const mo = monthKey(monthRow[c]);
         if (mo) colMonths[c] = mo;
       }
       const seriesRowSpec: Array<{ label: string; series: string; unit: string }> = [
