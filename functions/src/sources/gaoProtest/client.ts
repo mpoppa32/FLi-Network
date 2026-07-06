@@ -15,7 +15,12 @@ import { acquireTokens } from "../../framework/rateLimit";
 import { withRetry } from "../../framework/retry";
 import { Logger } from "../../framework/logger";
 
-const RSS_URL = "https://www.gao.gov/rss/products/legal-decisions";
+// 2026-06-28: GAO retired /rss/products/legal-decisions (404 → homepage). The
+// current Legal Products feed (Comptroller General decisions incl. bid protests)
+// is /rss/reportslegal.xml. Items now carry the company name as <title> and the
+// lowercase docket in <guid>/<link> (e.g. /products/b-424347), so the B-number
+// matchers below run case-insensitively.
+const RSS_URL = "https://www.gao.gov/rss/reportslegal.xml";
 const FALLBACK_URL = "https://www.gao.gov/legal/bid-protests/search";
 const USER_AGENT = "Corsair Defense BD Intel (mpoppa32@gmail.com)";
 
@@ -122,8 +127,9 @@ function stripHtml(s: string): string {
  * numbers starting with "B-".
  */
 export function isBidProtest(item: GaoRssItem): boolean {
-  // B-XXXXXX or B-XXXXXX.X format in title or guid
-  const protestPattern = /\bB-[0-9]{5,7}(?:\.[0-9]+)?\b/;
+  // B-XXXXXX or B-XXXXXX.X format in title or guid. Case-insensitive: the
+  // current feed puts the docket lowercase in the guid (/products/b-424347).
+  const protestPattern = /\bB-[0-9]{5,7}(?:\.[0-9]+)?\b/i;
   return protestPattern.test(item.title) || protestPattern.test(item.guid);
 }
 
@@ -131,12 +137,14 @@ export function isBidProtest(item: GaoRssItem): boolean {
  * Extract docket number(s) from a feed item.
  */
 export function extractDocketNumbers(item: GaoRssItem): string[] {
-  const protestPattern = /\bB-[0-9]{5,7}(?:\.[0-9]+)?\b/g;
+  // Case-insensitive (lowercase dockets in guid) + normalize to uppercase so
+  // docket numbers + derived signal ids are stable regardless of feed casing.
+  const protestPattern = /\bB-[0-9]{5,7}(?:\.[0-9]+)?\b/gi;
   const set = new Set<string>();
   let m: RegExpExecArray | null;
-  while ((m = protestPattern.exec(item.title)) !== null) set.add(m[0]);
-  while ((m = protestPattern.exec(item.guid)) !== null) set.add(m[0]);
-  while ((m = protestPattern.exec(item.description)) !== null) set.add(m[0]);
+  while ((m = protestPattern.exec(item.title)) !== null) set.add(m[0].toUpperCase());
+  while ((m = protestPattern.exec(item.guid)) !== null) set.add(m[0].toUpperCase());
+  while ((m = protestPattern.exec(item.description)) !== null) set.add(m[0].toUpperCase());
   return Array.from(set);
 }
 
