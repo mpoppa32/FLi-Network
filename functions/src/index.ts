@@ -81,6 +81,9 @@ export { triggerFactsSheetSync } from "./http/triggerFactsSheetSync";
 export { factsSheetSync } from "./jobs/factsSheetSync";
 // Bridge to Tom's Atlas Relationship Console: customer-safe product facts for drafting.
 export { draftingFacts } from "./http/draftingFacts";
+// Build C — Slack intake: pull Atlas channel messages into a surfaced feed (no-op until SLACK_BOT_TOKEN set).
+export { slackIntakeHourly } from "./jobs/slackIntakeHourly";
+export { triggerSlackIntake } from "./http/triggerSlackIntake";
 
 // Think Tanks (Phase 8.6.6 — bundled RSS aggregator)
 export { triggerThinkTanksSync } from "./http/triggerThinkTanksSync";

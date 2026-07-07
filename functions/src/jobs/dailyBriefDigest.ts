@@ -61,6 +61,9 @@ export interface BriefSubscription {
    *  factsSheetSync caught on the Atlas master sheet since the last digest
    *  (workspaces/{ws}/factChanges ring buffer). Defaults on when unset. */
   incFactChanges?: boolean;
+  /** Build C — include the "Atlas Slack" section: recent messages the intake
+   *  pulled from the Atlas channels (workspaces/{ws}/slackFeed). Defaults on. */
+  incSlack?: boolean;
   subscribedAt?: string;
   lastSent?: string;
 }
@@ -95,7 +98,7 @@ export async function composeBrief(
   db: admin.database.Database
 ): Promise<{ subject: string; text: string; html: string }> {
   const wsRef = db.ref(`workspaces/${workspaceId}`);
-  const [oppsSnap, meetingsSnap, commitmentsSnap, calRecordsSnap, briefSnap, factChangesSnap, memberSnap] = await Promise.all([
+  const [oppsSnap, meetingsSnap, commitmentsSnap, calRecordsSnap, briefSnap, factChangesSnap, memberSnap, slackFeedSnap] = await Promise.all([
     wsRef.child("opportunities").once("value"),
     wsRef.child("meetings").once("value"),
     wsRef.child("commitments").once("value"),
@@ -103,6 +106,7 @@ export async function composeBrief(
     wsRef.child("derivedViews/dailyBrief/latest").once("value"),
     wsRef.child("factChanges").once("value"),
     wsRef.child(`members/${sub.uid}`).once("value"),
+    wsRef.child("slackFeed").once("value"),
   ]);
 
   const opps = oppsSnap.val() ? Object.values(oppsSnap.val() as Record<string, any>) : [];
@@ -240,6 +244,35 @@ export async function composeBrief(
       if (withheld) {
         lines.push(`${withheld} internal ${withheld === 1 ? "edit" : "edits"} hidden — view in Corsair`);
       }
+      lines.push("");
+    }
+  }
+
+  // Atlas Slack — recent messages the intake pulled from the Atlas channels
+  // (build C). SURFACED, not authoritative: this is "what was said in Slack,"
+  // never a fact source. Window sized to the subscriber's cadence.
+  if (sub.incSlack !== false) {
+    const rawFeed = slackFeedSnap.val();
+    const feed: any[] = Array.isArray(rawFeed)
+      ? rawFeed
+      : rawFeed && typeof rawFeed === "object" ? Object.values(rawFeed) : [];
+    const windowMs = sub.frequency === "weekly" ? 8 * 86400000 : 26 * 3600000;
+    const cutoff = Date.now() - windowMs;
+    const clip = (s: unknown) => String(s ?? "").replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
+    const recent = feed
+      .filter((m: any) => m && typeof m.atMs === "number" && m.atMs >= cutoff && (m.text || (m.fileNames && m.fileNames.length)))
+      .sort((a: any, b: any) => (b.atMs ?? 0) - (a.atMs ?? 0));
+    if (recent.length) {
+      const label = sub.frequency === "weekly" ? "last 7d" : "last 24h";
+      const chans = new Set(recent.map((m: any) => m.channel));
+      lines.push(`=== ATLAS SLACK (${label}) ===`);
+      lines.push(`${recent.length} message${recent.length === 1 ? "" : "s"} across ${chans.size} channel${chans.size === 1 ? "" : "s"}`);
+      recent.slice(0, 14).forEach((m: any) => {
+        const who = clip(m.user) || "someone";
+        const body = clip(m.text).slice(0, 140);
+        const files = m.fileNames && m.fileNames.length ? ` [${m.fileNames.length} file${m.fileNames.length === 1 ? "" : "s"}]` : "";
+        lines.push(`• #${clip(m.channel)} — ${who}: ${body}${files}`);
+      });
       lines.push("");
     }
   }
