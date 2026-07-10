@@ -1,10 +1,20 @@
 # Corsair Cloud Functions
 
-Server-side functions powering Corsair's external data integrations. Phase 8.5 onward.
+Server-side functions powering Corsair's AI proxy, external OSINT data integrations, auto-capture, and email digests. TypeScript, **Node 20**, Firebase Functions **2nd gen** (package `corsair-functions`).
 
-## Current scope (Phase 8.5.1)
+> **Scope note:** This README was rewritten 2026-07-08 to match what is actually deployed. The full OSINT suite (Phase 8.5 **and** 8.6) plus the AI proxy, Gmail/Calendar capture, and email digests are all implemented and exported from `src/index.ts` — the previous README describing "three migration functions as current scope" was badly out of date. `src/index.ts` is the authoritative list; the tables below summarize it.
 
-Three HTTPS callable functions for the workspace migration that prepares existing operator data for Phase 8.5 external source integration:
+---
+
+## What's deployed
+
+### AI proxy (the load-bearing one)
+
+| Function | Purpose |
+|---|---|
+| `anthropicProxy` | Callable proxy for **all** Claude calls from the client. Holds the Anthropic key server-side (Secret Manager, `ANTHROPIC_API_KEY`), verifies workspace membership, enforces a per-workspace hourly quota (default 30/hr, hard ceiling 200), and forwards `/v1/messages`. Model allow-list: `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5` + legacy 3.x. 120s function timeout / 110s upstream abort. **If this key is unset or invalid, every AI feature in the app breaks.** |
+
+### Migration (Phase 8.5.1)
 
 | Function | Purpose |
 |---|---|
@@ -12,19 +22,98 @@ Three HTTPS callable functions for the workspace migration that prepares existin
 | `triggerMigration` | Applies the five-step migration after operator approval. |
 | `triggerRollback` | Rolls back migration (per-step or full). |
 
-The migration adds source provenance to existing entities, initializes the new `awards/` collection, and creates per-source configuration paths under `workspaces/{wsId}/sources/`. No existing entity fields are deleted, renamed, or merged. Full safety contract: see `corsair-osint-migration-v1.md` at the repo root.
+The migration adds source provenance to existing entities, initializes the new `awards/` collection, and creates per-source config paths under `workspaces/{wsId}/sources/`. No existing entity fields are deleted, renamed, or merged. Safety contract: `corsair-osint-migration-v1.md` at the repo root.
+
+### OSINT source syncs
+
+Each source ships a manual `trigger*Sync` (operator/CLI callable) **and** a scheduled cron job. Tier 1 are the anchor sources (Phase 8.5); Tier 2 are the expansion sources (Phase 8.6).
+
+**Tier 1 (Phase 8.5)**
+
+| Source | Manual trigger | Scheduled job | Notes |
+|---|---|---|---|
+| SAM.gov | `triggerSamGovSync` | `samGovHourly` | Pipeline spine (opportunities + entity reg). Needs `SAMGOV_API_KEY`. |
+| USAspending | `triggerUsaSpendingSync` | `usaSpendingNightly` | Awards. |
+| USAspending subawards | `triggerUsaSpendingSubawards` | `usaSpendingSubawardsWeekly` | Subaward relationships. |
+| Recompete watch | `triggerRecompeteWatchRefresh` | (on-demand) | Flagship "what's about to recompete" deliverable. |
+| DoD News contracts | `triggerDodNewsSync` | `dodNewsDaily` | Multi-source reconciliation with USAspending. |
+| GAO bid protest | `triggerGaoProtestSync` | `gaoProtestDaily` | Signals. |
+| SEC EDGAR | `triggerSecEdgarSync` | `secEdgarFrequent` | Form 4 / proxy / periodic filings. |
+| Congress.gov | `triggerCongressGovSync` | `congressGovDaily` | Legislation. Needs `CONGRESSGOV_API_KEY`. |
+| Brief synthesis | `triggerBriefSynthesis` | `briefSynthesisNightly` | Composes all sources into the daily Brief. |
+
+**Tier 2 (Phase 8.6)**
+
+| Source | Manual trigger | Scheduled job |
+|---|---|---|
+| FACA advisory committees | `triggerFacaDatabaseSync` | `facaDatabaseWeekly` |
+| DSCA Foreign Military Sales | `triggerDscaFmsSync` | `dscaFmsWeekly` |
+| DoD Comptroller budget (R-2/P-1) | `triggerDodComptrollerSync` | `dodComptrollerMonthly` |
+| State Department feeds | `triggerStateDepartmentSync` | `stateDepartmentDaily` |
+| Service-branch news | `triggerServiceNewsSync` | `serviceNewsDaily` |
+| Defense BD news (Breaking Defense / DefenseScoop / Defense News / FedScoop / NextGov) | `triggerDefenseScoopSync` | `defenseScoopDaily` |
+| Think tanks | `triggerThinkTanksSync` | `thinkTanksDaily` |
+| GAO reports (oversight) | `triggerGaoReportsSync` | `gaoReportsDaily` |
+| DoD OIG (oversight) | `triggerDodOigSync` | `dodOigDaily` |
+| NASA OIG (oversight) | `triggerNasaOigSync` | `nasaOigDaily` |
+| DARPA news / R&D pipeline | `triggerDarpaNewsSync` | `darpaNewsDaily` |
+| Advisory boards (DSB/DBB/DIB, PDF parse) | `triggerAdvisoryBoardsSync` | `advisoryBoardsWeekly` |
+| Senate LDA lobbying disclosure | `triggerSenateLdaSync` | `senateLdaWeekly` |
+| Plum Book / federal vacancies | `triggerPlumBookSync` | `plumBookMonthly` |
+| Industry association rosters (NDIA/AFA/AUSA) | `triggerIndustryAssocSync` | `industryAssocQuarterly` |
+| Drone Gauntlet leaderboard (Atlas market) | `triggerUasPatternsSync` | `uasPatternsDaily` |
+| Drone PIE supply-chain intel | `triggerUasPatternsPieSync` | `uasPatternsPieDaily` |
+
+### Atlas / Google Sheets sync
+
+> These import the **gitignored** `atlasMaster` config (private Sheet IDs, customer names) — it's intentionally absent from this repo. Build/deploy from a checkout that has it.
+
+| Function | Purpose |
+|---|---|
+| `triggerAtlasMasterRead` / `triggerAtlasMasterSync` / `atlasMasterSync` | Atlas master Sheet → opps (read proof / dry-run mapper / 6-hour auto-sync). |
+| `triggerFactsSheetSync` / `factsSheetSync` | Truth Hub facts sync (Standard Motors pricing/COGM, BD pipeline) → `workspaces/{ws}/facts`. |
+| `draftingFacts` | Customer-safe product facts for Tom's Atlas Relationship Console. |
+| `slackIntakeHourly` / `triggerSlackIntake` | Slack channel intake feed (no-op until `SLACK_BOT_TOKEN` set). |
+
+### Gmail + Calendar auto-capture (P2.14)
+
+Requires `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`.
+
+`captureOAuthStart`, `captureOAuthCallback`, `triggerGmailSync`, `triggerCalendarSync`, `captureHourly`, `backfillCaptureMatches`, `captureMatchBackfillYearly`.
+
+### Email digests & reminders
+
+Require `SENDGRID_API_KEY` + `BRIEF_FROM_EMAIL` (both gracefully no-op if unset).
+
+`dailyBriefDigest` (11:00 UTC daily), `triggerBriefDigestTest` (fire one digest on demand), `meetingReminder` (per-meeting email reminders every 15 min).
+
+### Maintenance / backfills
+
+`listMyInvites` (scoped invite read), `triggerRelatedIdsBackfill` / `relatedIdsBackfillMonthly`, `backfillOrgMerge` / `orgMergeBackfillYearly` (dedupe org/person nodes), `triggerEnrichEntityDomains` / `enrichEntityDomainsYearly` (derive gov org domains from SAM.gov POC emails), `triggerEnrichCompanyDomainsByUei` / `enrichCompanyDomainsByUeiYearly` (derive company domains via SAM.gov entity API by UEI).
+
+---
+
+## Secrets & env vars
+
+| Name | Mechanism | Used by | Required? |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | Secret Manager (`firebase functions:secrets:set`) | `anthropicProxy` | **Yes — all AI features depend on it** |
+| `SAMGOV_API_KEY` (or `SAM_GOV_API_KEY`) | env / functions config | SAM.gov sync | For SAM.gov |
+| `CONGRESSGOV_API_KEY` (or `CONGRESS_GOV_API_KEY`) | env / functions config | Congress.gov sync | For Congress.gov |
+| `SEC_EDGAR_USER_AGENT` | env (default set) | SEC EDGAR sync | Optional |
+| `SENDGRID_API_KEY` + `BRIEF_FROM_EMAIL` | Secret Manager | digests / reminders | For email |
+| `SLACK_BOT_TOKEN` | Secret Manager | Slack intake | For Slack |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | env / secrets | Gmail+Calendar capture | For auto-capture |
+
+> **Hardening note:** per `framework/secrets.ts`, only the Anthropic key is Secret Manager-backed today; the OSINT source keys still read from plain env / functions config. Migrating the rest to Secret Manager is planned (Phase 9+).
+
+---
 
 ## Prerequisites for deploy
 
-1. **Firebase project on Blaze plan.** Cloud Functions 2nd gen requires pay-as-you-go billing. Estimated cost at current Corsair scale (1-3 workspaces, occasional migration runs): under $1/month.
-
-2. **Firebase CLI installed and authenticated**:
-   ```bash
-   npm install -g firebase-tools
-   firebase login
-   ```
-
-3. **Node.js 20+** for local development.
+1. **Firebase project on Blaze plan** (2nd-gen functions require pay-as-you-go). Cost at current scale (1–3 workspaces): low, but the OSINT crons + AI proxy now make this materially more than the old "<$1/mo" migration-only estimate — watch the scheduled-job invocation counts.
+2. **Firebase CLI**: `npm install -g firebase-tools && firebase login`.
+3. **Node.js 20** for local development.
 
 ## Local setup
 
@@ -32,136 +121,50 @@ The migration adds source provenance to existing entities, initializes the new `
 cd functions/
 npm install
 npm run build
+npm run test   # Vitest
 ```
 
 ## Deploy
 
-From the repo root (`C:/Users/mpopp/FLi-Network`):
+From the repo root:
 
 ```bash
-firebase deploy --only functions
+firebase deploy --only functions                 # all
+firebase deploy --only functions:anthropicProxy  # single function
 ```
 
-Deploy time: 2-4 minutes on first deploy (Cloud Run cold provisioning). Subsequent deploys are faster (~1 minute).
+First deploy: 2–4 min (Cloud Run cold provisioning). Verify: `firebase functions:list`.
 
-## Test the deploy
-
-After `firebase deploy --only functions` succeeds, verify the three functions are registered:
-
-```bash
-firebase functions:list
-```
-
-You should see `triggerInventory`, `triggerMigration`, and `triggerRollback` listed.
-
-## Operator workflow
-
-Once deployed, the operator-driven workflow runs from the Corsair client:
-
-1. **Inventory** — Operator opens Settings → Phase 8.5 → "Inventory workspace for migration." Client calls `triggerInventory({ workspaceId })`. Function reads workspace state, writes inventory report to `workspaces/{wsId}/migrations/8.5.1/inventory`. Operator reviews entity counts, anomalies, and estimated duration.
-
-2. **Approve** — If inventory looks good, operator clicks "Approve migration." Client writes `workspaces/{wsId}/migrations/8.5.1/operatorApprovedAt = <timestamp>`. This is the safety gate; migration won't run without it.
-
-3. **Apply** — Operator clicks "Apply migration." Client calls `triggerMigration({ workspaceId })`. Function:
-   - Verifies operator approval timestamp exists
-   - Acquires migration lock (per-workspace, 60-min lease)
-   - Refreshes inventory
-   - Checks anomaly threshold (5% default; pass `forceProceed: true` to override)
-   - Runs Step 1 (source provenance), Step 2/3 (client-side markers), Step 4 (collections)
-   - Runs validation (V-1 through V-6)
-   - On pass: writes `completedAt`. Workspace is 8.5.1-ready.
-   - On fail: writes `validationErrors`; `completedAt` remains null until remediated.
-   - Releases lock.
-
-4. **Rollback (if needed)** — If migration fails or operator decides to revert, client calls `triggerRollback({ workspaceId, steps?: [...] })`. Function rolls back in reverse order, returning workspace to pre-migration state.
-
-## Migration spec
-
-The full migration design lives in `corsair-osint-migration-v1.md` at the repo root. Read that first for:
-- The five migration principles (idempotency, forward/backward compatibility, etc.)
-- Detailed step-by-step behavior
-- Validation rules (V-1 through V-6)
-- Test scenarios (T-1 through T-7) the implementation must satisfy
-- The 10-criterion acceptance contract
-
-This code is the implementation of that spec.
+---
 
 ## Doctrine
 
-Per Corsair Doctrine §IX (Pass-Down): existing operator data is sacred. The migration never deletes fields, never merges entities, never renames existing types. All writes are either:
-- Additive (adding `source` and `migration` fields to entities that lack them)
-- New collection initialization (paths that don't yet exist)
-
-Operator-input fields are never overwritten. Per OQ-5 (LOCKED): operator-pin-wins on conflicts.
+Per Corsair Doctrine §IX (Pass-Down): existing operator data is sacred. Migrations and syncs never delete fields, never merge entities silently, never rename existing types. Writes are additive or new-collection initialization; operator-input fields are never overwritten (OQ-5 LOCKED: operator-pin-wins on conflicts). Unsafe rollback (that would drop source-ingested data) refuses unless `forceUnsafe: true` is passed explicitly.
 
 ## Repository layout
 
 ```
 functions/
-├── package.json                    Build / deploy / test config
-├── tsconfig.json                   TypeScript config (target ES2020)
-├── .gitignore                      lib/, node_modules/, .env, logs
+├── package.json / tsconfig.json / .gitignore
 ├── src/
-│   ├── index.ts                    Entry point — registers HTTPS functions
-│   ├── framework/                  Shared infrastructure
-│   │   ├── rtdb.ts                 Admin SDK wrapper + path helpers
-│   │   ├── logger.ts               Structured Cloud Logging
-│   │   ├── provenance.ts           Source provenance helper (E-4)
-│   │   └── errors.ts               Error categorization
-│   ├── migrations/                 Phase 8.5.1 migration code
-│   │   ├── migrate851.ts           Orchestrator (apply / preview / rollback)
-│   │   ├── inventory.ts            Pre-migration audit
-│   │   ├── steps.ts                Steps 1-4 implementation
-│   │   ├── validation.ts           Step 5 validation checks (V-1..V-6)
-│   │   └── rollback.ts             Per-step rollback procedures
-│   └── http/                       HTTPS callable triggers (operator-facing)
-│       ├── triggerInventory.ts
-│       ├── triggerMigration.ts
-│       └── triggerRollback.ts
-└── lib/                            Compiled JS output (gitignored)
+│   ├── index.ts        Entry point — registers every deployed function (authoritative list)
+│   ├── framework/      Shared middleware: rateLimit, retry, secrets, sourceHealth,
+│   │                   provenance, workspaceIterator, personResolver, SourceClient,
+│   │                   pdfExtractor, similarity, hashing, rtdb, logger, errors
+│   ├── sources/        ~25 per-source client/mapper/config modules
+│   ├── migrations/     Phase 8.5.1 migration engine (inventory, steps, validation, rollback)
+│   ├── http/           Operator-facing callable triggers
+│   └── jobs/           Scheduled cron jobs
+└── lib/                Compiled JS output (gitignored)
 ```
 
 ## Logs
 
-Cloud Logging captures all function activity. View via:
-
 ```bash
 firebase functions:log
+firebase functions:log --only anthropicProxy
 ```
-
-Filter by function:
-```bash
-firebase functions:log --only triggerMigration
-```
-
-## Rollback safety
-
-Per migration spec Part Three Step 4 rollback safety: if subsequent Phase 8.5 sub-phases (8.5.2+) have written data to `workspaces/{wsId}/awards/` or `workspaces/{wsId}/sources/{system}/raw/`, rollback would lose that data. The framework refuses unsafe rollback unless `forceUnsafe: true` is passed explicitly.
-
-Doctrine alignment: data loss requires explicit operator authorization, not silent execution.
-
-## Future Phase 8.5 sub-phases
-
-This functions/ directory is the home for all Phase 8.5 server-side code. Subsequent sub-phases will add:
-
-- **8.5.2 Framework:** `src/framework/rateLimit.ts`, `retry.ts`, `secrets.ts`, `workspaceIterator.ts`, `sourceHealth.ts`
-- **8.5.3 SAM.gov:** `src/sources/samGov/` + scheduled job
-- **8.5.4 USAspending + DoD News + Award entity:** `src/sources/usaSpending/`, `src/sources/dodNewsContracts/`, Award reconciliation logic
-- **8.5.5 GAO Protest:** `src/sources/gaoProtest/`
-- **8.5.6 SEC EDGAR:** `src/sources/secEdgar/`
-- **8.5.7 Congress.gov:** `src/sources/congressGov/`
-- **8.5.8 Brief synthesis:** `src/jobs/briefSynthesisNightly.ts`
-
-Sub-phase sequencing per architecture sketch: `corsair-osint-architecture-v1.md` Part Five.
 
 ## Where the design lives
 
-| Document | Topic |
-|---|---|
-| `corsair-osint-INDEX.md` | Entry point — all 21 design docs indexed |
-| `corsair-osint-architecture-v1.md` | Phase 8.5 architecture sketch + operator sign-offs |
-| `corsair-osint-migration-v1.md` | The migration spec this code implements |
-| `corsair-osint-decision-log-v1.md` | ~150 decisions consolidated |
-| `corsair-osint-risk-register-v1.md` | Anticipated risks + mitigations |
-| `corsair-osint-observability-ops-v1.md` | Production runbook |
-| `corsair-osint-testing-strategy-v1.md` | Test plan + acceptance verification |
+The OSINT design body lives as `corsair-*.md` files at the repo root. See `corsair-docs-status.md` (repo root) for a built-vs-planned index of which specs have shipped. Key entries: `corsair-osint-architecture-v1.md` (architecture + sign-offs), `corsair-osint-migration-v1.md` (migration spec this code implements), `corsair-osint-testing-strategy-v1.md` (test plan). Some referenced companions (INDEX, decision-log, risk-register, observability-ops) are not in this public checkout.

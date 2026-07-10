@@ -389,6 +389,10 @@ window.renderDailyBrief = function() {
       });
     }
   }
+  // P13.389 — Ship G MINE scope: narrow commitments to the operator's own when active.
+  if (window._mineScopeOn && window._mineScopeOn()) {
+    commitDue = commitDue.filter(function(cc){ return (typeof window._commitOwnerIsMine === 'function') ? window._commitOwnerIsMine(cc) : true; });
+  }
   commitDue.sort(function(a, b) { return a.days - b.days; });
 
   // ─── 5. Weak coverage: pursued orgs with low engaged-contact ratio ───

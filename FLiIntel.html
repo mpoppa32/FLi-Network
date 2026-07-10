@@ -8723,7 +8723,7 @@ body.corsair-clean .ws-meta-row { opacity: 0 !important; pointer-events: none !i
            initialized). -->
       <button class="tour-watch-btn" onclick="if(window._startAtlasDemoTour&&typeof window.activeView==='string'){window._startAtlasDemoTour();}else{alert('Sign in first — the tour walks your live workspace UI.');}" title="Sign in, then watch a ~90-second self-running tour with spotlights + callouts on your live workspace"><span class="tour-watch-btn-icon"></span>Watch the Tour &nbsp;·&nbsp; ~90 sec</button>
     </div>
-    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.388</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
+    <div class="auth-footer">BUILD <span id="auth-build-tag">P13.390</span> &nbsp;&middot;&nbsp; &copy; 2026</div>
   </div>
 </div>
 
@@ -22549,6 +22549,65 @@ window._stdScopeToggleHtml = function(){
   if(window._stdShowAll) return '<span onclick="window._toggleStdScope()" style="'+base+'" title="Showing the full ingestion lake including untouched SAM.gov imports. Click to scope to your worked book.">FULL LAKE — show your book</span>';
   return '<span onclick="window._toggleStdScope()" style="'+base+'" title="Showing your worked book (deals you created or touched). Click to include all untouched SAM.gov imports.">YOUR BOOK'+(bulk>0?' · +'+bulk+' parked':'')+'</span>';
 };
+// P13.389 — Ship G (Property 5, Asymmetric Awareness) — per-operator "MINE" scope.
+// Orthogonal to _stdShowAll (worked-book vs full lake): MINE narrows the load-
+// bearing surfaces (Today STANDING, Top Catches, Brief commitments) to the
+// operator's OWN pursuits — ones they're the captureLead on, OR have logged a
+// meeting on (worked-by-me via CorsairIndex.meetingsByOppId + meeting.loggedByUid).
+// Default OFF (ALL) so behavior is byte-for-byte unchanged unless the operator
+// opts in. Per-user, persisted in localStorage keyed by uid. Composes ON TOP of
+// _stdScopeOpps. No surveillance — this only re-frames what the viewer sees of
+// their own book; it never exposes anyone to outside parties.
+window._mineScopeKey = function(){ return 'corsair-mine-scope-' + ((window.currentUser && window.currentUser.uid) || 'anon'); };
+window._mineScopeOn = function(){ try { return localStorage.getItem(window._mineScopeKey()) === '1'; } catch(e){ return false; } };
+window._oppIsMine = function(o){
+  if(!o) return false;
+  var myName = ((window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || '').toLowerCase().trim();
+  var myUid  = (window.currentUser && window.currentUser.uid) || '';
+  if(!myName && !myUid) return true; // identity not resolved yet → never hide
+  var lead = ((o.captureLead || o.lead) || '').toLowerCase().trim();
+  if(lead && lead === myName) return true; // I'm the capture lead
+  if(myUid){ // worked-by-me: a meeting I logged is linked to this opp
+    var ix = window.CorsairIndex || {};
+    var ms = (ix.meetingsByOppId && ix.meetingsByOppId.get) ? (ix.meetingsByOppId.get(String(o.id)) || []) : [];
+    for(var i=0;i<ms.length;i++){ if(ms[i] && ms[i].loggedByUid === myUid) return true; }
+  }
+  return false;
+};
+window._mineScopeOpps = function(arr){ return (window._mineScopeOn()) ? (arr||[]).filter(window._oppIsMine) : (arr||[]); };
+window._catchIsMine = function(c){
+  if(!c) return true;
+  if(c.kind === 'overlap') return true; // cross-team by nature — always relevant to the operator
+  var id = c.entityId || c.clickArg;
+  if(!id) return true; // not entity-linked → keep
+  var arr = window.opportunities || [], opp = null;
+  for(var i=0;i<arr.length;i++){ if(arr[i] && String(arr[i].id) === String(id)){ opp = arr[i]; break; } }
+  if(!opp) return true; // links to a node/other, not an opp → cannot judge ownership, keep
+  return window._oppIsMine(opp);
+};
+window._commitOwnerIsMine = function(cc){
+  var myName = ((window.currentUser && (window.currentUser.displayName || window.currentUser.email)) || '').toLowerCase().trim();
+  if(!myName) return true;
+  var o = String((cc && cc.owner) || '').toLowerCase().trim();
+  return !!(o && o === myName);
+};
+window._toggleMineScope = function(){
+  var on = !window._mineScopeOn();
+  try { localStorage.setItem(window._mineScopeKey(), on ? '1' : '0'); } catch(e){}
+  try { if(window._renderTodayNarrative) window._renderTodayNarrative(); } catch(e){}
+  try { if(window._renderTodayCatches) window._renderTodayCatches(); } catch(e){}
+  try { if(window.renderDailyBrief) window.renderDailyBrief(); } catch(e){}
+};
+window._mineScopeToggleHtml = function(){
+  var on = window._mineScopeOn();
+  var base = 'cursor:pointer;font-family:IBM Plex Mono,monospace;font-size:11px;letter-spacing:.06em;padding:2px 9px;border-radius:10px;margin-left:12px;text-transform:uppercase';
+  if(on){
+    var std = window._stdScopeOpps(window.opportunities || []);
+    var hidden = std.length - std.filter(window._oppIsMine).length;
+    return '<span onclick="window._toggleMineScope()" style="'+base+';color:var(--gold);border:1px solid var(--gold);background:rgba(212,130,58,.14)" title="Showing only your pursuits — ones you lead or have logged a meeting on. Click for the full team picture.">◆ Mine'+(hidden>0?' · +'+hidden+' in All':'')+'</span>';
+  }
+  return '<span onclick="window._toggleMineScope()" style="'+base+';color:var(--paper-2);border:1px solid var(--rule)" title="Showing the full team picture. Click to focus on just your pursuits.">◇ All</span>';
+};
 // P13.340 — DROP-category predicate (pipeline-categorization Stage 2, operator-approved).
 // Tags clearly-irrelevant SAM.gov imports (facility maintenance, fasteners, valves,
 // janitorial, conex, food service, ...) by PSC prefix so surfaces can hide them by
@@ -35900,6 +35959,12 @@ window._atlasComputeCatches = function() {
     return byEntity.get(c.entityId) === c;
   });
 
+  // P13.389 — Ship G MINE scope: narrow to catches about the operator's own
+  // pursuits before the top-3 cut. Overlap + non-opp catches are always kept.
+  if (window._mineScopeOn && window._mineScopeOn()) {
+    deduped = deduped.filter(function(c){ return (typeof window._catchIsMine === 'function') ? window._catchIsMine(c) : true; });
+  }
+
   deduped.sort(function(a, b) { return b.score - a.score; });
   // P13.253 (Honest Surfacing Tier-1 #2) — stamp the compute time so the
   // catches header can wear a COMPUTED Xh AGO chip. Computed on every call;
@@ -36025,7 +36090,7 @@ window._renderTodayNarrative = function(){
     return '$' + Math.round(v);
   }
   // STANDING — active pursuits + weighted pipeline + agencies + top stages
-  var ops = window._stdScopeOpps(window.opportunities || []).filter(function(o){
+  var ops = window._mineScopeOpps(window._stdScopeOpps(window.opportunities || [])).filter(function(o){
     var s = String((o && o.stage) || '').toLowerCase();
     return o && s && s !== 'won' && s !== 'lost' && s !== 'no-bid' && s !== 'no_bid';
   });
@@ -36224,7 +36289,7 @@ window._renderTodayNarrative = function(){
   html += '<button onclick="window._renderTodayNarrative&amp;&amp;window._renderTodayNarrative()" title="Regenerate from current workspace data" style="padding:6px 12px;background:transparent;border:1px solid rgba(212,130,58,.40);border-radius:2px;color:var(--gold);font-family:IBM Plex Mono,monospace;font-size:11px;font-weight:700;letter-spacing:.10em;cursor:pointer;text-transform:uppercase">↻ Refresh</button>';
   html += '</div></div>';
   html += '<div style="font-family:IBM Plex Sans,sans-serif;font-size:18px;line-height:1.7;color:var(--bone)">';
-  html += '<div style="margin-bottom:12px"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">STANDING</span>' + s1 + '. ' + window._stdScopeToggleHtml() + '</div>';
+  html += '<div style="margin-bottom:12px"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">STANDING</span>' + s1 + '. ' + window._stdScopeToggleHtml() + window._mineScopeToggleHtml() + '</div>';
   html += '<div style="margin-bottom:12px"><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">WORLD</span>' + s2 + '</div>';
   html += '<div><span style="font-family:IBM Plex Mono,monospace;font-size:12px;color:var(--paper-2);letter-spacing:.18em;font-weight:700;margin-right:14px">GAPS</span>' + s3 + '</div>';
   html += '</div>';
@@ -73464,6 +73529,510 @@ setTimeout(function(){ try { if (window.currentWsId) window._factsRefresh(); } c
      persists across deploys (root cause of the P13.77-P13.79 module outage). -->
 <!-- P13.311 — dead Corsair Cinema engine (P13.104) removed (was bolt-on per corsair-the-primitive.md; overlay DOM already gone P13.277). Atlas Demo Tour is the live, separate engine. -->
 
-<script type="module" src="./js/corsair/main.js?v=P13.388"></script>
+<!-- P13.390 — OSINT Toolkit (entity-aware overlay) -->
+<script>
+/* ============================================================================
+   Corsair OSINT Toolkit — integrated overlay (build P13.390). Self-contained.
+   Adds window.openOsintToolkit(subject); a floating launcher; and auto-fills
+   the subject from the last-opened entity inspector. 243 tools from OSINT4ALL.
+   ============================================================================ */
+(function(){
+  if(window.__osintToolkitLoaded) return; window.__osintToolkitLoaded = true;
+var RAW = `TC~Onlinesim.net~https://onlinesim.net/
+TC~DoNotPay~https://donotpay.com/learn/temporary-phone-number/
+TC~VoIP Guide: VoIPSuite~https://inteltechniques.com/voip.suite.html
+TC~Twilio CLI Guide~https://inteltechniques.com/voip.twilio.cli.html
+TC~10minutemail.com~https://10minutemail.com/
+TC~AnonAddy~https://anonaddy.com/
+TC~SimpleLogin~https://simplelogin.io/
+TC~MailDrop~https://maildrop.cc/
+TC~Send text free~https://globfone.com/send-text/
+TC~SendaText~https://www.sendatext.co/
+TC~Free Fax~https://faxzero.com/
+TC~Receive SMS Online~https://hs3x.com/
+TC~Receive SMS Online for FREE~http://freesmsverification.com/
+TC~Smstome.com~https://smstome.com
+TC~Amazon SNS~https://aws.amazon.com/sns/
+TC~Twilio~https://www.twilio.com/
+TC~One-time Mobile by @OsintStash~https://threader.app/thread/1199785692274077696
+IDG~Username Generator~https://www.lastpass.com/features/username-generator
+IDG~Fake Name Generator~https://www.fakenamegenerator.com/
+IDG~Resume Generator~https://thisresumedoesnotexist.com/
+IDG~International Name Generator~https://www.behindthename.com/random/
+IDG~Windows Phone IMEI Generator~https://wpimeigenerator.github.io/
+IDG~IMEI Number Generator~https://dyrk.org/tools/imei/
+IDG~US SSN / Driver License / State ID / Passport / Tax ID Generator~https://www.elfqrin.com/usssndriverlicenseidgen.php
+IDG~Washington State Driver's License Generator~https://mmarvick.github.io/wa-drivers-license/
+IDG~Fake Drivers License Generator~https://fakeinfo.net/drivers-license-generator
+IDG~This Rental Does Not Exist~https://thisrentaldoesnotexist.com/
+IDG~Face Photo Generator~https://thispersondoesnotexist.com/
+IDG~Random Face Generator~https://fakeinfo.net/random-face-generator
+IDG~Credit Card Generator~https://www.fakenamegenerator.com/credit-card-validator.php
+IDG~PIC/CIC Code Database~https://www.allredtech.com/
+IDG~SIN Generator~https://www.fakenamegenerator.com/social-insurance-number.php
+IDG~ABA Generator~https://www.fakenamegenerator.com/aba-validator.php
+IDG~VIN Generator~https://www.fakenamegenerator.com/vehicle-identification-number.php
+IDG~NINO Generator~https://www.fakenamegenerator.com/national-insurance-number.php
+IDG~SSN Generator~https://www.fakenamegenerator.com/social-security-number.php
+IDG~IID Generator by Georgy Bunin~https://georgybu.github.io/IID_Generator/
+IDG~GUID/UUID and short GUID generator~https://richardkundl.github.io/shortguid/
+IDG~Nano ID CC~https://zelark.github.io/nano-id-cc/
+IDG~Generate SA ID Numbers~https://chris927.github.io/generate-sa-idnumbers/
+IDG~Decoding Social Security Numbers~https://stevemorse.org/ssn/ssn.html
+IDG~Encoding and Decoding Driver's License Numbers~https://stevemorse.org/dl/dl.html
+IDG~Dating Profile Generator~https://www.dating-profile-generator.org.uk/
+IDG~Fake Identity ID Random Name Generator~https://www.elfqrin.com/fakeid.php
+IDG~Fake Company Name Generator~https://fakeinfo.net/company-name-generator
+IDG~Twitter Profile Generator~https://fakeinfo.net/fake-twitter-profile-generator
+IDG~Fake Tiktok Profile Generator~https://fakeinfo.net/fake-tiktok-profile-gererator
+IDG~Fake Youtube Channel Generator~https://fakeinfo.net/fake-youtube-channel-generator
+IDG~Resume Builder~https://vinaysomawat.github.io/Resume-Builder/
+IDG~Fake Generator Tools~https://fauxid.com/tools
+US~IntelTechniques OSINT~https://inteltechniques.com/tools/
+US~SynapsInt~https://synapsint.com/
+US~InfoTracer~https://infotracer.com/
+US~MetaDefender~https://metadefender.opswat.com/
+US~Username Search~https://usersearch.org/
+US~SpyTox~https://www.spytox.com/
+US~Effect Group~https://effectgroup.io/
+US~osrframework~https://pypi.org/project/osrframework/
+US~Google Custom Search~https://cse.google.com/cse?cx=017648920863780530960:lddgpbzqgoi
+US~OSINT Search Engine~https://cse.google.com/cse/publicurl?cx=006290531980334157382:qcaf4enph7i
+US~LinkScope~https://github.com/AccentuSoft/LinkScope_Client
+US~IOA~https://www.io-archive.org/
+US~Criminal IP~https://www.criminalip.io/
+PEOPLE~IDCrawl~https://www.idcrawl.com/
+PEOPLE~WebMii~https://webmii.com/
+PEOPLE~Tools~https://intelx.io/tools?tab=person
+PEOPLE~TruePeopleSearch~https://www.truepeoplesearch.com/
+PEOPLE~Free People Search~https://www.peoplefinder.com/
+PEOPLE~fastpeoplesearch~https://fastpeoplesearch.com/
+PEOPLE~Yandex People Search~https://yandex.ru/people
+PEOPLE~FamilyTree~https://www.familytreenow.com/
+PEOPLE~People Search~http://itools.com/search/people-search
+PEOPLE~People Search Engine~https://cse.google.com/cse?cx=14db36e158cd791c0
+PEOPLE~Dating Sites Search Engine~https://cse.google.com/cse?cx=c7b340447e1e12653
+PEOPLE~192~https://www.192.com/
+PEOPLE~International~https://www.infobel.com/
+PEOPLE~People search Tool~https://www.aware-online.com/en/osint-tools/people-search-tool/
+PEOPLE~PeekYou~https://www.peekyou.com/
+PEOPLE~White Pages~https://www.whitepages.com/
+PEOPLE~New Canada 411~https://www.canada411.ca/
+PEOPLE~411~http://411.com/
+PEOPLE~TruthFinder~https://www.truthfinder.com/
+PEOPLE~zaba search~https://www.zabasearch.com/
+PEOPLE~Thats them~https://thatsthem.com/
+PEOPLE~People search~https://radaris.com/
+PEOPLE~No.1 Free People Search~http://www.yasni.com/
+PEOPLE~Gofindwho.com~https://gofindwho.com/
+PEOPLE~xlek~https://xlek.com/
+PEOPLE~Ufind.name~https://ufind.name/
+SE~IntelTechniques Search Engine~https://inteltechniques.com/tools/Search.html
+SE~Google Advanced Search~https://www.google.com/advanced_search
+SE~Searx~https://searx.info/
+SE~Bing~https://www.bing.com/
+SE~Yandex~https://yandex.com/
+SE~MetaGer: Privacy Protected Search~https://metager3.de/en/
+SE~Duck Duck Go~https://duckduckgo.com/
+SE~Search Engines Index~https://www.searchenginesindex.com/
+SE~carrot2~https://search.carrot2.org/#/search/web
+SE~Qwant~https://www.qwant.com/
+SE~Startpage~https://startpage.com/
+SE~Mailing List Search~https://cse.google.com/cse/publicurl?cx=013991603413798772546:sipriovnbxq
+SE~swisscows~https://swisscows.com/
+SE~Crossref~https://search.crossref.org/
+SE~Brave Search~https://search.brave.com/
+SE~Mojeek~https://www.mojeek.com/
+SE~Yahoo Search~https://search.yahoo.com/
+SE~Baidu~https://www.baidu.com/
+SE~Ecosia~https://www.ecosia.org/
+SE~Dogpile~https://www.dogpile.com/
+SE~Zoo Search~https://www.metacrawler.com/
+SE~App Store and iTunes search engine~https://fnd.io/
+SE~Ask~https://www.search.ask.com/
+SE~ZorexEye~http://zorexeye.com/
+SE~Yassen.com~http://yassen.com/
+SE~Flippity~https://www.flippity.com/
+SE~keys.openpgp.org~https://keys.openpgp.org/
+SE~MIT PGP Key Server~https://pgp.mit.edu/
+SE~Ipse.io~https://www.ipse.io/
+SE~Ipfs-search.com~https://ipfs-search.com/#/search
+SE~Debate.cards~http://debate.cards/
+SE~Argumentsearch.com~http://argumentsearch.com/
+SE~Meganzsearch.com~https://www.meganzsearch.com/
+SE~Engine.presearch.org~https://engine.presearch.org/
+SE~Blockscan.com~https://blockscan.com/
+SE~Publc.com~https://publc.com/
+SE~GoPit Search Engine - Home~https://www.gopit.com/socialsearch/index.php?type=Social
+SE~The best document search engine~http://www.doc-txt.com/
+SE~CachedViews.com~https://cachedviews.com/
+SE~MAC Address Lookup~https://maclookup.app/
+SE~sploitus~https://sploitus.com/
+SE~vulmon~https://vulmon.com/
+SE~Vulnerability & Exploit Database~https://www.rapid7.com/db/
+SE~Recon (Tor onion search)~http://recon222tttn4ob7ujdhbn3s4gjre7netvzybuvbq2bcqwltkiqinhad.onion.pet/
+SE~Google & Bing~https://one-plus.github.io/GoogleBing
+SE~Bookmarks~https://one-plus.github.io/Bookmarks
+SE~Boardreader - Forum Search~https://boardreader.com/
+SE~Libgen.rs~http://libgen.rs/
+SE~Stacksearch~https://stacksear.ch/
+SE~SearchTempest~https://www.searchtempest.com/
+SE~2lingual~https://2lingual.com/
+SE~SEQE - Search Engines Query Engine~https://seqe.me/
+SE~Milled~https://milled.com/search
+SE~btdig~https://btdig.com/
+SE~Osint Open Source Projects~https://awesomeopensource.com/projects/osint
+SE~Monster Crawler Search~http://monstercrawler.com/
+SE~Arabo.com~http://arabo.com/
+SE~Google Scholar~https://scholar.google.com/
+SE~Million Short~https://millionshort.com/
+SE~BeVigil~https://bevigil.com/
+SE~WordPress.com~https://en.search.wordpress.com/
+SE~Octosearch.dootech.com~https://octosearch.dootech.com/
+SE~Search craigslist~http://searchcraigslist.org/
+SE~Public AWS S3 & Azure Search~https://buckets.grayhatwarfare.com/
+SE~Public Buckets~https://osint.sh/buckets/
+SE~URL Shorteners Search~https://shorteners.grayhatwarfare.com/
+SE~Mywoodle.com~https://mywoodle.com/
+SE~Search Atlas~https://searchatlas.org/
+SE~Google to search profiles on Stack Overflow~https://recruitin.net/stackoverflow.php
+SE~Binparcel.com~https://binparcel.com/
+GCSE~Homepage Search Engine~https://cse.google.com/cse?cx=005797772976587943970:3tu7im1-rdg#gsc.tab=0
+GCSE~Amazon Cloud Search Engine~https://cse.google.com/cse?cx=005797772976587943970:g-6ohngosio#gsc.tab=0
+GCSE~Google CSE instances Search Engine~https://cse.google.com/cse?cx=009462381166450434430:vggeu3dhhgg#gsc.tab=0
+GCSE~Robots.txt Search Engine~https://cse.google.com/cse?cx=013991603413798772546:zu7epjqvunu
+GCSE~Short URL Search Engine~https://cse.google.com/cse?cx=017261104271573007538:magh-vr6t6g#gsc.tab=0
+GCSE~Wikispaces Search Engine~https://cse.google.com/cse/publicurl?cx=005797772976587943970:afbre9pr2ly
+GCSE~Dog Bites Search Engine~https://cse.google.com/cse?cx=partner-pub-8216357153102971:3267723418
+GCSE~Google Domain Hacker~https://cse.google.com/cse/publicurl?cx=005797772976587943970:ca2hiy6hmri
+GCSE~Google Drive Folder Search Engine~https://cse.google.com/cse/publicurl?cx=013991603413798772546:nwzqlcysx_w
+GCSE~Chrome Extension Archive Search Engine~https://cse.google.com/cse/publicurl?cx=000501358716561852263:h-5uyshsclq
+GCSE~Github with Awesome-List Search Engine~https://cse.google.com/cse/publicurl?cx=017261104271573007538:fqn_jyftcdq
+GCSE~Better Chrome Web Store Search Engine~https://cse.google.com/cse/publicurl?cx=006205189065513216365:pn3lumi80ne
+GCSE~App Store Custom Search Engine~https://cse.google.com/cse/publicurl?cx=006205189065513216365:aqogom-kfne
+GCSE~*.Google.com Hack Attack~https://cse.google.com/cse/publicurl?cx=017648920863780530960:lddgpbzqgoi
+GCSE~Search by FileType~https://cse.google.com/cse/publicurl?cx=013991603413798772546:mu-oio3a980
+GCSE~Search Engine Finder~https://cse.google.com/cse?cx=016621447308871563343:nyvaorurd5l
+GCSE~Mindmap Search Engine~http://cse.google.com/cse?cx=013991603413798772546:gj6rx9spox8#gsc.tab=0
+GCSE~Slack/Discord/Zoom Invites Search~https://cse.google.com/cse?cx=8e26eca532ec2cba3
+GCSE~Cloud Bucket Search Engine~https://cse.google.com/cse?cx=d80f8518b11b1438e
+MAPS~Google Maps~https://www.google.com/maps
+MAPS~Bing Maps~https://www.bing.com/maps
+MAPS~Yandex.Maps~https://yandex.com/maps/
+MAPS~Generate a panorama~https://www.udeuschle.de/panoramas/makepanoramas_en.htm
+MAPS~Mapillary~https://www.mapillary.com/app/
+MAPS~Geonarra.com~https://www.geonarra.com/
+MAPS~Waze~https://www.waze.com/live-map
+MAPS~百度地图~https://map.baidu.com/
+MAPS~DigitalGlobe~https://discover.digitalglobe.com/
+MAPS~MapQuest~https://www.mapquest.com/
+MAPS~OpenStreetMap~https://www.openstreetmap.org/
+MAPS~Maps.descarteslabs.com~https://maps.descarteslabs.com/
+MAPS~ArcGIS Wildfire Map~https://www.arcgis.com/home/webmap/viewer.html?webmap=df8bcc10430f48878b01c96e907a1fc3
+MAPS~Living Atlas of the World | ArcGIS~https://livingatlas.arcgis.com/en/browse/
+MAPS~FIRMS~https://firms.modaps.eosdis.nasa.gov/map/
+MAPS~COVID-19 Map~https://coronavirus.jhu.edu/map.html
+MAPS~Ukraine Interactive map~https://liveuamap.com/
+MAPS~Satellites.pro~https://satellites.pro/
+MAPS~Military bases around the world - uMap~https://umap.openstreetmap.fr/en/map/military-bases-around-the-world_510207
+MAPS~Wikimapia~http://wikimapia.org/
+MAPS~Map of Syrian Civil War~https://syria.liveuamap.com/
+MAPS~Radio Garden~http://radio.garden/search
+MAPS~Windy~https://www.windy.com/-Webcams/webcams
+MAPS~Gpx File Editor~https://gpx.studio/
+MAPS~OALLEY~https://www.oalley.net/app/
+MAPS~fgdc_gp_demos public fiddles~https://jsfiddle.net/user/fgdc_gp_demos/fiddles/
+MAPS~KartaView~https://kartaview.org/map/
+MAPS~Google Map Search Engine~https://cse.google.com/cse?cx=013991603413798772546:mofb1uoaebi
+MAPS~Power Plants in the United States~https://www.arcgis.com/apps/dashboards/201fc98c0d74482d8b3acb0c4cc47f16
+MAPS~UK Onshore Oil and Gas Activity~https://www.arcgis.com/apps/webappviewer/index.html?id=29c31fa4b00248418e545d222e57ddaa
+MAPS~Walmart Store Status~https://www.arcgis.com/apps/dashboards/4e573c79e1224081805165d25b4f33c7
+MAPS~MODIS Wildfire~https://www.arcgis.com/apps/dashboards/bf5df3a49a624521844a2e5e1ec7df05
+MAPS~Earthquake Watch~https://www.arcgis.com/apps/dashboards/c8af9c5411814584b460cc87cb7c3780
+MAPS~InciWeb~https://inciweb.nwcg.gov/
+MAPS~Earth~https://earth.nullschool.net/#current
+MAPS~US Labor Strike Map~https://www.google.com/maps/d/viewer?mid=1hE1nDR-Ff_sVgOS67IteJSxGZlvqIP3k
+MAPS~Active Agency Map~https://www.google.com/maps/d/viewer?mid=1eYVDPh5itXq5acDT9b0BVeQwmESBa4cB
+MAPS~Ontario GiveSendGo Donors~https://www.google.com/maps/d/viewer?mid=1heAgrb9bDuk287yqseyvhZ7-U_kz64hM
+MAPS~Live-action-map.com~https://www.live-action-map.com/
+MAPS~awesome-maps-ukraine~https://github.com/Symbian9/awesome-maps-ukraine
+MAPS~Допомога~https://dopomoha.pl
+MAPS~Ukraine Live Cams~https://nagix.github.io/ukraine-livecams
+MAPS~Ukraine War Map/Heatmap~https://ruarq.github.io/ukraine-war-heatmap
+MAPS~Live map of London Underground trains~https://traintimes.org.uk/map/tube/
+MAPS~Livecorona.co.kr~https://livecorona.co.kr
+MAPS~TfL JamCams~https://www.tfljamcams.net
+MAPS~Cesium Stories~https://cesium.com/ion/stories/viewer/?id=8be6f99c-0d4c-46ce-91a3-313e3cac62fe
+GEO~GEOINT (start.me)~https://start.me/p/W1kDAj/geoint
+GEO~GeoNames~https://www.geonames.org/
+GEO~Geoseer.net~https://www.geoseer.net/
+GEO~GeoINT Search~https://cse.google.com/cse?cx=015328649639895072395:sbv3zyxzmji
+GEO~GeoIP Tracker tool~https://shadowcrypt.net/tools/geoip
+GEO~Earth Engine Dataset~https://developers.google.com/earth-engine/datasets/
+GEO~GeoPlatform Portal~https://www.geoplatform.gov/
+GEO~Inspire-geoportal.eu~http://www.inspire-geoportal.eu/
+GEO~FAO Map Catalog~https://data.apps.fao.org/map/catalog/srv/eng/catalog.search
+GEO~Datacore-gn.unepgrid.ch~https://datacore-gn.unepgrid.ch/
+GEO~ISRIC Data Hub~https://data.isric.org/geonetwork/srv/eng/catalog.search
+GEO~geocreepy~http://www.geocreepy.com/
+GEO~US Crisis Monitor~https://acleddata.com/special-projects/us-crisis-monitor/
+GEO~Toronto Live~https://apps.esri.ca/torontolive/
+GEO~Residential Fire Fatalities in Indiana~https://www.arcgis.com/apps/dashboards/4d1289ab105145a1b1f80c1ad3cf19fb
+GEO~geoprotests API~https://rapidapi.com/gisfromscratch/api/geoprotests/
+GEO~geoint-py~https://github.com/gisfromscratch/geoint-py
+GEO~geoclustering~https://pypi.org/project/geoclustering/`;
+
+var CATS = {
+  TC:   {label:'Throwaway Contact', color:'#e07a5f'},
+  IDG:  {label:'ID Generator',      color:'#c78abd'},
+  US:   {label:'Unified Search',    color:'#5fb3b8'},
+  PEOPLE:{label:'People',           color:'#f0a560'},
+  SE:   {label:'Search Engines',    color:'#7aa2f7'},
+  GCSE: {label:'Google CSE',        color:'#a78bfa'},
+  MAPS: {label:'Maps',              color:'#4fd6e4'},
+  GEO:  {label:'Geo / GEOINT',      color:'#22c55e'}
+};
+var CAT_ORDER = ['TC','IDG','US','PEOPLE','SE','GCSE','MAPS','GEO'];
+
+var TOOLS = RAW.split('\n').map(function(line){
+  var p = line.split('~');
+  return { c:p[0], n:p[1], u:p[2] };
+});
+
+/* ---- 2. PREFILL ENGINE: turn a subject into a prefilled search URL ---- */
+// Each rule: test the tool URL; if it matches, build the prefilled URL from the subject.
+function enc(s){ return encodeURIComponent(s); }
+function dashes(s){ return s.trim().toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
+function unders(s){ return s.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,''); }
+
+var RULES = [
+  // ----- generic search engines (query) -----
+  [/google\.com\/(search|advanced_search)/i, function(s){return 'https://www.google.com/search?q='+enc(s);}],
+  [/scholar\.google\.com/i, function(s){return 'https://scholar.google.com/scholar?q='+enc(s);}],
+  [/\/\/www\.bing\.com\/?$|\/\/www\.bing\.com\/$/i, function(s){return 'https://www.bing.com/search?q='+enc(s);}],
+  [/duckduckgo\.com/i, function(s){return 'https://duckduckgo.com/?q='+enc(s);}],
+  [/\/\/yandex\.com\/?$/i, function(s){return 'https://yandex.com/search/?text='+enc(s);}],
+  [/yandex\.ru\/people/i, function(s){return 'https://yandex.ru/people?text='+enc(s);}],
+  [/search\.brave\.com/i, function(s){return 'https://search.brave.com/search?q='+enc(s);}],
+  [/startpage\.com/i, function(s){return 'https://www.startpage.com/sp/search?query='+enc(s);}],
+  [/searx\.info/i, function(s){return 'https://searx.info/search?q='+enc(s);}],
+  [/qwant\.com/i, function(s){return 'https://www.qwant.com/?q='+enc(s);}],
+  [/mojeek\.com/i, function(s){return 'https://www.mojeek.com/search?q='+enc(s);}],
+  [/ecosia\.org/i, function(s){return 'https://www.ecosia.org/search?q='+enc(s);}],
+  [/search\.yahoo\.com/i, function(s){return 'https://search.yahoo.com/search?p='+enc(s);}],
+  [/\/\/www\.baidu\.com/i, function(s){return 'https://www.baidu.com/s?wd='+enc(s);}],
+  [/swisscows\.com/i, function(s){return 'https://swisscows.com/en/web?query='+enc(s);}],
+  [/metager/i, function(s){return 'https://metager.org/meta/meta.ger3?eingabe='+enc(s);}],
+  [/dogpile\.com/i, function(s){return 'https://www.dogpile.com/serp?q='+enc(s);}],
+  [/metacrawler\.com/i, function(s){return 'https://www.metacrawler.com/serp?q='+enc(s);}],
+  [/search\.ask\.com/i, function(s){return 'https://www.ask.com/web?q='+enc(s);}],
+  [/boardreader\.com/i, function(s){return 'https://boardreader.com/s/'+enc(s)+'.html';}],
+  [/search\.crossref\.org/i, function(s){return 'https://search.crossref.org/?q='+enc(s);}],
+  [/millionshort\.com/i, function(s){return 'https://millionshort.com/search?keywords='+enc(s);}],
+  [/milled\.com/i, function(s){return 'https://milled.com/search?query='+enc(s);}],
+  [/en\.search\.wordpress\.com/i, function(s){return 'https://en.search.wordpress.com/?q='+enc(s);}],
+  [/2lingual\.com/i, function(s){return 'https://2lingual.com/2L_search?q='+enc(s);}],
+  [/sploitus\.com/i, function(s){return 'https://sploitus.com/?query='+enc(s);}],
+  [/rapid7\.com\/db/i, function(s){return 'https://www.rapid7.com/db/?q='+enc(s);}],
+  [/buckets\.grayhatwarfare\.com/i, function(s){return 'https://buckets.grayhatwarfare.com/results/'+enc(s);}],
+  [/shorteners\.grayhatwarfare\.com/i, function(s){return 'https://shorteners.grayhatwarfare.com/results/'+enc(s);}],
+  // ----- Google CSE (append the query so the CSE runs it) -----
+  [/cse\.google\.com/i, function(s,u){
+      var hash=''; var base=u; var hi=u.indexOf('#'); if(hi>-1){hash=u.slice(hi); base=u.slice(0,hi);}
+      base += (base.indexOf('?')>-1?'&':'?') + 'q=' + enc(s);
+      return base + hash;
+  }],
+  // ----- people search (name) -----
+  [/truepeoplesearch\.com/i, function(s){return 'https://www.truepeoplesearch.com/results?name='+enc(s);}],
+  [/fastpeoplesearch\.com/i, function(s){return 'https://www.fastpeoplesearch.com/name/'+dashes(s);}],
+  [/thatsthem\.com/i, function(s){return 'https://thatsthem.com/name/'+dashes(s);}],
+  [/whitepages\.com/i, function(s){return 'https://www.whitepages.com/name/'+dashes(s);}],
+  [/peekyou\.com/i, function(s){return 'https://www.peekyou.com/'+unders(s);}],
+  [/idcrawl\.com/i, function(s){return 'https://www.idcrawl.com/search?q='+enc(s);}],
+  [/webmii\.com/i, function(s){return 'https://webmii.com/people?n='+enc(s);}],
+  [/gofindwho\.com/i, function(s){return 'https://gofindwho.com/?s='+enc(s);}],
+  [/radaris\.com/i, function(s){return 'https://radaris.com/ng/search?ff='+enc(s.split(' ')[0]||'')+'&fl='+enc(s.split(' ').slice(1).join(' '));}],
+  // ----- maps / geo (place) -----
+  [/\/\/www\.google\.com\/maps(\/?$|\/?\?|\/?#)/i, function(s){return 'https://www.google.com/maps/search/'+enc(s);}],
+  [/\/\/www\.bing\.com\/maps/i, function(s){return 'https://www.bing.com/maps?q='+enc(s);}],
+  [/openstreetmap\.org\/?$/i, function(s){return 'https://www.openstreetmap.org/search?query='+enc(s);}],
+  [/yandex\.com\/maps/i, function(s){return 'https://yandex.com/maps/?text='+enc(s);}],
+  [/geonames\.org\/?$/i, function(s){return 'https://www.geonames.org/search.html?q='+enc(s);}],
+  [/wikimapia\.org/i, function(s){return 'http://wikimapia.org/#lang=en&search='+enc(s);}]
+];
+
+function prefillUrl(tool, subject){
+  if(!subject) return null;
+  for(var i=0;i<RULES.length;i++){
+    if(RULES[i][0].test(tool.u)) return RULES[i][1](subject, tool.u);
+  }
+  return null;
+}
+function domainOf(u){ try{ return u.replace(/^https?:\/\//,'').replace(/^www\./,'').split(/[\/?#]/)[0]; }catch(e){ return u; } }
+
+/* ---- 3. TYPE HINTS: which categories a subject-type leans on ---- */
+var TYPES = [
+  {k:'person',   label:'Person',   cats:['PEOPLE','US','SE']},
+  {k:'username', label:'Username', cats:['US','PEOPLE','SE']},
+  {k:'company',  label:'Company',  cats:['SE','US','GCSE']},
+  {k:'phone',    label:'Phone',    cats:['US','PEOPLE','SE']},
+  {k:'email',    label:'Email',    cats:['US','SE','GCSE']},
+  {k:'domain',   label:'Domain',   cats:['SE','GCSE','US']},
+  {k:'location', label:'Location', cats:['MAPS','GEO']}
+];
+  /* ---- styles (all scoped under #osint-overlay / .ot-) ---- */
+  var CSS = ''
+  + '#osint-overlay{position:fixed;inset:0;z-index:99999;display:none;flex-direction:column;'
+  +   'background:rgba(6,10,18,.97);backdrop-filter:blur(6px);color:#e8e3d8;'
+  +   "font-family:'IBM Plex Sans',system-ui,sans-serif}"
+  + '#osint-overlay *{box-sizing:border-box}'
+  + '.ot-mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}'
+  + '.ot-head{padding:14px 20px 10px;border-bottom:1px solid rgba(255,255,255,.09);position:sticky;top:0}'
+  + '.ot-titlerow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}'
+  + '.ot-title{font-family:"IBM Plex Mono",monospace;font-size:14px;letter-spacing:.26em;text-transform:uppercase;color:#d4823a;font-weight:700}'
+  + '.ot-x{margin-left:auto;background:transparent;border:1px solid rgba(255,255,255,.15);color:#c7c2b6;border-radius:6px;padding:7px 12px;cursor:pointer;font-family:"IBM Plex Mono",monospace;font-size:12px}'
+  + '.ot-x:hover{border-color:#d4823a;color:#d4823a}'
+  + '.ot-subrow{display:flex;gap:9px;margin-top:11px}'
+  + '#ot-subject{flex:1;background:#0e1522;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#e8e3d8;font-size:16px;padding:10px 13px;outline:none}'
+  + '#ot-subject:focus{border-color:#d4823a}'
+  + '.ot-types{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}'
+  + '.ot-type{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.07em;text-transform:uppercase;padding:5px 10px;border-radius:18px;border:1px solid rgba(255,255,255,.1);color:#8a8578;cursor:pointer}'
+  + '.ot-type[data-on="1"]{border-color:#d4823a;color:#d4823a;background:rgba(212,130,58,.14)}'
+  + '#ot-filter{width:100%;margin-top:9px;background:#0e1522;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#c7c2b6;font-size:13px;padding:8px 12px;font-family:"IBM Plex Mono",monospace;outline:none}'
+  + '.ot-cats{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}'
+  + '.ot-cat{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:5px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.1);color:#c7c2b6;cursor:pointer;white-space:nowrap}'
+  + '.ot-cat[data-on="1"]{background:#e8e3d8;color:#0a0f18;border-color:#e8e3d8;font-weight:700}'
+  + '.ot-cat .n{opacity:.5;margin-left:5px}'
+  + '.ot-body{overflow-y:auto;padding:16px 20px 60px;flex:1}'
+  + '.ot-sec{margin-bottom:24px}'
+  + '.ot-sec h3{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#e8e3d8;margin:0 0 10px;display:flex;align-items:center;gap:9px}'
+  + '.ot-sec h3 .dot{width:8px;height:8px;border-radius:2px;display:inline-block}'
+  + '.ot-sec h3 .cnt{font-size:9px;color:#8a8578}'
+  + '.ot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}'
+  + '.ot-card{background:rgba(9,15,26,.66);border:1px solid rgba(255,255,255,.08);border-left:3px solid #8a8578;border-radius:6px;padding:11px 12px;display:flex;flex-direction:column;gap:7px}'
+  + '.ot-card:hover{background:rgba(14,21,34,.92)}'
+  + '.ot-nm{font-size:13px;font-weight:600;line-height:1.3}'
+  + '.ot-dom{font-family:"IBM Plex Mono",monospace;font-size:10px;color:#8a8578;word-break:break-all}'
+  + '.ot-act{display:flex;gap:6px;align-items:center}'
+  + '.ot-go{flex:1;text-align:center;font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:7px;border-radius:5px;border:1px solid rgba(255,255,255,.1);color:#c7c2b6;cursor:pointer;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+  + '.ot-go:hover{border-color:#d4823a;color:#d4823a}'
+  + '.ot-card.pf .ot-go{border-color:rgba(212,130,58,.5);color:#d4823a;background:rgba(212,130,58,.14)}'
+  + '.ot-badge{font-family:"IBM Plex Mono",monospace;font-size:8px;letter-spacing:.1em;padding:2px 5px;border-radius:9px;text-transform:uppercase}'
+  + '.ot-badge.auto{background:rgba(212,130,58,.14);color:#d4823a;border:1px solid rgba(212,130,58,.4)}'
+  + '.ot-badge.copy{color:#8a8578;border:1px solid rgba(255,255,255,.1)}'
+  + '.ot-note{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:#8a8578;border:1px dashed rgba(255,255,255,.1);border-radius:6px;padding:9px 13px;margin-bottom:16px}'
+  + '.ot-note b{color:#d4823a}'
+  + '#osint-launch-fab{position:fixed;right:16px;bottom:16px;z-index:9998;background:#d4823a;color:#0a0f18;border:none;border-radius:24px;padding:11px 16px;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:700;letter-spacing:.08em;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.4)}'
+  + '#osint-launch-fab:hover{filter:brightness(1.08)}'
+  + '#ot-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#d4823a;color:#0a0f18;font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:700;padding:9px 16px;border-radius:6px;opacity:0;transition:opacity .2s;z-index:100000;pointer-events:none}'
+  + '#ot-toast.show{opacity:1}';
+  var _st=document.createElement('style'); _st.textContent=CSS; (document.head||document.documentElement).appendChild(_st);
+
+  var state={subject:'',filter:'',cat:'ALL',type:null};
+  var root=null,elBody=null,elCats=null,elTypes=null;
+
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function copyText(s){try{navigator.clipboard&&navigator.clipboard.writeText(s);}catch(e){}}
+  function toast(m){var t=document.getElementById('ot-toast');if(!t){t=document.createElement('div');t.id='ot-toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show');},1600);}
+
+  function build(){
+    if(root) return;
+    root=document.createElement('div'); root.id='osint-overlay';
+    root.innerHTML=''
+      +'<div class="ot-head">'
+      +'  <div class="ot-titlerow"><span class="ot-title">Corsair · OSINT Toolkit</span>'
+      +'    <span class="ot-mono" id="ot-count" style="font-size:10px;color:#8a8578;letter-spacing:.12em"></span>'
+      +'    <button class="ot-x" id="ot-close">CLOSE ✕</button></div>'
+      +'  <div class="ot-subrow"><input id="ot-subject" placeholder="Subject — name, username, company, phone, email, domain, or place…" autocomplete="off" spellcheck="false"></div>'
+      +'  <div class="ot-types" id="ot-types"></div>'
+      +'  <input id="ot-filter" placeholder="filter tools by name…" autocomplete="off">'
+      +'  <div class="ot-cats" id="ot-cats"></div>'
+      +'</div>'
+      +'<div class="ot-body" id="ot-board"></div>';
+    document.body.appendChild(root);
+    elBody=root.querySelector('#ot-board'); elCats=root.querySelector('#ot-cats'); elTypes=root.querySelector('#ot-types');
+    root.querySelector('#ot-close').onclick=window.closeOsintToolkit;
+    root.querySelector('#ot-subject').addEventListener('input',function(e){state.subject=e.target.value.trim();render();});
+    root.querySelector('#ot-filter').addEventListener('input',function(e){state.filter=e.target.value.trim();render();});
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape' && root && root.style.display==='flex') window.closeOsintToolkit(); });
+  }
+
+  function render(){
+    var counts={}; TOOLS.forEach(function(t){counts[t.c]=(counts[t.c]||0)+1;});
+    root.querySelector('#ot-count').textContent='· '+TOOLS.length+' tools '+(state.subject?('· "'+state.subject+'"'):'· no subject');
+    // cats
+    elCats.innerHTML='';
+    var mkcat=function(key,label,n){var d=document.createElement('span');d.className='ot-cat';d.setAttribute('data-on',state.cat===key?'1':'0');d.innerHTML=label+'<span class="n">'+n+'</span>';d.onclick=function(){state.cat=key;render();};elCats.appendChild(d);};
+    mkcat('ALL','All',TOOLS.length);
+    CAT_ORDER.forEach(function(k){mkcat(k,CATS[k].label,counts[k]||0);});
+    // types
+    elTypes.innerHTML='';
+    var lbl=document.createElement('span');lbl.className='ot-type';lbl.textContent='SUBJECT IS A →';lbl.style.border='none';lbl.style.pointerEvents='none';elTypes.appendChild(lbl);
+    TYPES.forEach(function(t){var d=document.createElement('span');d.className='ot-type';d.setAttribute('data-on',state.type===t.k?'1':'0');d.textContent=t.label;d.onclick=function(){state.type=(state.type===t.k?null:t.k);render();};elTypes.appendChild(d);});
+    // board
+    var typeCats=state.type?(TYPES.find(function(t){return t.k===state.type;}).cats):null;
+    var f=state.filter.toLowerCase();
+    elBody.innerHTML='';
+    var note=document.createElement('div');note.className='ot-note';
+    note.innerHTML='Type a <b>subject</b> and compatible tools become one-click prefilled searches (<b>⚡ AUTO</b>). Others open and copy the subject so you can paste. Opened from an entity, the subject prefills automatically.';
+    elBody.appendChild(note);
+    var any=false;
+    CAT_ORDER.forEach(function(ck){
+      if(state.cat!=='ALL'&&state.cat!==ck) return;
+      var list=TOOLS.filter(function(t){if(t.c!==ck)return false;if(f&&t.n.toLowerCase().indexOf(f)<0&&t.u.toLowerCase().indexOf(f)<0)return false;return true;});
+      if(!list.length) return;
+      var sec=document.createElement('div');sec.className='ot-sec';
+      if(typeCats&&typeCats.indexOf(ck)<0) sec.style.opacity='.5';
+      sec.innerHTML='<h3><span class="dot" style="background:'+CATS[ck].color+'"></span>'+CATS[ck].label+' <span class="cnt">'+list.length+'</span></h3>';
+      var grid=document.createElement('div');grid.className='ot-grid';
+      list.forEach(function(t){
+        var pf=prefillUrl(t,state.subject);
+        var card=document.createElement('div');card.className='ot-card'+(pf?' pf':'');card.style.borderLeftColor=CATS[t.c].color;
+        var badge=pf?'<span class="ot-badge auto">⚡ auto</span>':(state.subject?'<span class="ot-badge copy">copy</span>':'');
+        card.innerHTML='<div class="ot-nm">'+esc(t.n)+'</div><div class="ot-dom">'+esc(domainOf(t.u))+'</div>'
+          +'<div class="ot-act"><a class="ot-go" target="_blank" rel="noopener noreferrer">'+(pf?('Search'+(state.subject?' ↗':'')):(state.subject?'Open + copy':'Open ↗'))+'</a>'+badge+'</div>';
+        var go=card.querySelector('.ot-go'); go.href=pf||t.u;
+        go.onclick=function(){ if(!pf&&state.subject){copyText(state.subject);toast('Copied "'+state.subject+'" — paste into the tool');} };
+        grid.appendChild(card);
+      });
+      sec.appendChild(grid);elBody.appendChild(sec);any=true;
+    });
+    if(!any){var e2=document.createElement('div');e2.style.cssText='color:#8a8578;text-align:center;padding:30px;font-family:"IBM Plex Mono",monospace';e2.textContent='No tools match "'+state.filter+'".';elBody.appendChild(e2);}
+  }
+
+  window.openOsintToolkit=function(subject){
+    build();
+    if(subject!=null&&subject!==undefined&&String(subject).length) state.subject=String(subject).trim();
+    root.style.display='flex';
+    var si=root.querySelector('#ot-subject'); if(si) si.value=state.subject;
+    render();
+    setTimeout(function(){ if(si) si.focus(); },30);
+  };
+  window.closeOsintToolkit=function(){ if(root) root.style.display='none'; };
+  window.CorsairOSINT={ setSubject:function(s){ window.openOsintToolkit(s); }, open:window.openOsintToolkit, close:window.closeOsintToolkit };
+
+  // entity-aware: capture the last-opened entity's name so the toolkit prefills.
+  try{
+    var _oei=window.openEntityInspector;
+    if(typeof _oei==='function'){
+      window.openEntityInspector=function(id){
+        try{ var arr=window.nodes||[]; for(var i=0;i<arr.length;i++){ if(arr[i]&&String(arr[i].id)===String(id)){ window._osintLastSubject=arr[i].name||arr[i].label||''; break; } } }catch(e){}
+        return _oei.apply(this, arguments);
+      };
+    }
+  }catch(e){}
+
+  function addLauncher(){
+    if(document.getElementById('osint-launch-fab')) return;
+    var b=document.createElement('button'); b.id='osint-launch-fab'; b.textContent='⌖ OSINT';
+    b.title='Open the OSINT Toolkit — prefills from the entity you last opened';
+    b.onclick=function(){ window.openOsintToolkit(window._osintLastSubject||''); };
+    document.body.appendChild(b);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', addLauncher); else addLauncher();
+})();
+
+</script>
+<script type="module" src="./js/corsair/main.js?v=P13.390"></script>
 </body>
 </html>
