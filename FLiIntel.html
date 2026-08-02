@@ -26393,9 +26393,12 @@ window._retryMeetingProcessing = async function(mtgId){
     if (r.added)    parts.push(r.added+' new node'+(r.added>1?'s':''));
     if (r.updated)  parts.push(r.updated+' updated');
     if (rl.added)   parts.push(rl.added+' link'+(rl.added>1?'s':'')+' created');
+    recordPipelineEvent('sync_ok', { stage:'process_retry', meetingId:m.id, addedNodes:r.added||0, updatedNodes:r.updated||0, addedLinks:rl.added||0, enrichedLinks:rl.enriched||0 });
+    checkPipelineInvariants(m, r, rl);
     toast(parts.length ? ('Reprocessed — '+parts.join(', ')+' in Network Map') : 'Meeting intel re-synced');
   } catch(syncErr) {
     console.error('[P13.300 retry post-extraction sync/render]', syncErr);
+    recordPipelineEvent('sync_error', { stage:'process_retry', meetingId:m.id, error:(syncErr&&syncErr.message)||String(syncErr) });
     try { renderIntel(m); } catch(e3){}
     toast('Meeting intel is saved. Network-map sync hit a snag — try Edit Sync on the meeting.');
   }
@@ -26505,6 +26508,8 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
       window._lastProcessedSummary.updatedNodes  = r.updated || 0;
       window._lastProcessedSummary.addedLinks    = rl.added || 0;
       window._lastProcessedSummary.enrichedLinks = rl.enriched || 0;
+      recordPipelineEvent('sync_ok', { stage:'process', meetingId:m.id, addedNodes:r.added||0, updatedNodes:r.updated||0, addedLinks:rl.added||0, enrichedLinks:rl.enriched||0, keyPeople:(m.intel&&m.intel.keyPeople||[]).length, companies:(m.intel&&m.intel.companies||[]).length });
+      checkPipelineInvariants(m, r, rl);
       if (window._renderProcessExtractionBanner) window._renderProcessExtractionBanner(m);
     }
     var parts = [];
@@ -26526,6 +26531,7 @@ async function processNotes(){var notes=document.getElementById('m-notes').value
   } catch(syncErr) {
     syncOk = false;
     console.error('[P13.300 post-extraction sync/render]', syncErr);
+    recordPipelineEvent('sync_error', { stage:'process', meetingId:m.id, error:(syncErr&&syncErr.message)||String(syncErr) });
     try { renderIntel(m); } catch(e3){}
     toast('Meeting processed and saved. Network-map sync hit a snag — open the meeting and use Edit Sync to retry it.');
   }
@@ -27682,8 +27688,137 @@ window.toggleIntelHistory=function(id){
 
 function extractEnts(m){var list=[],date=m.meta.date,title=m.meta.title,seen={};(m.intel.keyPeople||[]).forEach(function(p){if(!p.name||p.name.trim().length<2)return;var key=p.name.trim().toLowerCase();if(seen[key])return;seen[key]=true;var notes=(p.stance?'Stance: '+p.stance+'\n':'')+(p.watchFor?'Watch: '+p.watchFor+'\n':'')+'From: '+title+' ('+date+')';list.push({type:'person',name:p.name.trim(),role:p.role||'',org:p.org||'',notes:notes,mid:m.id,mtitle:title,mdate:date});});if(m.meta.att){m.meta.att.split(/[,;]+/).map(function(n){return n.trim();}).filter(Boolean).forEach(function(att){var nm=att.match(/^([^(]+?)(?:\s*\(([^)]+)\))?$/);var name=nm?nm[1].trim():att.trim();var role=nm&&nm[2]?nm[2].trim():'';if(!name||name.length<2)return;var key=name.toLowerCase();if(seen[key])return;seen[key]=true;list.push({type:'person',name:name,role:role,org:'',notes:'Attendee at: '+title+' ('+date+')',mid:m.id,mtitle:title,mdate:date});});}(m.intel.companies||[]).forEach(function(c){if(!c.name||c.name.trim().length<2)return;var key=c.name.trim().toLowerCase();if(seen[key])return;seen[key]=true;var notes=(c.role?'Role: '+c.role+'\n':'')+(c.notes?c.notes+'\n':'')+'First mentioned: '+title+' ('+date+')';list.push({type:'company',name:c.name.trim(),role:c.role||'',org:'',notes:notes,mid:m.id,mtitle:title,mdate:date});});return list;}
 
+// ══════════════════════════════════════════════════════════════
+// [P13.392] PIPELINE HEALTH TELEMETRY (CT-1) — makes the internal
+// extract->sync->graph pipeline observable so a silently-dead stage
+// (see P13.391, where a swallowed ReferenceError killed auto-link
+// creation invisibly) can't hide again. Backend-free: in-memory +
+// localStorage ring buffer, surfaces errors to console + a toast the
+// moment they happen. Read back in the console:  pipelineHealthReport()
+// ══════════════════════════════════════════════════════════════
+var _pipelineHealth = [];
+try { _pipelineHealth = JSON.parse(localStorage.getItem('corsair-pipeline-health')||'[]'); } catch(e){ _pipelineHealth = []; }
+function recordPipelineEvent(kind, detail){
+  try{
+    var rec = Object.assign({ ts:new Date().toISOString(), kind:kind||'unknown' }, detail||{});
+    if(rec.error && String(rec.error).length>400) rec.error = String(rec.error).slice(0,400);
+    _pipelineHealth.push(rec);
+    if(_pipelineHealth.length>100) _pipelineHealth = _pipelineHealth.slice(-100);
+    try{ localStorage.setItem('corsair-pipeline-health', JSON.stringify(_pipelineHealth)); }catch(e){}
+    if(kind==='sync_error' || kind==='invariant_warn'){
+      console.error('[pipeline-health]', kind, rec);
+      if(typeof toast==='function') toast('⚠ Pipeline health — '+(rec.stage||'')+': '+(rec.error||rec.warn||'issue'), 7000);
+    }
+  }catch(e){ /* telemetry must never break the app */ }
+}
+window.recordPipelineEvent = recordPipelineEvent;
+window.pipelineHealthReport = function(n){
+  n = n||20;
+  var arr = _pipelineHealth.slice(-n);
+  var bad = _pipelineHealth.filter(function(e){ return e.kind==='sync_error'||e.kind==='invariant_warn'; });
+  try{
+    console.table(arr.map(function(e){ return { ts:e.ts, kind:e.kind, stage:e.stage||'', mtg:e.meetingId||'', nodes:(e.addedNodes||0)+'/'+(e.updatedNodes||0), links:(e.addedLinks||0)+'/'+(e.enrichedLinks||0), issue:e.error||e.warn||'' }; }));
+  }catch(e){ console.log(arr); }
+  console.log('[pipeline-health] '+_pipelineHealth.length+' buffered, '+bad.length+' error/warn total. Showing last '+arr.length+'.');
+  return arr;
+};
+
+// ══════════════════════════════════════════════════════════════
+// [P13.393] CT-2 PIPELINE INVARIANTS + CT-3 SELF-TEST
+// CT-2: after a healthy-looking sync, assert the graph actually got what
+// the meeting implied (people present together should be linked; a person
+// with an org should have a works-at link). Catches the QUIET failure —
+// no error thrown, but links silently absent (the P13.391 symptom).
+// CT-3: window.pipelineSelfTest() — a safe, write-free regression guard
+// you can run in the console anytime.
+// ══════════════════════════════════════════════════════════════
+function checkPipelineInvariants(m, r, rl){
+  try{
+    if(!m || !m.intel) return;
+    function linkBetween(idA,idB){ return links.some(function(l){ var sc=l.source&&l.source.id?l.source.id:l.source; var tg=l.target&&l.target.id?l.target.id:l.target; return (String(sc)===String(idA)&&String(tg)===String(idB))||(String(sc)===String(idB)&&String(tg)===String(idA)); }); }
+    function resolve(name,type){ if(!name||name.trim().length<2) return null; var mm=findEntityMatch(name,type); return mm&&(mm.exact||mm.score>=0.75)?mm.entity:null; }
+    var kp=(m.intel.keyPeople||[]).filter(function(pp){ return pp&&pp.name&&pp.name.trim().length>1; }).slice(0,6);
+    var coCount=(m.intel.companies||[]).filter(function(c){ return c&&c.name&&c.name.trim().length>1; }).length;
+    // Invariant A — extracted entities but nothing synced to the graph at all
+    if((kp.length+coCount)>0 && (((r&&r.added)||0)+((r&&r.updated)||0))===0){
+      recordPipelineEvent('invariant_warn',{ stage:'invariant', meetingId:m.id, warn:'extracted '+(kp.length+coCount)+' entities but 0 nodes added/updated' });
+    }
+    // Invariant B — people present together resolve to graph nodes but have no link between any pair
+    var pnodes=[]; var seen={};
+    kp.forEach(function(pp){ var n=resolve(pp.name,'person'); if(n&&!seen[n.id]){ seen[n.id]=true; pnodes.push(n); } });
+    var pairs=0, linked=0;
+    for(var i=0;i<pnodes.length;i++){ for(var j=i+1;j<pnodes.length;j++){ pairs++; if(linkBetween(pnodes[i].id,pnodes[j].id)) linked++; } }
+    if(pairs>0 && linked===0){
+      recordPipelineEvent('invariant_warn',{ stage:'invariant', meetingId:m.id, warn:pairs+' co-present pair(s) in graph but 0 links between them — auto-link may be failing', addedLinks:(rl&&rl.added)||0, enrichedLinks:(rl&&rl.enriched)||0 });
+    }
+    // Invariant C — a resolved person with a named org but no works-at link (aggregated)
+    var missing=[];
+    kp.forEach(function(pp){
+      if(!pp.org||pp.org.trim().length<2) return;
+      var pn=resolve(pp.name,'person'); if(!pn) return;
+      var key=pp.org.trim().toLowerCase();
+      var on=resolve(pp.org,'company');
+      if(!on && typeof companyByName!=='undefined' && companyByName.get) on=companyByName.get(key);
+      if(!on) on=nodes.find(function(n){ return (n.type==='company'||n.type==='government')&&n.name&&n.name.toLowerCase()===key; });
+      if(pn&&on&&pn.id!==on.id&&!linkBetween(pn.id,on.id)) missing.push(pp.name+'→'+pp.org);
+    });
+    if(missing.length){
+      recordPipelineEvent('invariant_warn',{ stage:'invariant', meetingId:m.id, warn:'works-at link missing for: '+missing.join(', ') });
+    }
+  }catch(e){ /* invariants must never break the app */ }
+}
+window.checkPipelineInvariants = checkPipelineInvariants;
+
+// CT-3 — safe, write-free pipeline self-test. Run in console: pipelineSelfTest()
+window.pipelineSelfTest = function(){
+  var out=[]; function chk(name,ok,detail){ out.push({ check:name, ok:!!ok, detail:detail||'' }); }
+  chk('autoSyncEnts is a global function', typeof autoSyncEnts==='function');
+  chk('autoSyncLinks is a global function (P13.391 guard)', typeof autoSyncLinks==='function');
+  chk('undoAutoLinks is global', typeof window.undoAutoLinks==='function');
+  chk('retroLinkAll is global', typeof window.retroLinkAll==='function');
+  chk('recordPipelineEvent present', typeof recordPipelineEvent==='function');
+  chk('checkPipelineInvariants present', typeof checkPipelineInvariants==='function');
+  var synth={ id:'__selftest__', meta:{ date:'2026-01-01', title:'Self Test', att:'Jane Doe, John Roe' }, intel:{ keyPeople:[{name:'Jane Doe',role:'VP',org:'Acme Robotics'},{name:'John Roe',role:'PM',org:'Acme Robotics'}], companies:[{name:'Acme Robotics'}] } };
+  var ents=[]; try{ ents=extractEnts(synth); chk('extractEnts runs without error', true); }catch(e){ chk('extractEnts runs without error', false, e.message); }
+  chk('extractEnts finds >=2 people', ents.filter(function(e){return e.type==='person';}).length>=2, ents.length+' total');
+  chk('extractEnts finds a company', ents.filter(function(e){return e.type==='company';}).length>=1);
+  var pass=out.filter(function(r){return r.ok;}).length;
+  try{ console.table(out); }catch(e){ console.log(out); }
+  console.log('[pipeline-self-test] '+pass+'/'+out.length+' passed'+(pass<out.length?'  ✗ SEE RED ROWS':'  ✓'));
+  return out;
+};
+
 // AUTO SYNC -- runs silently after every process/reprocess
 async function autoSyncEnts(m){
+  var ents=extractEnts(m);
+  if(!ents.length)return{added:0,updated:0};
+  var added=0,updated=0;
+  var toSave=[];
+  ents.forEach(function(e){
+    // Use findEntityMatch: exact first, then fuzzy at high confidence (≥0.85)
+    var match=findEntityMatch(e.name,e.type);
+    var ex=match&&(match.exact||match.score>=0.85)?match.entity:null;
+    if(ex){
+      if(!ex.meetings)ex.meetings=[];
+      if(ex.meetings.indexOf(e.mid)===-1)ex.meetings.push(e.mid);
+      if(e.notes&&!(ex.notes||'').includes(e.mtitle))ex.notes=(ex.notes?ex.notes+'\n\n---\n':'')+'Meeting: '+e.mtitle+' ('+e.mdate+')\n'+e.notes;
+      if(e.role&&!ex.role)ex.role=e.role;
+      if(e.org&&!ex.org)ex.org=e.org;
+      toSave.push(ex);updated++;
+    }else{
+      var ne={id:Date.now()+'-'+Math.random().toString(36).slice(2,7)+added,type:e.type,name:e.name,role:e.role,org:e.org,notes:e.notes,priority:2,meetings:[e.mid],x:null,y:null,pinned:false,color:null,created:new Date().toISOString(),govType:_inferGovType(e.role)};
+      nodes.push(ne);nodeMap.set(ne.id,ne);if(ne.type==='company')companyByName.set(ne.name.toLowerCase(),ne);toSave.push(ne);added++;
+    }
+  });
+  for(var i=0;i<toSave.length;i++){await saveEntity(toSave[i]);}
+  return{added:added,updated:updated};
+}
+
+// [P13.391] autoSyncLinks / undoAutoLinks / retroLinkAll were previously nested
+// INSIDE autoSyncEnts, so top-level `await autoSyncLinks(m)` calls (processNotes,
+// reprocessMeeting, retry path) hit a ReferenceError that best-effort catches
+// swallowed -- auto-link creation silently never ran. Hoisted to top level here.
+
 
 // ══════════════════════════════════════════════════════════════
 // AUTO-SYNC LINKS
@@ -27897,29 +28032,7 @@ window.retroLinkAll=async function(){
   _retroLinkRunning=false;
   if(btn){btn.disabled=false;btn.textContent='🔗 Link All';}
 };
-  var ents=extractEnts(m);
-  if(!ents.length)return{added:0,updated:0};
-  var added=0,updated=0;
-  var toSave=[];
-  ents.forEach(function(e){
-    // Use findEntityMatch: exact first, then fuzzy at high confidence (≥0.85)
-    var match=findEntityMatch(e.name,e.type);
-    var ex=match&&(match.exact||match.score>=0.85)?match.entity:null;
-    if(ex){
-      if(!ex.meetings)ex.meetings=[];
-      if(ex.meetings.indexOf(e.mid)===-1)ex.meetings.push(e.mid);
-      if(e.notes&&!(ex.notes||'').includes(e.mtitle))ex.notes=(ex.notes?ex.notes+'\n\n---\n':'')+'Meeting: '+e.mtitle+' ('+e.mdate+')\n'+e.notes;
-      if(e.role&&!ex.role)ex.role=e.role;
-      if(e.org&&!ex.org)ex.org=e.org;
-      toSave.push(ex);updated++;
-    }else{
-      var ne={id:Date.now()+'-'+Math.random().toString(36).slice(2,7)+added,type:e.type,name:e.name,role:e.role,org:e.org,notes:e.notes,priority:2,meetings:[e.mid],x:null,y:null,pinned:false,color:null,created:new Date().toISOString(),govType:_inferGovType(e.role)};
-      nodes.push(ne);nodeMap.set(ne.id,ne);if(ne.type==='company')companyByName.set(ne.name.toLowerCase(),ne);toSave.push(ne);added++;
-    }
-  });
-  for(var i=0;i<toSave.length;i++){await saveEntity(toSave[i]);}
-  return{added:added,updated:updated};
-}
+
 
 function showSyncModal(){
   if(currentMeeting)pendingEnts=extractEnts(currentMeeting);
@@ -28552,6 +28665,8 @@ async function reprocessMeeting(){
     await saveMeeting(m);
     closeModal('edit-modal');pendingEnts=[];
     var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);
+    recordPipelineEvent('sync_ok', { stage:'reprocess', meetingId:m.id, addedNodes:r.added||0, updatedNodes:r.updated||0, addedLinks:rl.added||0, enrichedLinks:rl.enriched||0 });
+    checkPipelineInvariants(m, r, rl);
     renderIntel(m);
     var parts2=[];if(r.added)parts2.push(r.added+' new node'+(r.added>1?'s':''));if(r.updated)parts2.push(r.updated+' updated');if(rl.added)parts2.push(rl.added+' link'+(rl.added>1?'s':'')+' created');var rmsg='Reprocessed'+(parts2.length?' — '+parts2.join(', ')+' in Network Map':'')+(m.intelHistory.length?' (v'+(m.intelHistory.length+1)+')':'');if(rl.added>0){var toastEl2=document.getElementById('toast');toastEl2.innerHTML=rmsg+' <span onclick="undoAutoLinks()" style="color:var(--amber);cursor:pointer;text-decoration:underline;font-weight:600">Undo</span>';toastEl2.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){toastEl2.classList.remove('show');},6000);}else{toast(rmsg);}
   }catch(e){document.getElementById('edit-err').textContent=e.message||'Failed';document.getElementById('edit-err').style.display='inline';}
