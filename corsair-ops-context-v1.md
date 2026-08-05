@@ -26,15 +26,16 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 
 **Piece A acceptance is CLOSED** — connector-captured, msgs `19fcc6e7ac38cfd5` (08-04 control) vs `19fd1953700e6081` (08-05 test). See TRUTH / LOG.
 
-**Mission 4 — #1 SHIPPED + DEPLOYED, #2 BUILT + HARNESS-VERIFIED (live acceptance owed).**
+**Mission 4 — #1 and #2 both SHIPPED, DEPLOYED and ACCEPTED. #3 queued for next session.**
 
 - **#1 HPA ordering (`22215e6`, deployed):** urgency order replaces first-8-in-key-order; `done` items now excluded from the email entirely. 134 tests green in CI on run [#6](https://github.com/mpoppa32/FLi-Network/actions/runs/31041218888) — build → test → deploy → smoke → `verify-live`, all green. Live in the 11:00Z brief from 2026-08-06.
-- **#2 CT-1b rebuild (P13.397, committed, NOT yet pushed):** REST `PUT` durable path + SDK hang timeout + loud guard-skip + re-entry latch. `node scripts/ct1b-harness.mjs` → **17/17**; the same harness fails **14/17** against the pre-fix code.
+- **#2 CT-1b rebuild (P13.397, `6f5e063`, deployed): ACCEPTED LIVE UNDER THE WEDGE.** REST `PUT` durable path + SDK hang timeout + loud guard-skip + re-entry latch. `node scripts/ct1b-harness.mjs` → **17/17**; the same harness fails **14/17** against the pre-fix code. Live acceptance 2026-08-05 with the connection indicator DELAYED: one 8s hang warning, no failure warnings, record `ph-1785960922768-zlzpej` confirmed in `pipelineHealth` by direct `database:get`. Front-end bytes confirmed live by `verify-live` on run [#7](https://github.com/mpoppa32/FLi-Network/actions/runs/31042845264) (`build-deploy` correctly skipped — no backend paths in that push).
+- **Nothing is owed on Mission 4 #1 or #2.** CT-1b is closed; the integrity tier (CT-1 … CT-4 + CT-1b) is fully live and verified for the first time.
 
-## NEXT MOVE (as of 2026-08-05, after Mission 4 #1/#2)
-1. **CT-1b LIVE ACCEPTANCE — the one thing owed.** Needs Mike's signed-in browser on **Atlas**, and it must be run **while the connection header shows DELAYED**; a pass on a healthy socket does not exercise the failure mode the rebuild exists to fix. Run `recordPipelineEvent('selftest', { stage: 'ct1b-verify' })`, then `firebase database:get "/workspaces/1777435779676/pipelineHealth" --project fli-network`. Expect the record to arrive via the REST path, and — if the socket is genuinely wedged — a console warning that the SDK `set()` did not settle in 8s. **A silent console now means something different than before: it means the guard never even ran.** (There is an older REST probe record in that node from the rules check; do not mistake it for a `selftest`.)
-2. **MISSION 4, ITEM #3 — `operatorData.ts:292` builds `openActionItems` WITHOUT filtering `done`.** The field named *open* includes completed work, so the headless operator layer reads finished items as outstanding. Found while shipping #1; deliberately not fixed drive-by. **Its fix must reuse or mirror the `done`-filter semantics shipped in `selectHighPriorityActions`** so the digest and the endpoint cannot drift apart on what "open" means — and it has `operatorData.test.ts` to extend.
-3. Consider a `production` GitHub Environment if the collaborator set ever grows past Mike + Bryce (see the accepted-risk note in the truth doc).
+## NEXT MOVE (as of 2026-08-05, end of session — nothing owed on a human)
+1. **MISSION 4, ITEM #3 — `operatorData.ts:292` builds `openActionItems` WITHOUT filtering `done`.** The field named *open* includes completed work, so the headless operator layer reads finished items as outstanding. Found while shipping #1; deliberately not fixed drive-by. **Its fix must reuse or mirror the `done`-filter semantics shipped in `selectHighPriorityActions`** so the digest and the endpoint cannot drift apart on what "open" means — and it has `operatorData.test.ts` to extend.
+2. Consider a `production` GitHub Environment if the collaborator set ever grows past Mike + Bryce (see the accepted-risk note in the truth doc).
+3. **Re-point the Cowork operator session to the rotated `OPERATOR_API_TOKEN`** — it was rotated 2026-08-05 (version 2) and anything still holding the old value gets 401. Read the current value with `firebase functions:secrets:access OPERATOR_API_TOKEN`; never paste it into a command that will be captured as a permission rule (LOG 2026-08-05).
 
 ## PRIOR STATE — operator endpoint (as of 2026-08-05)
 
