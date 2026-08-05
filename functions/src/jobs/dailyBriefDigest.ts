@@ -103,6 +103,64 @@ export function sortOpenCommitments(commitments: unknown[]): any[] {
     });
 }
 
+/**
+ * High-priority action items in operator-useful order.
+ *
+ * Replaces a first-8-in-key-order slice, which was arbitrary on every axis:
+ * not the most urgent, not the most recent, and stable — so the same eight
+ * items could sit in the brief indefinitely while genuinely urgent ones
+ * never surfaced at all.
+ *
+ * Contract (pinned in dailyBriefDigest.test.ts):
+ *   1. drop completed items (`a.done`) and anything not priority "high"
+ *   2. sort by deadline ascending — overdue rises to the top; dated before undated
+ *   3. tiebreak by source-meeting recency, newest first
+ *   4. cap at `cap` (8 in the digest)
+ *
+ * DELIBERATELY STATELESS — no persistence, no "already shown" memory, no
+ * rotation. An urgent item that keeps reappearing is pressure by design, not
+ * staleness: hiding it on alternate days to manufacture variety would defeat
+ * the accountability loop. The anti-squat mechanism lives at the right
+ * cadence in the WEEKLY digest's staleness sentinel, which flags a list that
+ * has not materially changed week-over-week and names the longest-standing
+ * items for date/close/demote. Daily = pressure, weekly = staleness audit.
+ * Rotation would also mean this read-only job starts writing state; CT-1b is
+ * the standing lesson on casually-added write paths (see LOG 2026-08-05).
+ */
+export function selectHighPriorityActions(
+  meetings: unknown[],
+  nowMs: number,
+  cap = 8,
+): any[] {
+  const out: any[] = [];
+  (meetings as any[]).forEach((m: any) => {
+    const items = (m && m.intel && m.intel.actionItems) || [];
+    // Same recency idiom as operatorData's dossier sort: meta.date, then ts.
+    const mtgMs = Date.parse(m?.meta?.date || m?.ts || 0) || 0;
+    items.forEach((a: any) => {
+      if (a && a.priority === "high" && !a.done) {
+        out.push({ ...a, mtg: m.meta && m.meta.title, _mtgMs: mtgMs });
+      }
+    });
+  });
+  return out
+    .sort((a: any, b: any) => {
+      const ta = a.deadline ? Date.parse(`${a.deadline}T00:00:00`) : NaN;
+      const tb = b.deadline ? Date.parse(`${b.deadline}T00:00:00`) : NaN;
+      const va = !isNaN(ta);
+      const vb = !isNaN(tb);
+      if (va && vb && ta !== tb) return ta - tb;
+      if (va !== vb) return va ? -1 : 1;
+      return b._mtgMs - a._mtgMs;
+    })
+    .slice(0, cap)
+    .map((a: any) => {
+      const t = a.deadline ? Date.parse(`${a.deadline}T00:00:00`) : NaN;
+      const overdueDays = !isNaN(t) ? Math.floor((nowMs - t) / 86400000) : 0;
+      return { ...a, overdueDays: overdueDays > 0 ? overdueDays : 0 };
+    });
+}
+
 function _isoWeek(d: Date = new Date()): string {
   // Returns YYYY-Www format for weekly de-dupe
   const target = new Date(d.valueOf());
@@ -313,19 +371,14 @@ export async function composeBrief(
   }
 
   if (sub.incActions !== false && meetings.length) {
-    const highActions: any[] = [];
-    (meetings as any[]).forEach((m: any) => {
-      const items = (m && m.intel && m.intel.actionItems) || [];
-      items.forEach((a: any) => {
-        if (a && a.priority === "high") {
-          highActions.push({ ...a, mtg: m.meta && m.meta.title });
-        }
-      });
-    });
+    const highActions = selectHighPriorityActions(meetings as unknown[], Date.now(), 8);
     if (highActions.length) {
       lines.push("=== HIGH PRIORITY ACTIONS ===");
-      highActions.slice(0, 8).forEach((a: any) => {
-        lines.push(`• ${a.task}${a.owner ? ` [${a.owner}]` : ""}${a.deadline ? ` (Due: ${a.deadline})` : ""}`);
+      highActions.forEach((a: any) => {
+        const due = a.deadline
+          ? ` (Due: ${a.deadline}${a.overdueDays > 0 ? ` — ${a.overdueDays}d overdue` : ""})`
+          : "";
+        lines.push(`• ${a.task}${a.owner ? ` [${a.owner}]` : ""}${due}`);
       });
       lines.push("");
     }

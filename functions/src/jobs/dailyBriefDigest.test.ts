@@ -14,7 +14,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("../capture/gmailSend", () => ({ sendViaGmail: vi.fn(async () => true) }));
 
-import { composeBrief, sortOpenCommitments, type BriefSubscription } from "./dailyBriefDigest";
+import {
+  composeBrief,
+  sortOpenCommitments,
+  selectHighPriorityActions,
+  type BriefSubscription,
+} from "./dailyBriefDigest";
 
 const NOW = Date.parse("2026-08-05T12:00:00Z");
 const HOUR = 3600000;
@@ -376,6 +381,201 @@ describe("composeBrief — OPEN COMMITMENTS", () => {
   it("omits the section when there is nothing open", async () => {
     tree.workspaces[WS].commitments = { a: { status: "done", task: "x" } };
     expect(await compose(sub())).not.toContain("OPEN COMMITMENTS");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// selectHighPriorityActions — HIGH PRIORITY ACTIONS ordering (Mission 4 #1)
+//
+// REPLACES the previous behavior, which was `highActions.slice(0, 8)` over
+// meetings in Firebase key order. That was arbitrary on every axis: not the
+// most urgent, not the most recent, and *stable* — so the same eight items
+// could sit in the brief indefinitely while genuinely urgent ones never
+// surfaced. There is no test here that pinned the old order, because none
+// existed; this block is the first contract this section has ever had.
+//
+// THE CONTRACT: drop done → sort by deadline ascending (overdue at the top,
+// dated before undated) → tiebreak by source-meeting recency, newest first
+// → cap 8.
+//
+// DELIBERATELY STATELESS. No rotation, no "already shown" memory. An urgent
+// item that keeps reappearing is pressure BY DESIGN, not staleness — hiding
+// it on alternate days to manufacture variety would defeat the accountability
+// loop. Anti-squat lives at the right cadence in the WEEKLY digest's
+// staleness sentinel (flags a list unchanged week-over-week, names the
+// longest-standing items for date/close/demote). Daily = pressure, weekly =
+// staleness audit; two layers, no state. Rotation would also have made this
+// read-only job start writing — and CT-1b (LOG 2026-08-05) is the standing
+// lesson on casually-added write paths.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("selectHighPriorityActions", () => {
+  /** Meetings keyed so that KEY ORDER contradicts the contract order — if the
+   *  old first-8 slice ever comes back, these tests go red rather than pass
+   *  by coincidence. */
+  const meetings = [
+    {
+      meta: { title: "old meeting", date: "2026-07-01" },
+      intel: {
+        actionItems: [
+          { task: "no deadline, old mtg", priority: "high" },
+          { task: "due next month", priority: "high", deadline: "2026-09-01" },
+        ],
+      },
+    },
+    {
+      meta: { title: "recent meeting", date: "2026-08-04" },
+      intel: {
+        actionItems: [
+          { task: "overdue", priority: "high", deadline: "2026-07-20" },
+          { task: "no deadline, recent mtg", priority: "high" },
+          { task: "low priority", priority: "low", deadline: "2026-07-01" },
+          { task: "done and urgent", priority: "high", deadline: "2026-07-02", done: true },
+        ],
+      },
+    },
+  ];
+
+  it("puts the most overdue item first, not whatever came first in key order", () => {
+    const out = selectHighPriorityActions(meetings, NOW);
+    expect(out[0].task).toBe("overdue");
+  });
+
+  it("drops completed items even when they are high priority and overdue", () => {
+    const out = selectHighPriorityActions(meetings, NOW);
+    expect(out.map((a) => a.task)).not.toContain("done and urgent");
+  });
+
+  it("drops anything that is not priority=high", () => {
+    const out = selectHighPriorityActions(meetings, NOW);
+    expect(out.map((a) => a.task)).not.toContain("low priority");
+  });
+
+  it("orders dated ascending and puts every dated item ahead of every undated one", () => {
+    const out = selectHighPriorityActions(meetings, NOW);
+    expect(out.map((a) => a.task)).toEqual([
+      "overdue",
+      "due next month",
+      "no deadline, recent mtg",
+      "no deadline, old mtg",
+    ]);
+  });
+
+  it("tiebreaks equal deadlines by source-meeting recency, newest first", () => {
+    const out = selectHighPriorityActions(
+      [
+        {
+          meta: { title: "older", date: "2026-07-01" },
+          intel: { actionItems: [{ task: "from older mtg", priority: "high", deadline: "2026-08-10" }] },
+        },
+        {
+          meta: { title: "newer", date: "2026-08-04" },
+          intel: { actionItems: [{ task: "from newer mtg", priority: "high", deadline: "2026-08-10" }] },
+        },
+      ],
+      NOW,
+    );
+    expect(out.map((a) => a.task)).toEqual(["from newer mtg", "from older mtg"]);
+  });
+
+  it("falls back to ts when a meeting has no meta.date", () => {
+    const out = selectHighPriorityActions(
+      [
+        { ts: "2026-07-01", intel: { actionItems: [{ task: "older", priority: "high" }] } },
+        { ts: "2026-08-04", intel: { actionItems: [{ task: "newer", priority: "high" }] } },
+      ],
+      NOW,
+    );
+    expect(out.map((a) => a.task)).toEqual(["newer", "older"]);
+  });
+
+  it("caps at 8 and keeps the 8 MOST urgent — the cap must not truncate arbitrarily", () => {
+    const many = [
+      {
+        meta: { title: "m", date: "2026-08-04" },
+        intel: {
+          // Deliberately supplied latest-deadline-first.
+          actionItems: Array.from({ length: 12 }, (_, i) => ({
+            task: `t${i}`,
+            priority: "high",
+            deadline: `2026-09-${String(12 - i).padStart(2, "0")}`,
+          })),
+        },
+      },
+    ];
+    const out = selectHighPriorityActions(many, NOW);
+    expect(out).toHaveLength(8);
+    expect(out[0].task).toBe("t11"); // 2026-09-01, the soonest
+    expect(out.map((a) => a.task)).not.toContain("t0"); // 2026-09-12, the furthest
+  });
+
+  it("survives malformed input without throwing", () => {
+    expect(() => selectHighPriorityActions([null, undefined, {}, { intel: {} }] as any, NOW)).not.toThrow();
+    expect(selectHighPriorityActions([null, undefined, {}] as any, NOW)).toEqual([]);
+  });
+
+  it("computes overdueDays only for items actually past due", () => {
+    const out = selectHighPriorityActions(meetings, NOW);
+    const overdue = out.find((a) => a.task === "overdue");
+    const future = out.find((a) => a.task === "due next month");
+    expect(overdue.overdueDays).toBe(16); // 2026-07-20 → 2026-08-05
+    expect(future.overdueDays).toBe(0);
+  });
+
+  it("is stateless: the same input yields the same output on repeated calls", () => {
+    const a = selectHighPriorityActions(meetings, NOW).map((x) => x.task);
+    const b = selectHighPriorityActions(meetings, NOW).map((x) => x.task);
+    expect(a).toEqual(b);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HIGH PRIORITY ACTIONS — as rendered in the email
+// ═══════════════════════════════════════════════════════════════════════════
+describe("composeBrief — HIGH PRIORITY ACTIONS section", () => {
+  beforeEach(() => {
+    tree.workspaces[WS].meetings = {
+      // Key order deliberately contradicts contract order.
+      zzz: {
+        meta: { title: "old", date: "2026-07-01" },
+        intel: { actionItems: [{ task: "later item", priority: "high", deadline: "2026-09-01" }] },
+      },
+      aaa: {
+        meta: { title: "recent", date: "2026-08-04" },
+        intel: {
+          actionItems: [
+            { task: "overdue item", priority: "high", owner: "Mike", deadline: "2026-08-02" },
+            { task: "finished item", priority: "high", deadline: "2026-07-01", done: true },
+          ],
+        },
+      },
+    };
+  });
+
+  it("renders the most urgent item first regardless of meeting key order", async () => {
+    const rows = section(await compose(sub()), "HIGH PRIORITY ACTIONS");
+    expect(rows[0]).toContain("overdue item");
+  });
+
+  it("appends an overdue marker to the Due string (polish, not contract)", async () => {
+    const rows = section(await compose(sub()), "HIGH PRIORITY ACTIONS");
+    expect(rows[0]).toContain("(Due: 2026-08-02 — 3d overdue)");
+  });
+
+  it("does not mark a future deadline as overdue", async () => {
+    const rows = section(await compose(sub()), "HIGH PRIORITY ACTIONS");
+    const later = rows.find((r) => r.includes("later item"));
+    expect(later).toContain("(Due: 2026-09-01)");
+    expect(later).not.toContain("overdue");
+  });
+
+  it("keeps completed items out of the email entirely", async () => {
+    const rows = section(await compose(sub()), "HIGH PRIORITY ACTIONS");
+    expect(rows.join("\n")).not.toContain("finished item");
+  });
+
+  it("still honours incActions=false", async () => {
+    const rows = section(await compose(sub({ incActions: false } as any)), "HIGH PRIORITY ACTIONS");
+    expect(rows).toEqual([]);
   });
 });
 
