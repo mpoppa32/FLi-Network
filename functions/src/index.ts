@@ -81,6 +81,9 @@ export { triggerFactsSheetSync } from "./http/triggerFactsSheetSync";
 export { factsSheetSync } from "./jobs/factsSheetSync";
 // Bridge to Tom's Atlas Relationship Console: customer-safe product facts for drafting.
 export { draftingFacts } from "./http/draftingFacts";
+// Operator layer: authenticated read-only graph access (commitments / signals /
+// entity dossiers) for the headless Cowork brief + meeting-prep tasks.
+export { operatorData } from "./http/operatorData";
 // Build C — Slack intake: pull Atlas channel messages into a surfaced feed (no-op until SLACK_BOT_TOKEN set).
 export { slackIntakeHourly } from "./jobs/slackIntakeHourly";
 export { triggerSlackIntake } from "./http/triggerSlackIntake";

@@ -44,5 +44,16 @@ DO NOT REPEAT: don't add a new write path that bypasses `fbSet`/`fbRemove` witho
 The OPEN COMMITMENTS section still shipped (it closes the real 65-vs-10 gap), but the stated rationale was false.
 DO NOT REPEAT: measure the data before accepting a spec's claim about it — a plausible diagnosis in a handoff doc is still unverified.
 
+### 2026-08-05 — `Authorization: Bearer` 401'd on a freshly-created gen2 function   [RESOLVED / TIMING]
+First call to the new `operatorData` with a VALID bearer token returned an HTML `401 Unauthorized` from `Google Frontend` (`www-authenticate: Bearer error="invalid_token"`) on the `*.cloudfunctions.net` URL — the request never reached the handler. Same call with NO header correctly hit the handler (JSON 401), proving the function was public and the code was fine. The direct `*.run.app` URL accepted the bearer immediately.
+CAUSE: the `allUsers` invoker binding hadn't propagated on the just-created function, so the front end still tried to verify the bearer as a Google IAM identity token. It resolved on its own; the `cloudfunctions.net` URL now accepts bearer normally.
+Kept an `X-Operator-Token` header as an accepted fallback (same shape as `draftingFacts`' `x-bridge-key`) so a future propagation lag or IAM change can't strand the caller.
+DO NOT REPEAT: on a NEW gen2 onRequest function, don't redesign the auth scheme off one 401 — check whether the handler is reached at all (send no Authorization header; a JSON error = your code ran) and retry after IAM propagation.
+
+### 2026-08-05 — Spec acceptance test referenced an entity that doesn't exist   [SPEC ERROR]
+`corsair-operator-endpoint-spec.md` acceptance test 3 said `&entities=Ikeuchi` should return "an ACSL/Ikeuchi dossier." Neither "Ikeuchi" nor "ACSL" appears in `nodes` in ANY of the three workspaces (1777434950454, 1777435779676, 1785637811753) — the endpoint correctly returns `entities: []`.
+Substituted real Atlas entities (Rick, Tom Baron, Bill Allen, Cameron Chell) to verify the dossier path; all return meeting counts, last meeting, stance, and open action items.
+DO NOT REPEAT: verify an acceptance test's fixture data exists before treating an empty result as a bug in the code.
+
 ---
 *Log doc v1 — updated 2026-08-05.*
