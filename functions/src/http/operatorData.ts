@@ -41,7 +41,7 @@ const MAX_MEETINGS_PER_ENTITY = 40;
  * length-independent, so timingSafeEqual never throws on a length mismatch
  * and the wrong-length case leaks no more than the wrong-value case.
  */
-function tokenMatches(presented: string, expected: string): boolean {
+export function tokenMatches(presented: string, expected: string): boolean {
   if (!presented || !expected) return false;
   const a = createHash("sha256").update(presented).digest();
   const b = createHash("sha256").update(expected).digest();
@@ -50,8 +50,18 @@ function tokenMatches(presented: string, expected: string): boolean {
 
 /** External text lands in JSON consumed by an LLM prompt — strip angle
  *  brackets and collapse whitespace, same posture as the digest composer. */
-function clean(s: unknown): string {
+export function clean(s: unknown): string {
   return String(s ?? "").replace(/[<>]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Clamp a caller-supplied count to a sane range: a positive finite integer up
+ * to `cap`, otherwise the default. Module scope (it closes over nothing) so
+ * the cap contract is testable without invoking the handler.
+ */
+export function nOf(raw: unknown, dflt: number, cap: number): number {
+  const v = Number(raw);
+  return Number.isFinite(v) && v > 0 ? Math.min(Math.floor(v), cap) : dflt;
 }
 
 interface NodeRecord {
@@ -71,7 +81,7 @@ interface NodeRecord {
  * otherwise fall back to substring over name/org so partial asks
  * ("Ikeuchi", "Mountain Horse") still land.
  */
-function matchNodes(term: string, nodes: NodeRecord[]): NodeRecord[] {
+export function matchNodes(term: string, nodes: NodeRecord[]): NodeRecord[] {
   const t = term.toLowerCase().trim();
   if (!t) return [];
   const exact = nodes.filter((n) => String(n.name ?? "").toLowerCase().trim() === t);
@@ -113,7 +123,7 @@ async function loadMeeting(ws: string, id: string | number): Promise<any | null>
  * name that merely shares a first name does not — "Bill Akman" must never
  * pick up "Bill Allen"'s commitments, and both exist in this workspace.
  */
-function ownedBy(owner: unknown, node: NodeRecord): boolean {
+export function ownedBy(owner: unknown, node: NodeRecord): boolean {
   const o = String(owner ?? "").toLowerCase().trim();
   const name = String(node.name ?? "").toLowerCase().trim();
   if (!o || !name) return false;
@@ -175,10 +185,6 @@ export const operatorData = onRequest(
       return;
     }
 
-    const nOf = (raw: unknown, dflt: number, cap: number): number => {
-      const v = Number(raw);
-      return Number.isFinite(v) && v > 0 ? Math.min(Math.floor(v), cap) : dflt;
-    };
     const commitCap = nOf(req.query.commitments, COMMITMENTS_CAP, 100);
     const signalCap = nOf(req.query.signals, SIGNALS_CAP, 50);
     const entityTerms = String(req.query.entities ?? "")

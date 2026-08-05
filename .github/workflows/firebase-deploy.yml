@@ -183,15 +183,26 @@ jobs:
           fi
 
       # ---- build ----------------------------------------------------------
-      # NOTE: `npm test` is deliberately NOT run here. Verified 2026-08-05:
-      # `vitest run` reports "No test files found, exiting with code 1", so wiring
-      # it in would make CI red on every push. Tracked as a gap, not hidden.
       - name: Install + build functions
         run: |
           set -euo pipefail
           cd functions
           npm ci
           npm run build
+
+      # ---- test -----------------------------------------------------------
+      # Its own step, and deliberately BEFORE every deploy step, so a change that
+      # compiles but behaves wrong goes red without reaching production. Runs on
+      # PRs too — that is the whole point of the PR build.
+      #
+      # The suite is hermetic: no network, no emulator, no secrets, and it does
+      # NOT touch the gitignored atlasMaster modules, so it passes identically on
+      # a clean public checkout and on a bundle-restored one.
+      - name: Test functions
+        run: |
+          set -euo pipefail
+          cd functions
+          npm test
 
       # ---- deploy (push to main only) -------------------------------------
       - name: Auth to Google Cloud

@@ -15,11 +15,17 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 - **The blocker that shaped the mission:** the public repo cannot compile. `functions/src/index.ts` exports four functions whose source is gitignored (private Sheet IDs / customer names). Proven, not assumed — `tsc` on `git archive HEAD` fails with 14 errors. CI restores them from the `ATLAS_MASTER_BUNDLE` secret and verifies against the committed `functions/atlasMaster.sha256` sentinel.
 - **Whenever a private atlasMaster file changes, refresh BOTH** `scripts/atlas-bundle.sh sentinel` (commit the sentinel) and `scripts/atlas-bundle.sh bundle` (update the GitHub secret). One without the other = loud CI failure; neither = CI silently deploys stale config. The pre-commit hook warns on drift.
 - **Truth-lockstep hook ships in WARN mode.** Turn on enforcement with `git config corsair.truthlock block`.
-- **Known gap, deliberately not papered over:** `functions/` has zero test files, so `npm test` exits 1 and is NOT wired into CI. Adding real tests is the obvious next hardening step — the pipeline currently proves "it compiles and deploys", not "it works".
+- **That gap is CLOSED by Mission 3** (below). It used to read: zero test files, `npm test` exits 1, not wired into CI.
 - **Cloud Billing API must stay enabled** on `fli-network` or every CI deploy 403s at preflight (LOG 2026-08-05).
 
-## NEXT MOVE (as of 2026-08-05, after Mission 2 — Piece A acceptance recorded)
-1. **Commit and push Mission 3** — the vitest suite + CI wiring is written and green locally but sits UNCOMMITTED in the working tree (`functions/src/**/*.test.ts`, `http/operatorData.ts` export-only changes, `.github/workflows/firebase-deploy.yml`, `mission-3-tests.md`, plus its truth-doc section). That push touches `functions/**`, so it is the one that triggers a real CI deploy run; capture the run URL and the negative proof the brief asks for.
+**Mission 3 — first real test suite in `functions/`: SHIPPED (brief: `mission-3-tests.md`, committed).**
+
+119 tests across 3 files (`briefSynthesisScoring` 59, `dailyBriefDigest` 31, `operatorData` 29), green locally in 2.21s, re-confirmed immediately before the push rather than inherited. `npm test` runs in CI in its own step between build and every deploy step, on push and PR alike — so a change that compiles but behaves wrong goes red before it can reach production. Contract and target rationale in the TEST SUITE section of the truth doc; CI run evidence in LOG 2026-08-05.
+
+**Piece A acceptance is CLOSED** — connector-captured, msgs `19fcc6e7ac38cfd5` (08-04 control) vs `19fd1953700e6081` (08-05 test). See TRUTH / LOG.
+
+## NEXT MOVE (as of 2026-08-05, after Mission 3)
+1. **MISSION 4, ITEM #1 — fix HIGH PRIORITY ACTIONS selection in `jobs/dailyBriefDigest.ts`.** HPA currently takes the **first 8 in key order**, which is arbitrary: it is neither the most urgent nor the most recent, and it never rotates, so the same stale items can sit in the brief indefinitely while genuinely urgent ones never surface. Fix = sort by deadline then recency, filter out done, and rotate. **Queued deliberately, NOT a drive-by** — `jobs/dailyBriefDigest.test.ts` now pins the ordering contract, so this change has a test to answer to and must land with test updates that state the new contract explicitly.
 2. CT-1b acceptance — the one remaining owed test (below), needs Mike's signed-in browser.
 3. Consider a `production` GitHub Environment if the collaborator set ever grows past Mike + Bryce (see the accepted-risk note in the truth doc).
 
