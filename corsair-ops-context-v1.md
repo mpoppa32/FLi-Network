@@ -6,14 +6,22 @@
 
 ## CURRENT STATE (as of 2026-08-05, later session)
 
-**Mission 2 — CI/CD + governance machinery (brief: `mission-2-cicd-governance.md`, gitignored).**
+**Mission 2 — CI/CD + governance machinery: COMPLETE + VERIFIED (brief: `mission-2-cicd-governance.md`, committed).**
 
-Push-to-main now builds and deploys the backend, and asserts the live front-end bytes equal main's bytes. See the CI/CD section of the truth doc for the full contract.
+Push-to-main builds and deploys the backend and asserts the live front-end bytes equal main's bytes. Verified green end-to-end on run #3 (`50257ad`): 77 functions updated with no human action. All four acceptance criteria demonstrated — see LOG 2026-08-05 "Mission 2 acceptance evidence" for the verbatim record. Full contract in the CI/CD section of the truth doc.
+
+**You no longer run `firebase deploy` by hand.** Push to `main`; watch the run.
 
 - **The blocker that shaped the mission:** the public repo cannot compile. `functions/src/index.ts` exports four functions whose source is gitignored (private Sheet IDs / customer names). Proven, not assumed — `tsc` on `git archive HEAD` fails with 14 errors. CI restores them from the `ATLAS_MASTER_BUNDLE` secret and verifies against the committed `functions/atlasMaster.sha256` sentinel.
 - **Whenever a private atlasMaster file changes, refresh BOTH** `scripts/atlas-bundle.sh sentinel` (commit the sentinel) and `scripts/atlas-bundle.sh bundle` (update the GitHub secret). One without the other = loud CI failure; neither = CI silently deploys stale config. The pre-commit hook warns on drift.
 - **Truth-lockstep hook ships in WARN mode.** Turn on enforcement with `git config corsair.truthlock block`.
-- **Known gap, deliberately not papered over:** `functions/` has zero test files, so `npm test` exits 1 and is NOT wired into CI. Adding real tests is the obvious next hardening step.
+- **Known gap, deliberately not papered over:** `functions/` has zero test files, so `npm test` exits 1 and is NOT wired into CI. Adding real tests is the obvious next hardening step — the pipeline currently proves "it compiles and deploys", not "it works".
+- **Cloud Billing API must stay enabled** on `fli-network` or every CI deploy 403s at preflight (LOG 2026-08-05).
+
+## NEXT MOVE (as of 2026-08-05, after Mission 2)
+1. The two acceptance tests still owed from the operator-endpoint session (below) — CT-1b and the Piece A digest email. Both still need Mike's signed-in browser; unchanged by Mission 2.
+2. First real test suite in `functions/`, then wire `npm test` into the workflow between build and deploy.
+3. Consider a `production` GitHub Environment if the collaborator set ever grows past Mike + Bryce (see the accepted-risk note in the truth doc).
 
 ## PRIOR STATE — operator endpoint (as of 2026-08-05)
 

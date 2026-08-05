@@ -68,5 +68,18 @@ First run of the new `.claude/agents/reviewer.md`, against its own author's stag
 Also caught: the truth-doc section stated never-executed behavior in the present indicative (Rule 2), and cited `index.ts` as naming files it does not name.
 DO NOT REPEAT: (a) never compute a CI deploy target from `HEAD^` — use the push range. (b) a `paths:` filter that excludes the artifact a job asserts on makes that job vacuous; check that every assertion can actually fail. (c) never end a guard function in a pipeline — the subshell eats its exit status. (d) run the reviewer BEFORE the first push, not after; all three were free to fix at that point.
 
+### 2026-08-05 — First CI deploy failed: Cloud Billing API disabled on the project   [RESOLVED]
+Run #1 of `firebase-deploy` (commit `80b1a9a`) went red at the `Deploy` step. Everything upstream was green — bundle restored, sentinel verified, `tsc` clean on a clean checkout, service-account auth accepted, predeploy build run, source packaged (1.53 MB), nine APIs auto-enabled. Then:
+`Error: Request to https://cloudbilling.googleapis.com/v1/projects/fli-network/billingInfo had HTTP Error: 403, Cloud Billing API has not been used in project 51164371993 before or it is disabled.`
+CAUSE: `firebase-tools` reads billingInfo as a preflight (gen2 functions need Blaze). The API had simply never been enabled on the project — this is API *enablement*, not a service-account role, and the message misleads toward an IAM fix. It aborted **before creating, updating or deleting any function**, so production was untouched. Enabling the API in the console fixed it; run #3 deployed 77 functions green.
+DO NOT REPEAT: on a 403 from a `*.googleapis.com` preflight, read the message for "has not been used in project … before or it is disabled" — that is a disabled API, fixed in the API Library, NOT a missing role. Don't start granting IAM roles.
+
+### 2026-08-05 — Mission 2 acceptance evidence   [LANDED]
+All four acceptance criteria demonstrated, not asserted:
+1. **Push-to-deploy** — run [#3](https://github.com/mpoppa32/FLi-Network/actions/runs/30993064184), commit `50257ad`, comment-only functions change → 77 × `Successful update operation` incl. `operatorData` and the three gitignored `atlasMaster*` functions. Independently re-verified from the shell: `operatorData` bad token → 401.
+2. **Red X on a broken build** — PR #3, run [#2](https://github.com/mpoppa32/FLi-Network/actions/runs/30991964859): `Error: src/ciRedXDemo.ts(5,9): error TS2322: Type 'string' is not assignable to type 'number'. / Error: Process completed with exit code 2.` `Auth`/`Deploy`/smoke all **skipped**, confirming a PR cannot reach production. Branch deleted, PR auto-closed unmerged.
+3. **Hook fires** — a `functions/src/index.ts` commit without the truth doc staged printed the LOCKSTEP GUARD banner and (WARN mode, Mike's Gate 2 answer) allowed the commit. Fired again organically on `50257ad`.
+4. **verify-live** — green on runs #1 and #3; live `FLiIntel.html` sha256 independently confirmed equal to main's (`35912cfa…`).
+
 ---
 *Log doc v1 — updated 2026-08-05.*
