@@ -136,7 +136,7 @@ function recencyFactor(occurredAtMs: number, nowMs: number): number {
   const hours = (nowMs - occurredAtMs) / 3600000;
   if (hours < 0) return 1.0;
   if (hours <= 6) return 1.0;
-  if (hours <= 12) return 0.8;
+  if (hours <= 12) return 0.85;
   if (hours <= 24) return 0.5;
   if (hours <= 48) return 0.25;
   return 0.1;
