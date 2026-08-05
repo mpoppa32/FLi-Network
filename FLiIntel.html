@@ -27698,6 +27698,80 @@ function extractEnts(m){var list=[],date=m.meta.date,title=m.meta.title,seen={};
 // ══════════════════════════════════════════════════════════════
 var _pipelineHealth = [];
 try { _pipelineHealth = JSON.parse(localStorage.getItem('corsair-pipeline-health')||'[]'); } catch(e){ _pipelineHealth = []; }
+// [P13.397] CT-1b persist, wedge-resilient. The original version called the raw
+// SDK set() and relied on .catch to report failure. Acceptance FAILED 2026-08-05:
+// on a wedged socket that promise HANGS FOREVER and never rejects, so .catch is
+// unreachable — the code could not report its own failure. Worse, the guard below
+// skipped silently, so "guard false" and "socket wedged" looked identical from the
+// browser. See LOG 2026-08-05.
+// Three fixes, matching fbSet's P13.354 shape (FLiIntel.html ~12688):
+//   1. the SDK write stays fire-and-forget (instant local update + onValue) but is
+//      NEVER the durable path; a REST PUT with the user's id token is.
+//   2. a timeout watches the SDK promise — a hang is only ever detectable by clock,
+//      never by .catch.
+//   3. every skip and every failure is CONSOLE'D, including the guard-skip path.
+// Still deliberately NOT routed through fbSet: CT-4 instruments fbSet failures BY
+// CALLING recordPipelineEvent, so fbSet here would re-enter the recorder on every
+// failed write. The latch below is the belt-and-braces for that; nothing in this
+// function may ever call recordPipelineEvent.
+var _ct1bBusy = false;
+var CT1B_TIMEOUT_MS = 8000;
+function _ct1bPersist(rec){
+  // Synchronous re-entry latch only — released before the async write settles, so
+  // concurrent events are never dropped; this guards recursion, not concurrency.
+  if(_ct1bBusy){ console.warn('[pipeline-health] CT-1b re-entry blocked (recorder called from inside its own persist path)'); return; }
+  _ct1bBusy = true;
+  try{
+    var _missing = [];
+    if(!currentWsId) _missing.push('currentWsId');
+    if(!window.currentUser) _missing.push('currentUser');
+    if(!db) _missing.push('db');
+    if(typeof ref!=='function') _missing.push('ref');
+    if(typeof set!=='function') _missing.push('set');
+    if(_missing.length){
+      // Rule 11: a silent skip is what made the original bug undiagnosable.
+      console.warn('[pipeline-health] CT-1b persist SKIPPED — not ready: '+_missing.join(', ')+' (event kept in local buffer)');
+      return;
+    }
+    var _path = 'workspaces/'+currentWsId+'/pipelineHealth/ph-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+    // (1) optimistic SDK write — never awaited, never the durable path.
+    var _settled = false, _p = null;
+    try{
+      _p = set(ref(db,_path), rec);
+      if(_p && _p.then) _p.then(function(){ _settled = true; }, function(){ _settled = true; });
+      if(_p && _p.catch) _p.catch(function(){});
+    }catch(e){ _settled = true; console.warn('[pipeline-health] CT-1b SDK set() threw:', (e&&e.message)||e); }
+    // (2) the hang detector. A promise that never settles never rejects.
+    setTimeout(function(){
+      if(!_settled) console.warn('[pipeline-health] CT-1b SDK set() has not settled in '+CT1B_TIMEOUT_MS+'ms — socket likely wedged (P13.354). REST is the durable path; check pipelineHealth for this event.');
+    }, CT1B_TIMEOUT_MS);
+    // (3) durable REST PUT, same wedge-proof shape as fbSet.
+    (function(){
+      var _done = false;
+      try{
+        window.currentUser.getIdToken().then(function(tok){
+          var _ctrl = (typeof AbortController==='function') ? new AbortController() : null;
+          var _timer = setTimeout(function(){ if(_ctrl) _ctrl.abort(); }, CT1B_TIMEOUT_MS);
+          return fetch('https://fli-network-default-rtdb.firebaseio.com/'+_path+'.json?auth='+tok,
+                       { method:'PUT', body:JSON.stringify(rec), signal:_ctrl?_ctrl.signal:undefined })
+            .then(function(r){
+              clearTimeout(_timer); _done = true;
+              if(!r || !r.ok) console.warn('[pipeline-health] CT-1b REST persist failed: HTTP '+(r&&r.status)+' (event kept in local buffer)');
+            });
+        }).catch(function(e){
+          _done = true;
+          console.warn('[pipeline-health] CT-1b REST persist failed:', (e&&e.name==='AbortError') ? ('timed out after '+CT1B_TIMEOUT_MS+'ms') : ((e&&e.message)||e), '(event kept in local buffer)');
+        });
+      }catch(e){
+        console.warn('[pipeline-health] CT-1b REST persist threw:', (e&&e.message)||e);
+      }
+    })();
+  }catch(e){
+    console.warn('[pipeline-health] CT-1b persist threw:', (e&&e.message)||e);
+  }finally{
+    _ct1bBusy = false;
+  }
+}
 function recordPipelineEvent(kind, detail){
   try{
     var rec = Object.assign({ ts:new Date().toISOString(), kind:kind||'unknown' }, detail||{});
@@ -27726,17 +27800,7 @@ function recordPipelineEvent(kind, detail){
     // block the pipeline, but a failure is CONSOLE'D, never swallowed silently.
     // It must not re-enter recordPipelineEvent — that's the recursion this
     // whole branch is built to avoid — so console only, no health event.
-    try{
-      if(currentWsId && window.currentUser && db && typeof ref==='function' && typeof set==='function'){
-        var _hk = 'ph-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
-        var _hp = set(ref(db,'workspaces/'+currentWsId+'/pipelineHealth/'+_hk), rec);
-        if(_hp && _hp.catch) _hp.catch(function(err){
-          console.warn('[pipeline-health] CT-1b persist failed (event kept in local buffer):', (err&&err.message)||err);
-        });
-      }
-    }catch(e){
-      console.warn('[pipeline-health] CT-1b persist threw (event kept in local buffer):', (e&&e.message)||e);
-    }
+    _ct1bPersist(rec);
   }catch(e){ /* telemetry must never break the app */ }
 }
 window.recordPipelineEvent = recordPipelineEvent;
