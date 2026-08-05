@@ -28,7 +28,7 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 
 ## NEXT MOVE (as of 2026-08-05, after Mission 3)
 1. **MISSION 4, ITEM #1 — fix HIGH PRIORITY ACTIONS selection in `jobs/dailyBriefDigest.ts`.** HPA currently takes the **first 8 in key order**, which is arbitrary: it is neither the most urgent nor the most recent, and it never rotates, so the same stale items can sit in the brief indefinitely while genuinely urgent ones never surface. Fix = sort by deadline then recency, filter out done, and rotate. **Queued deliberately, NOT a drive-by** — `jobs/dailyBriefDigest.test.ts` now pins the ordering contract, so this change has a test to answer to and must land with test updates that state the new contract explicitly.
-2. CT-1b acceptance — the one remaining owed test (below), needs Mike's signed-in browser.
+2. **MISSION 4, ITEM #2 — wedge-resilient CT-1b persist.** CT-1b acceptance FAILED 2026-08-05 (see LOG); it is **not** accepted and must not be recorded as working. Three parts to the fix: (i) **REST fallback modelled on `fbSet`** (`FLiIntel.html:12688-12691`) — optimistic non-blocking SDK `set()`, then a REST `PUT` with the user's id token — so a wedged socket cannot swallow the write; (ii) a **reentrancy latch**, because the recorder must never re-enter itself (that is why it bypasses `fbSet` at all, and the REST path must not reintroduce the loop CT-4 would create); (iii) **console output on the guard-skip path** (`27730`), per Rule 11 — today a skipped write and a hung write are indistinguishable, which is the bug that made this undiagnosable from the browser. A timeout is the only way to detect the hang: a `.catch` cannot fire on a promise that never settles.
 3. Consider a `production` GitHub Environment if the collaborator set ever grows past Mike + Bryce (see the accepted-risk note in the truth doc).
 
 ## PRIOR STATE — operator endpoint (as of 2026-08-05)
@@ -37,15 +37,10 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 
 - **Piece A — digest OPEN COMMITMENTS: BUILT + DEPLOYED + ACCEPTED LIVE 2026-08-05.** Closed by the scheduled brief, not the manual trigger: the 2026-08-05 daily brief contains a live DUE THIS WEEK block and an OPEN COMMITMENTS block (`65 open total`, 8 soonest-due with ISO dates); the 08-04 brief has neither. Operator-observed in the received email. Nothing further owed here — see TRUTH (OPERATOR / HEADLESS LAYER) and LOG 2026-08-05.
 - **Piece B — `operatorData`: LIVE + FULLY VERIFIED.** All three spec acceptance tests pass against live Atlas (200 w/ token + openCount 65 + 5 signals; 401 on bad/missing; dossiers populated). Handoff written to `corsair-operator-endpoint-handoff.md`. Token in Secret Manager only — never in the repo (it is public).
-- **CT-1b — pipelineHealth persistence: BUILT + RULES DEPLOYED, live acceptance PENDING.** `recordPipelineEvent` now also writes to `workspaces/{wsId}/pipelineHealth`; rule added (members read/write, `.indexOn ts`) and `firebase deploy --only database` succeeded. Module syntax verified via `node --check` on the whole `<script type="module">` block. **Owed:** the write has never actually executed — it needs a signed-in browser.
+- **CT-1b — pipelineHealth persistence: ACCEPTANCE FAILED 2026-08-05. NOT accepted, NOT working.** The rules are deployed and correct (a direct REST `PUT` returns 200), but the write path itself is broken: it uses the raw SDK `set()` that P13.354 documents as hanging forever on a wedged socket, so events silently never persist and — because a hung promise never rejects — nothing is logged either. Diagnosis and the three-part fix are in LOG 2026-08-05 and NEXT MOVE item #2. **Do not re-run the console one-liner expecting a pass; the bug is understood and the code has not changed yet.**
 
-### The ONE remaining owed acceptance test (needs Mike's browser, ~1 min)
-Piece A is closed (above). **CT-1b is still owed.** Open the live app, signed in, on the **Atlas** workspace, then in the console:
-```js
-// CT-1b — fires the exact new write path
-recordPipelineEvent('selftest', { stage: 'ct1b-verify' });
-```
-Then verify: `firebase database:get "/workspaces/1777435779676/pipelineHealth" --project fli-network` should show the `selftest` record.
+### No acceptance tests are owed on a human right now
+Piece A closed; CT-1b is blocked on a code fix, not on a test. When Mission 4 item #2 lands, the re-test is: open the live app, signed in, on **Atlas**, run `recordPipelineEvent('selftest', { stage: 'ct1b-verify' })`, then check `firebase database:get "/workspaces/1777435779676/pipelineHealth" --project fli-network` for the record. **Re-test deliberately while the connection header shows DELAYED** — a pass on a healthy socket proves nothing about the failure mode that was actually found. Note there is already a probe record in that node from the REST `PUT` used to clear the rules; do not mistake it for a `selftest` event.
 
 ## PRIOR STATE (as of 2026-08-02)
 
