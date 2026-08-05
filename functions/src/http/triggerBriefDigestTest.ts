@@ -73,6 +73,7 @@ export const triggerBriefDigestTest = onCall(
       incPipeline: true,
       incContacts: true,
       incIntel: true,
+      incCommitments: true,
     };
 
     log.info("test_send_request", { workspaceId, uid: request.auth.uid, to: toEmail });

@@ -39,5 +39,10 @@ The write layer swallowed failures: `fbSet` (writes) and `fbRemove` (deletes) th
 FIX P13.394 (CT-4): instrument the two persistence choke points — `fbSet`/`fbRemove` now call `recordPipelineEvent('persist_error', {stage, path, error})` at the failure point, so every silent write/delete-loss is captured at the buffer + console. Recorded but NOT toasted (network-wedge write failures would spam). +572 bytes, purely additive; brace/paren balanced; recorder region `node --check` clean.
 DO NOT REPEAT: don't add a new write path that bypasses `fbSet`/`fbRemove` without the same instrumentation.
 
+### 2026-08-05 — Spec premise "all open commitments are undated" was WRONG   [ASSUMPTION CORRECTED]
+`corsair-operator-endpoint-spec.md` (Piece A) claimed the digest's DUE-THIS-WEEK block is "always empty" because every open commitment lacks a deadline. Measured against live Atlas before building: **65 open, 49 WITH a deadline, 16 without, 33 matching the 7-day filter.** The block was rendering fine — capped at 10. The genuine gap was different: only 10 of 65 open commitments were ever visible.
+The OPEN COMMITMENTS section still shipped (it closes the real 65-vs-10 gap), but the stated rationale was false.
+DO NOT REPEAT: measure the data before accepting a spec's claim about it — a plausible diagnosis in a handoff doc is still unverified.
+
 ---
-*Log doc v1 — updated 2026-08-02.*
+*Log doc v1 — updated 2026-08-05.*

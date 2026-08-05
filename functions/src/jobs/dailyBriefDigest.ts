@@ -64,6 +64,10 @@ export interface BriefSubscription {
   /** Build C — include the "Atlas Slack" section: recent messages the intake
    *  pulled from the Atlas channels (workspaces/{ws}/slackFeed). Defaults on. */
   incSlack?: boolean;
+  /** Operator build — include the "OPEN COMMITMENTS" section: open commitments
+   *  regardless of deadline, so the headless morning brief sees the whole book
+   *  of work and not just the 7-day window. Defaults on when unset. */
+  incCommitments?: boolean;
   subscribedAt?: string;
   lastSent?: string;
 }
@@ -75,6 +79,28 @@ interface Workspace {
 
 function _isoDate(d: Date = new Date()): string {
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Open commitments in operator-useful order: dated ones first (soonest
+ * deadline, overdue at the top), then undated ones newest-first.
+ *
+ * Shared with the operatorData endpoint so the digest and the headless
+ * operator layer agree on "what's open and what matters first."
+ */
+export function sortOpenCommitments(commitments: unknown[]): any[] {
+  return (commitments as any[])
+    .filter((c: any) => c && c.status === "open")
+    .sort((a: any, b: any) => {
+      const ta = a.deadline ? Date.parse(`${a.deadline}T00:00:00`) : NaN;
+      const tb = b.deadline ? Date.parse(`${b.deadline}T00:00:00`) : NaN;
+      const va = !isNaN(ta);
+      const vb = !isNaN(tb);
+      if (va && vb) return ta - tb;
+      if (va) return -1;
+      if (vb) return 1;
+      return Date.parse(b.created || 0) - Date.parse(a.created || 0);
+    });
 }
 
 function _isoWeek(d: Date = new Date()): string {
@@ -355,6 +381,29 @@ export async function composeBrief(
       lines.push(`• ${c.task || c.title || "Commitment"} — ${when}`);
     });
     lines.push("");
+  }
+
+  // ALL open commitments, deadline or not. The DUE-THIS-WEEK block above only
+  // ever shows the 7-day window (and caps at 10), so a large undated tail —
+  // and everything further out — was invisible to anyone reading the email.
+  // That matters most for the headless operator tasks (Cowork morning brief /
+  // meeting prep), which read this digest as their view of the commitment book.
+  if (sub.incCommitments !== false) {
+    const openCommits = sortOpenCommitments(commitments as unknown[]);
+    if (openCommits.length) {
+      lines.push("=== OPEN COMMITMENTS ===");
+      lines.push(`${openCommits.length} open total`);
+      openCommits.slice(0, 8).forEach((c: any) => {
+        const task = String(c.task || c.title || "Commitment").replace(/[<>]/g, "").trim();
+        const when = c.deadline ? ` (due ${c.deadline})` : " (no deadline)";
+        const who = c.owner ? ` [${String(c.owner).replace(/[<>]/g, "")}]` : "";
+        lines.push(`• ${task}${who}${when}`);
+      });
+      if (openCommits.length > 8) {
+        lines.push(`…and ${openCommits.length - 8} more — open Corsair to see all`);
+      }
+      lines.push("");
+    }
   }
 
   lines.push("---");

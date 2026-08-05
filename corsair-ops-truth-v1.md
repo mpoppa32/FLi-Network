@@ -26,6 +26,12 @@ Automated external-intelligence pipeline (~40 deployed functions), manual trigge
 ## OTHER INTEGRATIONS LIVE
 Deepgram (multi-speaker HD transcription, per-user key `fli-dgkey-{uid}`), Gmail + Google Calendar auto-capture (~30 min, `gmail.readonly` + `calendar.readonly`), Microsoft Graph (Outlook/O365), EmailJS (browser-side brief send), Slack (incoming webhook + `slackIntake`), SendGrid (server-side digests + reminders), Firebase/Google Auth/D3/Google Fonts.
 
+## OPERATOR / HEADLESS LAYER
+The Cowork scheduled tasks (morning brief, meeting prep) run headless — no browser, no Firebase user token — so they cannot reach the graph interactively.
+
+- **Daily digest — OPEN COMMITMENTS section** (`jobs/dailyBriefDigest.ts`, 2026-08-05). The digest's DUE-THIS-WEEK block only ever showed the 7-day window capped at 10. A new OPEN COMMITMENTS block lists the top 8 open commitments regardless of deadline plus the total open count, gated behind `incCommitments !== false` (defaults on). Ordering is shared with the endpoint below via the exported `sortOpenCommitments()` (dated soonest-first, then undated newest-first).
+  - **Correction to a prior assumption:** it was believed every open commitment was undated, making DUE-THIS-WEEK always empty. Measured on Atlas 2026-08-05: **65 open, 49 dated, 16 undated, 33 inside the 7-day window.** DUE-THIS-WEEK was NOT empty — it was showing 10 of 33. The real gap was the 65-vs-10 visibility ceiling.
+
 ## WORKSPACES
 Fully dynamic (`workspaces/{wsId}`). No hardcoded FLi/Atlas IDs. FLi and Atlas are the two operational workspaces in practice. Firebase paths: `workspaces/{wsId}/{meetings,nodes,links,entities,cal,commitments}`.
 
