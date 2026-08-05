@@ -20,7 +20,10 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 
 **Mission 3 — first real test suite in `functions/`: SHIPPED (brief: `mission-3-tests.md`, committed).**
 
-119 tests across 3 files (`briefSynthesisScoring` 59, `dailyBriefDigest` 31, `operatorData` 29), green locally in 2.21s, re-confirmed immediately before the push rather than inherited. `npm test` runs in CI in its own step between build and every deploy step, on push and PR alike — so a change that compiles but behaves wrong goes red before it can reach production. Contract and target rationale in the TEST SUITE section of the truth doc; CI run evidence in LOG 2026-08-05.
+119 tests across 3 files (`briefSynthesisScoring` 59, `dailyBriefDigest` 31, `operatorData` 29), green locally in 2.21s, re-confirmed immediately before the push rather than inherited. `npm test` runs in CI in its own step between build and every deploy step, on push and PR alike — so a change that compiles but behaves wrong goes red before it can reach production. Green in CI on run #4 (`07ac298`), step order observed. Contract in the TEST SUITE section of the truth doc; evidence in LOG 2026-08-05.
+
+**ONE ACCEPTANCE ITEM STILL OPEN — needs a click Mike must make.** The negative proof is done locally (branch `ci-negative-proof`, `dbe983b`: recency 12h rung `0.8 → 0.85`; `tsc --noEmit` clean, `npm test` red, verbatim in LOG). It has NOT been shown going red *in CI*, because this workflow triggers on `pull_request` and a branch push does not start it — and the PR could not be opened from this machine (no `gh`, no token, Chrome not signed into GitHub).
+**To close it:** open https://github.com/mpoppa32/FLi-Network/compare/main...ci-negative-proof?expand=1 → Create pull request. Expect the run RED at `Test functions` with `Auth`/`Deploy`/smoke **skipped**. Then close the PR unmerged and delete the branch (`git push origin --delete ci-negative-proof`). **The branch is live on the remote until then — it must not be merged.**
 
 **Piece A acceptance is CLOSED** — connector-captured, msgs `19fcc6e7ac38cfd5` (08-04 control) vs `19fd1953700e6081` (08-05 test). See TRUTH / LOG.
 

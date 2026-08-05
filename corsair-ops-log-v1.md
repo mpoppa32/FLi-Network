@@ -88,5 +88,17 @@ Provenance is **connector-captured with citable message IDs** (Gmail connector, 
 Two things worth keeping: (1) the scheduled path is *better* evidence than the manual trigger would have been — it exercises what actually runs in production, and the manual trigger only ever simulated it; (2) the live DUE THIS WEEK block independently re-confirms the 2026-08-05 "spec premise was WRONG" entry above — that block was never empty.
 DO NOT REPEAT: before booking an owed acceptance test that needs a human in a browser, check whether a scheduled/cron path will produce the same evidence on its own within a day — if it will, wait for it and diff against the prior run instead of hand-firing a test-only trigger.
 
+### 2026-08-05 — Mission 3 acceptance: test step green in CI; negative proof PROVEN LOCALLY, CI half PENDING   [LANDED / ONE ITEM OPEN]
+Commit `07ac298` pushed with `223438c`. Run [#4](https://github.com/mpoppa32/FLi-Network/actions/runs/31007997751) green end-to-end, step order observed from the jobs API (not assumed): `Install + build functions` → **`Test functions`** → `Auth to Google Cloud` → `Deploy` → `Post-deploy smoke`. 119 tests re-run locally on this machine first — the count was NOT taken on trust from the authoring session.
+**Negative proof, honestly split.** Branch `ci-negative-proof` (`dbe983b`) changes the recency ladder's 12h rung `0.8 → 0.85` — a wrong RESULT, not a type error. Locally: `npx tsc --noEmit` **CLEAN**, then `npm test` red, verbatim:
+```
+× scoreSignal — recency decay > decays 12h old to 12
+  → expected 0.85 to be 0.8 // Object.is equality
+Test Files  1 failed | 2 passed (3)
+     Tests  1 failed | 118 passed (119)   EXIT: 1
+```
+That is the mission's exact requirement — compiles, behaves wrong, caught. **What is NOT yet shown is the same failure going red in a CI run**, because the workflow triggers on `pull_request`, not on a branch push, and the PR could not be opened from here: no `gh` CLI, no API token, and the one connected Chrome is not signed into GitHub (its deviceId also changed across the restart, so the context doc's browser note was stale). Opening the PR is a human click; the branch is pushed and waiting. **Do not record Mission 3 acceptance as complete until that PR run is red at `Test functions` with `Deploy` skipped, then delete the branch.**
+DO NOT REPEAT: a pushed branch does NOT exercise this workflow — only a PR does (`on: pull_request`). Budget for the fact that opening one needs auth this machine may not have, and check `gh`/token/browser-session availability BEFORE designing an acceptance step around a PR run.
+
 ---
 *Log doc v1 — updated 2026-08-05.*

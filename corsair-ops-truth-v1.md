@@ -75,7 +75,7 @@ The Cowork scheduled tasks (morning brief, meeting prep) run headless — no bro
 
 ## TEST SUITE (Mission 3, 2026-08-05)
 
-**STATUS: 119 tests across 3 files, green locally in 2.21s (`cd functions && npm test`) — re-run and re-confirmed 2026-08-05 immediately before the push, not inherited from the authoring session. Wired into CI between build and deploy. CI-observed status recorded below once a run lands.**
+**STATUS: LIVE + CI-VERIFIED 2026-08-05.** 119 tests across 3 files, green locally in 2.21s (`cd functions && npm test`) — re-run and re-confirmed immediately before the push, not inherited from the authoring session. Green in CI on run [#4](https://github.com/mpoppa32/FLi-Network/actions/runs/31007997751) (commit `07ac298`), where the step order was observed rather than assumed: `6. Install + build functions` → **`7. Test functions`** → `8. Auth to Google Cloud` → `9. Deploy` → `10. Post-deploy smoke`. A behavior regression therefore cannot reach `Deploy`.
 
 The pipeline previously proved "it compiles and deploys." It now also proves a defined slice of "it works." Targets were chosen by one rule — *pure or near-pure logic, high blast radius, no network/secrets/emulator* — not by coverage percentage.
 
