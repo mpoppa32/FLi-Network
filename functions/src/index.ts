@@ -3,6 +3,12 @@
 // Registers every deployed Cloud Function. Each function is exported here
 // so `firebase deploy --only functions:<name>` resolves it.
 //
+// DEPLOYMENT: a push to main touching functions/** deploys this codebase
+// automatically via .github/workflows/firebase-deploy.yml. You do not need to
+// run `firebase deploy` by hand. NOTE that a clean checkout of this PUBLIC repo
+// does NOT compile — see the gitignored-atlasMaster note further down and
+// scripts/atlas-bundle.sh.
+//
 // Current registrations (Phase 8.5.1 — migration):
 //   - triggerInventory:  read-only pre-migration audit
 //   - triggerMigration:  apply Phase 8.5.1 migration (requires approval)
