@@ -36,7 +36,9 @@ Deepgram (multi-speaker HD transcription, per-user key `fli-dgkey-{uid}`), Gmail
 The Cowork scheduled tasks (morning brief, meeting prep) run headless — no browser, no Firebase user token — so they cannot reach the graph interactively.
 
 - **Daily digest — OPEN COMMITMENTS section** (`jobs/dailyBriefDigest.ts`, 2026-08-05). The digest's DUE-THIS-WEEK block only ever showed the 7-day window capped at 10. A new OPEN COMMITMENTS block lists the top 8 open commitments regardless of deadline plus the total open count, gated behind `incCommitments !== false` (defaults on). Ordering is shared with the endpoint below via the exported `sortOpenCommitments()` (dated soonest-first, then undated newest-first).
-  - **Verification status (be precise):** deployed 2026-08-05; the rendering path was verified by running the compiled `composeBrief()` against the real Atlas commitments — emits `=== OPEN COMMITMENTS === / 65 open total / …and 57 more`, with DUE-THIS-WEEK preserved and the HTML header rendered. The **live email send is NOT yet verified** — `triggerBriefDigestTest` is an `onCall` needing a Firebase user token and the build machine has no gcloud/ADC. See CONTEXT doc for the owed test.
+  - **Verification status (be precise):** deployed 2026-08-05; the rendering path was verified by running the compiled `composeBrief()` against the real Atlas commitments — emits `=== OPEN COMMITMENTS === / 65 open total / …and 57 more`, with DUE-THIS-WEEK preserved and the HTML header rendered.
+  - **ACCEPTED LIVE 2026-08-05.** The scheduled daily brief that landed on 2026-08-05 contains both a live **DUE THIS WEEK** block and the new **OPEN COMMITMENTS** block — `65 open total`, with the 8 soonest-due listed and carrying ISO dates. Neither block is present in the 2026-08-04 brief, which is the control that ties the change to the output. Provenance: **operator-observed in the received email by Mike**, not machine-captured on this machine — `triggerBriefDigestTest` is an `onCall` needing a Firebase user token and the build machine still has no gcloud/ADC. The scheduled path proved it instead, which is the stronger evidence: it is the path that actually runs in production.
+  - The live DUE THIS WEEK block also independently confirms the correction below — the block was never empty.
   - **Correction to a prior assumption:** it was believed every open commitment was undated, making DUE-THIS-WEEK always empty. Measured on Atlas 2026-08-05: **65 open, 49 dated, 16 undated, 33 inside the 7-day window.** DUE-THIS-WEEK was NOT empty — it was showing 10 of 33. The real gap was the 65-vs-10 visibility ceiling.
 
 - **`operatorData` endpoint** (`http/operatorData.ts`, LIVE 2026-08-05). `onRequest` (raw HTTP, not `onCall` — the caller has no Firebase user), region us-central1, 512MiB, 60s. Auth: shared bearer token in Secret Manager (`OPERATOR_API_TOKEN`), SHA-256'd then `timingSafeEqual` (constant time, length-independent). **Read-only** — never writes; non-GET/HEAD returns 405. Reads through the admin SDK, so `database.rules.json` is untouched and unweakened.
@@ -74,7 +76,7 @@ The Cowork scheduled tasks (morning brief, meeting prep) run headless — no bro
 Fully dynamic (`workspaces/{wsId}`). No hardcoded FLi/Atlas IDs. FLi and Atlas are the two operational workspaces in practice. Firebase paths: `workspaces/{wsId}/{meetings,nodes,links,entities,cal,commitments}`.
 
 ## KEY FACTS
-- Repo: `github.com/mpoppa32/FLi-Network` · anchor commit `56573fb` (P13.390)
+- Repo: `github.com/mpoppa32/FLi-Network` · anchor commit `50257ad` (P13.396) — kept in step with `CLAUDE.md`'s state anchor
 - Firebase project `fli-network` · DB `https://fli-network-default-rtdb.firebaseio.com`
 - Model in use: `claude-sonnet-4-6` via `anthropicProxy`
 - Owners: Mike (mpoppa32@gmail.com), Bryce (Bryceamcdonald@gmail.com)

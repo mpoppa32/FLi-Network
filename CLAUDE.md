@@ -4,7 +4,7 @@
 
 **Domain:** Corsair — "Defense Capture OS." A single-file front end (`FLiIntel.html`) + `FLiIntel.css` + `js/corsair/*` modules, a TypeScript Firebase Functions backend (`functions/`, package `corsair-functions`), Firebase project `fli-network`, live at `https://mpoppa32.github.io/FLi-Network/FLiIntel.html`.
 **Maintainer:** Mike Poppa.
-**State anchor:** commit `9511e80` (P13.394).
+**State anchor:** commit `50257ad` (P13.396) — the newest `P13.x` marker on `main`. Commits after it are docs/CI only.
 
 ---
 

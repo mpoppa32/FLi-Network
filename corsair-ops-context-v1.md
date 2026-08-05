@@ -18,29 +18,26 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 - **Known gap, deliberately not papered over:** `functions/` has zero test files, so `npm test` exits 1 and is NOT wired into CI. Adding real tests is the obvious next hardening step — the pipeline currently proves "it compiles and deploys", not "it works".
 - **Cloud Billing API must stay enabled** on `fli-network` or every CI deploy 403s at preflight (LOG 2026-08-05).
 
-## NEXT MOVE (as of 2026-08-05, after Mission 2)
-1. The two acceptance tests still owed from the operator-endpoint session (below) — CT-1b and the Piece A digest email. Both still need Mike's signed-in browser; unchanged by Mission 2.
-2. First real test suite in `functions/`, then wire `npm test` into the workflow between build and deploy.
+## NEXT MOVE (as of 2026-08-05, after Mission 2 — Piece A acceptance recorded)
+1. **Commit and push Mission 3** — the vitest suite + CI wiring is written and green locally but sits UNCOMMITTED in the working tree (`functions/src/**/*.test.ts`, `http/operatorData.ts` export-only changes, `.github/workflows/firebase-deploy.yml`, `mission-3-tests.md`, plus its truth-doc section). That push touches `functions/**`, so it is the one that triggers a real CI deploy run; capture the run URL and the negative proof the brief asks for.
+2. CT-1b acceptance — the one remaining owed test (below), needs Mike's signed-in browser.
 3. Consider a `production` GitHub Environment if the collaborator set ever grows past Mike + Bryce (see the accepted-risk note in the truth doc).
 
 ## PRIOR STATE — operator endpoint (as of 2026-08-05)
 
 **Operator-endpoint build session (spec: `corsair-operator-endpoint-spec.md`). Three shipped, two acceptance tests still owed.**
 
-- **Piece A — digest OPEN COMMITMENTS: BUILT + DEPLOYED, live acceptance PENDING.** `dailyBriefDigest` + `triggerBriefDigestTest` redeployed. The test trigger is an `onCall` needing a Firebase user token, and this machine has no gcloud/ADC, so it could not be fired headlessly. **Owed:** Mike runs the one-liner in the app console (below) and the digest email is checked for the OPEN COMMITMENTS block.
+- **Piece A — digest OPEN COMMITMENTS: BUILT + DEPLOYED + ACCEPTED LIVE 2026-08-05.** Closed by the scheduled brief, not the manual trigger: the 2026-08-05 daily brief contains a live DUE THIS WEEK block and an OPEN COMMITMENTS block (`65 open total`, 8 soonest-due with ISO dates); the 08-04 brief has neither. Operator-observed in the received email. Nothing further owed here — see TRUTH (OPERATOR / HEADLESS LAYER) and LOG 2026-08-05.
 - **Piece B — `operatorData`: LIVE + FULLY VERIFIED.** All three spec acceptance tests pass against live Atlas (200 w/ token + openCount 65 + 5 signals; 401 on bad/missing; dossiers populated). Handoff written to `corsair-operator-endpoint-handoff.md`. Token in Secret Manager only — never in the repo (it is public).
 - **CT-1b — pipelineHealth persistence: BUILT + RULES DEPLOYED, live acceptance PENDING.** `recordPipelineEvent` now also writes to `workspaces/{wsId}/pipelineHealth`; rule added (members read/write, `.indexOn ts`) and `firebase deploy --only database` succeeded. Module syntax verified via `node --check` on the whole `<script type="module">` block. **Owed:** the write has never actually executed — it needs a signed-in browser.
 
-### The two owed acceptance tests (both need Mike's browser, ~2 min)
-Open the live app, signed in, on the **Atlas** workspace, then in the console:
+### The ONE remaining owed acceptance test (needs Mike's browser, ~1 min)
+Piece A is closed (above). **CT-1b is still owed.** Open the live app, signed in, on the **Atlas** workspace, then in the console:
 ```js
 // CT-1b — fires the exact new write path
 recordPipelineEvent('selftest', { stage: 'ct1b-verify' });
-// Piece A — sends the digest to yourself
-const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js');
-await httpsCallable(getFunctions(undefined,'us-central1'),'triggerBriefDigestTest')({ workspaceId: currentWsId });
 ```
-Then verify: `firebase database:get "/workspaces/1777435779676/pipelineHealth" --project fli-network` should show the `selftest` record, and the digest email should contain an `OPEN COMMITMENTS` section reading `65 open total`.
+Then verify: `firebase database:get "/workspaces/1777435779676/pipelineHealth" --project fli-network` should show the `selftest` record.
 
 ## PRIOR STATE (as of 2026-08-02)
 

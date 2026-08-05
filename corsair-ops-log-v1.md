@@ -81,5 +81,11 @@ All four acceptance criteria demonstrated, not asserted:
 3. **Hook fires** — a `functions/src/index.ts` commit without the truth doc staged printed the LOCKSTEP GUARD banner and (WARN mode, Mike's Gate 2 answer) allowed the commit. Fired again organically on `50257ad`.
 4. **verify-live** — green on runs #1 and #3; live `FLiIntel.html` sha256 independently confirmed equal to main's (`35912cfa…`).
 
+### 2026-08-05 — Piece A acceptance closed by the SCHEDULED brief, not the test trigger   [LANDED]
+The owed acceptance test for the digest's OPEN COMMITMENTS section could not be fired from this machine: `triggerBriefDigestTest` is an `onCall` needing a Firebase user token, and the build machine has no gcloud/ADC. It was logged as owed-on-Mike's-browser for a day.
+It closed without anyone running it. The **scheduled** daily brief of 2026-08-05 arrived containing a live **DUE THIS WEEK** block and the new **OPEN COMMITMENTS** block — `65 open total`, 8 soonest-due with ISO dates. The 2026-08-04 brief has neither block, which is the control that ties the output to the change. Provenance is operator-observed in the received email (Mike), not machine-captured here.
+Two things worth keeping: (1) the scheduled path is *better* evidence than the manual trigger would have been — it exercises what actually runs in production, and the manual trigger only ever simulated it; (2) the live DUE THIS WEEK block independently re-confirms the 2026-08-05 "spec premise was WRONG" entry above — that block was never empty.
+DO NOT REPEAT: before booking an owed acceptance test that needs a human in a browser, check whether a scheduled/cron path will produce the same evidence on its own within a day — if it will, wait for it and diff against the prior run instead of hand-firing a test-only trigger.
+
 ---
 *Log doc v1 — updated 2026-08-05.*
