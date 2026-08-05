@@ -27714,6 +27714,29 @@ function recordPipelineEvent(kind, detail){
     if(kind==='sync_error' || kind==='invariant_warn'){
       if(typeof toast==='function') toast('⚠ Pipeline health — '+(rec.stage||'')+': '+(rec.error||rec.warn||'issue'), 7000);
     }
+    // [CT-1b] Persist the event to the workspace so pipeline health survives a
+    // reload / is visible across devices and readable server-side — the local
+    // ring buffer above is per-browser and evaporates on clear-site-data.
+    // Deliberately NOT routed through fbSet: CT-4 (P13.394) instruments fbSet
+    // failures BY CALLING recordPipelineEvent, so using fbSet here would
+    // re-enter this function on every failed write. Direct ref+set,
+    // fire-and-forget, all errors swallowed — telemetry must never break the
+    // app and must never recurse into itself.
+    // Rule 11 (fail loudly): the write is fire-and-forget so telemetry can't
+    // block the pipeline, but a failure is CONSOLE'D, never swallowed silently.
+    // It must not re-enter recordPipelineEvent — that's the recursion this
+    // whole branch is built to avoid — so console only, no health event.
+    try{
+      if(currentWsId && window.currentUser && db && typeof ref==='function' && typeof set==='function'){
+        var _hk = 'ph-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+        var _hp = set(ref(db,'workspaces/'+currentWsId+'/pipelineHealth/'+_hk), rec);
+        if(_hp && _hp.catch) _hp.catch(function(err){
+          console.warn('[pipeline-health] CT-1b persist failed (event kept in local buffer):', (err&&err.message)||err);
+        });
+      }
+    }catch(e){
+      console.warn('[pipeline-health] CT-1b persist threw (event kept in local buffer):', (e&&e.message)||e);
+    }
   }catch(e){ /* telemetry must never break the app */ }
 }
 window.recordPipelineEvent = recordPipelineEvent;

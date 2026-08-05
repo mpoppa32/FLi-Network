@@ -20,6 +20,12 @@ Claude is the engine — ~14 call sites, all on `claude-sonnet-4-6`. **All calls
 ## APP SURFACE (verified as ~28 views)
 Top nav: Today, Inbox, Pipeline, Accounts, Outreach, Drone, Reckoning, Graph ("Theater"), Table, Posture, Atlas (generic team chamber — NOT a hardcoded workspace), + More (Coverage Matrix, Unbound Domains, Intel Center, RFI Engine, Competitive, Teaming, Timeline, Win/Loss, Trends). Intel Station tabs: Log, Intel, Brief, History, Actions, ⚡Ask.
 
+## INTEGRITY TIER (CT-1 … CT-4)
+`recordPipelineEvent` (P13.392/CT-1) is the single choke point for pipeline telemetry: in-memory + `localStorage` ring buffer (100 entries), console on `sync_error`/`invariant_warn`/`persist_error`, toast on the first two. CT-2 (`checkPipelineInvariants`), CT-3 (`pipelineSelfTest()`), CT-4 (P13.394 — `fbSet`/`fbRemove` failures recorded).
+
+- **CT-1b persistence (2026-08-05):** `recordPipelineEvent` now ALSO writes each event to `workspaces/{wsId}/pipelineHealth/{ph-<ms>-<rand>}`, so health survives a reload / clear-site-data and is readable server-side. Written with a direct `ref`+`set`, fire-and-forget so telemetry can never block the pipeline — **deliberately NOT through `fbSet`**, because CT-4 instruments `fbSet` failures *by calling `recordPipelineEvent`*, so routing through `fbSet` would re-enter the recorder on every failed write. Guarded on `currentWsId && window.currentUser`. Per Rule 11 a failed persist is `console.warn`'d (not silent) but does **not** raise a health event — that is the recursion this branch exists to avoid; the event is still in the local buffer either way.
+- `database.rules.json` gains a `pipelineHealth` node: members read/write (no observer exclusion — this is automatic instrumentation, not user data), `.indexOn: ["ts"]`. Event `ts` is an ISO string, which sorts chronologically. Rules deployed 2026-08-05.
+
 ## OSINT LAYER
 Automated external-intelligence pipeline (~40 deployed functions), manual trigger + scheduled cron per source, ingesting a ~142-source catalog tiered by operator impact. Supporting entities: Award, Signal; per-workspace Watchlist (NAICS, agencies, CIKs, committees); Source Health monitoring UI; nightly Brief Synthesis → Intel Center (`pulse`) daily feed.
 
