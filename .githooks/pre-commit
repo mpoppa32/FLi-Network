@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Corsair pre-commit guard — enforces CLAUDE.md Rule 6 (release in lockstep) and
+# guards the private-config sentinel.
+#
+# WHY A GIT HOOK AND NOT A CLAUDE CODE HOOK
+# A Claude Code hook only fires on commits an agent makes through that harness. This
+# fires on EVERY commit — Mike's, Bryce's, any agent's, any IDE's. It lives in
+# .githooks/ (committed, reviewable in version control) rather than .git/hooks
+# (invisible, per-clone, never reviewed).
+#
+# ACTIVATE (once per clone):
+#   git config core.hooksPath .githooks
+#
+# MODE (default: warn)
+#   git config corsair.truthlock warn    # print loudly, allow the commit
+#   git config corsair.truthlock block   # refuse the commit
+# Bypass in either mode with `git commit --no-verify` (use it deliberately, not by reflex).
+
+set -uo pipefail
+
+MODE="$(git config --get corsair.truthlock || echo warn)"
+TRUTH_DOC="corsair-ops-truth-v1.md"
+FAILED=0
+
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+say() { printf '%s\n' "$*" >&2; }
+
+# ---- Guard 1: truth-doc lockstep (Rule 6) ---------------------------------
+REAL_CHANGES="$(echo "$STAGED" | grep -E '^(FLiIntel\.html|functions/)' || true)"
+if [ -n "$REAL_CHANGES" ]; then
+  # -F: the doc name contains dots; as a regex they would match any character.
+  if ! echo "$STAGED" | grep -Fqx "$TRUTH_DOC"; then
+    say ""
+    say "  ── CORSAIR LOCKSTEP GUARD (Rule 6) ──────────────────────────────"
+    say "  This commit changes what is real but does not stage $TRUTH_DOC:"
+    echo "$REAL_CHANGES" | sed 's/^/      /' >&2
+    say ""
+    say "  If this change alters what is TRUE about the system, update the truth"
+    say "  doc and stage it in THIS commit. If it genuinely changes nothing real"
+    say "  (typo, comment, formatting), this warning is safely ignored."
+    say ""
+    FAILED=1
+  fi
+fi
+
+# ---- Guard 2: private-config sentinel drift -------------------------------
+# The ATLAS_MASTER_BUNDLE secret and functions/atlasMaster.sha256 must move together
+# or CI deploys stale private config (or fails).
+if [ -x scripts/atlas-bundle.sh ]; then
+  if ! scripts/atlas-bundle.sh check >/dev/null 2>&1; then
+    say ""
+    say "  ── CORSAIR PRIVATE-CONFIG SENTINEL ──────────────────────────────"
+    say "  Local atlasMaster files no longer match functions/atlasMaster.sha256."
+    say "  Refresh BOTH or CI will deploy stale config:"
+    say "      scripts/atlas-bundle.sh sentinel   # then commit functions/atlasMaster.sha256"
+    say "      scripts/atlas-bundle.sh bundle     # then update the ATLAS_MASTER_BUNDLE secret"
+    say ""
+    FAILED=1
+  fi
+fi
+
+if [ "$FAILED" -eq 0 ]; then
+  exit 0
+fi
+
+if [ "$MODE" = "block" ]; then
+  say "  MODE=block — commit refused. Fix the above, or: git commit --no-verify"
+  say "  ─────────────────────────────────────────────────────────────────"
+  exit 1
+fi
+
+say "  MODE=warn — commit allowed. Switch on enforcement with:"
+say "      git config corsair.truthlock block"
+say "  ─────────────────────────────────────────────────────────────────"
+exit 0

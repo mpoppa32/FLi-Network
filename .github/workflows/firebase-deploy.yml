@@ -1,0 +1,294 @@
+# Corsair CI/CD — deploy backend on push to main; verify the live front-end.
+#
+# Kills the "merged but not deployed" failure class (LOG 2026-08-02) by making the
+# deploy automatic and by asserting that the bytes GitHub Pages actually serves are
+# the bytes on main.
+#
+# REQUIRED GitHub secrets:
+#   FIREBASE_SERVICE_ACCOUNT — service-account JSON with deploy permissions on fli-network
+#   ATLAS_MASTER_BUNDLE      — base64 tar.gz of the gitignored private atlasMaster files.
+#                              Produce with: scripts/atlas-bundle.sh bundle
+#                              (this repo is PUBLIC and cannot carry those files; a clean
+#                              checkout does not compile without them — see the script header)
+name: firebase-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # backend
+      - "functions/**"
+      - "database.rules.json"
+      - "firebase.json"
+      # front end — REQUIRED, not decorative: verify-live's byte assertion is
+      # vacuous unless a front-end change can actually trigger this workflow.
+      # Without these, a FLiIntel.html-only push (the exact "merged but not
+      # deployed" case) would never run the check. (reviewer finding 2026-08-05)
+      - "FLiIntel.html"
+      - "FLiIntel.css"
+      - "js/corsair/**"
+      # the CI machinery itself — otherwise the files whose changes most need
+      # exercising are the only ones invisible to CI
+      - ".github/workflows/**"
+      - "scripts/atlas-bundle.sh"
+  # Build-only on PRs: a broken branch shows a red X without ever reaching main.
+  # Every deploy step below is hard-gated to push events.
+  pull_request:
+    paths:
+      - "functions/**"
+      - "database.rules.json"
+      - "firebase.json"
+      - ".github/workflows/**"
+      - "scripts/atlas-bundle.sh"
+
+permissions:
+  contents: read
+
+# Never let two deploys race. Do NOT cancel in progress — cancelling mid-deploy
+# could leave the function set half-updated.
+concurrency:
+  group: firebase-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FIREBASE_TOOLS_VERSION: "15.17.0"
+  FIREBASE_PROJECT: fli-network
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # What actually changed, across EVERY commit in the push.
+  # ---------------------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      targets: ${{ steps.t.outputs.targets }}
+      backend: ${{ steps.t.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the whole push range resolves. blob:none keeps it cheap
+          # (this repo carries a 4.4MB HTML file and an mp4) — trees are enough for
+          # --name-only.
+          fetch-depth: 0
+          filter: blob:none
+
+      - id: t
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          ZERO="0000000000000000000000000000000000000000"
+          CHANGED=""
+          RESOLVED=1
+
+          # NOTE: `git diff HEAD^ HEAD` would be WRONG here. It sees only the LAST
+          # commit, while GitHub's paths: filter spans every commit in the push. A
+          # push of [commit A: database.rules.json, commit B: functions/x.ts] would
+          # yield targets=functions and SILENTLY SKIP the rules change on a green
+          # run — the exact failure class this workflow exists to kill.
+          # (reviewer finding, 2026-08-05)
+          if [ "$EVENT" = "push" ]; then
+            if [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$ZERO" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+              CHANGED="$(git diff --name-only "$BEFORE" "$SHA")"
+              RESOLVED=0
+            fi
+          else
+            if [ -n "${BASE_SHA:-}" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              CHANGED="$(git diff --name-only "$BASE_SHA" "$SHA")"
+              RESOLVED=0
+            fi
+          fi
+
+          TARGETS=""
+          if [ "$RESOLVED" -eq 0 ]; then
+            echo "Changed files in range:"
+            echo "$CHANGED" | sed 's/^/  /'
+            if echo "$CHANGED" | grep -qE '^functions/'; then TARGETS="functions"; fi
+            if echo "$CHANGED" | grep -qE '^database\.rules\.json$'; then
+              TARGETS="${TARGETS:+$TARGETS,}database"
+            fi
+            # firebase.json configures both surfaces, so it forces a full deploy.
+            if echo "$CHANGED" | grep -qE '^firebase\.json$'; then TARGETS="functions,database"; fi
+          else
+            # Force-push, first push, or an unresolvable range. Deploy both rather
+            # than silently skip a real change — fail safe, not fail quiet.
+            echo "Could not resolve the push range; falling back to functions,database."
+            TARGETS="functions,database"
+          fi
+
+          if [ -n "$TARGETS" ]; then BACKEND=true; else BACKEND=false; fi
+          echo "Deploy target: ${TARGETS:-(none — front-end-only change)}"
+          echo "targets=$TARGETS" >> "$GITHUB_OUTPUT"
+          echo "backend=$BACKEND" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Build always; deploy only on a push to main that touched the backend.
+  # ---------------------------------------------------------------------------
+  build-deploy:
+    needs: [changes]
+    # Fork PRs receive no secrets, so ATLAS_MASTER_BUNDLE would be empty and the
+    # build could not compile — every fork PR would go red for a reason that says
+    # nothing about the code. Skip them honestly instead of emitting a false signal.
+    if: >-
+      (github.event_name == 'push' && needs.changes.outputs.backend == 'true') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # ---- private config -------------------------------------------------
+      # functions/src/index.ts exports four functions whose source is gitignored
+      # (private Sheet IDs / customer names). Without them tsc fails TS2307 and the
+      # deploy would try to prune four live production functions.
+      - name: Restore private atlasMaster config
+        env:
+          BUNDLE: ${{ secrets.ATLAS_MASTER_BUNDLE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BUNDLE:-}" ]; then
+            echo "::error::ATLAS_MASTER_BUNDLE is unset or empty. This repo cannot compile without it. Regenerate with: scripts/atlas-bundle.sh bundle"
+            exit 1
+          fi
+          printf '%s' "$BUNDLE" | base64 -d | tar xz -C functions/src
+          # Count explicitly. A bare `echo "Restored $(find ...)"` prints a success
+          # sentence over a total failure, because a command substitution's exit
+          # status in an argument position is discarded by set -e.
+          EXPECTED="$(wc -l < functions/atlasMaster.sha256)"
+          ACTUAL="$(find functions/src/sources/atlasMaster functions/src/jobs/atlasMasterSync.ts functions/src/http/triggerAtlasMaster*.ts -type f -name '*.ts' 2>/dev/null | wc -l)"
+          if [ "$ACTUAL" -ne "$EXPECTED" ]; then
+            echo "::error::Restore produced $ACTUAL private files, sentinel expects $EXPECTED. The bundle is truncated or stale."
+            exit 1
+          fi
+          echo "Restored $ACTUAL private files."
+
+      # Fails loudly if the secret has drifted from what main expects — the exact
+      # silent-staleness hole that would otherwise deploy old config forever.
+      - name: Verify restored config matches the committed sentinel
+        run: |
+          set -euo pipefail
+          if ! ./scripts/atlas-bundle.sh check; then
+            echo "::error::ATLAS_MASTER_BUNDLE does not match functions/atlasMaster.sha256. The secret is stale (or the sentinel is). Refresh BOTH: scripts/atlas-bundle.sh sentinel && scripts/atlas-bundle.sh bundle"
+            exit 1
+          fi
+
+      # ---- build ----------------------------------------------------------
+      # NOTE: `npm test` is deliberately NOT run here. Verified 2026-08-05:
+      # `vitest run` reports "No test files found, exiting with code 1", so wiring
+      # it in would make CI red on every push. Tracked as a gap, not hidden.
+      - name: Install + build functions
+        run: |
+          set -euo pipefail
+          cd functions
+          npm ci
+          npm run build
+
+      # ---- deploy (push to main only) -------------------------------------
+      - name: Auth to Google Cloud
+        if: github.event_name == 'push'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
+
+      # --non-interactive WITHOUT --force is deliberate: if the private files ever
+      # fail to restore, the CLI ABORTS rather than deleting the four production
+      # functions it can no longer see. Do not add --force.
+      - name: Deploy
+        if: github.event_name == 'push'
+        env:
+          # Passed via env rather than interpolated into the shell body — keeps a
+          # GitHub expression out of the command line (script-injection shape).
+          TARGETS: ${{ needs.changes.outputs.targets }}
+        run: |
+          set -euo pipefail
+          echo "Deploying: $TARGETS"
+          npm install -g "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+          firebase deploy \
+            --only "$TARGETS" \
+            --project "${FIREBASE_PROJECT}" \
+            --non-interactive
+
+      # `firebase deploy` can report success while a function is stuck on an old
+      # revision or failed to bind a secret. Verify the deployed surface responds.
+      # operatorData's contract (truth doc, verified 2026-08-05): a bad bearer
+      # token returns 401. No secret needed to assert that.
+      - name: Post-deploy smoke — operatorData is live and rejecting bad tokens
+        if: github.event_name == 'push' && contains(needs.changes.outputs.targets, 'functions')
+        run: |
+          set -euo pipefail
+          URL="https://us-central1-fli-network.cloudfunctions.net/operatorData"
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 \
+            -H 'Authorization: Bearer ci-smoke-invalid-token' "${URL}?ws=smoke")"
+          if [ "$CODE" != "401" ]; then
+            echo "::error::operatorData smoke failed: expected 401 for an invalid token, got $CODE. The deploy reported success but the function is not serving correctly."
+            exit 1
+          fi
+          echo "operatorData live, returns 401 on an invalid token."
+
+  # ---------------------------------------------------------------------------
+  # Is GitHub Pages actually serving what is on main?
+  # if: always() so this still runs when build-deploy fails OR is skipped
+  # (front-end-only pushes skip build-deploy entirely).
+  # ---------------------------------------------------------------------------
+  verify-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-deploy]
+    if: always() && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      # THE assertion that closes LOG 2026-08-02: served bytes == committed bytes.
+      - name: Assert live bytes equal main's bytes
+        id: bytes
+        run: |
+          set -euo pipefail
+          URL="https://mpoppa32.github.io/FLi-Network/FLiIntel.html"
+          REPO_SHA="$(sha256sum FLiIntel.html | cut -d' ' -f1)"
+          echo "main FLiIntel.html: $REPO_SHA"
+          LIVE_SHA=""
+          # GitHub Pages publishes asynchronously and can exceed two minutes on a
+          # 4.4MB file. Send no-cache as well as a query buster, because the Pages
+          # CDN is not contractually required to key on the query string.
+          for i in $(seq 1 12); do
+            LIVE_SHA="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+              --max-time 120 "${URL}?ci=${GITHUB_SHA}-${i}" | sha256sum | cut -d' ' -f1)"
+            if [ "$LIVE_SHA" = "$REPO_SHA" ]; then
+              echo "Live front-end matches main (attempt $i)."
+              exit 0
+            fi
+            echo "attempt $i: live=$LIVE_SHA (mismatch) — waiting for Pages…"
+            [ "$i" -lt 12 ] && sleep 25
+          done
+          echo "::error::LIVE FRONT-END IS STALE. main=$REPO_SHA live=$LIVE_SHA — the deployed bytes are not the committed bytes (LOG 2026-08-02 failure class)."
+          exit 1
+
+      # Byte equality above already subsumes this; it runs only on failure to turn
+      # an opaque hash mismatch into a named, actionable diff. The marker set is
+      # DERIVED from the repo at runtime — a hardcoded list could only ever pass,
+      # since markers are additive and permanent. (reviewer finding 2026-08-05)
+      - name: Diagnose which markers the live page is missing
+        if: failure() && steps.bytes.outcome == 'failure'
+        run: |
+          set -uo pipefail
+          URL="https://mpoppa32.github.io/FLi-Network/FLiIntel.html"
+          curl -fsSL -H 'Cache-Control: no-cache' "${URL}?diag=${GITHUB_SHA}" -o live.html || exit 0
+          grep -oE 'P13\.[0-9]+' FLiIntel.html | sort -u > repo.markers
+          grep -oE 'P13\.[0-9]+' live.html     | sort -u > live.markers
+          MISSING="$(comm -23 repo.markers live.markers)"
+          if [ -n "$MISSING" ]; then
+            echo "Markers on main but NOT live (live is behind):"
+            echo "$MISSING" | sed 's/^/  /'
+          else
+            echo "Marker sets are identical ($(wc -l < repo.markers) markers) — the drift is in content, not markers."
+          fi

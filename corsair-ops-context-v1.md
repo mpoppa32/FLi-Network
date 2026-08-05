@@ -4,7 +4,18 @@
 
 ---
 
-## CURRENT STATE (as of 2026-08-05)
+## CURRENT STATE (as of 2026-08-05, later session)
+
+**Mission 2 — CI/CD + governance machinery (brief: `mission-2-cicd-governance.md`, gitignored).**
+
+Push-to-main now builds and deploys the backend, and asserts the live front-end bytes equal main's bytes. See the CI/CD section of the truth doc for the full contract.
+
+- **The blocker that shaped the mission:** the public repo cannot compile. `functions/src/index.ts` exports four functions whose source is gitignored (private Sheet IDs / customer names). Proven, not assumed — `tsc` on `git archive HEAD` fails with 14 errors. CI restores them from the `ATLAS_MASTER_BUNDLE` secret and verifies against the committed `functions/atlasMaster.sha256` sentinel.
+- **Whenever a private atlasMaster file changes, refresh BOTH** `scripts/atlas-bundle.sh sentinel` (commit the sentinel) and `scripts/atlas-bundle.sh bundle` (update the GitHub secret). One without the other = loud CI failure; neither = CI silently deploys stale config. The pre-commit hook warns on drift.
+- **Truth-lockstep hook ships in WARN mode.** Turn on enforcement with `git config corsair.truthlock block`.
+- **Known gap, deliberately not papered over:** `functions/` has zero test files, so `npm test` exits 1 and is NOT wired into CI. Adding real tests is the obvious next hardening step.
+
+## PRIOR STATE — operator endpoint (as of 2026-08-05)
 
 **Operator-endpoint build session (spec: `corsair-operator-endpoint-spec.md`). Three shipped, two acceptance tests still owed.**
 

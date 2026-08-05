@@ -55,5 +55,18 @@ DO NOT REPEAT: on a NEW gen2 onRequest function, don't redesign the auth scheme 
 Substituted real Atlas entities (Rick, Tom Baron, Bill Allen, Cameron Chell) to verify the dossier path; all return meeting counts, last meeting, stance, and open action items.
 DO NOT REPEAT: verify an acceptance test's fixture data exists before treating an empty result as a bug in the code.
 
+### 2026-08-05 — Mission 2 CI/CD: the public repo cannot build itself   [BLOCKER / RESOLVED]
+The Mission 2 brief assumed a GitHub Actions checkout could `npm ci && npm run build`. It cannot. `.gitignore` excludes 7 `atlasMaster` files (private Sheet IDs / customer names; the repo is PUBLIC) that `functions/src/index.ts` and four other tracked modules import. Proven, not assumed: `tsc` on `git archive HEAD` → **14 errors, 8 × TS2307**. The drafted workflow, committed as-is, would have gone red on every push forever.
+FIX: CI restores them from the `ATLAS_MASTER_BUNDLE` secret and verifies against the committed `functions/atlasMaster.sha256` sentinel (Mike's addition — without it an edited private file leaves the secret silently stale and CI deploys old config forever).
+DO NOT REPEAT: before wiring any CI that builds this repo, remember a clean checkout does NOT compile. Test with `git archive HEAD` into a temp dir, never with the working tree — the working tree has the private files and will lie to you.
+
+### 2026-08-05 — Reviewer subagent caught three real bugs in the CI diff pre-push   [LANDED / LESSON]
+First run of the new `.claude/agents/reviewer.md`, against its own author's staged diff. Three findings that would each have shipped a green-but-wrong pipeline:
+1. **Silently-skipped deploy.** Deploy target was computed with `git diff HEAD^ HEAD` — only the LAST commit — while GitHub's `paths:` filter spans the whole push. A push of *[commit A: `database.rules.json`, commit B: `functions/x.ts`]* would have deployed functions and skipped the rules change, green. Fixed to `github.event.before…github.sha`.
+2. **Vacuous live check.** The workflow's `paths:` filter listed only backend paths, so the `FLiIntel.html` byte-equality assertion could never fire on a front-end-only push, and passed trivially on backend pushes because the file was unchanged. The headline check tested nothing. Fixed by adding front-end paths.
+3. **Swallowed failure in the integrity script.** `list_files()` in `scripts/atlas-bundle.sh` ended in `… done | LC_ALL=C sort`; the pipeline ran the loop in a subshell, so its `exit 1` on a missing file exited only the subshell and the function returned *sort's* status — always 0. `sentinel` and `bundle` would have emitted TRUNCATED output with exit 0. A Rule 11 violation inside the guard whose only job is integrity. Fixed (accumulate, sort last, `return` not `exit`) and negative-tested.
+Also caught: the truth-doc section stated never-executed behavior in the present indicative (Rule 2), and cited `index.ts` as naming files it does not name.
+DO NOT REPEAT: (a) never compute a CI deploy target from `HEAD^` — use the push range. (b) a `paths:` filter that excludes the artifact a job asserts on makes that job vacuous; check that every assertion can actually fail. (c) never end a guard function in a pipeline — the subshell eats its exit status. (d) run the reviewer BEFORE the first push, not after; all three were free to fix at that point.
+
 ---
 *Log doc v1 — updated 2026-08-05.*
