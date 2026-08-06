@@ -37,6 +37,11 @@ Top nav: Today, Inbox, Pipeline, Accounts, Outreach, Drone, Reckoning, Graph ("T
     - **Why that combination is the proving signature:** the record's presence alone proves persistence, not which path delivered it. The lone 8s timeout warning is what separates the two — SDK write hung and was caught by clock; REST delivered. Under the same wedge conditions that silently ate both events earlier that day, nothing is lost and the hang is now visible. All three original defects are closed in the one run.
 - `database.rules.json` gains a `pipelineHealth` node: members read/write (no observer exclusion — this is automatic instrumentation, not user data), `.indexOn: ["ts"]`. Event `ts` is an ISO string, which sorts chronologically. Rules deployed 2026-08-05.
 
+## KNOWN BROKEN (2026-08-06) — read before trusting the write layer
+
+- **`fbSet` is NOT wedge-proof, contrary to what P13.354's own comment implies.** `FLiIntel.html:12691` awaits the fire-and-forget SDK promise as its last resort, and the REST path above it returns early **only on `_r.ok`** — so an RTDB 503 (which co-occurs with the wedge, same network) falls through into an await that never resolves and never rejects. **Meeting PROCESS therefore hangs forever at "Analyzing" with no error, no console output, and no request to `anthropicProxy`** — reproduced twice 2026-08-06. `saveMeeting` → `fbSet` is the first `await` in the process path, so nothing downstream ever runs. CT-4's `persist_error` event cannot fire either: it is in a `catch`, and a hang never rejects. Queued as Mission 4 #4; full trace in LOG 2026-08-06.
+- **`onNotesInput` throws on every transcript keystroke.** `FLiIntel.html:9484`'s inline `oninput="onNotesInput()"` resolves against global scope; the function (`25737`) and its alias `updateCC` (`25744`) are module-scoped and never exported to `window` — unlike the four sibling handlers on the same element (`25941-25956`). P13.391's exact pattern. Queued as Mission 4 #5.
+
 ## OSINT LAYER
 Automated external-intelligence pipeline (~40 deployed functions), manual trigger + scheduled cron per source, ingesting a ~142-source catalog tiered by operator impact. Supporting entities: Award, Signal; per-workspace Watchlist (NAICS, agencies, CIKs, committees); Source Health monitoring UI; nightly Brief Synthesis → Intel Center (`pulse`) daily feed.
 
