@@ -125,6 +125,25 @@ check("missing user does not hang", (await settles(fbSet("p/nouser", { a: 1 })))
 check("missing user is explained", errors.some((e) => e.includes("no signed-in user")), JSON.stringify(errors));
 globalThis.window.currentUser = savedUser;
 
+// 5b. [P13.399] The notification itself must not fail silently. This was a
+// `catch(_){}` — the reason the 2026-08-06 wedge run could not answer whether
+// the toast fired and went unseen or threw.
+reset();
+restMode = "http503"; sdkMode = "hang";
+const goodToast = globalThis.toast;
+globalThis.toast = () => { throw new Error("toast element missing"); };
+await settles(fbSet("p/toastthrows", { a: 1 }));
+check("a throwing toast is reported, not swallowed", warns.some((w) => w.includes("toast() threw")), JSON.stringify(warns));
+check("the write failure is still raised when the toast throws", errors.some((e) => e.includes("could not confirm")));
+globalThis.toast = goodToast;
+
+reset();
+restMode = "http503"; sdkMode = "hang";
+globalThis.toast = undefined;
+await settles(fbSet("p/notoast", { a: 1 }));
+check("an unavailable toast is reported", warns.some((w) => w.includes("toast() unavailable")), JSON.stringify(warns));
+globalThis.toast = goodToast;
+
 // 6. fbRemove has the identical protections.
 reset();
 restMode = "http503"; sdkMode = "hang";

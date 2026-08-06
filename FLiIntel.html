@@ -12749,8 +12749,20 @@ function _fbWriteFailed(stage, path, restErr, sdkErr){
     + ' — REST: ' + ((restErr && restErr.message) || 'n/a')
     + '; SDK: ' + ((sdkErr && sdkErr.message) || sdkErr);
   console.error('['+stage+']', _msg);
-  try{ recordPipelineEvent('persist_error',{stage:stage,path:path,error:_msg}); }catch(_){}
-  try{ if(typeof toast === 'function') toast('⚠ Save not confirmed — check connection. See console.', 7000); }catch(_){}
+  try{ recordPipelineEvent('persist_error',{stage:stage,path:path,error:_msg}); }catch(_){ console.warn('['+stage+'] health event could not be recorded'); }
+  // [P13.399] This was `catch(_){}` — a SILENT SWALLOW inside the one function
+  // whose entire job is loud failure. It is why the 2026-08-06 double-wedge run
+  // could not answer "did the toast fire and go unseen, or did it throw?".
+  // Rule 11: if the notification itself fails, say so.
+  // NOTE: `.toast` renders at bottom:24px and is a SINGLE SHARED element — any
+  // later toast() overwrites this text, so absence on screen is not proof it
+  // never fired. The console line below is the reliable record.
+  try{
+    if(typeof toast === 'function'){ toast('⚠ Save not confirmed — check connection. See console.', 7000); }
+    else { console.warn('['+stage+'] toast() unavailable — failure reported to console only'); }
+  }catch(_e){
+    console.warn('['+stage+'] toast() threw while reporting a write failure:', (_e&&_e.message)||_e);
+  }
   return new Error(_msg);
 }
 async function fbSet(path,data){setSS('saving');
@@ -25830,6 +25842,17 @@ function onNotesInput(){
   el.textContent=n?(n.toLocaleString()+' chars'):'';
 }
 var updateCC=onNotesInput;
+// [P13.399] Export to window. The textarea's INLINE oninput="onNotesInput()"
+// (FLiIntel.html:9484) resolves against the GLOBAL scope, but this function is
+// module-scoped — so every keystroke in the transcript box threw
+// ReferenceError: onNotesInput is not defined. P13.391's exact pattern, and
+// the only one of the five handlers on that element that was missed: its four
+// siblings (onNotesDragOver / onNotesDragLeave / onNotesDrop /
+// handleTranscriptFile) were already window-assigned. Confirmed live
+// 2026-08-06. Adding an inline on*= handler REQUIRES the window export in the
+// same edit.
+window.onNotesInput = onNotesInput;
+window.updateCC = updateCC;
 
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition,recog=null,voiceOn=false,voiceBase='',vrTimer=null;
 function toggleVoice(){if(!SR){toast('Voice requires Chrome');return;}voiceOn?stopVoice():startVoice();}
