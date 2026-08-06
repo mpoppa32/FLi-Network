@@ -12684,11 +12684,90 @@ function setSS(s){
   _connPaint(); // legacy literals (e.g. old 'live (REST)') defer to truth — never false green
 }
 
+// [P13.398] Wedge-proofing the write layer, third instance of the P13.354 class.
+//
+// WHAT BROKE (reproduced twice 2026-08-06): meeting PROCESS hung forever on
+// "Analyzing" — no error, no console output, ZERO requests to anthropicProxy.
+// The old fbSet did three things that combined into an unbreakable hang:
+//   1. fired set() fire-and-forget with .catch(noop) — on a wedged socket that
+//      promise never settles;
+//   2. returned from the REST path ONLY on _r.ok, so an RTDB 503 fell through;
+//   3. then did `await (_p||set(...))` — awaiting the very promise from (1).
+// A hang never rejects, so the catch never ran, persist_error never fired, and
+// saveMeeting (the FIRST await in the process path) never returned. Everything
+// downstream — _processMeetingAI, callClaude — was simply never reached.
+//
+// The structural lesson: the old fallback treated "REST returned non-ok" as
+// "REST unavailable, fall back to the SDK". Under a wedge those conditions
+// CO-OCCUR (one broken network), so the safety net handed control to the hung
+// path in exactly the situation it existed for. A fallback whose trigger is
+// correlated with the primary failure is not a fallback.
+//
+// NOW: REST is authoritative. The SDK promise is never awaited unbounded — it
+// is raced against a timeout, because a hang is detectable only by clock and
+// never by .catch (same lesson as CT-1b/P13.397). Every failure is surfaced:
+// console, sync state, a health event, and a toast. Rule 11 — silence was the
+// bug.
+var FB_WEDGE_MS = 8000;
+function _fbTimeout(p, ms, label){
+  return new Promise(function(resolve, reject){
+    var done = false;
+    var t = setTimeout(function(){
+      if(done) return;
+      done = true;
+      reject(new Error(label+' did not settle in '+ms+'ms (socket likely wedged — P13.354)'));
+    }, ms);
+    Promise.resolve(p).then(
+      function(v){ if(!done){ done = true; clearTimeout(t); resolve(v); } },
+      function(e){ if(!done){ done = true; clearTimeout(t); reject(e); } }
+    );
+  });
+}
+// Durable REST write with the user's own id token — respects security rules.
+// getIdToken() is itself a network call and can hang on a wedge, so it is
+// timed out too; the fetch carries an AbortController deadline.
+async function _fbRestWrite(path, method, data){
+  if(!(window.currentUser && typeof window.currentUser.getIdToken === 'function')){
+    throw new Error('no signed-in user for REST '+method);
+  }
+  var _tok = await _fbTimeout(window.currentUser.getIdToken(), FB_WEDGE_MS, 'getIdToken()');
+  var _ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  var _timer = setTimeout(function(){ if(_ctrl) _ctrl.abort(); }, FB_WEDGE_MS);
+  try{
+    var _opts = { method: method, signal: _ctrl ? _ctrl.signal : undefined };
+    if(method === 'PUT') _opts.body = JSON.stringify(data === undefined ? null : data);
+    var _r = await fetch('https://fli-network-default-rtdb.firebaseio.com/'+String(path).replace(/^\/+/,'')+'.json?auth='+_tok, _opts);
+    if(!_r || !_r.ok) throw new Error('REST '+method+' returned HTTP '+(_r && _r.status));
+    return true;
+  } finally {
+    clearTimeout(_timer);
+  }
+}
+function _fbWriteFailed(stage, path, restErr, sdkErr){
+  setSS('error');
+  var _msg = 'could not confirm '+stage+' for '+path
+    + ' — REST: ' + ((restErr && restErr.message) || 'n/a')
+    + '; SDK: ' + ((sdkErr && sdkErr.message) || sdkErr);
+  console.error('['+stage+']', _msg);
+  try{ recordPipelineEvent('persist_error',{stage:stage,path:path,error:_msg}); }catch(_){}
+  try{ if(typeof toast === 'function') toast('⚠ Save not confirmed — check connection. See console.', 7000); }catch(_){}
+  return new Error(_msg);
+}
 async function fbSet(path,data){setSS('saving');
-  // P13.354 - write-resilience over the wedge: the realtime socket on the operator's network drops, so the SDK set() server-ack can hang forever (writes look like they "do nothing" + are lost on reload). Fire the SDK write for the instant optimistic local update + onValue listeners (do NOT block on its ack), then persist durably via a short REST PUT (the user's own id token; respects security rules; survives the backup). Fall back to the SDK write only if REST is unavailable.
+  // Optimistic SDK write for the instant local update + onValue listeners.
+  // NEVER the durable path — see the P13.398 note above.
   var _p=null; try{ _p=set(ref(db,path),data); if(_p&&_p.catch)_p.catch(function(){}); }catch(e){}
-  try{ if(window.currentUser&&typeof window.currentUser.getIdToken==='function'){ var _tok=await window.currentUser.getIdToken(); var _r=await fetch('https://fli-network-default-rtdb.firebaseio.com/'+String(path).replace(/^\/+/,'')+'.json?auth='+_tok,{method:'PUT',body:JSON.stringify(data===undefined?null:data)}); if(_r&&_r.ok){setSS('live');return;} } }catch(e){}
-  try{ await (_p||set(ref(db,path),data)); setSS('live'); }catch(e){ setSS('error'); try{recordPipelineEvent('persist_error',{stage:'fbSet',path:path,error:(e&&e.message)||String(e)});}catch(_){} throw e; }
+  var _restErr=null;
+  try{ await _fbRestWrite(path,'PUT',data); setSS('live'); return; }catch(e){ _restErr=e; }
+  // REST failed. The SDK is a LAST RESORT and is raced, never awaited unbounded.
+  try{
+    await _fbTimeout(_p||set(ref(db,path),data), FB_WEDGE_MS, 'SDK set()');
+    setSS('live');
+    console.warn('[fbSet] REST path failed ('+((_restErr&&_restErr.message)||_restErr)+') — SDK write succeeded for '+path);
+    return;
+  }catch(e){
+    throw _fbWriteFailed('fbSet', path, _restErr, e);
+  }
 }
 // P13.139 — expose for POC promote + future sibling modules that need
 // to write workspace-scoped data without re-implementing the path helper.
@@ -12847,10 +12926,19 @@ window.fbGet = fbGet;
   };
 })();
 async function fbRemove(path){setSS('saving');
-  // P13.354 - write-resilience: REST DELETE (wedge-proof) with optimistic SDK remove for instant local update; SDK fallback if REST unavailable.
+  // [P13.398] Same shape as fbSet above — the identical hang existed here.
+  // REST DELETE is authoritative; the SDK remove is optimistic and raced.
   var _p=null; try{ _p=remove(ref(db,path)); if(_p&&_p.catch)_p.catch(function(){}); }catch(e){}
-  try{ if(window.currentUser&&typeof window.currentUser.getIdToken==='function'){ var _tok=await window.currentUser.getIdToken(); var _r=await fetch('https://fli-network-default-rtdb.firebaseio.com/'+String(path).replace(/^\/+/,'')+'.json?auth='+_tok,{method:'DELETE'}); if(_r&&_r.ok){setSS('live');return;} } }catch(e){}
-  try{ await (_p||remove(ref(db,path))); setSS('live'); }catch(e){ setSS('error'); try{recordPipelineEvent('persist_error',{stage:'fbRemove',path:path,error:(e&&e.message)||String(e)});}catch(_){} throw e; }
+  var _restErr=null;
+  try{ await _fbRestWrite(path,'DELETE'); setSS('live'); return; }catch(e){ _restErr=e; }
+  try{
+    await _fbTimeout(_p||remove(ref(db,path)), FB_WEDGE_MS, 'SDK remove()');
+    setSS('live');
+    console.warn('[fbRemove] REST path failed ('+((_restErr&&_restErr.message)||_restErr)+') — SDK delete succeeded for '+path);
+    return;
+  }catch(e){
+    throw _fbWriteFailed('fbRemove', path, _restErr, e);
+  }
 }
 function wsPath(sub){return 'workspaces/'+currentWsId+'/'+sub;}
 window.wsPath = wsPath;
