@@ -104,6 +104,27 @@ export function sortOpenCommitments(commitments: unknown[]): any[] {
 }
 
 /**
+ * How many commitments `commitmentsAutoArchive` archived in the last `windowMs`.
+ *
+ * Matches on the note prefix the job writes, so a MANUAL archive is never
+ * counted — the line claims the job did something, and it must only say that
+ * when the job actually did. Undated `archivedAt` records are skipped rather
+ * than assumed recent.
+ */
+export function countRecentAutoArchived(
+  commitments: unknown[],
+  nowMs: number,
+  windowMs = 86400000,
+): number {
+  return (commitments as any[]).filter((c: any) => {
+    if (!c || c.status !== "archived") return false;
+    if (!String(c.archiveNote ?? "").startsWith("auto-archived:")) return false;
+    const t = Date.parse(String(c.archivedAt ?? ""));
+    return Number.isFinite(t) && nowMs - t <= windowMs && nowMs - t >= 0;
+  }).length;
+}
+
+/**
  * High-priority action items in operator-useful order.
  *
  * Replaces a first-8-in-key-order slice, which was arbitrary on every axis:
@@ -457,6 +478,18 @@ export async function composeBrief(
       }
       lines.push("");
     }
+  }
+
+  // Nothing vanishes silently (Rule 11). commitmentsAutoArchive runs at 04:30
+  // UTC and moves stale opens to status:'archived'; without this line they
+  // would simply stop appearing above and the operator would never be told.
+  // Counted from the records themselves — auto-archived within the last 24h —
+  // rather than from a state file the job writes, so the job stays a
+  // single-purpose writer (CT-1b is the lesson on extra write paths).
+  const archivedRecently = countRecentAutoArchived(commitments as unknown[], Date.now());
+  if (archivedRecently > 0) {
+    lines.push(`ARCHIVED ${archivedRecently} STALE (>30d, unscheduled)`);
+    lines.push("");
   }
 
   lines.push("---");

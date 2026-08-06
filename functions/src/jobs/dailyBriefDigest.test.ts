@@ -18,6 +18,7 @@ import {
   composeBrief,
   sortOpenCommitments,
   selectHighPriorityActions,
+  countRecentAutoArchived,
   type BriefSubscription,
 } from "./dailyBriefDigest";
 
@@ -576,6 +577,85 @@ describe("composeBrief — HIGH PRIORITY ACTIONS section", () => {
   it("still honours incActions=false", async () => {
     const rows = section(await compose(sub({ incActions: false } as any)), "HIGH PRIORITY ACTIONS");
     expect(rows).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ARCHIVED N STALE — the Rule 11 report line for commitmentsAutoArchive
+//
+// The job silently moves stale opens out of the brief. This line is the only
+// thing that tells the operator it happened, so the tests below care most
+// about it NOT lying: it must never claim the job acted when it didn't.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("countRecentAutoArchived", () => {
+  const auto = (hoursAgo: number) => ({
+    status: "archived",
+    archiveNote: "auto-archived: created 60d ago, no deadline",
+    archivedAt: new Date(NOW - hoursAgo * HOUR).toISOString(),
+  });
+
+  it("counts records the job archived inside the window", () => {
+    expect(countRecentAutoArchived([auto(1), auto(20)], NOW)).toBe(2);
+  });
+
+  it("ignores archives older than the window", () => {
+    expect(countRecentAutoArchived([auto(25), auto(200)], NOW)).toBe(0);
+  });
+
+  it("does NOT count a MANUAL archive — the line claims the job acted", () => {
+    expect(countRecentAutoArchived([
+      { status: "archived", archiveNote: "Manual exception, Mike-approved 2026-08-06", archivedAt: new Date(NOW).toISOString() },
+    ], NOW)).toBe(0);
+  });
+
+  it("ignores open and completed records entirely", () => {
+    expect(countRecentAutoArchived([{ status: "open" }, { status: "completed" }], NOW)).toBe(0);
+  });
+
+  it("skips an archived record with no or unparseable archivedAt rather than assuming it is recent", () => {
+    expect(countRecentAutoArchived([
+      { status: "archived", archiveNote: "auto-archived: x" },
+      { status: "archived", archiveNote: "auto-archived: x", archivedAt: "nonsense" },
+    ], NOW)).toBe(0);
+  });
+
+  it("survives malformed input", () => {
+    expect(() => countRecentAutoArchived([null, undefined, "x", 7] as any, NOW)).not.toThrow();
+    expect(countRecentAutoArchived([null, undefined] as any, NOW)).toBe(0);
+  });
+});
+
+describe("composeBrief — ARCHIVED N STALE line", () => {
+  it("is absent when the job archived nothing (today's live-data case)", async () => {
+    tree.workspaces[WS].commitments = { a: { status: "open", task: "x" } };
+    expect(await compose(sub())).not.toContain("ARCHIVED");
+  });
+
+  it("appears with the exact count when the job archived records overnight", async () => {
+    tree.workspaces[WS].commitments = {
+      a: { status: "open", task: "x" },
+      b: { status: "archived", archiveNote: "auto-archived: created 60d ago, no deadline", archivedAt: new Date(NOW - HOUR).toISOString() },
+      c: { status: "archived", archiveNote: "auto-archived: created 90d ago, overdue 40d", archivedAt: new Date(NOW - 2 * HOUR).toISOString() },
+    };
+    expect(await compose(sub())).toContain("ARCHIVED 2 STALE (>30d, unscheduled)");
+  });
+
+  it("does not report a manual archive as job activity", async () => {
+    tree.workspaces[WS].commitments = {
+      b: { status: "archived", archiveNote: "Manual exception, Mike-approved", archivedAt: new Date(NOW).toISOString() },
+    };
+    expect(await compose(sub())).not.toContain("ARCHIVED");
+  });
+
+  it("keeps archived records out of the OPEN COMMITMENTS block", async () => {
+    tree.workspaces[WS].commitments = {
+      a: { status: "open", task: "still open" },
+      b: { status: "archived", task: "archived away", archiveNote: "auto-archived: created 60d ago, no deadline", archivedAt: new Date(NOW - HOUR).toISOString() },
+    };
+    const rows = section(await compose(sub()), "OPEN COMMITMENTS");
+    expect(rows.join("\n")).toContain("still open");
+    expect(rows.join("\n")).not.toContain("archived away");
+    expect(rows.join("\n")).toContain("1 open total");
   });
 });
 

@@ -24239,7 +24239,11 @@ function renderOppDetail(opp){
     var _orgCommits = [];
     if (_orgPeopleNames.size && Array.isArray(window.commitments)) {
       _orgCommits = window.commitments.filter(function(c){
-        if (!c || c.status === 'completed' || c.status === 'fulfilled' || c.status === 'broken' || c.closedAt) return false;
+        // [P13.400] 'archived' added — this is a DENY-list, so any status it
+        // does not name renders as if active. commitmentsAutoArchive adds the
+        // fourth status; without this an archived commitment keeps showing on
+        // the opp dossier and the nightly job looks broken.
+        if (!c || c.status === 'completed' || c.status === 'fulfilled' || c.status === 'broken' || c.status === 'archived' || c.closedAt) return false;
         var hits = [c.owner, c.with, c.counterparty, c.task].filter(Boolean).map(function(x){return String(x).toLowerCase();});
         return hits.some(function(h){
           for (var nm of _orgPeopleNames) { if (h.indexOf(nm) >= 0) return true; }
@@ -34081,7 +34085,12 @@ function _corsairBuildRhythm(){
   );
   allCommits.forEach(function(c){
     if (!c) return;
-    if (c.status === 'completed' || c.status === 'fulfilled' || c.status === 'broken' || c.status === 'closed' || c.closedAt) return;
+    // [P13.400] 'archived' added. This is the worst of the three deny-list
+    // sites: it reads c.deadline (the real field), so a past-due archived
+    // commitment was pushed as sev:'critical', kind:'OVERDUE' — the nightly
+    // job would have archived an item and the timeline would still nag about
+    // it, in red.
+    if (c.status === 'completed' || c.status === 'fulfilled' || c.status === 'broken' || c.status === 'closed' || c.status === 'archived' || c.closedAt) return;
     if (!c.deadline) return;
     var d = new Date(c.deadline + (c.deadline.length === 10 ? 'T00:00:00' : ''));
     if (isNaN(d.getTime())) return;
@@ -45781,7 +45790,9 @@ window._buildOppBriefingData = function(oppId) {
 
   // All open commitments tied to opp meetings
   var openCmts = commitments.filter(function(c) {
-    if (!c || c.status === 'completed' || c.status === 'closed') return false;
+    // [P13.400] 'archived' added — deny-list, and this one has no date gate at
+    // all, so archived commitments rendered unconditionally on the opp dossier.
+    if (!c || c.status === 'completed' || c.status === 'closed' || c.status === 'archived') return false;
     return oppMtgs.some(function(m){ return c.sourceMtgId === m.id; });
   }).sort(function(a,b){
     var ad = new Date(a.due||0).getTime(), bd = new Date(b.due||0).getTime();

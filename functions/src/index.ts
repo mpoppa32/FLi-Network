@@ -205,6 +205,7 @@ export { listMyInvites } from "./http/listMyInvites";
 // triggerBriefDigestTest is a callable HTTP companion that fires one digest
 // immediately to the caller (or to a `to` override) for SendGrid setup testing.
 export { dailyBriefDigest } from "./jobs/dailyBriefDigest";
+export { commitmentsAutoArchive } from "./jobs/commitmentsAutoArchive";
 export { triggerBriefDigestTest } from "./http/triggerBriefDigestTest";
 
 // P13.378 — per-meeting EMAIL reminders (every 15 min). Server-side complement
