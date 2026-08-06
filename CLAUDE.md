@@ -4,7 +4,7 @@
 
 **Domain:** Corsair — "Defense Capture OS." A single-file front end (`FLiIntel.html`) + `FLiIntel.css` + `js/corsair/*` modules, a TypeScript Firebase Functions backend (`functions/`, package `corsair-functions`), Firebase project `fli-network`, live at `https://mpoppa32.github.io/FLi-Network/FLiIntel.html`.
 **Maintainer:** Mike Poppa.
-**State anchor:** commit `6f5e063` (P13.397 — CT-1b wedge-resilient persist) — the newest `P13.x` marker on `main`. Later commits (docs, tests, CI machinery) introduce no new runtime marker, so this anchor holds until the next marked change.
+**State anchor:** commit `b1638c9` (P13.399 — `onNotesInput` export + the toast swallow) — the newest `P13.x` marker on `main`. Later commits (docs, tests, CI machinery) introduce no new runtime marker, so this anchor holds until the next marked change.
 
 ---
 
