@@ -689,20 +689,269 @@ describe("composeBrief — ARCHIVED N STALE line", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// THE PARSER CONTRACT — the highest-risk surface in the email redesign.
+//
+// Three scheduled LLM routines read this email and look for sections BY NAME:
+// the morning brief (trig_01JXRoMxHWfxPX3bPasd7aWC), meeting prep
+// (trig_01FeoWtBS73hyUpzz2ErwbDU) and Friday Focus (trig_01VUcsXG8ajqFmay8jmfejjK).
+// A renamed or reordered section degrades all three, and the failure looks
+// exactly like a quiet day — which is why it must fail HERE instead.
+//
+// FROZEN: the ten section keys, their spelling, and their order.
+// NOT FROZEN: item-level text within a section.
+// (Byte-identity of the whole plaintext was an earlier, stricter proxy for
+// this; it is not the requirement. The golden snapshot below still pins the
+// whole plaintext for commit 1, where nothing in it may move at all.)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Populates every section the digest can emit, so the golden covers all ten. */
+function fullFixture() {
+  const ws = tree.workspaces[WS];
+  ws.members = { "u-mike": { role: "owner" } };
+  ws.opportunities = {
+    o1: { id: "o1", name: "PA Army RFP", stage: "proposal", agency: "US Army" },
+    o2: { id: "o2", name: "Navy Propulsion IDIQ", stage: "qualify", agency: "USN" },
+  };
+  ws.meetings = {
+    m1: {
+      meta: { title: "Atlas sync", date: "2026-08-04" },
+      intel: {
+        actionItems: [
+          { task: "Send the ROM", owner: "Mike", priority: "high", deadline: "2026-08-02" },
+          { task: "Chase the NDA", owner: "Bryce", priority: "high" },
+        ],
+        risks: [{ risk: "Single-source motor supply", severity: "high" }],
+      },
+    },
+  };
+  ws.commitments = {
+    c1: { status: "open", task: "Return the redline", owner: "Mike", deadline: "2026-08-07", created: "2026-07-01T00:00:00Z" },
+    c2: { status: "open", task: "Undated follow-up", owner: "Bryce", created: "2026-07-02T00:00:00Z" },
+    c3: {
+      status: "archived",
+      task: "Stale thing",
+      archiveNote: "auto-archived: created 60d ago, no deadline",
+      archivedAt: new Date(NOW - 2 * HOUR).toISOString(),
+    },
+  };
+  ws.calibration = {
+    k1: { outcome: "won", oppName: "Sensor BAA", value: "250k", closedAt: new Date(NOW - 3 * DAY).toISOString() },
+    k2: { outcome: "lost", oppName: "Legacy Rotor", closedAt: new Date(NOW - 10 * DAY).toISOString() },
+  };
+  ws.factChanges = {
+    f1: { id: "fact-1", field: "Unit price", from: "100", to: "120", at: NOW - 3 * HOUR },
+  };
+  ws.facts = { "fact-1": { visibility: "customer-safe", label: "Unit price" } };
+  ws.slackFeed = {
+    s1: { channel: "atlas-eng", user: "avery", text: "Motor KV test done", atMs: NOW - 4 * HOUR },
+  };
+  ws.derivedViews = {
+    dailyBrief: {
+      latest: {
+        totalItems: 5,
+        generatedAt: NOW - 6 * HOUR,
+        counts: { signals: 6, awards: 0 },
+        itemsByCategory: {
+          pursuit: [{
+            title: "Army posts propulsion sources-sought",
+            subtitle: "The service intends to survey industry on high-efficiency electric propulsion for Group 3 systems and it",
+            source: "SAM.gov",
+            category: "pursuit",
+            relevance: { total: 9.1 },
+          }],
+          context: [{
+            title: "Hearing scheduled on NDS implementation",
+            subtitle: "Committee will review the National Defense Strategy and it",
+            source: "Congress.gov",
+            category: "context",
+            confidence: 0.7,
+            relevance: { total: 2.2 },
+          }],
+        },
+      },
+    },
+  };
+}
+
+describe("composeBrief — machine-readable section keys", () => {
+  /** The ten keys, in emission order. Renaming or reordering any one of them
+   *  silently degrades three live routines — so this test is the tripwire. */
+  const KEYS_IN_ORDER = [
+    "=== OVERNIGHT INTELLIGENCE ===",
+    "=== MASTER SHEET CHANGES (last 24h) ===",
+    "=== ATLAS SLACK (last 24h) ===",
+    "=== PIPELINE ===",
+    "=== HIGH PRIORITY ACTIONS ===",
+    "=== HIGH RISKS ===",
+    "=== CLOSED DEALS (last 30d) ===",
+    "=== DUE THIS WEEK ===",
+    "=== OPEN COMMITMENTS ===",
+  ];
+
+  it("emits all ten machine-readable keys, spelled exactly, in order", async () => {
+    fullFixture();
+    const text = await compose(sub());
+    // Every key present, exactly as spelled.
+    for (const key of KEYS_IN_ORDER) expect(text).toContain(key);
+    // The tenth key is a line, not a === header.
+    expect(text).toMatch(/^ARCHIVED \d+ STALE \(>30d, unscheduled\)$/m);
+    // And in this order — a reordering breaks a consumer reading top-down.
+    const positions = KEYS_IN_ORDER.map((k) => text.indexOf(k));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it("uses the weekly parenthetical on a weekly subscription", async () => {
+    // KNOWN AND ACCEPTED: two keys carry a cadence-dependent parenthetical.
+    // Safe because the consumers are LLM sessions reading for a named section,
+    // not regexes matching a whole line. Pinned so a change is deliberate.
+    fullFixture();
+    const text = await compose(sub({ frequency: "weekly" }));
+    expect(text).toContain("=== MASTER SHEET CHANGES (last 7d) ===");
+    expect(text).toContain("=== ATLAS SLACK (last 7d) ===");
+  });
+});
+
+// The A1 hedge, enforced. The two MIME parts must cover the SAME sections in
+// the SAME order, because the consumers are LLM sessions and nobody can
+// guarantee which part the harness puts in the model's context (truncation,
+// part preference). If a future edit pushes a plaintext block without its
+// htmlSections sibling, a model reading the HTML silently loses a section —
+// and that looks exactly like a quiet day. One refactor away, so: a test.
+describe("composeBrief — HTML/plaintext section parity", () => {
+  /** Machine-readable key → the HTML display label that must accompany it. */
+  const KEY_TO_LABEL: Array<[RegExp, string]> = [
+    [/^=== OVERNIGHT INTELLIGENCE ===$/m, "Overnight intelligence"],
+    [/^=== MASTER SHEET CHANGES \(/m, "Master sheet changes"],
+    [/^=== ATLAS SLACK \(/m, "Atlas Slack"],
+    [/^=== PIPELINE ===$/m, "Pipeline"],
+    [/^=== HIGH PRIORITY ACTIONS ===$/m, "Needs you today"],
+    [/^=== HIGH RISKS ===$/m, "High risks"],
+    [/^=== CLOSED DEALS \(last 30d\) ===$/m, "Closed deals (last 30d)"],
+    [/^=== DUE THIS WEEK ===$/m, "Due this week"],
+    [/^=== OPEN COMMITMENTS ===$/m, "Open commitments"],
+  ];
+
+  it("every plaintext section has an HTML sibling, in the same relative order", async () => {
+    fullFixture();
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    const present = KEY_TO_LABEL.filter(([key]) => key.test(text));
+    expect(present.length).toBe(KEY_TO_LABEL.length); // fixture covers all nine
+    const htmlPositions = present.map(([, label]) => {
+      const i = html.indexOf(label);
+      expect(i, `HTML is missing the section for ${label}`).toBeGreaterThan(-1);
+      return i;
+    });
+    expect(htmlPositions).toEqual([...htmlPositions].sort((a, b) => a - b));
+  });
+
+  it("holds when only some sections are present", async () => {
+    // Parity is about the sections that EXIST, not a fixed list.
+    tree.workspaces[WS].commitments = { a: { status: "open", task: "solo" } };
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    for (const [key, label] of KEY_TO_LABEL) {
+      if (key.test(text)) expect(html).toContain(label);
+    }
+  });
+
+  it("THE ONE EXCEPTION: empty signals adds an HTML section with no plaintext twin, and appends it", async () => {
+    // Deliberate: the plaintext omits an empty OVERNIGHT INTELLIGENCE block
+    // entirely, but the HTML must still say so out loud (absence must never
+    // read as calm). It is APPENDED, so it can never displace the actions.
+    tree.workspaces[WS].commitments = { a: { status: "open", task: "x" } };
+    tree.workspaces[WS].meetings = {
+      m: { meta: { title: "t" }, intel: { actionItems: [{ task: "act now", priority: "high" }] } },
+    };
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(text).not.toContain("=== OVERNIGHT INTELLIGENCE ===");
+    expect(html).toContain("No signals cleared the bar.");
+    // and it must sit BELOW the actions, not above them
+    expect(html.indexOf("Needs you today")).toBeLessThan(html.indexOf("Overnight intelligence"));
+  });
+});
+
+describe("composeBrief — plaintext golden", () => {
+  it("plaintext is byte-identical to the captured golden", async () => {
+    // Commit 1 (HTML redesign) must not move ONE BYTE of the plaintext part.
+    // This snapshot was captured from the pre-decouple generator; if the
+    // decouple changes plaintext at all, this goes red. Diffed by CI, not eyes.
+    fullFixture();
+    const text = await compose(sub());
+    await expect(text).toMatchFileSnapshot("./__snapshots__/brief-plaintext.golden.txt");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Envelope
 // ═══════════════════════════════════════════════════════════════════════════
 describe("composeBrief — envelope", () => {
-  it("composes a dated subject and an HTML body from the same lines, on an empty workspace", async () => {
+  it("composes a dated subject, a plaintext part, and a table-based HTML part", async () => {
     const { subject, text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
     expect(subject).toBe("Corsair Brief — Atlas — 2026-08-05");
     expect(text).toContain("CORSAIR DAILY BRIEF — Atlas");
-    expect(html).toContain("CORSAIR DAILY BRIEF — Atlas");
-    expect(html.startsWith("<div")).toBe(true);
+    // P13.401: the HTML is no longer made of the plaintext lines. It is a
+    // table layout with a serif masthead on a light surface.
+    expect(html.startsWith("<table")).toBe(true);
+    expect(html).toContain("Atlas Brief");
+    expect(html).toContain("Georgia");
   });
 
-  it("renders each === SECTION === line as an h3 in the HTML", async () => {
-    tree.workspaces[WS].commitments = { a: { status: "open", task: "x" } };
+  it("HTML display labels differ from the machine-readable plaintext keys", async () => {
+    // The whole point of the decouple: the keys stay frozen for the three LLM
+    // routines while the HTML says something a human wants to read.
+    fullFixture();
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(text).toContain("=== HIGH PRIORITY ACTIONS ===");
+    expect(html).toContain("Needs you today");
+    expect(html).not.toContain("=== HIGH PRIORITY ACTIONS ===");
+  });
+
+  it("carries no [CONTEXT]/[PURSUIT] prefixes and no mid-word truncation in the HTML", async () => {
+    // Acceptance 2, scoped to the HTML part (relay 004 ruling). The plaintext
+    // still carries both defects by design in commit 1 — commit 2 fixes those.
+    fullFixture();
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(text).toContain("[PURSUIT]");          // still there in plaintext
+    expect(html).not.toContain("[PURSUIT]");
+    expect(html).not.toContain("[CONTEXT]");
+    // The pursuit item's subtitle is longer than 90 chars, so the plaintext
+    // slice cuts it at "…for Group 3 " and loses the rest. The HTML trims the
+    // FULL source string on a word boundary, so the words survive.
+    expect(text).not.toContain("Group 3 systems");
+    expect(html).toContain("Group 3 systems");
+  });
+
+  it("shows at most 3 signals in HTML with an explicit 'N more' line", async () => {
+    fullFixture();
+    const ws = tree.workspaces[WS];
+    ws.derivedViews.dailyBrief.latest.itemsByCategory.capability = [
+      { title: "Cap A", subtitle: "s", source: "X", category: "capability", relevance: { total: 8 } },
+      { title: "Cap B", subtitle: "s", source: "X", category: "capability", relevance: { total: 7 } },
+      { title: "Cap C", subtitle: "s", source: "X", category: "capability", relevance: { total: 6 } },
+    ];
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    // Plaintext keeps ALL items — meeting prep reads this as a haystack.
+    expect(text).toContain("Cap C");
+    expect(html).toContain("2 more signals · view in Corsair");
+  });
+
+  it("never omits the signals section silently — absence must not read as calm", async () => {
     const { html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
-    expect(html).toContain(">OPEN COMMITMENTS</h3>");
+    expect(html).toContain("Overnight intelligence");
+    expect(html).toContain("No signals cleared the bar.");
+  });
+
+  it("marks an overdue commitment in red with a left rule", async () => {
+    fullFixture();
+    const { html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(html).toContain("#d03b3b");
+    expect(html).toContain("3d overdue");
+  });
+
+  it("uses no flexbox, grid, web fonts, or background images", async () => {
+    fullFixture();
+    const { html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    for (const banned of ["display:flex", "display:grid", "@import", "background-image", "<style"]) {
+      expect(html).not.toContain(banned);
+    }
   });
 });

@@ -103,6 +103,127 @@ export function sortOpenCommitments(commitments: unknown[]): any[] {
     });
 }
 
+// ─── HTML MODEL (P13.401) ───────────────────────────────────────────────────
+//
+// The HTML used to be generated from the plaintext: `text.split("\n").map(...)`
+// turning each line into a <div>. Every visual defect Mike reported followed
+// from that one design — no hierarchy is reachable from a line-to-div
+// transform, and the HTML inherited the plaintext's `[CONTEXT]` prefixes and
+// its mid-word 90-char truncation because it was literally made of them.
+//
+// Now both parts are emitted from ONE pass over the same data: each section
+// pushes its plaintext lines AND a structured `BriefSection`. The plaintext
+// emission is deliberately left untouched, character for character — that
+// redundancy is the point. It makes the parser guarantee provable by snapshot
+// rather than argued from a refactor.
+//
+// FROZEN: the ten section keys, their spelling, their order. Display labels in
+// the HTML diverge freely — the three consumers are LLM sessions reading a
+// payload that carries BOTH parts, not regexes matching lines.
+
+type RowTone = "normal" | "overdue" | "due-soon";
+
+interface BriefRow {
+  /** Tier 1: the thing itself. Never truncated mid-word. */
+  headline: string;
+  /** Tier 2: sourcing, dates, owner — muted, one line. */
+  meta?: string;
+  tone?: RowTone;
+}
+
+interface BriefSection {
+  /** Display label. May differ from the machine-readable key. */
+  label: string;
+  rows: BriefRow[];
+  /** Muted line under the label — counts, filter explanation. */
+  summary?: string;
+  /** Muted line after the rows — "N more …". */
+  footnote?: string;
+}
+
+const C = {
+  page: "#f9f9f7", card: "#fcfcfb", ink: "#0b0b0b", secondary: "#52514e",
+  muted: "#898781", hairline: "#e1e0d9", link: "#2a78d6",
+  overdue: "#d03b3b", dueSoon: "#fab219",
+  serif: "Georgia,'Times New Roman',serif",
+  sans: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+};
+
+const esc = (s: unknown): string =>
+  String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
+ * Trim to `max` on a WORD boundary with an ellipsis — never mid-word.
+ * Defect 2 in the 2026-08-08 ticket: the old code sliced at a character count,
+ * producing "…services to adop" and "…joins Jonatha".
+ */
+export function trimWords(s: string, max: number): string {
+  const t = String(s ?? "").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > max * 0.5 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:.\-—–]+$/, "") + "…";
+}
+
+/**
+ * Email HTML: tables only, all CSS inline, no flexbox/grid/web fonts/background
+ * images, single column, 640px. Light surface deliberately — Gmail dark mode
+ * inverts the old amber-on-dark card badly.
+ */
+function renderBriefHtml(
+  workspaceName: string,
+  generatedLabel: string,
+  sections: BriefSection[],
+  footerNote: string,
+): string {
+  const label = (text: string) =>
+    `<tr><td style="padding:26px 0 8px 0;border-bottom:1px solid ${C.hairline}"><span style="font-family:${C.sans};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:${C.secondary}">${esc(text)}</span></td></tr>`;
+
+  const summary = (text: string) =>
+    `<tr><td style="padding:10px 0 0 0;font-family:${C.sans};font-size:12px;color:${C.muted}">${esc(text)}</td></tr>`;
+
+  const row = (r: BriefRow) => {
+    const rule = r.tone === "overdue"
+      ? `border-left:3px solid ${C.overdue};padding-left:12px;`
+      : r.tone === "due-soon" ? `border-left:3px solid ${C.dueSoon};padding-left:12px;` : "";
+    const head = `<div style="font-family:${C.sans};font-size:15px;font-weight:600;line-height:1.35;color:${r.tone === "overdue" ? C.overdue : C.ink}">${esc(r.headline)}</div>`;
+    const meta = r.meta
+      ? `<div style="font-family:${C.sans};font-size:12px;font-weight:400;line-height:1.4;color:${C.muted};padding-top:3px">${esc(r.meta)}</div>`
+      : "";
+    return `<tr><td style="padding:12px 0 0 0"><div style="${rule}">${head}${meta}</div></td></tr>`;
+  };
+
+  const body = sections.map((s) => {
+    const inner = [
+      label(s.label),
+      s.summary ? summary(s.summary) : "",
+      ...s.rows.map(row),
+      s.footnote
+        ? `<tr><td style="padding:10px 0 0 0;font-family:${C.sans};font-size:12px;color:${C.muted}">${esc(s.footnote)}</td></tr>`
+        : "",
+    ].join("");
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;border-collapse:collapse">${inner}</table>`;
+  }).join("");
+
+  return [
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;background:${C.page};margin:0;padding:0">`,
+    `<tr><td align="center" style="padding:24px 12px">`,
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;max-width:640px;background:${C.card};border:1px solid ${C.hairline};border-radius:4px">`,
+    `<tr><td style="padding:28px 28px 0 28px">`,
+    `<div style="font-family:${C.serif};font-size:26px;font-weight:400;color:${C.ink};letter-spacing:-.01em">${esc(workspaceName)} Brief</div>`,
+    `<div style="font-family:${C.sans};font-size:12px;color:${C.muted};padding-top:4px">${esc(generatedLabel)}</div>`,
+    `</td></tr>`,
+    `<tr><td style="padding:0 28px 28px 28px">${body}</td></tr>`,
+    `<tr><td style="padding:0 28px 24px 28px;border-top:1px solid ${C.hairline}">`,
+    `<div style="font-family:${C.sans};font-size:12px;color:${C.muted};padding-top:14px">`,
+    `<a href="https://mpoppa32.github.io/FLi-Network/FLiIntel.html" style="color:${C.link};text-decoration:none">Open Corsair</a>`,
+    ` · Manage subscription: Email Digest button on the Brief view`,
+    footerNote ? `<br>${esc(footerNote)}` : "",
+    `</div></td></tr>`,
+    `</table></td></tr></table>`,
+  ].join("");
+}
+
 /**
  * The single definition of "is this action item still open", shared with the
  * `operatorData` endpoint the same way `sortOpenCommitments` already is.
@@ -244,6 +365,10 @@ export async function composeBrief(
   const activeOpps = (opps as any[]).filter((o: any) => o && o.stage !== "won" && o.stage !== "lost");
 
   const lines: string[] = [];
+  // Emitted in the same pass as `lines`, from the same data. The plaintext
+  // pushes below are untouched by the redesign — that is what makes the parser
+  // guarantee provable by snapshot rather than argued (P13.401).
+  const htmlSections: BriefSection[] = [];
   lines.push(`CORSAIR DAILY BRIEF — ${workspaceName}`);
   lines.push(`Generated: ${new Date().toUTCString()}`);
   lines.push("");
@@ -302,6 +427,26 @@ export async function composeBrief(
           lines.push(`• [${tag}] ${title}${subtitle ? " — " + subtitle : ""} (${it.source})${conf}`);
         });
         lines.push("");
+        // HTML: the SAME items, dressed differently. Three departures from the
+        // plaintext above, all of them the point of this redesign:
+        //   · no [TAG] prefix — a label on 100% of items carries no information
+        //   · subtitle trimmed on a WORD boundary from the FULL source string,
+        //     not the plaintext's 90-char mid-word slice
+        //   · top 3 only, with a "N more" line. The PLAINTEXT KEEPS ALL ITEMS —
+        //     meeting prep reads this section as a haystack for whoever Mike is
+        //     meeting, so pre-filtering the data would hide a counterparty from
+        //     a live routine. Presentation solves the visual problem; the data
+        //     layer does not move.
+        htmlSections.push({
+          label: "Overnight intelligence",
+          rows: top.slice(0, 3).map((it) => ({
+            headline: clean(it.title) || "(untitled)",
+            meta: [it.source, trimWords(clean(it.subtitle), 150)].filter(Boolean).join(" · "),
+          })),
+          footnote: top.length > 3
+            ? `${top.length - 3} more signal${top.length - 3 === 1 ? "" : "s"} · view in Corsair`
+            : undefined,
+        });
       }
     }
   }
@@ -368,6 +513,19 @@ export async function composeBrief(
             : `• ${name}: ${esc(c.from)} → ${esc(c.to)}`
         );
       });
+      htmlSections.push({
+        label: "Master sheet changes",
+        summary: visible.length
+          ? `${visible.length} value ${visible.length === 1 ? "edit" : "edits"} synced from the Atlas master`
+          : undefined,
+        rows: visible.slice(0, 12).map((c: any) => ({
+          headline: pretty(c.label) || "(fact)",
+          meta: c.from === null || c.from === undefined ? `${c.to} (new)` : `${c.from} → ${c.to}`,
+        })),
+        footnote: withheld
+          ? `${withheld} internal ${withheld === 1 ? "edit" : "edits"} hidden · view in Corsair`
+          : undefined,
+      });
       if (withheld) {
         lines.push(`${withheld} internal ${withheld === 1 ? "edit" : "edits"} hidden — view in Corsair`);
       }
@@ -401,6 +559,18 @@ export async function composeBrief(
         lines.push(`• #${clip(m.channel)} — ${who}: ${body}${files}`);
       });
       lines.push("");
+      htmlSections.push({
+        label: "Atlas Slack",
+        summary: `${recent.length} message${recent.length === 1 ? "" : "s"} across ${chans.size} channel${chans.size === 1 ? "" : "s"}`,
+        rows: recent.slice(0, 14).map((m: any) => ({
+          // Word-boundary trim from the FULL text, not the plaintext's
+          // 140-char mid-word slice.
+          headline: trimWords(clip(m.text), 140) || "(no text)",
+          meta: [`#${clip(m.channel)}`, clip(m.user) || "someone",
+            m.fileNames && m.fileNames.length ? `${m.fileNames.length} file${m.fileNames.length === 1 ? "" : "s"}` : null]
+            .filter(Boolean).join(" · "),
+        })),
+      });
     }
   }
 
@@ -411,6 +581,14 @@ export async function composeBrief(
       lines.push(`• ${o.name || "(unnamed)"} — ${o.stage}${o.agency ? " at " + o.agency : ""}`);
     });
     lines.push("");
+    htmlSections.push({
+      label: "Pipeline",
+      summary: `${activeOpps.length} active pursuit${activeOpps.length === 1 ? "" : "s"}`,
+      rows: activeOpps.slice(0, 5).map((o: any) => ({
+        headline: String(o.name || "(unnamed)"),
+        meta: [o.stage, o.agency].filter(Boolean).join(" · "),
+      })),
+    });
   }
 
   if (sub.incActions !== false && meetings.length) {
@@ -424,6 +602,15 @@ export async function composeBrief(
         lines.push(`• ${a.task}${a.owner ? ` [${a.owner}]` : ""}${due}`);
       });
       lines.push("");
+      htmlSections.push({
+        label: "Needs you today",
+        rows: highActions.map((a: any) => ({
+          headline: String(a.task || "Action"),
+          meta: [a.owner, a.deadline ? (a.overdueDays > 0 ? `${a.overdueDays}d overdue` : `due ${a.deadline}`) : null]
+            .filter(Boolean).join(" · ") || undefined,
+          tone: a.overdueDays > 0 ? "overdue" : "normal",
+        })),
+      });
     }
   }
 
@@ -443,6 +630,14 @@ export async function composeBrief(
         lines.push(`• ${r.risk}${r.raisedBy ? ` (raised by ${r.raisedBy})` : ""}`);
       });
       lines.push("");
+      htmlSections.push({
+        label: "High risks",
+        rows: highRisks.slice(0, 5).map((r: any) => ({
+          headline: String(r.risk || "Risk"),
+          meta: [r.raisedBy ? `raised by ${r.raisedBy}` : null, r.mtg].filter(Boolean).join(" · ") || undefined,
+          tone: "overdue" as RowTone,
+        })),
+      });
     }
   }
 
@@ -459,6 +654,13 @@ export async function composeBrief(
       lines.push(`• ${r.outcome === "won" ? "🏆 WON" : "❌ LOST"}: ${r.oppName || r.oppId} ${r.value ? `($${r.value})` : ""}`);
     });
     lines.push("");
+    htmlSections.push({
+      label: "Closed deals (last 30d)",
+      rows: recentClosed.map((r: any) => ({
+        headline: String(r.oppName || r.oppId || "Deal"),
+        meta: [r.outcome === "won" ? "Won" : "Lost", r.value ? `$${r.value}` : null].filter(Boolean).join(" · "),
+      })),
+    });
   }
 
   // Commitments due soon
@@ -477,6 +679,22 @@ export async function composeBrief(
       lines.push(`• ${c.task || c.title || "Commitment"} — ${when}`);
     });
     lines.push("");
+    const overdueCount = due7d.filter((c: any) => Date.parse(`${c.deadline}T00:00:00`) < now).length;
+    htmlSections.push({
+      label: "Due this week",
+      summary: overdueCount > 0
+        ? `${overdueCount} overdue of ${due7d.length}`
+        : `${due7d.length} due in the next 7 days`,
+      rows: due7d.slice(0, 10).map((c: any) => {
+        const days = Math.ceil((Date.parse(`${c.deadline}T00:00:00`) - now) / 86400000);
+        return {
+          headline: String(c.task || c.title || "Commitment"),
+          meta: [c.owner, days < 0 ? `${-days}d overdue` : days === 0 ? "due today" : `due in ${days}d`]
+            .filter(Boolean).join(" · "),
+          tone: (days < 0 ? "overdue" : days <= 1 ? "due-soon" : "normal") as RowTone,
+        };
+      }),
+    });
   }
 
   // ALL open commitments, deadline or not. The DUE-THIS-WEEK block above only
@@ -499,6 +717,15 @@ export async function composeBrief(
         lines.push(`…and ${openCommits.length - 8} more — open Corsair to see all`);
       }
       lines.push("");
+      htmlSections.push({
+        label: "Open commitments",
+        summary: `${openCommits.length} open total`,
+        rows: openCommits.slice(0, 8).map((c: any) => ({
+          headline: String(c.task || c.title || "Commitment").replace(/[<>]/g, "").trim(),
+          meta: [c.owner, c.deadline ? `due ${c.deadline}` : "no deadline"].filter(Boolean).join(" · "),
+        })),
+        footnote: openCommits.length > 8 ? `${openCommits.length - 8} more · view in Corsair` : undefined,
+      });
     }
   }
 
@@ -519,30 +746,37 @@ export async function composeBrief(
   lines.push("Manage subscription: 📧 Email Digest button on the Brief view");
 
   const text = lines.join("\n");
-  const html = text
-    .split("\n")
-    .map((line) => {
-      if (line.startsWith("===")) {
-        return `<h3 style="margin:14px 0 4px;color:#d4823a;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;border-bottom:1px solid #1a2236;padding-bottom:3px">${line.replace(/===/g, "").trim()}</h3>`;
-      }
-      if (line.startsWith("•")) {
-        return `<div style="font-size:13px;color:#e4e4e7;margin:3px 0 3px 12px">${line}</div>`;
-      }
-      if (line.startsWith("CORSAIR")) {
-        return `<div style="font-family:'Antonio',sans-serif;font-size:20px;font-weight:700;color:#fff;margin-bottom:4px">${line}</div>`;
-      }
-      if (line.startsWith("Generated:") || line.startsWith("---") || line.startsWith("Open Corsair") || line.startsWith("Manage")) {
-        return `<div style="font-size:11px;color:#71717a;margin:2px 0">${line}</div>`;
-      }
-      if (!line.trim()) return "<br>";
-      return `<div style="font-size:13px;color:#a1a1aa;margin:2px 0">${line}</div>`;
-    })
-    .join("");
 
-  const htmlWrapped = `<div style="background:#0a1020;padding:24px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#e4e4e7;max-width:680px;margin:0 auto">${html}</div>`;
+  // P13.401 — HTML is now rendered from `htmlSections`, NOT from `text`.
+  // Rule 11 applied to presentation: a section that has no rows still prints
+  // its label and an explicit empty line. Absence must never read as calm.
+  // APPENDED, never unshifted. `unshift` put an EMPTY section at position 1 —
+  // above "Needs you today" — so a quiet-signal day opened by announcing that
+  // nothing happened and pushed the actions down, on exactly the days the
+  // actions should lead hardest. Fail-loudly is right; fail-loudly-at-the-top
+  // inverts the ordering principle this redesign exists to establish.
+  //
+  // This is also the ONE documented exception to HTML↔plaintext section
+  // parity: it emits an HTML section the plaintext deliberately has none of,
+  // because the plaintext simply omits an empty OVERNIGHT INTELLIGENCE block.
+  // The parity test below encodes this exception explicitly so it reads as
+  // intent rather than as drift.
+  if (!htmlSections.some((s) => s.label === "Overnight intelligence")) {
+    htmlSections.push({ label: "Overnight intelligence", rows: [], summary: "No signals cleared the bar." });
+  }
+  const html = renderBriefHtml(
+    workspaceName,
+    `Generated ${new Date().toUTCString()}`,
+    htmlSections,
+    archivedRecently > 0 ? `Archived ${archivedRecently} stale (>30d, unscheduled).` : "",
+  );
+
+  // The line-to-div transform and its dark wrapper are GONE (P13.401). They
+  // are what made hierarchy impossible and what inverted badly in Gmail dark
+  // mode. `renderBriefHtml` above replaces both.
 
   const subject = `Corsair Brief — ${workspaceName} — ${_isoDate()}`;
-  return { subject, text, html: htmlWrapped };
+  return { subject, text, html };
 }
 
 export async function sendOne(

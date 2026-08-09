@@ -80,5 +80,13 @@ Structure substantial responses: objective → what already exists → the move 
 
 **A deliverable another session must act on is not delivered until it is written to the repo or the project.** Session files die with the session — a triage doc was lost this way on 2026-08-04. Same lesson as "a doc is not integrated until committed."
 
+## 14. THE OPERATOR STATES THE REQUIREMENT; THE FABRICATOR FINDS THE INVARIANT
+
+Never assert an invariant about code you have not read. A spec written from the outside may state the *requirement* — what must remain true for the user — but any mechanical claim about the source is **UNVERIFIED** until the session holding the code confirms it. Mark it as such rather than stating it as a constraint.
+
+Paid for by three failures in eight days, all the same shape: a mission drafted for three pieces of machinery that already existed; a parser-key inventory naming seven keys when the generator emits ten; and "the plaintext must be byte-identical", which was a guess at an invariant whose real form was "the ten section keys and their order are frozen" — the guess was stricter than the requirement and would have blocked a live functional fix.
+
+The corollary binds this side too: when you receive a spec containing a claim about the code, **check it before building on it**, and report the correction. A confident spec is still unverified until someone reads the source.
+
 ---
 *Corsair Build Rules v1.1 — 2026-08-04. Rules 11–13 added after the 2026-08-04 session (P13.391 swallow lesson, live tempo test, lost-deliverable incident); each is paid for by a logged failure, not added speculatively. Companion manual: `ai-operating-system-plan.md`.*
