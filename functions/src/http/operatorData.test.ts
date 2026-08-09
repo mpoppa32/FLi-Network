@@ -114,7 +114,11 @@ beforeEach(() => {
             meta: { title: "Atlas sync", date: "2026-08-01" },
             intel: {
               keyPeople: [{ name: "Bill Allen", stance: "champion" }],
-              actionItems: [{ owner: "Bill Allen", task: "Draft the SOW" }],
+              actionItems: [
+                { owner: "Bill Allen", task: "Draft the SOW" },
+                // Mission 4 #3: completed work must never surface as "open".
+                { owner: "Bill Allen", task: "Finished the NDA", done: true },
+              ],
             },
           },
         },
@@ -245,6 +249,29 @@ describe("operatorData response shaping", () => {
     expect(e.lastMeeting).toEqual({ title: "Atlas sync", date: "2026-08-01" });
     expect(e.openActionItems).toContain("Draft the SOW");
     expect(e.openActionItems).toContain("Send the ROM (due 2026-08-10)");
+  });
+
+  // Mission 4 #3. The field is called openActionItems and had no completion
+  // filter, so the headless operator layer read finished work as outstanding —
+  // the Cowork morning brief would nag Mike about a task he had closed. The
+  // predicate is now shared with the digest (isOpenActionItem) precisely so
+  // the two cannot drift on what "open" means again.
+  it("excludes COMPLETED action items — the field is named 'open'", async () => {
+    const r = await call({ query: { ws: WS, entities: "Bill Allen" }, headers: auth });
+    const e = r.body.entities[0];
+    expect(e.openActionItems).toContain("Draft the SOW");
+    expect(e.openActionItems).not.toContain("Finished the NDA");
+  });
+
+  it("keeps items with done:false or no done field at all", async () => {
+    h.tree.workspaces[WS].meetings.m1.intel.actionItems = [
+      { owner: "Bill Allen", task: "explicit false", done: false },
+      { owner: "Bill Allen", task: "field absent" },
+    ];
+    const r = await call({ query: { ws: WS, entities: "Bill Allen" }, headers: auth });
+    expect(r.body.entities[0].openActionItems).toEqual(
+      expect.arrayContaining(["explicit false", "field absent"]),
+    );
   });
 
   it("does not cross-attribute between two people sharing a first name", async () => {

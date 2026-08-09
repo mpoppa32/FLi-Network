@@ -26,7 +26,7 @@ import { defineSecret } from "firebase-functions/params";
 import { createHash, timingSafeEqual } from "crypto";
 import { db } from "../framework/rtdb";
 import { createLogger } from "../framework/logger";
-import { sortOpenCommitments } from "../jobs/dailyBriefDigest";
+import { sortOpenCommitments, isOpenActionItem } from "../jobs/dailyBriefDigest";
 
 const OPERATOR_API_TOKEN = defineSecret("OPERATOR_API_TOKEN");
 
@@ -289,7 +289,11 @@ export const operatorData = onRequest(
                 const items = m?.intel?.actionItems;
                 if (!Array.isArray(items)) return;
                 items.forEach((a: any) => {
-                  if (a && ownedBy(a.owner, node)) openActionItems.push(clean(a.task));
+                  // Mission 4 #3: this field is named `openActionItems` but had
+                  // no completion filter, so the headless operator layer read
+                  // finished work as outstanding. Shared predicate with the
+                  // digest so the two cannot drift on what "open" means.
+                  if (a && isOpenActionItem(a) && ownedBy(a.owner, node)) openActionItems.push(clean(a.task));
                 });
               });
 

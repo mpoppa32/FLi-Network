@@ -104,6 +104,26 @@ export function sortOpenCommitments(commitments: unknown[]): any[] {
 }
 
 /**
+ * The single definition of "is this action item still open", shared with the
+ * `operatorData` endpoint the same way `sortOpenCommitments` already is.
+ *
+ * It exists because the two disagreed: the digest's HIGH PRIORITY ACTIONS
+ * filtered completed items while `operatorData`'s `openActionItems` did not,
+ * so the headless operator layer read finished work as outstanding. Two call
+ * sites, two definitions of "open", one of them wrong.
+ *
+ * Meeting action items (`meetings/*​/intel/actionItems[]`) mark completion with
+ * a boolean `done` — the convention the front end uses in every one of its own
+ * filters (`!a.done`). Deliberately NOT a general "is this record active"
+ * helper: commitments use `status`, action items use `done`, and conflating
+ * those two shapes is how the next drift starts.
+ */
+export function isOpenActionItem(item: unknown): boolean {
+  if (!item || typeof item !== "object") return false;
+  return !(item as { done?: unknown }).done;
+}
+
+/**
  * How many commitments `commitmentsAutoArchive` archived in the last `windowMs`.
  *
  * Matches on the note prefix the job writes, so a MANUAL archive is never
@@ -159,7 +179,9 @@ export function selectHighPriorityActions(
     // Same recency idiom as operatorData's dossier sort: meta.date, then ts.
     const mtgMs = Date.parse(m?.meta?.date || m?.ts || 0) || 0;
     items.forEach((a: any) => {
-      if (a && a.priority === "high" && !a.done) {
+      // isOpenActionItem, not an inline `!a.done` — the endpoint uses the same
+      // predicate, and an inline copy is exactly how the two drifted before.
+      if (a && a.priority === "high" && isOpenActionItem(a)) {
         out.push({ ...a, mtg: m.meta && m.meta.title, _mtgMs: mtgMs });
       }
     });

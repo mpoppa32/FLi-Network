@@ -19,6 +19,7 @@ import {
   sortOpenCommitments,
   selectHighPriorityActions,
   countRecentAutoArchived,
+  isOpenActionItem,
   type BriefSubscription,
 } from "./dailyBriefDigest";
 
@@ -587,6 +588,34 @@ describe("composeBrief — HIGH PRIORITY ACTIONS section", () => {
 // thing that tells the operator it happened, so the tests below care most
 // about it NOT lying: it must never claim the job acted when it didn't.
 // ═══════════════════════════════════════════════════════════════════════════
+// The predicate shared with operatorData (Mission 4 #3). It exists because the
+// digest and the endpoint disagreed about what "open" means; these tests pin
+// the definition in the one place both import from.
+describe("isOpenActionItem", () => {
+  it("treats a done item as closed", () => {
+    expect(isOpenActionItem({ task: "x", done: true })).toBe(false);
+  });
+
+  it("treats done:false and a missing done field as open", () => {
+    expect(isOpenActionItem({ task: "x", done: false })).toBe(true);
+    expect(isOpenActionItem({ task: "x" })).toBe(true);
+  });
+
+  it("is not fooled by falsy-but-present values", () => {
+    expect(isOpenActionItem({ task: "x", done: 0 })).toBe(true);
+    expect(isOpenActionItem({ task: "x", done: "" })).toBe(true);
+    // Any truthy marker closes it — matches the front end's `!a.done`.
+    expect(isOpenActionItem({ task: "x", done: "yes" })).toBe(false);
+  });
+
+  it("rejects anything that is not a usable object", () => {
+    expect(isOpenActionItem(null)).toBe(false);
+    expect(isOpenActionItem(undefined)).toBe(false);
+    expect(isOpenActionItem("a string")).toBe(false);
+    expect(isOpenActionItem(42)).toBe(false);
+  });
+});
+
 describe("countRecentAutoArchived", () => {
   const auto = (hoursAgo: number) => ({
     status: "archived",
