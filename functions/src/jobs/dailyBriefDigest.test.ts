@@ -873,13 +873,60 @@ describe("composeBrief — HTML/plaintext section parity", () => {
 });
 
 describe("composeBrief — plaintext golden", () => {
-  it("plaintext is byte-identical to the captured golden", async () => {
-    // Commit 1 (HTML redesign) must not move ONE BYTE of the plaintext part.
-    // This snapshot was captured from the pre-decouple generator; if the
-    // decouple changes plaintext at all, this goes red. Diffed by CI, not eyes.
+  it("plaintext matches the captured golden", async () => {
+    // Captured from the pre-decouple generator, then RE-CAPTURED for P13.402
+    // (commit 2), which intentionally lengthens OVERNIGHT INTELLIGENCE
+    // subtitles. Its job from here is to catch UNINTENDED drift: any plaintext
+    // change must arrive as a deliberate re-capture whose diff was read, never
+    // as a surprise. Diffed by CI, not by eyes.
     fullFixture();
     const text = await compose(sub());
     await expect(text).toMatchFileSnapshot("./__snapshots__/brief-plaintext.golden.txt");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P13.402 — the plaintext subtitle is a HAYSTACK, not a display string.
+// Meeting prep asks "does OVERNIGHT INTELLIGENCE mention today's counterparty?"
+// The old `.slice(0, 90)` made anything past character 90 invisible to it, so
+// this is a data-visibility contract, not formatting. Written to fail against
+// the old code: the marker sits deliberately past character 90.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("composeBrief — OVERNIGHT INTELLIGENCE subtitle is not truncated at 90", () => {
+  /** 96 chars of filler, so COUNTERPARTY_MARKER starts past character 90. */
+  const FILLER = "Solicitation amendment issued covering propulsion subsystems and integration support scope. ";
+  const MARKER = "Kestrel Dynamics";
+
+  it("keeps a counterparty name that sits past character 90", async () => {
+    fullFixture();
+    const ws = tree.workspaces[WS];
+    ws.derivedViews.dailyBrief.latest.itemsByCategory.pursuit = [{
+      title: "Army propulsion recompete",
+      subtitle: `${FILLER}${MARKER} named as incumbent.`,
+      source: "SAM.gov",
+      category: "pursuit",
+      relevance: { total: 99 },
+    }];
+    const text = await compose(sub());
+    expect(FILLER.length).toBeGreaterThan(90);       // the test is only meaningful if it is
+    expect(text).toContain(MARKER);                  // RED against `.slice(0, 90)`
+  });
+
+  it("still caps a pathological subtitle, on a word boundary", async () => {
+    fullFixture();
+    const ws = tree.workspaces[WS];
+    ws.derivedViews.dailyBrief.latest.itemsByCategory.pursuit = [{
+      title: "Bulk scrape",
+      subtitle: "alpha ".repeat(400),               // 2,400 chars
+      source: "SAM.gov",
+      category: "pursuit",
+      relevance: { total: 99 },
+    }];
+    const text = await compose(sub());
+    const line = text.split("\n").find((l) => l.includes("Bulk scrape")) || "";
+    expect(line.length).toBeLessThan(600);           // capped, not unbounded
+    expect(line).toContain("…");                     // and marked as trimmed
+    expect(line).not.toMatch(/alph…|alp…/);          // never severed mid-word
   });
 });
 
@@ -909,17 +956,28 @@ describe("composeBrief — envelope", () => {
   });
 
   it("carries no [CONTEXT]/[PURSUIT] prefixes and no mid-word truncation in the HTML", async () => {
-    // Acceptance 2, scoped to the HTML part (relay 004 ruling). The plaintext
-    // still carries both defects by design in commit 1 — commit 2 fixes those.
+    // Acceptance 2, scoped to the HTML part (relay 004 ruling).
+    //
+    // UPDATED for P13.402 (commit 2). In commit 1 this test pinned the
+    // plaintext defects as DELIBERATELY still present — `expect(text).not
+    // .toContain("Group 3 systems")` asserted that the 90-char slice ate the
+    // rest of the subtitle. Commit 2 removes that slice, so that assertion is
+    // now inverted: the words must SURVIVE in both parts. The truncation was
+    // never a display choice in the plaintext — meeting prep reads it as a
+    // haystack, so a name past character 90 was invisible to a live routine.
     fullFixture();
     const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
-    expect(text).toContain("[PURSUIT]");          // still there in plaintext
+    // The [TAG] prefix REMAINS in plaintext, deliberately and unlike the HTML:
+    // the tag is the item's category and it varies across five values, so it
+    // is real per-item metadata for the three LLM consumers reading this part.
+    // Dropping it from the HTML was a visual call; dropping it here would
+    // delete classification from the machine-readable layer. Not in scope.
+    expect(text).toContain("[PURSUIT]");
     expect(html).not.toContain("[PURSUIT]");
     expect(html).not.toContain("[CONTEXT]");
-    // The pursuit item's subtitle is longer than 90 chars, so the plaintext
-    // slice cuts it at "…for Group 3 " and loses the rest. The HTML trims the
-    // FULL source string on a word boundary, so the words survive.
-    expect(text).not.toContain("Group 3 systems");
+    // Both parts now carry the whole subtitle — the HTML trimmed on a word
+    // boundary at 150, the plaintext at its 400-char safety cap.
+    expect(text).toContain("Group 3 systems");
     expect(html).toContain("Group 3 systems");
   });
 

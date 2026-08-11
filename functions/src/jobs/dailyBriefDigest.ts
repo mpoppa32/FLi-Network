@@ -429,7 +429,17 @@ export async function composeBrief(
         lines.push(`${brief.totalItems} scored items · ${sig} signals, ${awd} awards · ${ageLabel}`);
         top.forEach((it) => {
           const title = clean(it.title) || "(untitled)";
-          const subtitle = clean(it.subtitle).slice(0, 90);
+          // P13.402 (commit 2 of 2) — was `.slice(0, 90)`, a mid-word cut.
+          // NOT cosmetic in this part: the plaintext is the machine-readable
+          // half, and meeting prep reads OVERNIGHT INTELLIGENCE as a HAYSTACK
+          // ("does anything here mention today's counterparty?"). A company
+          // name at character 91 was invisible to that routine — the same
+          // mistake at field level that pre-filtering items would be at list
+          // level, and the reason the plaintext deliberately keeps ALL items.
+          // 400 is a safety cap against a pathological scraped subtitle, not a
+          // display limit: real subtitles pass through whole, and trimWords
+          // cuts on a word boundary so a name is never severed mid-token.
+          const subtitle = trimWords(clean(it.subtitle), 400);
           const conf = (typeof it.confidence === "number" && it.confidence < 0.85)
             ? ` · conf ${Math.round(it.confidence * 100)}%`
             : "";
