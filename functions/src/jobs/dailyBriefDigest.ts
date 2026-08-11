@@ -282,10 +282,20 @@ export function countRecentAutoArchived(
  * DELIBERATELY STATELESS — no persistence, no "already shown" memory, no
  * rotation. An urgent item that keeps reappearing is pressure by design, not
  * staleness: hiding it on alternate days to manufacture variety would defeat
- * the accountability loop. The anti-squat mechanism lives at the right
- * cadence in the WEEKLY digest's staleness sentinel, which flags a list that
- * has not materially changed week-over-week and names the longest-standing
- * items for date/close/demote. Daily = pressure, weekly = staleness audit.
+ * the accountability loop.
+ *
+ * CORRECTED 2026-08-11 (Rule 14). This comment previously justified the
+ * statelessness by asserting that "the anti-squat mechanism lives at the
+ * right cadence in the WEEKLY digest's staleness sentinel." NO SUCH JOB
+ * EXISTS. index.ts exports `dailyBriefDigest` and `triggerBriefDigestTest`
+ * and nothing else digest-shaped; the five `*Weekly.ts` jobs are all OSINT
+ * source connectors. There is therefore NO second layer — an item can squat
+ * in this list indefinitely with nothing flagging it, which is exactly what
+ * happened: 43 action items in Atlas were 42-105 days overdue on 2026-08-11
+ * with no cadence surfacing them (see corsair-staleness-inventory-v1.md).
+ * The statelessness decision may still be correct; the reason given for it
+ * was not true. Do not restore the claim without building the job.
+ *
  * Rotation would also mean this read-only job starts writing state; CT-1b is
  * the standing lesson on casually-added write paths (see LOG 2026-08-05).
  */

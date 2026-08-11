@@ -403,12 +403,15 @@ describe("composeBrief — OPEN COMMITMENTS", () => {
 // DELIBERATELY STATELESS. No rotation, no "already shown" memory. An urgent
 // item that keeps reappearing is pressure BY DESIGN, not staleness — hiding
 // it on alternate days to manufacture variety would defeat the accountability
-// loop. Anti-squat lives at the right cadence in the WEEKLY digest's
-// staleness sentinel (flags a list unchanged week-over-week, names the
-// longest-standing items for date/close/demote). Daily = pressure, weekly =
-// staleness audit; two layers, no state. Rotation would also have made this
-// read-only job start writing — and CT-1b (LOG 2026-08-05) is the standing
-// lesson on casually-added write paths.
+// loop.
+//
+// CORRECTED 2026-08-11 (Rule 14): this comment previously claimed "anti-squat
+// lives at the right cadence in the WEEKLY digest's staleness sentinel." THERE
+// IS NO WEEKLY DIGEST — verified against index.ts (only `dailyBriefDigest` +
+// `triggerBriefDigestTest`); the five `*Weekly.ts` jobs are OSINT connectors.
+// So there is no second layer and nothing audits staleness at any cadence.
+// Rotation would also have made this read-only job start writing — and CT-1b
+// (LOG 2026-08-05) is the standing lesson on casually-added write paths.
 // ═══════════════════════════════════════════════════════════════════════════
 describe("selectHighPriorityActions", () => {
   /** Meetings keyed so that KEY ORDER contradicts the contract order — if the
