@@ -617,6 +617,39 @@ describe("isOpenActionItem", () => {
     expect(isOpenActionItem("a string")).toBe(false);
     expect(isOpenActionItem(42)).toBe(false);
   });
+
+  // ── archived items (2026-08-11). Before this date neither `done` nor
+  // `archivedAt` existed on ANY record, so this predicate excluded nothing.
+  // Without the archivedAt clause the sweep would archive an item and the
+  // digest would keep nagging about it — the same deny-list leak P13.400 had
+  // to patch at three separate sites on the commitment side. ──
+  it("excludes an archived item", () => {
+    expect(isOpenActionItem({ task: "x", archivedAt: "2026-08-12T00:00:00.000Z" })).toBe(false);
+  });
+
+  it("still counts an item whose archivedAt is absent, empty or null", () => {
+    expect(isOpenActionItem({ task: "x" })).toBe(true);
+    expect(isOpenActionItem({ task: "x", archivedAt: "" })).toBe(true);
+    expect(isOpenActionItem({ task: "x", archivedAt: "   " })).toBe(true);
+    expect(isOpenActionItem({ task: "x", archivedAt: null })).toBe(true);
+  });
+
+  it("keeps an archived item out of HIGH PRIORITY ACTIONS", () => {
+    // The reason the predicate is shared rather than inlined: this is the
+    // digest path, and operatorData gets the same answer for free.
+    const meetings = [{
+      meta: { date: "2026-08-01", title: "M" },
+      intel: {
+        actionItems: [
+          { task: "live", priority: "high", deadline: "2026-08-20" },
+          { task: "swept", priority: "high", deadline: "2026-04-28", archivedAt: "2026-08-12T00:00:00.000Z" },
+        ],
+      },
+    }];
+    const picked = selectHighPriorityActions(meetings, NOW).map((a: any) => a.task);
+    expect(picked).toContain("live");
+    expect(picked).not.toContain("swept");
+  });
 });
 
 describe("countRecentAutoArchived", () => {

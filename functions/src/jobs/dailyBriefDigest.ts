@@ -238,10 +238,22 @@ function renderBriefHtml(
  * filters (`!a.done`). Deliberately NOT a general "is this record active"
  * helper: commitments use `status`, action items use `done`, and conflating
  * those two shapes is how the next drift starts.
+ *
+ * EXTENDED 2026-08-11 to also exclude ARCHIVED items. Until that date neither
+ * field existed on a single record — all 359 in Atlas carried exactly
+ * `context, deadline, owner, priority, task` — so this predicate was correct
+ * code that excluded nothing, and every action item was permanently "open"
+ * (see `actionItemArchive.ts` and LOG 2026-08-11). The sweep writes
+ * `archivedAt`; without this clause it would archive an item and the digest
+ * would keep nagging about it, which is precisely the deny-list leak P13.400
+ * had to patch three times on the commitment side. Fixed here at the single
+ * shared predicate instead, so it cannot leak per-call-site.
  */
 export function isOpenActionItem(item: unknown): boolean {
   if (!item || typeof item !== "object") return false;
-  return !(item as { done?: unknown }).done;
+  const a = item as { done?: unknown; archivedAt?: unknown };
+  if (a.done) return false;
+  return a.archivedAt === undefined || a.archivedAt === null || String(a.archivedAt).trim() === "";
 }
 
 /**

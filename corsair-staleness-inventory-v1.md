@@ -72,7 +72,20 @@ Of 359 action items:
 
 The free-text values are what Claude extracted verbatim from transcripts: `"Ongoing"`, `"TBD"`, `"Phase 1"`, `"Phase 2 / concurrent with first shipments"`, `"Before agreements are signed"`, `"Upon contract signing"`, `"Near-term, before raise launch"`, `"Immediate — Day 1 priority"`, `"Tonight (2026-04-20)"`. **Every date-based filter in the app is blind to all 282 of them** — they can never be overdue, never due-this-week, never stale, and never archived.
 
-**The sharp part: `Date.parse()` does not reject them, it invents dates.** A first pass of this audit used `Date.parse` on the raw value and reported `"Phase 1"` as **9,352 days overdue** (V8 resolves it to year 0001) and `"Friday April 25"` as 9,238 days overdue (year 2001). Eleven of the 54 apparent matches were fabrications of the parser. The audit was tightened to require an ISO prefix; the corrected count is 43.
+**The sharp part: `Date.parse()` does not reject them, it invents dates.** A first pass of this audit used `Date.parse` on the raw value and reported `"Phase 1"` as **9,352 days overdue** and `"Friday April 25"` as 9,238. Eleven of the 54 apparent matches were fabrications of the parser. The audit was tightened to require an ISO prefix; the corrected count is 43.
+
+Measured on Node v24 rather than assumed — V8 seizes on any number it can read as a **year** and defaults the rest:
+
+| input | `Date.parse` gives |
+|---|---|
+| `"Phase 1"` | `2001-01-01` |
+| `"Phase 2"` | `2001-02-01` |
+| `"Phase 1-2"` | `2001-01-02` |
+| `"Friday April 25"` | `2001-04-25` |
+
+*(A first revision of this document said V8 resolved these to year 0001. The day counts were right; the mechanism was wrong, and it was asserted without being executed — the same failure shape as Rule 14, one level down. Corrected 2026-08-12 and pinned by test.)*
+
+A 2001 date is worse than `NaN` in every way that matters: it does not throw, it is not falsy, and it looks plausible enough to survive review — while sorting straight to the top of any "most overdue first" list.
 
 Consequence for any future work: **a staleness rule for action items cannot use `Date.parse` on this field.** It must require an ISO shape and treat everything else as *undated* — which, under `isStale`'s existing fail-safe philosophy ("anything not positively established as stale is left alone"), means 282 items are permanently exempt. Extraction would have to start emitting ISO dates before an action-item staleness rule could do useful work.
 
