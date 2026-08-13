@@ -1181,23 +1181,11 @@ img { max-width: 100%; height: auto; }
   }
 })();
 </script>
-  <!-- === WEBGL & TACTICAL HUD OVERLAY START === -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-
+  <!-- === WEBGL BACKGROUND & RETICLE START === -->
 <canvas id="webgl-bg-canvas"></canvas>
 
 <!-- Custom Cursor Target Reticle -->
 <div id="hud-reticle"></div>
-
-<!-- Tactical Corner Overlay -->
-<div class="hud-container">
-  <div class="hud-tag top-left"><span class="hud-accent">SYS.LOC</span> // 34.052°N 118.243°W</div>
-  <div class="hud-tag top-right"><span class="hud-accent">STATUS</span> // ONLINE [C2_NODE]</div>
-  <div class="hud-tag bottom-left"><span class="hud-accent">CORE_ENGINE</span> // 60 FPS [ACTIVE]</div>
-  <div class="hud-tag bottom-right" id="hud-clock">00:00:00 UTC</div>
-</div>
 
 <style>
   #webgl-bg-canvas {
@@ -1238,49 +1226,11 @@ img { max-width: 100%; height: auto; }
     border-radius: 50%;
     transform: translate(-50%, -50%);
   }
-
-  .hud-container {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    pointer-events: none;
-    z-index: 99;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.45);
-    letter-spacing: 1.5px;
-  }
-
-  .hud-accent {
-    color: #ff5500;
-    font-weight: 700;
-  }
-
-  .hud-tag {
-    position: absolute;
-    padding: 28px;
-    text-transform: uppercase;
-  }
-
-  .top-left { top: 0; left: 0; }
-  .top-right { top: 0; right: 0; }
-  .bottom-left { bottom: 0; left: 0; }
-  .bottom-right { bottom: 0; right: 0; }
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-  // 1. Clock Ticker
-  function updateClock() {
-    const now = new Date();
-    document.getElementById('hud-clock').innerText = now.toISOString().substr(11, 8) + ' UTC';
-  }
-  setInterval(updateClock, 1000);
-  updateClock();
-
-  // 2. Three.js Scene Setup
+  // 1. Three.js Scene Setup
   const canvas = document.querySelector('#webgl-bg-canvas');
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x050508, 0.035);
@@ -1292,7 +1242,7 @@ img { max-width: 100%; height: auto; }
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-  // 3. Central 3D Hardware Core
+  // 2. Central 3D Hardware Core
   const geometry = new THREE.IcosahedronGeometry(6, 2);
   const material = new THREE.MeshStandardMaterial({
     color: 0x111625,
@@ -1303,7 +1253,7 @@ img { max-width: 100%; height: auto; }
   const coreMesh = new THREE.Mesh(geometry, material);
   scene.add(coreMesh);
 
-  // 4. Floating Particle Field
+  // 3. Floating Particle Field
   const particleCount = 600;
   const particleGeo = new THREE.BufferGeometry();
   const positions = new Float32Array(particleCount * 3);
@@ -1324,7 +1274,7 @@ img { max-width: 100%; height: auto; }
   const particles = new THREE.Points(particleGeo, particleMat);
   scene.add(particles);
 
-  // 5. Lighting Pipeline
+  // 4. Lighting Pipeline
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
   scene.add(ambientLight);
 
@@ -1336,7 +1286,7 @@ img { max-width: 100%; height: auto; }
   pointLight2.position.set(-10, -10, -10);
   scene.add(pointLight2);
 
-  // 6. Scroll Telemetry Tracking
+  // 5. Scroll Telemetry Tracking
   let scrollProgress = 0;
   function calculateScroll() {
     const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
@@ -1344,7 +1294,7 @@ img { max-width: 100%; height: auto; }
   }
   window.addEventListener('scroll', calculateScroll);
 
-  // 7. Mouse & Reticle Position Tracking
+  // 6. Mouse & Reticle Position Tracking
   const reticle = document.getElementById('hud-reticle');
   let mouseX = 0, mouseY = 0;
 
@@ -1352,14 +1302,13 @@ img { max-width: 100%; height: auto; }
     mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
     mouseY = -(e.clientY / window.innerHeight - 0.5) * 2;
 
-    // Direct cursor tracking for reticle overlay
     if (reticle) {
       reticle.style.left = `${e.clientX}px`;
       reticle.style.top = `${e.clientY}px`;
     }
   });
 
-  // 8. Render Loop
+  // 7. Render Loop
   let clock = new THREE.Clock();
   function animate() {
     requestAnimationFrame(animate);
@@ -1392,13 +1341,13 @@ img { max-width: 100%; height: auto; }
   }
   animate();
 
-  // 9. Resize Handler
+  // 8. Resize Handler
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 </script>
-<!-- === WEBGL & TACTICAL HUD OVERLAY END === -->
+<!-- === WEBGL BACKGROUND & RETICLE END === -->
 </body>
 </html>
