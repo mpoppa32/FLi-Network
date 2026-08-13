@@ -1181,13 +1181,21 @@ img { max-width: 100%; height: auto; }
   }
 })();
 </script>
-   <!-- === WEBGL & TACTICAL HUD OVERLAY START === -->
+  <!-- === WEBGL & TACTICAL HUD OVERLAY START === -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
 <canvas id="webgl-bg-canvas"></canvas>
 
+<!-- Custom Cursor Target Reticle -->
+<div id="hud-reticle"></div>
+
+<!-- Tactical Corner Overlay -->
 <div class="hud-container">
-  <div class="hud-tag top-left">SYS.LOC // 34.052°N 118.243°W</div>
-  <div class="hud-tag top-right">STATUS // ONLINE [C2_NODE]</div>
-  <div class="hud-tag bottom-left">CORE_ENGINE // 60 FPS</div>
+  <div class="hud-tag top-left"><span class="hud-accent">SYS.LOC</span> // 34.052°N 118.243°W</div>
+  <div class="hud-tag top-right"><span class="hud-accent">STATUS</span> // ONLINE [C2_NODE]</div>
+  <div class="hud-tag bottom-left"><span class="hud-accent">CORE_ENGINE</span> // 60 FPS [ACTIVE]</div>
   <div class="hud-tag bottom-right" id="hud-clock">00:00:00 UTC</div>
 </div>
 
@@ -1203,6 +1211,34 @@ img { max-width: 100%; height: auto; }
     pointer-events: none;
   }
 
+  /* Custom Cursor Target Reticle */
+  #hud-reticle {
+    position: fixed;
+    top: -100px;
+    left: -100px;
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(255, 85, 0, 0.6);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1000;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 10px rgba(255, 85, 0, 0.25);
+    transition: width 0.15s ease, height 0.15s ease, border-color 0.15s ease;
+  }
+
+  #hud-reticle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    background: #ff5500;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
+
   .hud-container {
     position: fixed;
     top: 0;
@@ -1211,15 +1247,20 @@ img { max-width: 100%; height: auto; }
     height: 100vh;
     pointer-events: none;
     z-index: 99;
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.35);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.45);
     letter-spacing: 1.5px;
+  }
+
+  .hud-accent {
+    color: #ff5500;
+    font-weight: 700;
   }
 
   .hud-tag {
     position: absolute;
-    padding: 24px;
+    padding: 28px;
     text-transform: uppercase;
   }
 
@@ -1303,39 +1344,47 @@ img { max-width: 100%; height: auto; }
   }
   window.addEventListener('scroll', calculateScroll);
 
-  // 7. Mouse Inertia
+  // 7. Mouse & Reticle Position Tracking
+  const reticle = document.getElementById('hud-reticle');
   let mouseX = 0, mouseY = 0;
+
   window.addEventListener('mousemove', (e) => {
     mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
     mouseY = -(e.clientY / window.innerHeight - 0.5) * 2;
+
+    // Direct cursor tracking for reticle overlay
+    if (reticle) {
+      reticle.style.left = `${e.clientX}px`;
+      reticle.style.top = `${e.clientY}px`;
+    }
   });
 
-  // 8. Render Loop with Inertial Interpolation (Lerp)
+  // 8. Render Loop
   let clock = new THREE.Clock();
   function animate() {
     requestAnimationFrame(animate);
     const elapsedTime = clock.getElapsedTime();
 
-    // Continuous Idle Rotations
+    // Idle Rotations
     coreMesh.rotation.y += 0.005;
     particles.rotation.y = elapsedTime * 0.02;
 
-    // Scroll-Driven Kinematic Targets
+    // Scroll Kinetic Dynamics
     const targetZ = 15 - (scrollProgress * 10);
     const targetRotX = scrollProgress * Math.PI * 1.5;
     const targetRotY = scrollProgress * Math.PI * 2;
 
-    // Smooth Interpolation (Lerp)
+    // Lerp Camera & Mesh
     camera.position.z += (targetZ - camera.position.z) * 0.05;
     coreMesh.rotation.x += (targetRotX - coreMesh.rotation.x) * 0.05;
     coreMesh.rotation.y += (targetRotY - coreMesh.rotation.y) * 0.05;
 
-    // Mouse Tracking Offset
+    // Mouse Tracking Offset for 3D Camera
     camera.position.x += (mouseX * 1.5 - camera.position.x) * 0.05;
     camera.position.y += (mouseY * 1.5 - camera.position.y) * 0.05;
     camera.lookAt(scene.position);
 
-    // Dynamic Light Orbiting
+    // Dynamic Orbiting Lights
     pointLight1.position.x = Math.sin(elapsedTime * 0.5) * 15;
     pointLight1.position.z = Math.cos(elapsedTime * 0.5) * 15;
 
