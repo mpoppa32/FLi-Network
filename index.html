@@ -1995,4 +1995,220 @@ Array.prototype.forEach.call(document.querySelectorAll('.fbcta'),function(el){el
 </script>
 <!-- === ENHANCED TACTICAL TARGET RETICLE END === -->
 </script>
+	<!-- === GLOBE NETWORK ARCS & COMMAND PINS START === -->
+<!-- Floating Tactical Node Card Overlay -->
+<div id="tactical-node-card">
+  <div class="node-card-header">
+    <span class="node-status-beacon"></span>
+    <span id="node-title">COMMAND NODE</span>
+  </div>
+  <div class="node-card-coords" id="node-coords">LAT 0.0° / LON 0.0°</div>
+  <div class="node-card-body" id="node-desc">Primary command node operational.</div>
+  <div class="node-card-footer">STATUS: ACTIVE // C2 ENCRYPTED</div>
+</div>
+
+<style>
+  /* Floating Tactical Node Card Styling */
+  #tactical-node-card {
+    position: fixed;
+    top: -300px;
+    left: -300px;
+    width: 240px;
+    background: rgba(5, 7, 12, 0.92);
+    border: 1px solid rgba(255, 85, 0, 0.5);
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', monospace, sans-serif;
+    color: #e0e6ed;
+    pointer-events: none;
+    z-index: 10001;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0 20px rgba(255, 85, 0, 0.25), inset 0 0 10px rgba(255, 85, 0, 0.1);
+    opacity: 0;
+    transform: translate(-50%, -120%) scale(0.95);
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  #tactical-node-card.active {
+    opacity: 1;
+    transform: translate(-50%, -120%) scale(1);
+  }
+
+  .node-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #ffaa00;
+    margin-bottom: 4px;
+  }
+
+  .node-status-beacon {
+    width: 6px;
+    height: 6px;
+    background: #ffaa00;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #ffaa00;
+    animation: beacon-blink 1s infinite alternate;
+  }
+
+  @keyframes beacon-blink {
+    from { opacity: 0.3; }
+    to { opacity: 1; }
+  }
+
+  .node-card-coords {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+
+  .node-card-body {
+    font-size: 11px;
+    line-height: 1.4;
+    color: #b0b8c4;
+    margin-bottom: 8px;
+  }
+
+  .node-card-footer {
+    font-size: 9px;
+    color: #ff5500;
+    letter-spacing: 1px;
+    border-top: 1px solid rgba(255, 85, 0, 0.2);
+    padding-top: 6px;
+  }
+</style>
+
+<script>
+  (function() {
+    // 1. Strategic Command Nodes (Lat/Lon Coordinates)
+    const COMMAND_NODES = [
+      {
+        name: "WASHINGTON D.C.",
+        lat: 38.9072,
+        lon: -77.0369,
+        coords: "38.9° N / 77.0° W",
+        desc: "Strategic Advisory & Defense BD Engine Node."
+      },
+      {
+        name: "EUCOM / STUTTGART",
+        lat: 48.7758,
+        lon: 9.1829,
+        coords: "48.8° N / 9.2° E",
+        desc: "Theatre Movement & Sustainment Logistics Hub."
+      },
+      {
+        name: "INDOPACOM / HAWAII",
+        lat: 21.3069,
+        lon: -157.8583,
+        coords: "21.3° N / 157.9° W",
+        desc: "Full-Spectrum Network Capability Integration."
+      }
+    ];
+
+    // Convert Geo Lat/Lon to 3D Vector3 Position on Sphere
+    function latLongToVector3(lat, lon, radius) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+      const x = -(radius * Math.sin(phi) * Math.cos(theta));
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+      const y = radius * Math.cos(phi);
+      return new THREE.Vector3(x, y, z);
+    }
+
+    // Wait for main scene initialization
+    window.addEventListener('load', () => {
+      if (typeof THREE === 'undefined' || !window.scene) return;
+
+      const GLOBE_RADIUS = 5.8; // Set to fit site 3D globe scale
+      const scene = window.scene;
+      const nodeGroup = new THREE.Group();
+      scene.add(nodeGroup);
+
+      const nodeMeshes = [];
+
+      // 2. Render Glowing 3D Pins
+      COMMAND_NODES.forEach((node) => {
+        const pos = latLongToVector3(node.lat, node.lon, GLOBE_RADIUS);
+
+        // Glowing Pin Core
+        const pinGeo = new THREE.SphereGeometry(0.12, 16, 16);
+        const pinMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+        const pinMesh = new THREE.Mesh(pinGeo, pinMat);
+        pinMesh.position.copy(pos);
+        pinMesh.userData = node;
+
+        // Outer Target Ring
+        const ringGeo = new THREE.RingGeometry(0.18, 0.24, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xff5500, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.copy(pos);
+        ringMesh.lookAt(new THREE.Vector3(0,0,0));
+
+        nodeGroup.add(pinMesh);
+        nodeGroup.add(ringMesh);
+        nodeMeshes.push(pinMesh);
+      });
+
+      // 3. Render High-Altitude Trajectory Bezier Arcs
+      function createArc(p1, p2) {
+        const mid = p1.clone().add(p2).multiplyScalar(0.5);
+        const distance = p1.distanceTo(p2);
+        mid.normalize().multiplyScalar(GLOBE_RADIUS + distance * 0.35); // Curved arc height
+
+        const curve = new THREE.QuadraticBezierCurve3(p1, mid, p2);
+        const points = curve.getPoints(50);
+        const arcGeo = new THREE.BufferGeometry().setFromPoints(points);
+        const arcMat = new THREE.LineBasicMaterial({ color: 0xff5500, transparent: true, opacity: 0.65 });
+        return new THREE.Line(arcGeo, arcMat);
+      }
+
+      // Connect D.C. <-> EUCOM & D.C. <-> INDOPACOM
+      const dcPos = latLongToVector3(COMMAND_NODES[0].lat, COMMAND_NODES[0].lon, GLOBE_RADIUS);
+      const euPos = latLongToVector3(COMMAND_NODES[1].lat, COMMAND_NODES[1].lon, GLOBE_RADIUS);
+      const indoPos = latLongToVector3(COMMAND_NODES[2].lat, COMMAND_NODES[2].lon, GLOBE_RADIUS);
+
+      nodeGroup.add(createArc(dcPos, euPos));
+      nodeGroup.add(createArc(dcPos, indoPos));
+
+      // 4. Raycasting & Tactical Capability Card Hover Interaction
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+      const card = document.getElementById('tactical-node-card');
+      const cardTitle = document.getElementById('node-title');
+      const cardCoords = document.getElementById('node-coords');
+      const cardDesc = document.getElementById('node-desc');
+
+      window.addEventListener('mousemove', (e) => {
+        if (!window.camera) return;
+
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, window.camera);
+        const intersects = raycaster.intersectObjects(nodeMeshes);
+
+        if (intersects.length > 0) {
+          const data = intersects[0].object.userData;
+          cardTitle.textContent = data.name;
+          cardCoords.textContent = data.coords;
+          cardDesc.textContent = data.desc;
+
+          card.style.left = `${e.clientX}px`;
+          card.style.top = `${e.clientY}px`;
+          card.classList.add('active');
+
+          const reticle = document.getElementById('hud-reticle');
+          if (reticle) reticle.classList.add('reticle-lock');
+        } else {
+          card.classList.remove('active');
+        }
+      });
+    });
+  })();
+</script>
+<!-- === GLOBE NETWORK ARCS & COMMAND PINS END === -->
 </body></html>
