@@ -1231,7 +1231,7 @@ img { max-width: 100%; height: auto; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-  // Clock Ticker
+  // 1. Clock Ticker
   function updateClock() {
     const now = new Date();
     document.getElementById('hud-clock').innerText = now.toISOString().substr(11, 8) + ' UTC';
@@ -1239,7 +1239,7 @@ img { max-width: 100%; height: auto; }
   setInterval(updateClock, 1000);
   updateClock();
 
-  // Three.js Atmospheric Background Engine
+  // 2. Three.js Scene Setup
   const canvas = document.querySelector('#webgl-bg-canvas');
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x050508, 0.035);
@@ -1251,7 +1251,7 @@ img { max-width: 100%; height: auto; }
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-  // Geometric Hardware Core (Placeholder Mesh)
+  // 3. Central 3D Hardware Core
   const geometry = new THREE.IcosahedronGeometry(6, 2);
   const material = new THREE.MeshStandardMaterial({
     color: 0x111625,
@@ -1262,67 +1262,88 @@ img { max-width: 100%; height: auto; }
   const coreMesh = new THREE.Mesh(geometry, material);
   scene.add(coreMesh);
 
-  // Floating Particle Field
-  const particleCount = 400;
+  // 4. Floating Particle Field
+  const particleCount = 600;
   const particleGeo = new THREE.BufferGeometry();
   const positions = new Float32Array(particleCount * 3);
 
   for (let i = 0; i < particleCount * 3; i += 3) {
-    positions[i] = (Math.random() - 0.5) * 60;
-    positions[i + 1] = (Math.random() - 0.5) * 60;
-    positions[i + 2] = (Math.random() - 0.5) * 60;
+    positions[i] = (Math.random() - 0.5) * 80;
+    positions[i + 1] = (Math.random() - 0.5) * 80;
+    positions[i + 2] = (Math.random() - 0.5) * 80;
   }
 
   particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const particleMat = new THREE.PointsMaterial({
-    size: 0.08,
+    size: 0.09,
     color: 0xff5500,
     transparent: true,
-    opacity: 0.6
+    opacity: 0.5
   });
   const particles = new THREE.Points(particleGeo, particleMat);
   scene.add(particles);
 
-  // Atmospheric Lighting
+  // 5. Lighting Pipeline
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
   scene.add(ambientLight);
 
-  const pointLight1 = new THREE.PointLight(0xff5500, 2, 50);
+  const pointLight1 = new THREE.PointLight(0xff5500, 2, 60);
   pointLight1.position.set(10, 10, 10);
   scene.add(pointLight1);
 
-  const pointLight2 = new THREE.PointLight(0x00aaff, 2, 50);
+  const pointLight2 = new THREE.PointLight(0x00aaff, 2, 60);
   pointLight2.position.set(-10, -10, -10);
   scene.add(pointLight2);
 
-  // Mouse Interaction Physics
+  // 6. Scroll Telemetry Tracking
+  let scrollProgress = 0;
+  function calculateScroll() {
+    const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+    scrollProgress = totalHeight > 0 ? window.scrollY / totalHeight : 0;
+  }
+  window.addEventListener('scroll', calculateScroll);
+
+  // 7. Mouse Inertia
   let mouseX = 0, mouseY = 0;
   window.addEventListener('mousemove', (e) => {
     mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
     mouseY = -(e.clientY / window.innerHeight - 0.5) * 2;
   });
 
-  // Render Loop
+  // 8. Render Loop with Inertial Interpolation (Lerp)
   let clock = new THREE.Clock();
   function animate() {
     requestAnimationFrame(animate);
     const elapsedTime = clock.getElapsedTime();
 
-    // Rotations & Subtle Motion Shifts
-    coreMesh.rotation.x = elapsedTime * 0.1;
-    coreMesh.rotation.y = elapsedTime * 0.15;
-    particles.rotation.y = elapsedTime * 0.03;
+    // Continuous Idle Rotations
+    coreMesh.rotation.y += 0.005;
+    particles.rotation.y = elapsedTime * 0.02;
 
-    // Smooth Camera Inertia
-    camera.position.x += (mouseX * 2 - camera.position.x) * 0.05;
-    camera.position.y += (mouseY * 2 - camera.position.y) * 0.05;
+    // Scroll-Driven Kinematic Targets
+    const targetZ = 15 - (scrollProgress * 10);
+    const targetRotX = scrollProgress * Math.PI * 1.5;
+    const targetRotY = scrollProgress * Math.PI * 2;
+
+    // Smooth Interpolation (Lerp)
+    camera.position.z += (targetZ - camera.position.z) * 0.05;
+    coreMesh.rotation.x += (targetRotX - coreMesh.rotation.x) * 0.05;
+    coreMesh.rotation.y += (targetRotY - coreMesh.rotation.y) * 0.05;
+
+    // Mouse Tracking Offset
+    camera.position.x += (mouseX * 1.5 - camera.position.x) * 0.05;
+    camera.position.y += (mouseY * 1.5 - camera.position.y) * 0.05;
     camera.lookAt(scene.position);
+
+    // Dynamic Light Orbiting
+    pointLight1.position.x = Math.sin(elapsedTime * 0.5) * 15;
+    pointLight1.position.z = Math.cos(elapsedTime * 0.5) * 15;
 
     renderer.render(scene, camera);
   }
   animate();
 
-  // Responsive Resize
+  // 9. Resize Handler
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
