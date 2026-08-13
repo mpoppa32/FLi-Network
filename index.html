@@ -2211,4 +2211,313 @@ Array.prototype.forEach.call(document.querySelectorAll('.fbcta'),function(el){el
   })();
 </script>
 <!-- === GLOBE NETWORK ARCS & COMMAND PINS END === -->
+	<!-- === TACTICAL COMMAND PALETTE (CTRL + K) START === -->
+<!-- Quick Access Trigger Badge -->
+<button id="cmd-palette-trigger" title="Open Command Console (Ctrl + K)">
+  <span class="cmd-icon">SYS.CMD</span>
+  <kbd>CTRL + K</kbd>
+</button>
+
+<!-- Modal Overlay Drawer -->
+<div id="cmd-palette-backdrop">
+  <div id="cmd-palette-modal">
+    <div class="cmd-palette-header">
+      <span class="cmd-prompt">></span>
+      <input type="text" id="cmd-input" placeholder="SEARCH COMMANDS, NODES, OR INDEX (01-05)..." autocomplete="off" spellcheck="false" />
+      <kbd class="cmd-kbd-esc">ESC</kbd>
+    </div>
+    <div class="cmd-palette-results" id="cmd-results">
+      <!-- Dynamic Search Items Populated via JS -->
+    </div>
+    <div class="cmd-palette-footer">
+      <span>[↑↓] NAVIGATE</span>
+      <span>[ENTER] EXECUTE</span>
+      <span>[ESC] CLOSE</span>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* Fixed Trigger Button (Top Right / Floating) */
+  #cmd-palette-trigger {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(5, 7, 12, 0.85);
+    border: 1px solid rgba(255, 85, 0, 0.4);
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #e0e6ed;
+    cursor: pointer;
+    z-index: 9999;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 0 10px rgba(255, 85, 0, 0.15);
+    transition: all 0.2s ease;
+  }
+
+  #cmd-palette-trigger:hover {
+    border-color: #ffaa00;
+    box-shadow: 0 0 16px rgba(255, 170, 0, 0.4);
+  }
+
+  #cmd-palette-trigger kbd {
+    background: rgba(255, 85, 0, 0.15);
+    color: #ffaa00;
+    padding: 2px 5px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 170, 0, 0.3);
+    font-size: 9px;
+  }
+
+  /* Modal Backdrop */
+  #cmd-palette-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(3, 5, 8, 0.82);
+    backdrop-filter: blur(10px);
+    z-index: 20000;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 12vh;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  #cmd-palette-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Modal Dialog Window */
+  #cmd-palette-modal {
+    width: 90%;
+    max-width: 600px;
+    background: rgba(8, 11, 18, 0.96);
+    border: 1px solid rgba(255, 85, 0, 0.5);
+    border-radius: 6px;
+    box-shadow: 0 0 35px rgba(255, 85, 0, 0.25), inset 0 0 15px rgba(255, 85, 0, 0.1);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    transform: translateY(-15px) scale(0.98);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  #cmd-palette-backdrop.open #cmd-palette-modal {
+    transform: translateY(0) scale(1);
+  }
+
+  /* Input Header */
+  .cmd-palette-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 85, 0, 0.25);
+    gap: 12px;
+  }
+
+  .cmd-prompt {
+    color: #ffaa00;
+    font-weight: 700;
+    font-size: 16px;
+  }
+
+  #cmd-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #ffffff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+
+  #cmd-input::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  .cmd-kbd-esc {
+    background: rgba(255, 85, 0, 0.12);
+    color: #ff5500;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 85, 0, 0.3);
+    font-size: 10px;
+  }
+
+  /* Results List */
+  .cmd-palette-results {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+
+  .cmd-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 18px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #b0b8c4;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+
+  .cmd-item:hover, .cmd-item.selected {
+    background: rgba(255, 85, 0, 0.12);
+    color: #ffaa00;
+  }
+
+  .cmd-item .cmd-item-tag {
+    font-size: 9px;
+    color: #ff5500;
+    letter-spacing: 1px;
+    border: 1px solid rgba(255, 85, 0, 0.3);
+    padding: 2px 6px;
+    border-radius: 2px;
+  }
+
+  /* Footer */
+  .cmd-palette-footer {
+    display: flex;
+    gap: 16px;
+    padding: 10px 18px;
+    background: rgba(4, 6, 10, 0.9);
+    border-top: 1px solid rgba(255, 85, 0, 0.15);
+    font-size: 9px;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.5px;
+  }
+</style>
+
+<script>
+  (function() {
+    const COMMANDS = [
+      { label: "01 // STRATEGIC ADVISORY & DEFENSE BD", category: "INDEX 01", action: () => scrollToSection('01') },
+      { label: "02 // FULL-SPECTRUM COVERAGE", category: "INDEX 02", action: () => scrollToSection('02') },
+      { label: "03 // NETWORK MOBILITY SOLUTIONS", category: "INDEX 03", action: () => scrollToSection('03') },
+      { label: "04 // SECURITY INFRASTRUCTURE", category: "INDEX 04", action: () => scrollToSection('04') },
+      { label: "05 // LOGISTICS & SUPPLY CHAIN", category: "INDEX 05", action: () => scrollToSection('05') },
+      { label: "NODE // WASHINGTON D.C. HEADQUARTERS", category: "C2 NODE", action: () => triggerNodeAlert("WASHINGTON D.C. NODE ACTIVE") },
+      { label: "NODE // EUCOM STUTTGART HUB", category: "C2 NODE", action: () => triggerNodeAlert("EUCOM THEATRE MOVEMENT HUB ACTIVE") },
+      { label: "NODE // INDOPACOM HAWAII HUB", category: "C2 NODE", action: () => triggerNodeAlert("INDOPACOM INTEGRATION HUB ACTIVE") },
+      { label: "SYSTEM // TOGGLE SENSOR VIEW OVERLAY", category: "TACTICAL", action: () => toggleSensorView() }
+    ];
+
+    const backdrop = document.getElementById('cmd-palette-backdrop');
+    const input = document.getElementById('cmd-input');
+    const resultsContainer = document.getElementById('cmd-results');
+    const trigger = document.getElementById('cmd-palette-trigger');
+    let selectedIndex = 0;
+    let filteredCommands = [...COMMANDS];
+
+    function renderResults() {
+      resultsContainer.innerHTML = '';
+      if (filteredCommands.length === 0) {
+        resultsContainer.innerHTML = `<div class="cmd-item" style="pointer-events:none;"><span>NO MATCHING COMMANDS FOUND</span></div>`;
+        return;
+      }
+
+      filteredCommands.forEach((cmd, idx) => {
+        const item = document.createElement('div');
+        item.className = `cmd-item ${idx === selectedIndex ? 'selected' : ''}`;
+        item.innerHTML = `<span>${cmd.label}</span><span class="cmd-item-tag">${cmd.category}</span>`;
+        item.addEventListener('click', () => executeCommand(cmd));
+        resultsContainer.appendChild(item);
+      });
+    }
+
+    function executeCommand(cmd) {
+      closePalette();
+      if (cmd && typeof cmd.action === 'function') {
+        cmd.action();
+      }
+    }
+
+    function openPalette() {
+      backdrop.classList.add('open');
+      input.value = '';
+      filteredCommands = [...COMMANDS];
+      selectedIndex = 0;
+      renderResults();
+      setTimeout(() => input.focus(), 50);
+    }
+
+    function closePalette() {
+      backdrop.classList.remove('open');
+      input.blur();
+    }
+
+    function scrollToSection(num) {
+      const el = document.querySelector(`[data-section="${num}"], #section-${num}, [class*="0${num}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: (parseInt(num) - 1) * (document.body.scrollHeight / 5), behavior: 'smooth' });
+      }
+    }
+
+    function toggleSensorView() {
+      const btn = document.querySelector('.sensor-view, #sensor-btn, [class*="sensor"]');
+      if (btn) btn.click();
+    }
+
+    function triggerNodeAlert(msg) {
+      const card = document.getElementById('tactical-node-card');
+      if (card) {
+        document.getElementById('node-title').textContent = msg;
+        card.classList.add('active');
+        setTimeout(() => card.classList.remove('active'), 3500);
+      }
+    }
+
+    // Input Filter
+    input.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      filteredCommands = COMMANDS.filter(c => c.label.toLowerCase().includes(query) || c.category.toLowerCase().includes(query));
+      selectedIndex = 0;
+      renderResults();
+    });
+
+    // Keyboard Navigation inside Modal
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        backdrop.classList.contains('open') ? closePalette() : openPalette();
+      } else if (e.key === 'Escape' && backdrop.classList.contains('open')) {
+        closePalette();
+      } else if (backdrop.classList.contains('open')) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          selectedIndex = (selectedIndex + 1) % filteredCommands.length;
+          renderResults();
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          selectedIndex = (selectedIndex - 1 + filteredCommands.length) % filteredCommands.length;
+          renderResults();
+        } else if (e.key === 'Enter' && filteredCommands[selectedIndex]) {
+          e.preventDefault();
+          executeCommand(filteredCommands[selectedIndex]);
+        }
+      }
+    });
+
+    // Click triggers
+    if (trigger) trigger.addEventListener('click', openPalette);
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) closePalette();
+    });
+  })();
+</script>
+<!-- === TACTICAL COMMAND PALETTE (CTRL + K) END === -->
 </body></html>
