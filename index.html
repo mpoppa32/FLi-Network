@@ -2520,4 +2520,208 @@ Array.prototype.forEach.call(document.querySelectorAll('.fbcta'),function(el){el
   })();
 </script>
 <!-- === TACTICAL COMMAND PALETTE (CTRL + K) END === -->
+	<div id="sensor-mode-overlay">
+  <div class="sensor-grid-lines"></div>
+  <div class="sensor-scanline"></div>
+  <div class="sensor-radar-sweep"></div>
+  <div class="sensor-hud-badge">
+    <span class="sensor-status-dot"></span>
+    <span id="sensor-status-text">SENSOR VIEW // THERMAL RADAR ACTIVE</span>
+  </div>
+</div>
+
+<style>
+  /* Sensor Mode Full-Screen Tactical Overlay */
+  #sensor-mode-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9990;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  #sensor-mode-overlay.sensor-active {
+    opacity: 1;
+  }
+
+  /* CRT Scanline Effect */
+  .sensor-scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0) 0px,
+      rgba(0, 0, 0, 0) 2px,
+      rgba(0, 255, 128, 0.04) 3px,
+      rgba(0, 0, 0, 0.25) 4px
+    );
+  }
+
+  /* Tactical Grid Pattern */
+  .sensor-grid-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: 40px 40px;
+    background-image: 
+      linear-gradient(to right, rgba(0, 255, 136, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0, 255, 136, 0.05) 1px, transparent 1px);
+    box-shadow: inset 0 0 100px rgba(0, 20, 10, 0.8);
+  }
+
+  /* Rotating Radar Sweep Beam */
+  .sensor-radar-sweep {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100vmax;
+    height: 100vmax;
+    margin-top: -50vmax;
+    margin-left: -50vmax;
+    background: conic-gradient(
+      from 0deg,
+      rgba(0, 255, 136, 0.18) 0deg,
+      rgba(0, 255, 136, 0.05) 30deg,
+      transparent 60deg,
+      transparent 360deg
+    );
+    border-radius: 50%;
+    animation: radar-spin 6s linear infinite;
+    transform-origin: center center;
+  }
+
+  @keyframes radar-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Global Thermal Green Tint Filter on Document Body during Sensor Active */
+  body.sensor-mode-enabled {
+    filter: sepia(0.5) hue-rotate(85deg) saturate(1.8) contrast(1.15) brightness(0.95);
+    transition: filter 0.4s ease;
+  }
+
+  /* Status Badge in Bottom Right Corner */
+  .sensor-hud-badge {
+    position: absolute;
+    bottom: 60px;
+    right: 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0, 25, 12, 0.9);
+    border: 1px solid #00ff88;
+    color: #00ff88;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+  }
+
+  .sensor-status-dot {
+    width: 8px;
+    height: 8px;
+    background: #00ff88;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #00ff88;
+    animation: sensor-pulse 0.8s infinite alternate;
+  }
+
+  @keyframes sensor-pulse {
+    from { opacity: 0.3; }
+    to { opacity: 1; }
+  }
+
+  /* Active glow on SENSOR VIEW button */
+  .sensor-view.is-active, [class*="sensor"].is-active {
+    background: rgba(0, 255, 136, 0.2) !important;
+    border-color: #00ff88 !important;
+    color: #00ff88 !important;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.5) !important;
+  }
+</style>
+
+<script>
+  (function() {
+    let sensorActive = false;
+
+    function toggleSensorView() {
+      sensorActive = !sensorActive;
+      const overlay = document.getElementById('sensor-mode-overlay');
+      const body = document.body;
+      const sensorBtns = document.querySelectorAll('.sensor-view, [class*="sensor-view"], #sensor-btn, button');
+
+      // Toggle overlay and CSS filters
+      if (sensorActive) {
+        if (overlay) overlay.classList.add('sensor-active');
+        body.classList.add('sensor-mode-enabled');
+      } else {
+        if (overlay) overlay.classList.remove('sensor-active');
+        body.classList.remove('sensor-mode-enabled');
+      }
+
+      // Update button active states
+      sensorBtns.forEach(btn => {
+        if (btn.textContent && btn.textContent.toLowerCase().includes('sensor')) {
+          if (sensorActive) {
+            btn.classList.add('is-active');
+          } else {
+            btn.classList.remove('is-active');
+          }
+        }
+      });
+
+      // Toggle 3D Globe Mesh Wireframe in Three.js
+      if (window.scene) {
+        window.scene.traverse((obj) => {
+          if (obj.isMesh && obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(mat => switchMatWireframe(mat));
+            } else {
+              switchMatWireframe(obj.material);
+            }
+          }
+        });
+      }
+    }
+
+    function switchMatWireframe(material) {
+      if (!material) return;
+      if (!material.userData) material.userData = {};
+      if (material.userData.originalWireframe === undefined) {
+        material.userData.originalWireframe = !!material.wireframe;
+      }
+
+      if (sensorActive) {
+        material.wireframe = true;
+      } else {
+        material.wireframe = material.userData.originalWireframe;
+      }
+      material.needsUpdate = true;
+    }
+
+    // Event Delegation: Listen for clicks on the SENSOR VIEW button anywhere on the page
+    document.addEventListener('click', (e) => {
+      const target = e.target.closest('.sensor-view, #sensor-btn, [class*="sensor"]');
+      if (target || (e.target.textContent && e.target.textContent.toUpperCase().includes('SENSOR VIEW'))) {
+        e.preventDefault();
+        toggleSensorView();
+      }
+    });
+
+    // Global hook so Command Palette or other tools can trigger it
+    window.toggleSensorView = toggleSensorView;
+  })();
+</script>
 </body></html>
