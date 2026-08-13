@@ -2701,5 +2701,130 @@ Array.prototype.forEach.call(document.querySelectorAll('.fbcta'),function(el){el
   })();
 </script>
 <!-- === SENSOR VIEW TACTICAL MODE TOGGLE (FIXED) END === -->
-	
+	<!-- === LIVE COORDINATE TELEMETRY STREAM START === -->
+<script>
+  (function() {
+    // Find existing readout or inject a dedicated HUD container
+    let telemetryEl = document.getElementById('telemetry-coords') || document.querySelector('.telemetry-readout');
+
+    if (!telemetryEl) {
+      telemetryEl = document.createElement('div');
+      telemetryEl.id = 'telemetry-coords';
+      document.body.appendChild(telemetryEl);
+    }
+
+    // Dynamic HUD Telemetry Styles
+    const style = document.createElement('style');
+    style.textContent = `
+      #telemetry-coords {
+        position: fixed;
+        bottom: 24px;
+        left: 28px;
+        z-index: 9900;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: #00ff88;
+        background: rgba(4, 18, 10, 0.85);
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-left: 3px solid #00ff88;
+        padding: 8px 14px;
+        border-radius: 2px;
+        letter-spacing: 1px;
+        pointer-events: none;
+        backdrop-filter: blur(4px);
+        box-shadow: 0 0 15px rgba(0, 255, 136, 0.15);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .telemetry-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .telemetry-label {
+        color: rgba(0, 255, 136, 0.6);
+        font-size: 9px;
+      }
+
+      .telemetry-val {
+        color: #ffffff;
+        font-weight: 600;
+      }
+
+      .telemetry-status {
+        color: #00ff88;
+        font-size: 9px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .status-pulse-dot {
+        width: 6px;
+        height: 6px;
+        background-color: #00ff88;
+        border-radius: 50%;
+        animation: tel-pulse 1.2s infinite alternate;
+      }
+
+      @keyframes tel-pulse {
+        from { opacity: 0.2; transform: scale(0.8); }
+        to { opacity: 1; transform: scale(1.2); }
+      }
+    `;
+    document.head.appendChild(style);
+
+    const baseLat = 38.8951;
+    const baseLon = -77.0364;
+    const altitude = 408; // LEO Baseline in kilometers
+
+    function updateTelemetry() {
+      let currentLon = baseLon;
+      let currentLat = baseLat;
+
+      // Extract real-time rotation from Three.js scene object if present
+      let globeObj = window.globeGroup || window.globe;
+      if (!globeObj && window.scene && window.scene.children.length > 0) {
+        globeObj = window.scene.children.find(c => c.rotation);
+      }
+
+      if (globeObj && globeObj.rotation) {
+        const rotDeg = (globeObj.rotation.y * (180 / Math.PI)) % 360;
+        currentLon = ((rotDeg + 180) % 360) - 180;
+        currentLat = baseLat + Math.sin(Date.now() * 0.0008) * 12.5;
+      } else {
+        // Continuous satellite orbit calculation fallback
+        const time = Date.now() * 0.0005;
+        currentLon = ((time * 25) % 360) - 180;
+        currentLat = 18.0 * Math.sin(time);
+      }
+
+      const latDir = currentLat >= 0 ? 'N' : 'S';
+      const lonDir = currentLon >= 0 ? 'E' : 'W';
+      const formattedLat = Math.abs(currentLat).toFixed(4) + '° ' + latDir;
+      const formattedLon = Math.abs(currentLon).toFixed(4) + '° ' + lonDir;
+      const altDisplay = (altitude + Math.sin(Date.now() * 0.002) * 1.8).toFixed(1) + ' KM';
+
+      telemetryEl.innerHTML = `
+        <div class="telemetry-status">
+          <span class="status-pulse-dot"></span>
+          <span>ORBITAL TELEMETRY // SAT-LINK ACTIVE</span>
+        </div>
+        <div class="telemetry-row">
+          <span><span class="telemetry-label">LAT:</span> <span class="telemetry-val">${formattedLat}</span></span>
+          <span><span class="telemetry-label">LON:</span> <span class="telemetry-val">${formattedLon}</span></span>
+          <span><span class="telemetry-label">ALT:</span> <span class="telemetry-val">${altDisplay}</span></span>
+        </div>
+      `;
+
+      requestAnimationFrame(updateTelemetry);
+    }
+
+    requestAnimationFrame(updateTelemetry);
+  })();
+</script>
+<!-- === LIVE COORDINATE TELEMETRY STREAM END === -->
 </body></html>
