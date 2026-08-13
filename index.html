@@ -2701,4 +2701,180 @@ Array.prototype.forEach.call(document.querySelectorAll('.fbcta'),function(el){el
   })();
 </script>
 <!-- === SENSOR VIEW TACTICAL MODE TOGGLE (FIXED) END === -->
+	<!-- === WEB AUDIO UI SOUND SYSTEM START === -->
+<div id="audio-control-badge">
+  <button id="audio-toggle-btn" class="tactical-audio-btn" title="Toggle UI Sound Effects">
+    <span class="audio-icon">🔊</span>
+    <span id="audio-status-text">AUDIO: ON</span>
+  </button>
+</div>
+
+<style>
+  /* Fixed HUD Audio Controller Badge */
+  #audio-control-badge {
+    position: fixed;
+    top: 20px;
+    right: 180px;
+    z-index: 9999;
+  }
+
+  .tactical-audio-btn {
+    background: rgba(4, 18, 10, 0.85);
+    border: 1px solid rgba(0, 255, 136, 0.4);
+    color: #00ff88;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(4px);
+  }
+
+  .tactical-audio-btn:hover {
+    background: rgba(0, 255, 136, 0.15);
+    border-color: #00ff88;
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+  }
+
+  .tactical-audio-btn.muted {
+    color: #888;
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(15, 15, 15, 0.85);
+  }
+</style>
+
+<script>
+  (function() {
+    let audioCtx = null;
+    let isMuted = false;
+
+    // Initialize Web Audio Context on first user interaction
+    function initAudio() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          audioCtx = new AudioContext();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Synthesize Tactical Audio Tones
+    function playSound(type) {
+      if (isMuted) return;
+      initAudio();
+      if (!audioCtx) return;
+
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      if (type === 'hover') {
+        // Subtle high-pitch radar tick
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1400, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 0.03);
+        gain.gain.setValueAtTime(0.03, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+        osc.start(now);
+        osc.stop(now + 0.03);
+
+      } else if (type === 'click') {
+        // Mechanical relay click
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(180, now + 0.05);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
+
+      } else if (type === 'lock') {
+        // Dual-pitch lock-on confirmation chirp
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1800, now);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+        osc.start(now);
+        osc.stop(now + 0.04);
+
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(2400, now + 0.04);
+        gain2.gain.setValueAtTime(0.07, now + 0.04);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+        osc2.start(now + 0.04);
+        osc2.stop(now + 0.09);
+
+      } else if (type === 'toggle') {
+        // Mode shift frequency sweep
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.exponentialRampToValueAtTime(1200, now + 0.12);
+        gain.gain.setValueAtTime(0.04, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.start(now);
+        osc.stop(now + 0.12);
+      }
+    }
+
+    // Event listeners for UI interaction audio triggers
+    document.addEventListener('mouseover', (e) => {
+      const target = e.target.closest('button, a, input, .sensor-view, [class*="node"], [data-interactive]');
+      if (target && !target.dataset.hoverSounded) {
+        target.dataset.hoverSounded = 'true';
+        playSound('hover');
+        setTimeout(() => { delete target.dataset.hoverSounded; }, 150);
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const target = e.target.closest('button, a, input, .sensor-view');
+      if (target && target.id !== 'audio-toggle-btn') {
+        playSound('click');
+      }
+    });
+
+    // Mute / Unmute Button Setup
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('audio-toggle-btn');
+      const text = document.getElementById('audio-status-text');
+      const icon = btn ? btn.querySelector('.audio-icon') : null;
+
+      if (btn) {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          isMuted = !isMuted;
+          if (isMuted) {
+            btn.classList.add('muted');
+            if (text) text.textContent = 'AUDIO: OFF';
+            if (icon) icon.textContent = '🔇';
+          } else {
+            btn.classList.remove('muted');
+            if (text) text.textContent = 'AUDIO: ON';
+            if (icon) icon.textContent = '🔊';
+            playSound('toggle');
+          }
+        });
+      }
+    });
+
+    // Global Hook so other tools (like Ctrl+K or Sensor View) can emit sounds
+    window.playTacticalSound = playSound;
+  })();
+</script>
+<!-- === WEB AUDIO UI SOUND SYSTEM END === -->
 </body></html>
