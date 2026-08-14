@@ -2462,4 +2462,39 @@ Array.prototype.forEach.call(document.querySelectorAll('.fbcta'),function(el){el
   setTimeout(stripCardCorners, 500);
   setTimeout(stripCardCorners, 1500);
 </script>
+	<!-- === REMOVE HUD RETICLE BRACKETS START === -->
+<script>
+  (function nukeHudBrackets() {
+    function cleanBrackets() {
+      // 1. Remove HUD reticle and bracket elements by class/id
+      const targets = document.querySelectorAll(
+        '[class*="reticle"], [class*="bracket"], [class*="corner"], [class*="target"], [id*="reticle"], [id*="bracket"], [id*="corner"]'
+      );
+      targets.forEach(el => {
+        if (el.tagName !== 'CANVAS' && el.tagName !== 'BODY' && el.tagName !== 'MAIN') {
+          el.remove();
+        }
+      });
+
+      // 2. Fallback: hide any small absolute corner overlay boxes
+      document.querySelectorAll('div, span, svg').forEach(el => {
+        if (el.tagName === 'CANVAS') return;
+        const style = window.getComputedStyle(el);
+        if (style.position === 'absolute') {
+          const w = parseFloat(style.width);
+          const h = parseFloat(style.height);
+          // Target small L-shaped corner elements framing the screen center
+          if (w > 0 && w < 100 && h > 0 && h < 100 && (style.borderWidth !== '0px' || style.borderTopWidth !== '0px')) {
+            el.style.display = 'none';
+          }
+        }
+      });
+    }
+
+    cleanBrackets();
+    window.addEventListener('DOMContentLoaded', cleanBrackets);
+    setInterval(cleanBrackets, 200);
+  })();
+</script>
+<!-- === REMOVE HUD RETICLE BRACKETS END === -->
 </body></html>
