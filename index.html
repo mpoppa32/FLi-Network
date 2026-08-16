@@ -1,59 +1,238 @@
-# MASTER ARCHITECTURAL SPECIFICATION & PROMPT
-**Project**: flisolutions.io
-**Target Identity**: Defense & Strategic Advisory (Washington D.C.)
-**Design Language**: "Hemingway / UDT SEAL" Quiet Luxury. Authoritative, restrained, industrially sophisticated, volumetric depth.
-**Visual Standard**: Lusion-grade polish. Zero consumer-SaaS clutter, zero hazard-yellow, zero split/conflicting serif fonts.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FLi SOLUTIONS — Defense & Strategic Advisory</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
----
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(ellipse at 50% 45%, #221a12 0%, #0c0a08 60%, #030302 100%) !important;
+      background-attachment: fixed !important;
+      color: #e6dfd3;
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      overflow-x: hidden;
+    }
 
-## 1. DESIGN & COLOR PALETTE
-- **Primary Backdrop**: Tobacco-Obsidian Radial Vignette
-  - Center: `#1a1612` / `#1f1b15`
-  - Mid: `#0b0907`
-  - Outer Edge: `#030302` (Fixed background attachment)
-- **Primary Accent**: Muted Aged Brass (`#c5a059`) used for metadata, coordinate tracking, borders, and tactile controls.
-- **Typography Colors**: Soft Ivory (`#f5f0e6`) for main headers; Muted Off-White (`#e6dfd3` @ 85% opacity) for body text.
-- **Lighting Shaders**: Warm amber/tobacco volumetric glow (`rgba(197, 160, 89, 0.2)`).
+    #webgl-globe {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+    }
 
----
+    .hero-container {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      padding: 2.5rem 2rem;
+      text-align: center;
+    }
 
-## 2. TYPOGRAPHY HIERARCHY
-*Strict Rule: Complete font unification. No legacy serifs, no mixed typefaces.*
-- **Headings & Hero Titles**: `Space Grotesk` (700 Bold, Uppercase, 5px–6px letter spacing, no serif overrides).
-- **Body & Subtext**: `Space Grotesk` (400 Regular, 1.6 line height, clean tracking).
-- **Metadata, Tags, Coordinates, Logos**: `Space Mono` (400/700 Monospace, Uppercase, 2px–3px letter spacing, Aged Brass `#c5a059`).
+    .header-bar {
+      width: 100%;
+      max-width: 1400px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.85rem;
+      letter-spacing: 2px;
+      color: #c5a059;
+    }
 
----
+    .brand-logo {
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: #f5f0e6;
+      letter-spacing: 3px;
+      border: 1px solid rgba(197, 160, 89, 0.4);
+      padding: 6px 14px;
+      background: rgba(10, 9, 7, 0.75);
+      backdrop-filter: blur(8px);
+    }
 
-## 3. TECHNICAL & 3D WEBGL ENGINE REQUIREMENTS
-- **Background Layer**: A 3D Tactical Particle/Wireframe Globe rendered on a persistent WebGL Canvas behind the UI (`z-index: 0`, `pointer-events: none`).
-- **3D Mechanics**:
-  - Smooth continuous orbital rotation (Y-axis rotation ~0.0015 rad/frame).
-  - Ambient directional key lighting with warm tobacco/brass color highlights.
-  - Tactical coordinate grid or point-cloud geometry.
-- **Architecture Integrity**: WebGL canvas rendering logic and DOM UI overlay must be cleanly isolated so CSS or text edits never break or unmount the 3D execution context.
+    .hero-title {
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-weight: 700 !important;
+      font-style: normal !important;
+      font-size: clamp(2.5rem, 5.8vw, 4.5rem) !important;
+      line-height: 1.1;
+      text-transform: uppercase;
+      letter-spacing: 6px;
+      color: #f5f0e6;
+      max-width: 1100px;
+      text-shadow: 0 10px 35px rgba(0, 0, 0, 0.95);
+      margin: 2rem auto 1.5rem auto;
+    }
 
----
+    .hero-subtext {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(1rem, 1.6vw, 1.2rem);
+      font-weight: 400;
+      color: rgba(230, 223, 211, 0.85);
+      max-width: 700px;
+      margin: 0 auto;
+      line-height: 1.6;
+      letter-spacing: 0.5px;
+    }
 
-## 4. APPROVED CONTENT BASELINE
+    .tag-strip {
+      font-family: 'Space Mono', monospace;
+      color: #c5a059;
+      font-size: 0.8rem;
+      letter-spacing: 3px;
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+    }
 
-### Header Bar
-- Logo: `FLi` (Aged brass outline box, blur backdrop)
-- Center Tag: `DEFENSE & STRATEGIC ADVISORY`
-- Right Tag: `WASHINGTON D.C.`
+    .footer-bar {
+      width: 100%;
+      max-width: 1400px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      color: rgba(197, 160, 89, 0.85);
+    }
 
-### Hero Section
-- Category Tag: `ACCESS • MOVEMENT • OUTCOME`
-- Main Headline: `NETWORK MOBILITY SOLUTIONS.`
-- Subtext: `"The network that opens the door, moves the right capability to it, and delivers the outcome — for government and mission-driven problems worldwide."`
+    .sensor-btn {
+      font-family: 'Space Mono', monospace;
+      background: rgba(10, 9, 7, 0.75);
+      border: 1px solid rgba(197, 160, 89, 0.5);
+      color: #f5f0e6;
+      padding: 10px 22px;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      text-transform: uppercase;
+      transition: all 0.3s ease;
+    }
 
-### Footer Bar
-- Left Coordinate Telemetry: `LAT 7.4°S  LON 72.8°W  [TRACKING]`
-- Right Control: `• SENSOR VIEW` (Aged brass interactive button)
+    .sensor-btn:hover {
+      background: rgba(197, 160, 89, 0.2);
+      border-color: #c5a059;
+    }
+  </style>
+</head>
+<body>
 
----
+  <div id="webgl-globe"></div>
 
-## 5. INSTRUCTIONS FOR AI / DEVELOPER
-1. Maintain strict single-file integrity (`index.html`) or clean modular architecture without external library dependencies that risk network drops.
-2. Ensure full responsive scaling across mobile and high-DPI desktop displays.
-3. Deliver production-ready code with zero inline style fragmentation or conflicting font declarations.
+  <main class="hero-container">
+    <header class="header-bar">
+      <div class="brand-logo">FLi</div>
+      <div>DEFENSE & STRATEGIC ADVISORY</div>
+      <div>WASHINGTON D.C.</div>
+    </header>
+
+    <section>
+      <div class="tag-strip">ACCESS &bull; MOVEMENT &bull; OUTCOME</div>
+      <h1 class="hero-title">NETWORK MOBILITY SOLUTIONS.</h1>
+      <p class="hero-subtext">
+        The network that opens the door, moves the right capability to it, and delivers the outcome — for government and mission-driven problems worldwide.
+      </p>
+    </section>
+
+    <footer class="footer-bar">
+      <div>LAT 7.4°S &nbsp; LON 72.8°W &nbsp; [TRACKING]</div>
+      <button class="sensor-btn">&bull; SENSOR VIEW</button>
+    </footer>
+  </main>
+
+  <script>
+    const container = document.getElementById('webgl-globe');
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+    camera.position.z = 210;
+
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    const globeGroup = new THREE.Group();
+    scene.add(globeGroup);
+
+    const coreGeo = new THREE.SphereGeometry(72, 64, 64);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0x0a0907,
+      transparent: true,
+      opacity: 0.95
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    globeGroup.add(core);
+
+    const particleCount = 2800;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const radius = 74;
+
+    for (let i = 0; i < particleCount; i++) {
+      const phi = Math.acos(-1 + (2 * i) / particleCount);
+      const theta = Math.sqrt(particleCount * Math.PI) * phi;
+
+      positions[i * 3] = radius * Math.cos(theta) * Math.sin(phi);
+      positions[i * 3 + 1] = radius * Math.sin(theta) * Math.sin(phi);
+      positions[i * 3 + 2] = radius * Math.cos(phi);
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const pMaterial = new THREE.PointsMaterial({
+      color: 0xc5a059,
+      size: 1.25,
+      transparent: true,
+      opacity: 0.75
+    });
+    const pointCloud = new THREE.Points(geometry, pMaterial);
+    globeGroup.add(pointCloud);
+
+    const ringGeo = new THREE.RingGeometry(73.5, 74, 64);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xc5a059, side: THREE.DoubleSide, transparent: true, opacity: 0.2 });
+    const ringX = new THREE.Mesh(ringGeo, ringMat);
+    ringX.rotation.x = Math.PI / 2;
+    globeGroup.add(ringX);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xc5a059, 1.5);
+    dirLight.position.set(100, 100, 100);
+    scene.add(dirLight);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      globeGroup.rotation.y += 0.0015;
+      globeGroup.rotation.x = 0.2;
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+
+</body>
+</html>
