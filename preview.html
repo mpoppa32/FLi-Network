@@ -457,7 +457,7 @@ renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(deviceP
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.outputEncoding=THREE.sRGBEncoding;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=0.08;
+renderer.toneMappingExposure=0.05;
 renderer.setClearColor(0x000000,0);
 document.body.insertBefore(renderer.domElement,document.getElementById('ui'));
 
@@ -1151,7 +1151,7 @@ function frame(now){
   // ---- assembly: the instrument comes together on arrival ----
   if(!asmStart)asmStart=now;
   if(!asmDone){
-    var aa=REDUCED?1:Math.min(1,(now-asmStart)/2600);
+    var aa=REDUCED?1:Math.min(1,(now-asmStart)/2200);
     var OFF=[0,0.14,0.28,0.07,0.20],SPN=[1.6,-2.2,2.9,-1.1,0.9];
     for(var b2=0;b2<RINGS.length;b2++){
       var lo=OFF[b2],ai=Math.max(0,Math.min(1,(aa-lo)/(1-lo)));
@@ -1162,7 +1162,7 @@ function frame(now){
     }
     var ec=1-Math.pow(1-aa,3);core.scale.setScalar(0.88+0.12*ec);
     if(aa>0.55&&!uiEl.classList.contains('live'))uiEl.classList.add('live');
-    if(aa>0.55&&!boot2.classList.contains('gone')){boot2.classList.add('gone');window.__wakeStart=now;}
+    if(aa>0.30&&!boot2.classList.contains('gone')){boot2.classList.add('gone');window.__wakeStart=now;}
     if(aa>=1){asmDone=true;for(var b3=0;b3<RINGS.length;b3++)RINGS[b3].scale.setScalar(1);core.scale.setScalar(1);
       window.__asm=true;}
   }
@@ -1185,7 +1185,7 @@ function frame(now){
   if(now-lastUI>220){ui(now);lastUI=now;}
   var _te=document.body.classList.contains('blu')?0.42:0.88;window.__te=(window.__te||0.88)+(_te-(window.__te||0.88))*0.08;renderer.toneMappingExposure=window.__te;
   if(REDUCED){renderer.toneMappingExposure=0.88;}
-  else if(window.__wakeStart){var _w=Math.min(1,(now-window.__wakeStart)/4600);var _we=_w*_w*(3-2*_w);renderer.toneMappingExposure=0.08+_we*(0.88-0.08);}
+  else if(window.__wakeStart&&!window.__wakeDone){var _w=Math.min(1,(now-window.__wakeStart)/6000);var _we=_w*_w*(3-2*_w);renderer.toneMappingExposure=0.05+_we*(0.88-0.05);if(_w>=1)window.__wakeDone=true;}
   if(POST){POST.render();}else{renderer.render(scene,camera);}
 }
 requestAnimationFrame(frame);
