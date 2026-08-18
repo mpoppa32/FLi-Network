@@ -93,6 +93,81 @@ describe("parseIsoDate — Date.parse must never adjudicate this field", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PREFIX-MATCH vs STRICT-EQUAL — the decision, pinned against the REAL corpus.
+//
+// Measured across all 359 Atlas action items (2026-08-12):
+//    70  bare YYYY-MM-DD           <- all strict-equal would have caught
+//     7  ISO + [T|space] + text    <- prefix-match adds these; 6 are >21d overdue
+//     0  ISO prefix, NO delimiter  <- requiring the delimiter costs nothing here
+//    19  date embedded, not leading<- REJECTED; 8 of them are >21d overdue
+//   263  no ISO date anywhere
+//
+// CHOSE prefix-match anchored at ^ with a required [T|space] delimiter.
+// Strict-equal was REJECTED: it would have missed 6 genuinely overdue items
+// whose deadline is a real ISO date with a human aside appended.
+// Full embedded-date reading was ALSO rejected, deliberately, and it costs 8
+// sweepable items: knowing whether an embedded date IS the deadline requires
+// reading the prose around it. "Before 2026-09-17" is a bound, not a due date;
+// "During Camp Grayling event (2026-06-06 through ~2026-06-27)" is a range;
+// "~2026-07-27" is approximate. Guessing which is which is the same class of
+// move that produced 9,352 days overdue. Those 8 stay open and visible; they
+// become sweepable when the ingest starts emitting ISO dates (queued).
+// ═══════════════════════════════════════════════════════════════════════════
+describe("parseIsoDate — prefix-match, pinned against real corpus values", () => {
+  /** Verbatim from live Atlas. Strict-equal would treat every one as undated. */
+  const REAL_PREFIXED = [
+    "2026-05-01 (same day, in car)",
+    "2026-05-01 (throughout the day)",
+    "2026-05-05 (Tuesday)",
+    "2026-05-25 to 2026-05-27",
+    "2026-06-04 (tomorrow per Rick)",
+    "2026-06-08 week",
+    "2026-08-06 (design) / 2026-08-07 (meeting)",
+  ];
+
+  it("reads the leading date on every prefixed value in the live corpus", () => {
+    for (const v of REAL_PREFIXED) {
+      expect(parseIsoDate(v), `${v} must parse`).not.toBeNull();
+    }
+    // …and reads the FIRST date, never a later one in the same string.
+    expect(parseIsoDate("2026-05-25 to 2026-05-27")).toBe(Date.UTC(2026, 4, 25));
+    expect(parseIsoDate("2026-08-06 (design) / 2026-08-07 (meeting)")).toBe(Date.UTC(2026, 7, 6));
+  });
+
+  it("REJECTED OPTION pinned — strict-equal would have missed these 7", () => {
+    // If someone tightens the regex to /^\d{4}-\d{2}-\d{2}$/, this goes red and
+    // names the cost instead of silently shrinking the sweep.
+    const strictEqual = /^\d{4}-\d{2}-\d{2}$/;
+    for (const v of REAL_PREFIXED) {
+      expect(strictEqual.test(v), `${v} is not bare ISO`).toBe(false);
+      expect(parseIsoDate(v)).not.toBeNull();
+    }
+  });
+
+  it("REJECTED OPTION pinned — embedded dates stay undated, and that is deliberate", () => {
+    // Verbatim from live Atlas. Each carries a real date; each needs the prose
+    // around it read to know what the date MEANS. 8 of the 19 are >21d overdue,
+    // so this refusal has a measured cost and is taken with eyes open.
+    const REAL_EMBEDDED = [
+      "Tonight (2026-04-20)",
+      "Monday–Wednesday of following week (circa 2026-05-25 to 2026-05-27)",
+      "Before Friday (2026-06-05 implied)",
+      "During Camp Grayling event (2026-06-06 through ~2026-06-27)",
+      "This week or early next week (by ~2026-06-08)",
+      "Week of 2026-08-03",
+      "Before 2026-08-20 Novion decision",
+      "~2026-07-27",
+      "Within 1 hour of meeting (2026-08-03)",
+      "Before 2026-09-17",
+    ];
+    for (const v of REAL_EMBEDDED) {
+      expect(parseIsoDate(v), `${v} must be treated as undated`).toBeNull();
+      expect(isStaleActionItem({ deadline: v }, NOW).reason).toBe("undated_or_free_text");
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 describe("isStaleActionItem — fail-safe policy", () => {
   it("sweeps an item more than 21 days overdue", () => {
     const d = isStaleActionItem({ deadline: daysAgo(22), task: "t" }, NOW);
