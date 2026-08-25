@@ -3,12 +3,29 @@ import {
   parseIsoDate,
   isStaleActionItem,
   actionItemArchiveNote,
+  hasUnguessableDeadline,
   ACTION_ITEM_OVERDUE_DAYS,
 } from "./actionItemArchive";
 
 const NOW = Date.UTC(2026, 7, 12); // 2026-08-12
 const DAY = 86400000;
 const daysAgo = (n: number) => new Date(NOW - n * DAY).toISOString().slice(0, 10);
+
+/**
+ * Local-calendar Y-M-D. Used ONLY on `Date.parse` output below, and the reason
+ * is part of the hazard being pinned: V8's lenient fallback resolves free text
+ * to **local** midnight, not UTC. Reading it back with `toISOString()` therefore
+ * shifts the answer by the machine's offset — these assertions read `2001-02-01`
+ * in any zone at or behind UTC and `2001-01-31` in any zone ahead of it, so they
+ * passed in CI (UTC) and on a US-timezone laptop while failing on the same code
+ * in Asia/Singapore (caught 2026-08-25). A test that pins a hazard must not
+ * itself depend on where it runs.
+ */
+const ymdLocal = (ms: number) => {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // THE REGRESSION THIS WHOLE MODULE EXISTS FOR.
@@ -32,16 +49,18 @@ describe("parseIsoDate — Date.parse must never adjudicate this field", () => {
     // asserting a mechanism you have not executed.
     const fabricated = Date.parse("Phase 1");
     expect(Number.isFinite(fabricated)).toBe(true);
-    expect(new Date(fabricated).getUTCFullYear()).toBe(2001);
+    // Local, not UTC — see `ymdLocal`. The fabricated instant is local midnight,
+    // so in any zone ahead of UTC its UTC year is the PREVIOUS one.
+    expect(new Date(fabricated).getFullYear()).toBe(2001);
     // …which is how ~9,350 days overdue happened:
     expect(Math.floor((NOW - fabricated) / DAY)).toBeGreaterThan(9000);
   });
 
   it("fabricates for the whole 'Phase N' family, each a different wrong date", () => {
     // Not one quirky string — a systematic misread of a common label shape.
-    expect(new Date(Date.parse("Phase 2")).toISOString().slice(0, 10)).toBe("2001-02-01");
-    expect(new Date(Date.parse("Phase 1-2")).toISOString().slice(0, 10)).toBe("2001-01-02");
-    expect(new Date(Date.parse("Friday April 25")).toISOString().slice(0, 10)).toBe("2001-04-25");
+    expect(ymdLocal(Date.parse("Phase 2"))).toBe("2001-02-01");
+    expect(ymdLocal(Date.parse("Phase 1-2"))).toBe("2001-01-02");
+    expect(ymdLocal(Date.parse("Friday April 25"))).toBe("2001-04-25");
   });
 
   it("returns null for 'Phase 1' rather than a fabricated 2001 date", () => {
@@ -164,6 +183,72 @@ describe("parseIsoDate — prefix-match, pinned against real corpus values", () 
       expect(parseIsoDate(v), `${v} must be treated as undated`).toBeNull();
       expect(isStaleActionItem({ deadline: v }, NOW).reason).toBe("undated_or_free_text");
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE REFUSAL MUST BE DISCLOSED, NOT JUST MADE.
+//
+// `parseIsoDate` returning null has two causes that must never be reported as
+// one: nothing to guess at ("Ongoing") vs a date whose ROLE needs prose read
+// ("Before 2026-09-17"). Only the second is a refusal with a cost, and the
+// brief now says how many there are. Under-counting hides the cost; over-
+// counting (lumping in all 282 undated) buries it in noise.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("hasUnguessableDeadline — what the rule refused to read", () => {
+  it("counts the embedded-date values, verbatim from live Atlas", () => {
+    const REAL_EMBEDDED = [
+      "Tonight (2026-04-20)",
+      "Monday–Wednesday of following week (circa 2026-05-25 to 2026-05-27)",
+      "Before Friday (2026-06-05 implied)",
+      "During Camp Grayling event (2026-06-06 through ~2026-06-27)",
+      "This week or early next week (by ~2026-06-08)",
+      "Week of 2026-08-03",
+      "Before 2026-08-20 Novion decision",
+      "~2026-07-27",
+      "Within 1 hour of meeting (2026-08-03)",
+      "Before 2026-09-17",
+    ];
+    for (const v of REAL_EMBEDDED) {
+      expect(hasUnguessableDeadline({ deadline: v }), `${v} must be disclosed`).toBe(true);
+    }
+  });
+
+  it("does NOT count free text with no date in it — there is nothing to guess AT", () => {
+    // The 263. Lumping these in would report 282 instead of 19 and turn a
+    // specific, actionable disclosure into background noise.
+    for (const v of ["Ongoing", "TBD", "Upon contract signing", "Phase 1", "ASAP", "Friday April 25"]) {
+      expect(hasUnguessableDeadline({ deadline: v }), `${v} is not a refusal`).toBe(false);
+    }
+  });
+
+  it("does NOT count deadlines the rule CAN read — those are swept, not disclosed", () => {
+    for (const v of ["2026-04-28", "2026-05-01 (same day, in car)", "2026-06-08 week"]) {
+      expect(hasUnguessableDeadline({ deadline: v })).toBe(false);
+      expect(parseIsoDate(v)).not.toBeNull();
+    }
+  });
+
+  it("counts date-SHAPED values that are not valid dates", () => {
+    // "2026-13-45" parses to null and looks like a date. A human should see it.
+    expect(parseIsoDate("2026-13-45")).toBeNull();
+    expect(hasUnguessableDeadline({ deadline: "2026-13-45" })).toBe(true);
+  });
+
+  it("is silent on missing/empty/non-object input rather than throwing", () => {
+    expect(hasUnguessableDeadline({})).toBe(false);
+    expect(hasUnguessableDeadline({ deadline: "" })).toBe(false);
+    expect(hasUnguessableDeadline({ deadline: "   " })).toBe(false);
+    expect(hasUnguessableDeadline({ deadline: null })).toBe(false);
+    expect(hasUnguessableDeadline(null)).toBe(false);
+    expect(hasUnguessableDeadline("2026-04-20")).toBe(false);
+  });
+
+  it("never reports overdue-ness — that would be the guess it refuses", () => {
+    // Deliberately returns a boolean, not a date or a day count. If this ever
+    // becomes `{ overdueDays }`, someone has resolved an embedded date after
+    // all, and the archive path is one refactor from consuming it.
+    expect(typeof hasUnguessableDeadline({ deadline: "Before 2026-09-17" })).toBe("boolean");
   });
 });
 

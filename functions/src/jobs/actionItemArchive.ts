@@ -71,6 +71,66 @@ export function parseIsoDate(raw: unknown): number | null {
   return ms;
 }
 
+/**
+ * "A date is in there, and this rule will not guess what it MEANS."
+ *
+ * The counterpart to `parseIsoDate`'s refusal, and the reason it exists:
+ * refusing to guess is correct, but a refusal nobody is told about is a silent
+ * permanent exclusion — the exact failure class the last two weeks were spent
+ * killing. `parseIsoDate` returning null has two very different causes and they
+ * must not be reported as one:
+ *
+ *   - `"Ongoing"`, `"TBD"`, `"Upon contract signing"`, `""` — there is nothing
+ *     to guess AT. The transcript never carried a date. **Not counted here.**
+ *   - `"Before 2026-09-17"`, `"Week of 2026-08-03"`, `"~2026-07-27"`,
+ *     `"During Camp Grayling event (2026-06-06 through ~2026-06-27)"` — a real
+ *     date is present and its ROLE requires reading the prose around it: a
+ *     bound, a week, an approximation, a range. **Counted here**, 19 of 359 on
+ *     Atlas as of 2026-08-12, of which 8 look overdue.
+ *
+ * "Look overdue" is deliberately not asserted anywhere in this module, and this
+ * function deliberately does not return a date. Deciding those 8 ARE overdue
+ * would mean picking which embedded date is the deadline — the same guess the
+ * sweep refuses. The split is: a loose scan may decide whether to SHOW an item
+ * to Mike; only `parseIsoDate` may decide whether to ARCHIVE one. Surfacing is
+ * reversible by reading; archiving writes.
+ */
+export function hasUnguessableDeadline(item: unknown): boolean {
+  const a = item as Record<string, unknown> | null;
+  if (!a || typeof a !== "object") return false;
+  const raw = String(a.deadline ?? "").trim();
+  if (!raw) return false;
+  if (parseIsoDate(raw) !== null) return false;
+  // Date-SHAPED, not date-valid: "2026-13-45" lands here too, and should — a
+  // deadline that looks like a date and is not one is precisely a thing to put
+  // in front of a human rather than resolve in code.
+  return /\d{4}-\d{2}-\d{2}/.test(raw);
+}
+
+/**
+ * The one wording of the refusal disclosure, shared by every surface that states it.
+ *
+ * ONE DEFINITION, DELIBERATELY. The daily brief renders this line in both MIME
+ * parts and the sweep manifest generator prints it in its console summary — three
+ * places, and until now the digest built the sentence inline. Two near-identical
+ * strings in two files is precisely the shape LOG 2026-08-12 caught on the sweep
+ * selector ("if you find yourself writing the rule twice, the second copy is the
+ * bug"): they do not drift loudly, they drift one word at a time until the brief
+ * and the audit artifact describe the same number differently.
+ *
+ * Lives HERE rather than in `dailyBriefDigest.ts` for one mechanical reason: this
+ * module imports nothing, so a plain `node` script can require the compiled
+ * `lib/jobs/actionItemArchive.js` without dragging in `firebase-admin` and the
+ * Gmail sender. The digest already imports from here; the edge is one-directional.
+ *
+ * `sep` exists because the HTML twin uses "·" where the plaintext uses an em dash.
+ */
+export function unguessableDeadlineNotice(n: number, sep = "—"): string {
+  return n === 1
+    ? `1 action item has a deadline this rule will not guess at ${sep} review in Corsair`
+    : `${n} action items have deadlines this rule will not guess at ${sep} review in Corsair`;
+}
+
 export interface ActionItemStaleDecision {
   stale: boolean;
   /** Whole days past `deadline`; null when undated or unreadable. */

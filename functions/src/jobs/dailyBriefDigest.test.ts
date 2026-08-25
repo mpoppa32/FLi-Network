@@ -20,6 +20,7 @@ import {
   selectHighPriorityActions,
   countRecentAutoArchived,
   isOpenActionItem,
+  countUnguessableDeadlines,
   type BriefSubscription,
 } from "./dailyBriefDigest";
 
@@ -755,6 +756,10 @@ function fullFixture() {
         actionItems: [
           { task: "Send the ROM", owner: "Mike", priority: "high", deadline: "2026-08-02" },
           { task: "Chase the NDA", owner: "Bryce", priority: "high" },
+          // MEDIUM priority, deliberately: it never renders as a bullet, but it
+          // must still be counted by the disclosure line. Proves the count is
+          // not priority-scoped, and puts that line in the golden.
+          { task: "Ship the samples", owner: "Mike", priority: "medium", deadline: "Before 2026-09-17" },
         ],
         risks: [{ risk: "Single-source motor supply", severity: "high" }],
       },
@@ -902,6 +907,91 @@ describe("composeBrief — HTML/plaintext section parity", () => {
     expect(html).toContain("No signals cleared the bar.");
     // and it must sit BELOW the actions, not above them
     expect(html.indexOf("Needs you today")).toBeLessThan(html.indexOf("Overnight intelligence"));
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE REFUSAL IS DISCLOSED (relay 018). `parseIsoDate` will not guess at
+// "Before 2026-09-17", which is right — and 19 real Atlas items are invisible
+// to every automatic cadence because of it. Silent permanent exclusion is the
+// failure class of the P13.391 swallow. So the brief says the number out loud,
+// in BOTH MIME parts, on quiet days too.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("countUnguessableDeadlines", () => {
+  const mtg = (items: any[]) => [{ intel: { actionItems: items } }];
+
+  it("counts only items whose deadline hides a date the rule refuses to read", () => {
+    expect(countUnguessableDeadlines(mtg([
+      { task: "a", deadline: "Before 2026-09-17" },   // counted
+      { task: "b", deadline: "Week of 2026-08-03" },  // counted
+      { task: "c", deadline: "2026-08-02" },          // readable — swept, not disclosed
+      { task: "d", deadline: "Ongoing" },             // nothing to guess at
+      { task: "e" },                                  // no deadline at all
+    ]))).toBe(2);
+  });
+
+  it("stops counting an item once it is done or archived", () => {
+    // The line must shrink as the backlog is worked. A disclosure that only
+    // ever grows is a nag, and a nag about records nobody can act on.
+    expect(countUnguessableDeadlines(mtg([
+      { task: "a", deadline: "Before 2026-09-17", done: true },
+      { task: "b", deadline: "Week of 2026-08-03", archivedAt: "2026-08-12T00:00:00Z" },
+      { task: "c", deadline: "~2026-07-27" },
+    ]))).toBe(1);
+  });
+
+  it("survives meetings with no intel, no actionItems, or a non-array", () => {
+    expect(countUnguessableDeadlines([
+      null, {}, { intel: {} }, { intel: { actionItems: "nope" } }, { intel: { actionItems: [null] } },
+    ] as unknown[])).toBe(0);
+  });
+});
+
+describe("composeBrief — the unreadable-deadline disclosure", () => {
+  it("states the count in the plaintext, and is not priority-scoped", async () => {
+    fullFixture();
+    const text = await compose(sub());
+    // The medium-priority "Ship the samples" is counted but never bulleted.
+    expect(text).toContain("1 action item has a deadline this rule will not guess at — review in Corsair");
+    expect(text).not.toContain("• Ship the samples");
+  });
+
+  it("pluralises, and counts across meetings", async () => {
+    fullFixture();
+    tree.workspaces[WS].meetings.m2 = {
+      meta: { title: "Second", date: "2026-08-04" },
+      intel: { actionItems: [{ task: "x", priority: "low", deadline: "During Camp Grayling event (2026-06-06 through ~2026-06-27)" }] },
+    };
+    const text = await compose(sub());
+    expect(text).toContain("2 action items have deadlines this rule will not guess at");
+  });
+
+  it("appears in the HTML part too — either part may be the one a model reads", async () => {
+    fullFixture();
+    const { html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(html).toContain("1 action item has a deadline this rule will not guess at · review in Corsair");
+  });
+
+  it("renders on a day with NO high-priority actions — the quiet-day case", async () => {
+    // The one that matters. Gating this on highActions.length would hide the
+    // disclosure precisely when the unreadable backlog is all that is left.
+    tree.workspaces[WS].meetings = {
+      m: { meta: { title: "t" }, intel: { actionItems: [{ task: "x", priority: "low", deadline: "~2026-07-27" }] } },
+    };
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(text).toContain("=== HIGH PRIORITY ACTIONS ===");
+    expect(text).toContain("1 action item has a deadline this rule will not guess at");
+    expect(html).toContain("Needs you today"); // parity holds on the quiet day too
+  });
+
+  it("says NOTHING when there is nothing to disclose", async () => {
+    // Rule 11 cuts both ways: a line that always prints stops being information.
+    tree.workspaces[WS].meetings = {
+      m: { meta: { title: "t" }, intel: { actionItems: [{ task: "x", priority: "high", deadline: "2026-08-02" }] } },
+    };
+    const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(text).not.toContain("will not guess at");
+    expect(html).not.toContain("will not guess at");
   });
 });
 

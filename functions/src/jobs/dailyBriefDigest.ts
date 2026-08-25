@@ -36,6 +36,10 @@ import * as admin from "firebase-admin";
 import { createLogger, generateJobId } from "../framework/logger";
 import type { BriefOutput, BriefItem } from "./briefSynthesisCommon";
 import { sendViaGmail } from "../capture/gmailSend";
+// One-directional: the digest imports the sweep policy, never the reverse.
+// `actionItemArchive` imports nothing from this file precisely so `isOpenActionItem`
+// can live here and `hasUnguessableDeadline` can live there without a cycle.
+import { hasUnguessableDeadline, unguessableDeadlineNotice } from "./actionItemArchive";
 
 // P13.379 — the morning brief is emailed from the operator's OWN Gmail
 // (capture/gmailSend → gmail.users.messages.send on the existing
@@ -254,6 +258,37 @@ export function isOpenActionItem(item: unknown): boolean {
   const a = item as { done?: unknown; archivedAt?: unknown };
   if (a.done) return false;
   return a.archivedAt === undefined || a.archivedAt === null || String(a.archivedAt).trim() === "";
+}
+
+/**
+ * How many OPEN action items carry a deadline the sweep rule refuses to read.
+ *
+ * The disclosure half of `parseIsoDate`'s refusal. The rule not guessing at
+ * `"Before 2026-09-17"` is correct; the system saying nothing about what it
+ * refused would leave ~19 real items permanently invisible to every automatic
+ * cadence — silent permanent exclusion, which is the failure class P13.391 and
+ * the auto-link swallow both belong to. Same principle as "No signals cleared
+ * the bar": the absence gets said out loud.
+ *
+ * NOT priority-scoped, even though it renders under HIGH PRIORITY ACTIONS.
+ * Scoping it to `priority === 'high'` would report 8 of 19 and hide the rest —
+ * under-disclosure inside a disclosure feature. The wording says "action items"
+ * rather than "high priority actions" so the number cannot be misread.
+ *
+ * Filtered through `isOpenActionItem`, so an item that gets marked done or
+ * swept stops being counted — the line shrinks as the backlog is worked, and
+ * cannot nag about records nobody can act on any more.
+ */
+export function countUnguessableDeadlines(meetings: unknown[]): number {
+  let n = 0;
+  (meetings as any[]).forEach((m: any) => {
+    const items = (m && m.intel && m.intel.actionItems) || [];
+    if (!Array.isArray(items)) return;
+    items.forEach((a: any) => {
+      if (a && isOpenActionItem(a) && hasUnguessableDeadline(a)) n++;
+    });
+  });
+  return n;
 }
 
 /**
@@ -625,7 +660,12 @@ export async function composeBrief(
 
   if (sub.incActions !== false && meetings.length) {
     const highActions = selectHighPriorityActions(meetings as unknown[], Date.now(), 8);
-    if (highActions.length) {
+    // Counted whether or not any high-priority action renders. Gating the
+    // disclosure on `highActions.length` would hide it on exactly the quiet
+    // days when an unreadable backlog is the only thing left to report.
+    const unguessable = countUnguessableDeadlines(meetings as unknown[]);
+    const unguessableLine = unguessableDeadlineNotice(unguessable);
+    if (highActions.length || unguessable > 0) {
       lines.push("=== HIGH PRIORITY ACTIONS ===");
       highActions.forEach((a: any) => {
         const due = a.deadline
@@ -633,6 +673,7 @@ export async function composeBrief(
           : "";
         lines.push(`• ${a.task}${a.owner ? ` [${a.owner}]` : ""}${due}`);
       });
+      if (unguessable > 0) lines.push(unguessableLine);
       lines.push("");
       htmlSections.push({
         label: "Needs you today",
@@ -642,6 +683,11 @@ export async function composeBrief(
             .filter(Boolean).join(" · ") || undefined,
           tone: a.overdueDays > 0 ? "overdue" : "normal",
         })),
+        // The HTML twin. Both parts carry it because either one may be the part
+        // that reaches a model's context (the A1 hedge, enforced by the parity test).
+        // Built from the shared notice rather than string-replacing the plaintext
+        // line — a `.replace(" — ", …)` silently no-ops the day that wording moves.
+        footnote: unguessable > 0 ? unguessableDeadlineNotice(unguessable, "·") : undefined,
       });
     }
   }
