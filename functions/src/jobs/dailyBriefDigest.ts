@@ -39,7 +39,7 @@ import { sendViaGmail } from "../capture/gmailSend";
 // One-directional: the digest imports the sweep policy, never the reverse.
 // `actionItemArchive` imports nothing from this file precisely so `isOpenActionItem`
 // can live here and `hasUnguessableDeadline` can live there without a cycle.
-import { hasUnguessableDeadline, unguessableDeadlineNotice } from "./actionItemArchive";
+import { hasUnguessableDeadline, unguessableDeadlineNotice, parseIsoDate } from "./actionItemArchive";
 
 // P13.379 — the morning brief is emailed from the operator's OWN Gmail
 // (capture/gmailSend → gmail.users.messages.send on the existing
@@ -179,6 +179,10 @@ function renderBriefHtml(
   generatedLabel: string,
   sections: BriefSection[],
   footerNote: string,
+  /** The ingest heartbeat. Rendered at the masthead rather than as a section
+   *  because it is not one — it has no rows, and it describes the brief itself
+   *  rather than anything in it. Optional so existing callers/tests compile. */
+  ingest?: { text: string; warn: boolean },
 ): string {
   const label = (text: string) =>
     `<tr><td style="padding:26px 0 8px 0;border-bottom:1px solid ${C.hairline}"><span style="font-family:${C.sans};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:${C.secondary}">${esc(text)}</span></td></tr>`;
@@ -216,6 +220,15 @@ function renderBriefHtml(
     `<tr><td style="padding:28px 28px 0 28px">`,
     `<div style="font-family:${C.serif};font-size:26px;font-weight:400;color:${C.ink};letter-spacing:-.01em">${esc(workspaceName)} Brief</div>`,
     `<div style="font-family:${C.sans};font-size:12px;color:${C.muted};padding-top:4px">${esc(generatedLabel)}</div>`,
+    // Muted at or below the threshold — a heartbeat, not an alert. Past it,
+    // amber and bold: the WARNING tone deliberately, not the overdue red, which
+    // is reserved for work that is late. A stale ingest is not late work; it is
+    // the brief telling you it may not know about your work at all.
+    ingest
+      ? `<div style="font-family:${C.sans};font-size:12px;padding-top:4px;${
+          ingest.warn ? `color:${C.dueSoon};font-weight:600` : `color:${C.muted}`
+        }">${esc(ingest.text)}</div>`
+      : "",
     `</td></tr>`,
     `<tr><td style="padding:0 28px 28px 28px">${body}</td></tr>`,
     `<tr><td style="padding:0 28px 24px 28px;border-top:1px solid ${C.hairline}">`,
@@ -289,6 +302,74 @@ export function countUnguessableDeadlines(meetings: unknown[]): number {
     });
   });
   return n;
+}
+
+const DAY_MS = 86400000;
+
+/** Above this, the heartbeat becomes a warning. Seven days: long enough that a
+ *  normal quiet week or a holiday does not cry wolf, short enough that the
+ *  nineteen-day outage of 2026-08-25 would have been shouting for twelve. */
+export const INGEST_WARN_DAYS = 7;
+
+/**
+ * THE INGEST HEARTBEAT — "Newest meeting in Corsair: N days old".
+ *
+ * WHY IT EXISTS. On 2026-08-25 the sweep session measured Atlas and found the
+ * newest meeting dated 2026-08-03 and the newest record created 2026-08-06:
+ * nothing had entered the workspace for nineteen days. Nobody knew. It was
+ * found by accident while checking something else, and every automatic surface
+ * — the daily brief included — read exactly as calm as it does on a busy week,
+ * because a brief assembled from stale data looks identical to a brief
+ * assembled from fresh data. **Absence must never look like calm** (the same
+ * principle as "No signals cleared the bar").
+ *
+ * NEVER OMITTED, deliberately. At 0-1 days it is a heartbeat, and a heartbeat
+ * is only worth anything if its silence is meaningful — a line that appears
+ * only when things are bad cannot be distinguished from a line that broke.
+ *
+ * WHICH CLOCK, AND WHY IT IS `meta.date`. Measured on all 592 live Atlas
+ * records, 2026-08-25:
+ *   - `meta.date` — present on 592/592 and **bare `YYYY-MM-DD` on 592/592**.
+ *     Zero free text, unlike action-item deadlines (79% free text).
+ *   - `ts` — present on 592/592 but MIXED: 560 epoch numbers and 32 ISO
+ *     strings (the hand-logged ones, which are also the newest). A naive
+ *     `Number(v.ts)` drops exactly those 32 and reports a three-week-older
+ *     answer — this session made that error before catching it.
+ *   - `capturedAt` — **does not exist on any record.** Named in the relay that
+ *     requested this line; checked before building on it (Rule 14).
+ *   - `approvedAt` — 553 records, auto-capture only, newest 2026-07-06.
+ * `meta.date` also fails in the SAFE direction: it is the age of the newest
+ * meeting *content*, so it cannot be reset to a falsely-calm zero by importing
+ * old material, and a capture outage makes it grow without bound. `ts` would
+ * report "0 days" the moment anything was backfilled.
+ *
+ * Dates go through the strict `parseIsoDate` — never `Date.parse`, which does
+ * not reject free text but invents dates for it (LOG 2026-08-11).
+ */
+export function ingestRecency(
+  meetings: unknown[],
+  nowMs: number
+): { text: string; days: number | null; warn: boolean } {
+  let newest: number | null = null;
+  (meetings as any[]).forEach((m: any) => {
+    const ms = parseIsoDate(m && m.meta && m.meta.date);
+    if (ms !== null && (newest === null || ms > newest)) newest = ms;
+  });
+
+  if (newest === null) {
+    // No meetings, or not one parseable date among them. Said out loud rather
+    // than skipped: "we cannot tell" is itself the alarming answer.
+    return { text: "Newest meeting in Corsair: none on record", days: null, warn: true };
+  }
+
+  // Clamped at 0. A meeting dated tomorrow (calendar capture runs ahead) would
+  // otherwise render "-1 days old", which reads as a bug and buries the signal.
+  const days = Math.max(0, Math.floor((nowMs - (newest as number)) / DAY_MS));
+  return {
+    text: `Newest meeting in Corsair: ${days} ${days === 1 ? "day" : "days"} old`,
+    days,
+    warn: days > INGEST_WARN_DAYS,
+  };
 }
 
 /**
@@ -428,6 +509,13 @@ export async function composeBrief(
   const htmlSections: BriefSection[] = [];
   lines.push(`CORSAIR DAILY BRIEF — ${workspaceName}`);
   lines.push(`Generated: ${new Date().toUTCString()}`);
+  // The ingest heartbeat, at the masthead because it frames everything below:
+  // if the newest meeting is three weeks old, that is the first thing worth
+  // knowing about the rest of this email. Emitted in BOTH parts, always, and
+  // BEFORE the first === key — so it adds a twelfth machine-readable line
+  // without reordering any of the frozen eleven.
+  const ingest = ingestRecency(meetings as unknown[], Date.now());
+  lines.push(ingest.text);
   lines.push("");
 
   // Overnight intelligence — the synthesized OSINT Brief (signals / awards /
@@ -847,6 +935,7 @@ export async function composeBrief(
     `Generated ${new Date().toUTCString()}`,
     htmlSections,
     archivedRecently > 0 ? `Archived ${archivedRecently} stale (>30d, unscheduled).` : "",
+    ingest,
   );
 
   // The line-to-div transform and its dark wrapper are GONE (P13.401). They

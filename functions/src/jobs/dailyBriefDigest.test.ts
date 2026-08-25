@@ -21,6 +21,7 @@ import {
   countRecentAutoArchived,
   isOpenActionItem,
   countUnguessableDeadlines,
+  ingestRecency,
   type BriefSubscription,
 } from "./dailyBriefDigest";
 
@@ -815,8 +816,9 @@ function fullFixture() {
 }
 
 describe("composeBrief — machine-readable section keys", () => {
-  /** The ten keys, in emission order. Renaming or reordering any one of them
-   *  silently degrades three live routines — so this test is the tripwire. */
+  /** The nine `=== HEADER ===` keys, in emission order. Renaming or reordering
+   *  any one of them silently degrades three live routines — so this test is
+   *  the tripwire. */
   const KEYS_IN_ORDER = [
     "=== OVERNIGHT INTELLIGENCE ===",
     "=== MASTER SHEET CHANGES (last 24h) ===",
@@ -829,16 +831,45 @@ describe("composeBrief — machine-readable section keys", () => {
     "=== OPEN COMMITMENTS ===",
   ];
 
-  it("emits all ten machine-readable keys, spelled exactly, in order", async () => {
+  /**
+   * THE AUTHORITATIVE LIST — every machine-readable key, header-shaped or not.
+   *
+   * It is consolidated here because it had drifted into three places: this
+   * array, an `ARCHIVED N STALE` regex tacked onto the assertion below, and a
+   * separate describe block for the refusal line. "The ten keys" was true when
+   * written and had quietly become twelve, which is exactly how a frozen
+   * contract stops being one — nobody renames a key, they just add one
+   * somewhere the list is not.
+   *
+   * Twelve, as of 2026-08-25: 9 headers + 3 line-shaped.
+   */
+  const LINE_SHAPED_KEYS: Array<[string, RegExp]> = [
+    ["archived-stale", /^ARCHIVED \d+ STALE \(>30d, unscheduled\)$/m],
+    ["unreadable-deadlines", /^\d+ action items? (has|have) (a )?deadlines? this rule will not guess at — review in Corsair$/m],
+    ["ingest-recency", /^Newest meeting in Corsair: (\d+ days? old|none on record)$/m],
+  ];
+
+  it("emits all twelve machine-readable keys, spelled exactly, in order", async () => {
     fullFixture();
     const text = await compose(sub());
-    // Every key present, exactly as spelled.
+    // Every header key present, exactly as spelled.
     for (const key of KEYS_IN_ORDER) expect(text).toContain(key);
-    // The tenth key is a line, not a === header.
-    expect(text).toMatch(/^ARCHIVED \d+ STALE \(>30d, unscheduled\)$/m);
+    // The three line-shaped keys, each named so a failure says which one.
+    for (const [name, re] of LINE_SHAPED_KEYS) {
+      expect(text, `line-shaped key "${name}" missing`).toMatch(re);
+    }
+    expect(KEYS_IN_ORDER.length + LINE_SHAPED_KEYS.length).toBe(12);
     // And in this order — a reordering breaks a consumer reading top-down.
     const positions = KEYS_IN_ORDER.map((k) => text.indexOf(k));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it("puts the ingest heartbeat at the masthead, ahead of every === key", async () => {
+    // It frames the rest of the email, and emitting it before the first key
+    // means a twelfth key was added without reordering any of the frozen nine.
+    fullFixture();
+    const text = await compose(sub());
+    expect(text.indexOf("Newest meeting in Corsair:")).toBeLessThan(text.indexOf(KEYS_IN_ORDER[0]));
   });
 
   it("uses the weekly parenthetical on a weekly subscription", async () => {
@@ -992,6 +1023,105 @@ describe("composeBrief — the unreadable-deadline disclosure", () => {
     const { text, html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
     expect(text).not.toContain("will not guess at");
     expect(html).not.toContain("will not guess at");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THE INGEST HEARTBEAT. Atlas took nothing in for nineteen days and every
+// automatic surface read as calm, because a brief built from stale data looks
+// exactly like a brief built from fresh data. Found by accident 2026-08-25.
+// ═══════════════════════════════════════════════════════════════════════════
+describe("ingestRecency", () => {
+  const at = (d: string) => ({ meta: { date: d } });
+  const NOWMS = Date.parse("2026-08-25T12:00:00Z");
+
+  it("reports the age of the NEWEST meeting, not the first or last in the list", () => {
+    const r = ingestRecency([at("2026-05-01"), at("2026-08-18"), at("2026-07-02")], NOWMS);
+    expect(r.days).toBe(7);
+    expect(r.text).toBe("Newest meeting in Corsair: 7 days old");
+  });
+
+  it("is a heartbeat at zero — never omitted, never silent", () => {
+    // The whole point. A line that only appears when things are bad is
+    // indistinguishable from a line that broke.
+    const r = ingestRecency([at("2026-08-25")], NOWMS);
+    expect(r.text).toBe("Newest meeting in Corsair: 0 days old");
+    expect(r.warn).toBe(false);
+  });
+
+  it("says 'day' not 'days' at one", () => {
+    expect(ingestRecency([at("2026-08-24")], NOWMS).text).toBe("Newest meeting in Corsair: 1 day old");
+  });
+
+  it("warns only PAST seven days, not at seven", () => {
+    expect(ingestRecency([at("2026-08-18")], NOWMS).warn).toBe(false); // 7d — a quiet week
+    expect(ingestRecency([at("2026-08-17")], NOWMS).warn).toBe(true);  // 8d
+  });
+
+  it("would have shouted through the real outage", () => {
+    // The actual measured state: newest Atlas meeting dated 2026-08-03.
+    const r = ingestRecency([at("2026-08-03")], NOWMS);
+    expect(r.days).toBe(22);
+    expect(r.warn).toBe(true);
+  });
+
+  it("NEVER uses Date.parse — a free-text FUTURE year would silence the heartbeat", () => {
+    // The discriminating case, and the first version of this test missed it.
+    // A fabricated PAST date is harmless here because we take the newest, so
+    // "Phase 1" -> 2001 changes nothing — a probe swapping in Date.parse stayed
+    // green. The danger is the other direction: Date.parse resolves these to
+    // dates in the FUTURE (measured on Node v24, 2026-08-25):
+    //     "2027"             -> 2027-01-01
+    //     "next year 2028"   -> 2027-12-31
+    //     "rescheduled 2029" -> 2028-12-31
+    // Any one of them becomes the "newest" meeting, clamps to 0, and the line
+    // reads "0 days old" — a heartbeat reporting perfect health through a total
+    // ingest outage. Worse than no line at all.
+    for (const poison of ["2027", "next year 2028", "rescheduled 2029"]) {
+      const r = ingestRecency([at(poison), at("2026-08-03")], NOWMS);
+      expect(r.days, `${poison} must not become the newest meeting`).toBe(22);
+      expect(r.warn).toBe(true);
+    }
+    // And a loosely-embedded real date is still refused, not read.
+    expect(ingestRecency([at("Week of 2026-08-03")], NOWMS).days).toBeNull();
+  });
+
+  it("says so out loud when it cannot tell, and treats that as a warning", () => {
+    for (const corpus of [[], [at("Ongoing")], [{}, null, { meta: {} }] as unknown[]]) {
+      const r = ingestRecency(corpus as unknown[], NOWMS);
+      expect(r.text).toBe("Newest meeting in Corsair: none on record");
+      expect(r.days).toBeNull();
+      expect(r.warn).toBe(true); // "we cannot tell" is the alarming answer
+    }
+  });
+
+  it("clamps a future-dated meeting to 0 rather than rendering negative days", () => {
+    // Calendar capture runs ahead of the meeting itself.
+    const r = ingestRecency([at("2026-09-01")], NOWMS);
+    expect(r.days).toBe(0);
+    expect(r.text).toBe("Newest meeting in Corsair: 0 days old");
+  });
+});
+
+describe("composeBrief — the ingest heartbeat renders in both parts", () => {
+  it("plaintext carries it, muted-case", async () => {
+    fullFixture();
+    const text = await compose(sub());
+    expect(text).toMatch(/^Newest meeting in Corsair: \d+ days? old$/m);
+  });
+
+  it("HTML carries it, and turns amber past the threshold", async () => {
+    tree.workspaces[WS].meetings = { m: { meta: { title: "t", date: "2026-05-01" }, intel: {} } };
+    const { html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(html).toContain("Newest meeting in Corsair:");
+    expect(html).toContain("#fab219");   // the warning tone…
+    expect(html).not.toMatch(/color:#d03b3b[^}]*">Newest meeting/); // …never the overdue red
+  });
+
+  it("HTML stays muted inside the threshold", async () => {
+    tree.workspaces[WS].meetings = { m: { meta: { title: "t", date: "2026-08-05" }, intel: {} } };
+    const { html } = await composeBrief(WS, "Atlas", sub(), fakeDb);
+    expect(html).toMatch(/color:#898781">Newest meeting in Corsair:/);
   });
 });
 
