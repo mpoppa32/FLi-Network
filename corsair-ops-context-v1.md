@@ -42,13 +42,19 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 - **Answer to relay 020's `[CONTEXT]` question: DELIBERATE, and it should stay.** The `[TAG]` prefix takes five distinct values (`PURSUIT / ADVERSARY / CUSTOMER / CAPABILITY / CONTEXT`) — it is real per-item classification in the layer the three LLM consumers read, so the HTML's "a label on 100% of items carries no information" rationale does not transfer. It was flagged upstream for an explicit call, never overridden, and is pinned by test. Not missed.
 - **New this session:** the refusal is now disclosed in the brief (19 items, both MIME parts, one shared wording); `scripts/sweep-manifest.mjs` and `scripts/sweep-action-items.mjs` are committed with `sweep-manifests/` gitignored; a timezone-fragile hazard test is fixed. **233 tests green, `tsc` clean.**
 
-### NEXT MOVE (2026-08-25)
+### RELAY 021 EXECUTED (2026-08-25, later session)
 
-1. **PUSH — needs Mike's word.** Three commits: `5d01be7` (refusal disclosure + TZ test fix), `87ddc5c` (manifest generator), plus the sweep/docs commit. The digest change deploys through CI on push; the sweep has ALREADY run (it is a data change, not a deploy) so the archived state is live regardless.
-2. **THE SYNTHETIC CLEANUP IS NOW TOP OF QUEUE, not queued.** It is no longer tidiness — it is half of "needs you today". Meeting **and** graph nodes together, its own manifest, Mike's decision (the fabricated people: a DARPA PM, an AFRL colonel, an AFRL contracts officer, a "Bryce Williams").
-3. **CHECK THE INGEST.** Three weeks with no new meetings in Atlas is either a real capture outage or an operator-side misconception. Nothing downstream is trustworthy until that is resolved — and it was found by accident, which means nothing monitors it.
-4. **Verify the 2026-08-26 11:00 UTC brief** against the sweep (STEP D): HIGH PRIORITY ACTIONS must no longer open with the April block. Expect the synthetic items at the top until #2 is done — that is understood, not a surprise.
-5. **STILL OWED — the operator-facing half.** There is still no UI in `FLiIntel.html` to tick an action item done. The sweep remains the only writer of these fields.
+- **PUSHED + CI GREEN.** `8f84a34..0c75c6e` (the three authorized hashes) — run [#32815436343](https://github.com/mpoppa32/FLi-Network/actions/runs/32815436343) **success on all three jobs**, step order observed from the jobs API rather than assumed: `Install + build functions` → `Test functions` → `Auth` → `Deploy` → `Post-deploy smoke` → `verify-live`. The marker-diagnostic step correctly **skipped** (it only runs on a hash mismatch).
+- **INGEST HEARTBEAT BUILT** (`992c32b`) — see the truth doc section. `meta.date`, warn past 7 days, both MIME parts, never omitted. **Parser contract consolidated: it is now TWELVE keys** (9 header-shaped + 3 line-shaped), and the list had drifted into three places while still calling itself "the ten keys". 245 tests green.
+- **SYNTHETIC CLEANUP MANIFEST BUILT** (`e56503f`) — read-only, no deleter written. **3 delete / 3 keep / 0 dangling links / 0 commitments.** Anduril was SPARED by the conservative rule and the three reasons are in the truth doc; that is the case worth reading before approving anything.
+
+### NEXT MOVE (2026-08-25, later session)
+
+1. **MIKE'S DELETE DECISION on the synthetic cleanup manifest.** Regenerate it in-session before acting (60m freshness contract) — the one in `sweep-manifests/` is already stale by the time this is read. On a yes, the deleter gets written with the same gate discipline as the sweep. **Read the Anduril entry first**: it is kept because a live BD-generated opportunity points at it, and whether that opportunity is itself synthetic-derived is a judgement the script deliberately does not make.
+2. **PUSH `992c32b` + `e56503f` — needs Mike's word.** Relay 021 authorized three specific hashes and these are not among them. The heartbeat does not reach production until they ship.
+3. **CHECK THE INGEST.** Newest Atlas meeting is still 2026-08-03. The heartbeat makes it visible from the next brief onward, but it does not answer *why*. Open on Mike's side: has he had meetings since Aug 3 that never got captured?
+4. **Verify the 11:00 UTC brief** — Cowork operator owns this. The sweep effect is already live (the archived-exclusion deployed 08-18); **the refusal line and the heartbeat are NOT live until #2 ships.**
+5. **STILL OWED — the operator-facing half.** No UI in `FLiIntel.html` to tick an action item done. The sweep remains the only writer of these fields.
 
 ## PRIOR STATE (2026-08-11 — staleness audit; the queue was re-ordered by relay 012)
 
