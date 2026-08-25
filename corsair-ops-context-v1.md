@@ -48,7 +48,20 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 - **INGEST HEARTBEAT BUILT** (`992c32b`) — see the truth doc section. `meta.date`, warn past 7 days, both MIME parts, never omitted. **Parser contract consolidated: it is now TWELVE keys** (9 header-shaped + 3 line-shaped), and the list had drifted into three places while still calling itself "the ten keys". 245 tests green.
 - **SYNTHETIC CLEANUP MANIFEST BUILT** (`e56503f`) — read-only, no deleter written. **3 delete / 3 keep / 0 dangling links / 0 commitments.** Anduril was SPARED by the conservative rule and the three reasons are in the truth doc; that is the case worth reading before approving anything.
 
-### NEXT MOVE (2026-08-25, later session)
+### RELAY 022 EXECUTED (2026-08-25)
+
+- **PUSHED, CI GREEN** — run [32819852788](https://github.com/mpoppa32/FLi-Network/actions/runs/32819852788), all three jobs success (build → test → auth → deploy → smoke → verify-live). **The heartbeat and the refusal line are now LIVE.** Deviation logged: three commits went up, not two (`cfa5d2b`, docs-only, rode along on `git push origin main`).
+- **HARD DELETE EXECUTED** — 4 of 4 paths, 3 of 3 KEEP nodes intact, 0 dangling links, capture taken and verified first. Atlas 592 → **591 meetings**, 359 → **354 action items**. Ledgered in the truth doc as the documented exception to archive-never-delete.
+- **ALL THREE ACCEPTANCE CRITERIA CONFIRMED at the data layer** (the 11:00 UTC send is the operator's to read): HIGH PRIORITY ACTIONS' top 8 are now **all real meetings** — no April block, no synthetic items; refusal count **19**; heartbeat **"Newest meeting in Corsair: 22 days old", warn = true → amber**. Its first appearance is a warning, as predicted.
+
+### NEXT MOVE (2026-08-25, after relay 022)
+
+1. **THREE DANGLING MEETING REFS — Mike's call.** `Atlas`, `Mike Poppa` and `Anduril` still list the deleted meeting id in `node.meetings`; Anduril's array now points *only* at it. Reported, not repaired, because repairing means writing to KEEP nodes. Needs a decision and, if yes, its own tiny scoped fix.
+2. **CHECK THE INGEST — still the biggest open item.** Newest Atlas meeting is 2026-08-03. From the next brief onward the heartbeat says so in amber every morning, but it does not say *why*. Open on Mike's side: meetings since Aug 3 that never got captured?
+3. **STILL OWED — the operator-facing half.** No UI in `FLiIntel.html` to tick an action item done. The sweep remains the only writer of those fields.
+4. **Push the deleter commit** — needs Mike's word like every other push.
+
+### SUPERSEDED NEXT MOVE (2026-08-25, earlier session)
 
 1. **MIKE'S DELETE DECISION on the synthetic cleanup manifest.** Regenerate it in-session before acting (60m freshness contract) — the one in `sweep-manifests/` is already stale by the time this is read. On a yes, the deleter gets written with the same gate discipline as the sweep. **Read the Anduril entry first**: it is kept because a live BD-generated opportunity points at it, and whether that opportunity is itself synthetic-derived is a judgement the script deliberately does not make.
 2. **PUSH `992c32b` + `e56503f` — needs Mike's word.** Relay 021 authorized three specific hashes and these are not among them. The heartbeat does not reach production until they ship.

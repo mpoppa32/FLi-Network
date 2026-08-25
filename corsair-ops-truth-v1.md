@@ -200,7 +200,27 @@ The `stale=15` / `aged=330` numbers in the brief's console telemetry (`brief.js:
   - Line-shaped: `ARCHIVED N STALE (>30d, unscheduled)` · the unreadable-deadline refusal · the ingest heartbeat.
 - **245 tests green, `tsc` clean, green under `Asia/Singapore` / `UTC` / `America/New_York`.** The plaintext golden was **re-captured deliberately and its diff read: exactly one line added** at the masthead, nothing else moved.
 
-## SYNTHETIC-DATA CLEANUP — MANIFEST BUILT, NOTHING DELETED (`scripts/synthetic-cleanup-manifest.mjs`, 2026-08-25)
+## HARD-DELETE LEDGER — THE DOCUMENTED EXCEPTION TO ARCHIVE-NEVER-DELETE
+
+**Standing rule: ARCHIVE, NEVER DELETE.** `commitmentsAutoArchive` and the action-item sweep both set fields and are reversible by clearing one. This ledger records every authorized exception, so "we deleted operator data" can never become routine by accident.
+
+| Date | What | Authorization | Reversal |
+|---|---|---|---|
+| 2026-08-25 | AUDIT TEST meeting `1779914425960-rwmlx` + its 5 action items + 3 fabricated person nodes (`Sarah Martinez`, `Col. Robert Chen`, `Bryce Williams`) | Mike, 2026-08-25, verbatim **"delete approved"**, judged against the manifest at `e56503f` | **None — irreversible.** Pre-delete capture in `sweep-manifests/PRE-DELETE-CAPTURE-*.json` (gitignored) is the undo of last resort |
+
+**EXECUTED 2026-08-25 — 4 of 4 paths deleted, 3 of 3 KEEP nodes verified intact, 0 dangling links.** Atlas: 592 → **591 meetings**, 359 → **354 action items** (54 still archived). Written as one multi-path update of exactly four null values, scoped to `/workspaces/{ws}`, key shape asserted — **the one place in this codebase where a null in a multi-path update is the intent rather than the hazard.**
+
+## THE SYNTHETIC-DATA DELETER (`scripts/synthetic-cleanup-delete.mjs`, 2026-08-25)
+
+**It never decides what to delete.** It regenerates the manifest in its own process, then compares that fresh DELETE list against `APPROVED_NODES` / `APPROVED_MEETING` — the exact list Mike read — and **stops if they differ at all**, by id or by name. His yes was against one specific list, not against whatever the rule selects today. Approved-KEEP nodes are re-checked as KEEP too; a node that changed disposition halts the run.
+
+- **CAPTURE BEFORE DESTRUCTION.** Every record is written to disk in full, then the capture file is **re-read and re-parsed** and sanity-checked (title present, node count correct) **before a single delete runs**. A capture that exists but does not parse is no capture.
+- **Gates proven to refuse before the real run, each with `--apply` present:** a tampered approved list → `THE DELETE LIST HAS MOVED SINCE MIKE APPROVED IT`; `--expect-name "FLi Intel"` → `WORKSPACE MISMATCH — live name is "Atlas"`; missing `--expect-name` → refused. Dry-run is the default.
+- **Verification runs in BOTH directions**, because a delete that also damaged a kept node would otherwise read as a clean success: deleted paths must read back `null`, and `Mike Poppa` / `Atlas` / `Anduril` must read back intact — plus **Anduril's opportunity `opp_bdgen_…` "Anduril — Motor supply" re-confirmed present**, since that reference is the whole reason the node was kept.
+
+- **⚠ DANGLERS FOUND, REPORTED, DELIBERATELY NOT REPAIRED.** Deleting the meeting leaves its id in the `meetings` array of the three KEEP nodes — `Atlas` (6 entries, 5 now valid), `Mike Poppa` (26 → 25), and **`Anduril`, whose only entry was that meeting, so its array now points exclusively at a deleted record.** Repairing them means WRITING to nodes Mike told us to keep, which is the re-deciding this program refuses to do. **His call as a follow-up.** Not a new class of damage: the truth doc already records that `node.meetings` holds ids with no record behind them (the `operatorData` dossier caveat), so this is a known shape — but it is now three known instances that did not exist before, and saying so is the point.
+
+## SYNTHETIC-DATA CLEANUP — MANIFEST (`scripts/synthetic-cleanup-manifest.mjs`, 2026-08-25)
 
 **Read-only. There is NO deleter, deliberately** — it will be written only against Mike's explicit yes, judged on this manifest. The unit of work is the meeting **and** its graph residue: deleting the meeting alone leaves the fabricated people in the node graph, a cleanup that looks complete and is not (relay 014).
 
