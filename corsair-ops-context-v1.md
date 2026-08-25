@@ -32,7 +32,25 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 - **#2 CT-1b rebuild (P13.397, `6f5e063`, deployed): ACCEPTED LIVE UNDER THE WEDGE.** REST `PUT` durable path + SDK hang timeout + loud guard-skip + re-entry latch. `node scripts/ct1b-harness.mjs` → **17/17**; the same harness fails **14/17** against the pre-fix code. Live acceptance 2026-08-05 with the connection indicator DELAYED: one 8s hang warning, no failure warnings, record `ph-1785960922768-zlzpej` confirmed in `pipelineHealth` by direct `database:get`. Front-end bytes confirmed live by `verify-live` on run [#7](https://github.com/mpoppa32/FLi-Network/actions/runs/31042845264) (`build-deploy` correctly skipped — no backend paths in that push).
 - **Nothing is owed on Mission 4 #1 or #2.** CT-1b is closed; the integrity tier (CT-1 … CT-4 + CT-1b) is fully live and verified for the first time.
 
-## CURRENT STATE (2026-08-11 — staleness audit; the queue was re-ordered by relay 012)
+## CURRENT STATE (2026-08-25 — THE SWEEP RAN; relay 020 executed end to end)
+
+**Steps A-E of relay 020 are complete. Three commits on `main`, UNPUSHED, awaiting Mike's word.**
+
+- **The sweep is DONE: 54 archived, 54 VERIFIED, 0 unverified**, Atlas `1777435779676` (confirmed from live `info/name`, not from a doc). Archive-never-delete: `archivedAt` + `archivedNote` only, no `done` (the rule cannot know work was *finished*), no nulls, one multi-path update scoped below the workspace root. **Idempotent, proven both ways** — same manifest re-run archives 0 and throws nothing; a regenerated manifest selects 4 (demo only) / archives 0. **AUDIT TEST `1779914425960-rwmlx` excluded and confirmed untouched.**
+- **The count moved 41 → 54 by AGING ONLY.** Atlas is unchanged at 592 meetings / 359 action items; the newest meeting is dated **2026-08-03**. Relay 020's premise that a week of new meetings had landed is false — every meeting it named is from June/July. **Nothing has been ingested for three weeks** (see LOG).
+- **⚠ THE BRIEF IS NOW WORSE IN ONE SPECIFIC WAY.** The 118-day April block is gone as intended, but **the top 4 of 8 HIGH PRIORITY ACTIONS are now the synthetic AUDIT TEST items** (68-81d, fabricated people). Correct behavior, unacceptable output. This is the cost of the exclusion decision arriving, and it makes the synthetic cleanup urgent.
+- **Answer to relay 020's `[CONTEXT]` question: DELIBERATE, and it should stay.** The `[TAG]` prefix takes five distinct values (`PURSUIT / ADVERSARY / CUSTOMER / CAPABILITY / CONTEXT`) — it is real per-item classification in the layer the three LLM consumers read, so the HTML's "a label on 100% of items carries no information" rationale does not transfer. It was flagged upstream for an explicit call, never overridden, and is pinned by test. Not missed.
+- **New this session:** the refusal is now disclosed in the brief (19 items, both MIME parts, one shared wording); `scripts/sweep-manifest.mjs` and `scripts/sweep-action-items.mjs` are committed with `sweep-manifests/` gitignored; a timezone-fragile hazard test is fixed. **233 tests green, `tsc` clean.**
+
+### NEXT MOVE (2026-08-25)
+
+1. **PUSH — needs Mike's word.** Three commits: `5d01be7` (refusal disclosure + TZ test fix), `87ddc5c` (manifest generator), plus the sweep/docs commit. The digest change deploys through CI on push; the sweep has ALREADY run (it is a data change, not a deploy) so the archived state is live regardless.
+2. **THE SYNTHETIC CLEANUP IS NOW TOP OF QUEUE, not queued.** It is no longer tidiness — it is half of "needs you today". Meeting **and** graph nodes together, its own manifest, Mike's decision (the fabricated people: a DARPA PM, an AFRL colonel, an AFRL contracts officer, a "Bryce Williams").
+3. **CHECK THE INGEST.** Three weeks with no new meetings in Atlas is either a real capture outage or an operator-side misconception. Nothing downstream is trustworthy until that is resolved — and it was found by accident, which means nothing monitors it.
+4. **Verify the 2026-08-26 11:00 UTC brief** against the sweep (STEP D): HIGH PRIORITY ACTIONS must no longer open with the April block. Expect the synthetic items at the top until #2 is done — that is understood, not a surprise.
+5. **STILL OWED — the operator-facing half.** There is still no UI in `FLiIntel.html` to tick an action item done. The sweep remains the only writer of these fields.
+
+## PRIOR STATE (2026-08-11 — staleness audit; the queue was re-ordered by relay 012)
 
 **Read-only audit done, nothing archived, nothing deployed.** Full findings in **`corsair-staleness-inventory-v1.md`** (committed) and summarized in the truth doc's new STALENESS section. Headlines:
 
