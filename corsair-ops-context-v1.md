@@ -59,14 +59,16 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 - **`814a3cd` pushed by hash** (`git push origin 814a3cd:main`), nothing else — the do-not-repeat applied. **`firebase-deploy` correctly did not run:** the commit touches only `scripts/*.mjs` and `*.md`, neither in the workflow's `paths:` filter, and it contains no deployable code. The heartbeat deployed on `cfa5d2b` already.
 - **REPAIR BUILT, GATED, DRY-RUN CLEAN — NOT EXECUTED.** Blocked on **expired Firebase CLI credentials**. Two attempts failed at the write with three different-looking errors from one cause; **all three arrays re-read and byte-identical to before (6 / 26 / 1, dead id present)**. Nothing partial landed.
 
+### REPAIR EXECUTED 2026-08-26 — THE CLEANUP ARC IS CLOSED
+
+Reauth by Mike, then one re-run. **3 of 3 nodes repaired and independently re-verified outside the script; 0 residual references to the deleted meeting or nodes across all five surfaces** (nodes 2778 · links 73 · opportunities 512 · commitments 73 · meetings 591). `Anduril`'s `meetings` key is absent, as predicted and as asserted; its other 17 fields and its `"Anduril — Motor supply"` opportunity are intact.
+
 ### NEXT MOVE (2026-08-26)
 
-1. **`firebase login --reauth`, then finish the repair** — it is one command away. Mike must run the reauth himself (interactive, browser). Then:
-   `node scripts/repair-dangling-meeting-refs.mjs --workspace 1777435779676 --expect-name Atlas --apply`
-   Every gate re-runs and a fresh capture is taken, so the retry is safe by construction. **Expect `Anduril`'s `meetings` key to be ABSENT afterwards, not empty** — RTDB cannot store an empty array (probed, see LOG).
-2. **CHECK THE INGEST — still the biggest open item.** Newest Atlas meeting is 2026-08-03. The heartbeat now says so in amber every morning but does not say why.
-3. **STILL OWED — the operator-facing half.** No UI in `FLiIntel.html` to tick an action item done.
-4. **Push the repair commit** — needs Mike's word.
+1. **CHECK MEETING CAPTURE — now a much narrower question than "the ingest".** The OSINT connectors are **demonstrably alive** (3 new org nodes written 2026-08-25, opportunities 509 → 512). It is **meeting capture specifically** — Otter / Gmail / Calendar — that has produced nothing since **2026-08-03**. Start there, not at the pipeline as a whole. The heartbeat now reports the gap in amber every morning but cannot say why.
+2. **STILL OWED — the operator-facing half.** No UI in `FLiIntel.html` to tick an action item done; the sweep is still the only writer of those fields.
+3. **Push the repair-execution docs commit** — needs Mike's word (`ef07cec` was authorized and pushed; the follow-up recording execution is separate).
+4. **Forward note (relay 023):** when meeting capture resumes, the heartbeat ticks down on its own and the sweep generator's counts will move. That is real data arriving, not drift.
 
 ### SUPERSEDED NEXT MOVE (2026-08-25, after relay 022)
 
