@@ -54,7 +54,21 @@ Push-to-main builds and deploys the backend and asserts the live front-end bytes
 - **HARD DELETE EXECUTED** — 4 of 4 paths, 3 of 3 KEEP nodes intact, 0 dangling links, capture taken and verified first. Atlas 592 → **591 meetings**, 359 → **354 action items**. Ledgered in the truth doc as the documented exception to archive-never-delete.
 - **ALL THREE ACCEPTANCE CRITERIA CONFIRMED at the data layer** (the 11:00 UTC send is the operator's to read): HIGH PRIORITY ACTIONS' top 8 are now **all real meetings** — no April block, no synthetic items; refusal count **19**; heartbeat **"Newest meeting in Corsair: 22 days old", warn = true → amber**. Its first appearance is a warning, as predicted.
 
-### NEXT MOVE (2026-08-25, after relay 022)
+### RELAY 023 (2026-08-25) — push done, repair BLOCKED
+
+- **`814a3cd` pushed by hash** (`git push origin 814a3cd:main`), nothing else — the do-not-repeat applied. **`firebase-deploy` correctly did not run:** the commit touches only `scripts/*.mjs` and `*.md`, neither in the workflow's `paths:` filter, and it contains no deployable code. The heartbeat deployed on `cfa5d2b` already.
+- **REPAIR BUILT, GATED, DRY-RUN CLEAN — NOT EXECUTED.** Blocked on **expired Firebase CLI credentials**. Two attempts failed at the write with three different-looking errors from one cause; **all three arrays re-read and byte-identical to before (6 / 26 / 1, dead id present)**. Nothing partial landed.
+
+### NEXT MOVE (2026-08-26)
+
+1. **`firebase login --reauth`, then finish the repair** — it is one command away. Mike must run the reauth himself (interactive, browser). Then:
+   `node scripts/repair-dangling-meeting-refs.mjs --workspace 1777435779676 --expect-name Atlas --apply`
+   Every gate re-runs and a fresh capture is taken, so the retry is safe by construction. **Expect `Anduril`'s `meetings` key to be ABSENT afterwards, not empty** — RTDB cannot store an empty array (probed, see LOG).
+2. **CHECK THE INGEST — still the biggest open item.** Newest Atlas meeting is 2026-08-03. The heartbeat now says so in amber every morning but does not say why.
+3. **STILL OWED — the operator-facing half.** No UI in `FLiIntel.html` to tick an action item done.
+4. **Push the repair commit** — needs Mike's word.
+
+### SUPERSEDED NEXT MOVE (2026-08-25, after relay 022)
 
 1. **THREE DANGLING MEETING REFS — Mike's call.** `Atlas`, `Mike Poppa` and `Anduril` still list the deleted meeting id in `node.meetings`; Anduril's array now points *only* at it. Reported, not repaired, because repairing means writing to KEEP nodes. Needs a decision and, if yes, its own tiny scoped fix.
 2. **CHECK THE INGEST — still the biggest open item.** Newest Atlas meeting is 2026-08-03. From the next brief onward the heartbeat says so in amber every morning, but it does not say *why*. Open on Mike's side: meetings since Aug 3 that never got captured?
