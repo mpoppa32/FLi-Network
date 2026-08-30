@@ -283,8 +283,38 @@ Authorization: Mike, 2026-08-11, verbatim *"and sweep those"*, re-confirmed 2026
 ## WORKSPACES
 Fully dynamic (`workspaces/{wsId}`). No hardcoded FLi/Atlas IDs. FLi and Atlas are the two operational workspaces in practice. Firebase paths: `workspaces/{wsId}/{meetings,nodes,links,entities,cal,commitments}`.
 
+`wsPath(sub)` returns `'workspaces/'+currentWsId+'/'+sub`. **`currentWsId` is assigned in exactly one place — `selectWorkspace(wsId)`.** Everything that reads or writes workspace data depends on that single module-level variable.
+
+### ⚠️ THE ACTIVE WORKSPACE CAN CHANGE WITHOUT USER ACTION — OBSERVED 2026-08-29
+A live ingest session selected **FLi Intel**, verified it against `fbGet(wsPath('info/name'))` → `"FLi Intel"` (15 meetings in memory), populated the log form with 7,084 characters of FLi consulting notes, and on re-checking `info/name` immediately before the write got **`"Atlas"`** — 591 meetings, a different workspace id, the header rendering `CORSAIR Atlas ▼`. **No workspace was selected and no reload occurred between those two reads.** The form was fully populated with `proc-btn` enabled; one click would have written FLi network/connector material into a workspace with different membership.
+
+**Mechanism UNVERIFIED — do not record one until it is instrumented.** What is established: only `selectWorkspace()` sets `currentWsId`, so it ran. Its call sites are the picker click handler, workspace creation, `_portfolioSwitch`, the demo loader, two tour handlers, and **two REST-fallback paths** that call `selectWorkspace(userWorkspaces[0].id)` when `userWorkspaces.length===1` after a realtime-channel race (`P13.227` plus a second "workspaces via REST race" block). Mike holds three workspaces, so that branch should not fire — *unless* `userWorkspaces` was transiently single-entry when a late fallback resolved. **That is a hypothesis, not a finding.**
+
+**Consequence for any automated or scripted write:** a workspace verified in one call is not evidence of the workspace in the next. **Verify `info/name` in the same execution as the write, atomically — never in an earlier step.** `window.meetings` and every other in-memory global were consistent with FLi before and consistent with Atlas after; only a live read at the instant of the write is authoritative.
+
+## WORKSPACE BINDING GUARD — P13.401 (2026-08-29), `FLiIntel.html`
+**Status: committed `8bb58c5`, deployed, ACCEPTANCE TEST PASSED 2026-08-29 against the live app.** Two insertions, +2,389 bytes:
+
+1. An `input` listener on `#m-notes` sets `dataset.wsBind = currentWsId` the first time the field becomes non-empty, and deletes the stamp when it empties. An empty compose form is unbound.
+2. A guard at the top of `processNotes()`: if `dataset.wsBind` is set and does not equal the live `currentWsId`, the write is **REFUSED**. It resolves both ids to workspace names via `userWorkspaces`, shows the mismatch through `showProcErr()`, `console.error`s it, records a `workspace_bind_refused` event via `recordPipelineEvent()`, re-enables `proc-btn`, and returns.
+
+**It refuses; it never silently retargets the write.** A tenant boundary is not a place for graceful handling (Rule 11). The guard is deliberately independent of the switch mechanism — a defence that requires the race to be diagnosed first is worth nothing while the race is undiagnosed.
+
+**Acceptance test — RUN 2026-08-29 on the live deployed app, all four checks passed:**
+1. *Stamp applied on input* — `dataset.wsBind` set on first non-empty value, and it equalled the live `currentWsId`. PASS.
+2. *Stamp cleared when the field empties* — form returns to unbound. PASS.
+3. **Refusal path** — armed the form with a non-matching bind and clicked Process. `#proc-err` rendered verbatim: *"WORKSPACE CHANGED SINCE THESE NOTES WERE ENTERED — write refused. Composed against \"bogus-workspace-id\", active workspace is now \"Atlas\". Nothing was saved."* Meeting count **591 before, 591 after — nothing written.** `proc-btn` re-enabled and returned to `PROCESS ▹` rather than sticking on `Analyzing`. Live-workspace name resolved correctly from `userWorkspaces`; the unresolvable id fell back to the raw string as designed. PASS.
+4. *No false positive* — a form composed in the current workspace stamps to the active id, so the guard condition is false and the write proceeds. PASS.
+
+The pass path will be exercised for real on the next successful ingest; note that check 4 verifies the guard's condition, not the whole downstream write.
+
+**Known limits, deliberately not fixed in this change (smallest change that solves it):** the guard protects the meeting-log write path only — it does not cover other compose surfaces; and it does not clear or re-scope an open form when the workspace changes, so a stale form stays on screen until the user clears it. Both remain open on the build ticket.
+
 ## KEY FACTS
-- Repo: `github.com/mpoppa32/FLi-Network` · anchor commit `50257ad` (P13.396) — kept in step with `CLAUDE.md`'s state anchor
+- Repo: `github.com/mpoppa32/FLi-Network` · anchor commit **`8bb58c5` (P13.401)** — kept in step with `CLAUDE.md`'s state anchor
+- **Build identity is unreliable and hand-maintained.** There is no build constant anywhere in `FLiIntel.html` — a sweep for `BUILD_ID`, `VERSION`, `var BUILD` and any quoted `"P13.x"` returns zero. Five hand-typed numbers disagree: newest code-comment marker (now P13.401) · this anchor · `#auth-build-tag` **P13.390**, which is what a user actually sees on the sign-in screen · a `P13.180` string in the redirect-error handler · a `P12.5` debug HUD. **Rule 8's "verify the deployed bytes" is therefore unexecutable — reading the sign-in footer returns a confident false pass.** Fix is one CI line stamping the commit SHA into `#auth-build-tag`. See `corsair-build-identity-finding.md`.
+- **The sign-in error handler still directs users to the stale `mpoppa32.github.io` address.** Auth is `browserLocalPersistence` (origin-scoped localStorage), so anyone following that instruction lands where they have no session — which presents exactly as sign-in being broken.
+- **`flisolutions.io` was missing from Firebase Auth → authorized domains until 2026-08-29**, throwing `auth/unauthorized-domain` and making sign-in impossible from the live URL since the domain move. Added by Mike 2026-08-29; sign-in verified working the same day.
 - Firebase project `fli-network` · DB `https://fli-network-default-rtdb.firebaseio.com`
 - Model in use: `claude-sonnet-4-6` via `anthropicProxy`
 - Owners: Mike (mpoppa32@gmail.com), Bryce (Bryceamcdonald@gmail.com)
