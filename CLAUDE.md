@@ -2,7 +2,8 @@
 
 *The operating contract for any Claude / Claude Code session working on the Corsair codebase (`github.com/mpoppa32/FLi-Network`). Claude Code auto-reads this file at the root of the repo on every session. It is the RULES document in the four-document AI Operating System (see `ai-operating-system-plan.md` in the Corsair claude.ai project). Companions in this repo: `corsair-ops-truth-v1.md`, `corsair-ops-log-v1.md`, `corsair-ops-context-v1.md`.*
 
-**Domain:** Corsair — "Defense Capture OS." A single-file front end (`FLiIntel.html`) + `FLiIntel.css` + `js/corsair/*` modules, a TypeScript Firebase Functions backend (`functions/`, package `corsair-functions`), Firebase project `fli-network`, live at `https://mpoppa32.github.io/FLi-Network/FLiIntel.html`.
+**Domain:** Corsair — "Defense Capture OS." A single-file front end (`FLiIntel.html`) + `FLiIntel.css` + `js/corsair/*` modules, a TypeScript Firebase Functions backend (`functions/`, package `corsair-functions`), Firebase project `fli-network`.
+**Live at:** `https://flisolutions.io/fliintel` — verified 2026-08-28 from this repo's `CNAME` and by loading the app. **The old `mpoppa32.github.io/FLi-Network/FLiIntel.html` address is stale everywhere it still appears, including the popup-blocker instructions on Corsair's own sign-in screen.** The repo root serves FLi's marketing site; GitHub Pages allows one custom domain per repo, which is why the two collided. Auth uses `browserLocalPersistence` — localStorage, scoped to origin — so **every domain move orphans every signed-in session.** That is expected behaviour, not a bug; do not debug it as one.
 **Maintainer:** Mike Poppa.
 **State anchor:** commit `b1638c9` (P13.399 — `onNotesInput` export + the toast swallow) — the newest `P13.x` marker on `main`. Later commits (docs, tests, CI machinery) introduce no new runtime marker, so this anchor holds until the next marked change.
 
@@ -38,9 +39,19 @@ Never guess a Firebase path, a function name, an API contract, a storage key, or
 - Respect the model allow-list and the per-workspace hourly quota in the proxy. Do not bypass them.
 - Workspaces are fully dynamic (`workspaces/{wsId}`). Never hardcode a FLi or Atlas workspace ID. Confirm the active workspace before any mutation; in-memory globals can hold stale workspace data after a switch.
 
-## 5. ONE AGENT AT A TIME; FAN OUT ONLY FOR RESEARCH
+## 5. FAN OUT TO VERIFY; NEVER TO WRITE
 
-Run one focused agent on one task. Spin up parallel agents only for deep research/read-only investigation, never for parallel writes to the codebase.
+*Rewritten 2026-08-27. The old rule read "one agent at a time; fan out only for research." Half of it was right; the other half was actively costing accuracy.*
+
+**The half that stands — never parallel-write.** Concurrent agents mutating the same checkout produce a state nobody can reason about. If genuine parallel build work is unavoidable, each agent gets its **own git worktree**. Writes, deploys and sends stay sequential and individually verified.
+
+**The half that was wrong — verification is the highest-value place to fan out.** The most-repeated failure in this system is a claim hardening into fact because one agent asserted it and nobody independently tried to break it: "The Chosen Company" · the Ukraine contracting vehicle · "Brave One" (a transcription of **Brave1**, a government programme) · "PA Army RFP" (a Texas solicitation) · "Misty Cook" and "Next COC" (neither name exists in any source) · and "Foreman Leadership Institute is a separate company," which was carried under a **verified** tag for three document versions while two transcripts said the opposite. **Every one would have died under adversarial verification, and a single verifying agent would not have caught any of them.**
+
+- **Adversarially verify load-bearing claims.** N independent agents prompted to **REFUTE**, each going to the primary source. Majority refutes, the claim dies. Give each verifier a **different lens** — source fidelity, overreach, does-it-reproduce — rather than N identical skeptics. *Measured 2026-08-27: of six load-bearing truth-doc claims, one survived; two lenses disagreed on two of them, and the disagreement was the finding.*
+- **Point at least one lens outside the corpus you are working in.** *Measured limit, 2026-08-28: twelve agents refuting hard, all inside the meeting transcripts, missed a two-page PDF sitting in this repo and a fact published on the company's own homepage. Adversarial verification defends against misreading a source, not against never opening one.*
+- **Fan out for discovery too:** multi-modal sweeps, parallel readers over subsystems, loop-until-dry when the size is unknown.
+- **A completeness critic earns its place** on anything claiming to be thorough: one agent whose only job is "what is missing."
+- **Hard caps, not hope.** Every fan-out carries a cost ceiling, and any bound on coverage is **logged out loud**. Silent truncation reads as full coverage.
 
 ## 6. RELEASE IN LOCKSTEP
 
@@ -88,5 +99,35 @@ Paid for by three failures in eight days, all the same shape: a mission drafted 
 
 The corollary binds this side too: when you receive a spec containing a claim about the code, **check it before building on it**, and report the correction. A confident spec is still unverified until someone reads the source.
 
+## 15. SORT THE QUESTION BEFORE YOU ASK IT
+
+*New 2026-08-27. Paid for by three logged failures, the second occurring immediately after the first was written down, and the third a month later in a worse form.*
+
+Before any question goes to Mike, sort it:
+
+1. **Does the answer live in a source?** Otter, Gmail, Calendar, Drive, Slack, the repo working tree, the project docs, the company's own published material, the web. → **Go and get it.** The FLi engagement gate sat open eighteen days, blocking every downstream move, and answered itself in about six minutes once someone actually looked.
+2. **Is it a fact about your own environment** — a connector, a tool, a permission, whether something is reachable? → **Check it yourself.** Never his to answer.
+3. **Does it exist only in his head** — intent, judgment, approval? → **Only this third kind gets asked.**
+
+**A `[U]` tag is a task assigned to you, not a note to the operator.** Shipping a document full of unknowns and calling it "the correction list" is homework, and homework is a failure mode.
+
+**And "no source can answer this" is itself a claim requiring evidence.** Name the searches you ran before writing it. On 2026-08-28 that sentence was written into three documents about a fact stated verbatim in two meetings already in the corpus — the search had never been run. **Enumerate spellings the way you enumerate sources:** the transcripts render "FLi" as "Fly" throughout, so the obvious query returns nothing and reads as absence.
+
+## 16. SIMPLEST EFFECTIVE ANSWER FIRST
+
+*New 2026-08-28, at Mike's instruction, after four exchanges were spent on something one line should have closed.*
+
+**Lead with the shortest path that actually works.** Then stop.
+
+- **One recommendation, not a menu.** If you catch yourself writing "two ways through," pick one. Options are a cost handed to the operator; hand them over only when the choice genuinely changes the outcome **and** only he can make it.
+- **A path with a prerequisite he must go find is not the simple path.** Prefer the one that needs nothing from him, even if it is less elegant.
+- **Never explain a setting, a UI path, or a mechanism** unless he asked how it works, or he has to act on it to get the outcome.
+- **Answer first.** Caveats, alternatives and reasoning come after, and only if they change what he does.
+- **If you cannot do the thing, say so in one line and hand over what you can** — the file, the draft, the finding. Do not narrate the obstacle.
+
+Paid for: an artifact would not publish. The response was two options, then a settings hunt that would not have fixed it, then a question. The simple effective answer was *"it's blocked — here's the file."*
+
+**This rule outranks thoroughness in the delivery, never in the work.** Do the full investigation; report the short version. Rule 13's report structure is the ceiling for a substantial answer, not the floor for every answer.
+
 ---
-*Corsair Build Rules v1.1 — 2026-08-04. Rules 11–13 added after the 2026-08-04 session (P13.391 swallow lesson, live tempo test, lost-deliverable incident); each is paid for by a logged failure, not added speculatively. Companion manual: `ai-operating-system-plan.md`.*
+*Corsair Build Rules v1.2 — 2026-08-28. Rules 11–13 added 2026-08-04 (P13.391 swallow lesson, live tempo test, lost-deliverable incident). Rule 14 added 2026-08-09. Rule 5 rewritten and Rule 15 added 2026-08-27; Rule 16 added 2026-08-28 at the operator's instruction; all committed here 2026-08-28 after sixteen days of silent divergence between this file and its claude.ai mirror — a mirror asserts sync only after the bytes have been read back. Each rule is paid for by a logged failure, not added speculatively. Companion manual: `ai-operating-system-plan.md`.*

@@ -19844,6 +19844,23 @@ async function wireListeners(){
   document.getElementById('m-notes').addEventListener('paste',function(){
     setTimeout(function(){onNotesInput();},80);
   });
+  // [P13.401] WORKSPACE BINDING — stamp the compose form with the workspace it
+  // is being written against. Paid for 2026-08-29: an ingest run verified the
+  // active workspace as "FLi Intel", populated this form with 7,084 characters
+  // of FLi consulting notes, and by the time the pre-write check ran again the
+  // active workspace was "Atlas" — 591 meetings instead of 15, a different
+  // workspace id, and the header had followed it. No user selected anything.
+  // One click would have written FLi network and connector material into a
+  // workspace with different membership. The switch mechanism is UNVERIFIED;
+  // this guard does not depend on knowing it. See processNotes().
+  document.getElementById('m-notes').addEventListener('input',function(){
+    var el=this;
+    if(el.value && el.value.trim()){
+      if(!el.dataset.wsBind){ el.dataset.wsBind = String(currentWsId||''); }
+    } else {
+      delete el.dataset.wsBind;   // empty form is unbound again
+    }
+  });
   document.getElementById('prep-btn').addEventListener('click',generatePrep);
   document.getElementById('nav-export-btn').addEventListener('click',exportData);
   document.getElementById('nav-import-trigger').addEventListener('click',function(){document.getElementById('nav-import-file').click();});
@@ -26520,7 +26537,27 @@ window._retryMeetingProcessing = async function(mtgId){
   if (btn) { btn.disabled = false; btn.textContent = 'Process'; }
 };
 
-async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}if(!apiKey){var isOwner=currentUserRole==='Owner'||currentUserRole==='Admin';showProcErr(isOwner?'No API key configured. Open the user menu (top right) → Settings → set your Anthropic API key, or set a Workspace API Key so all members share one.':'No API key configured for this workspace. Ask your workspace owner to set a Workspace API Key in Settings.');return;}
+async function processNotes(){var notes=document.getElementById('m-notes').value.trim();if(!notes){showProcErr('Add notes first');return;}
+  // [P13.401] WORKSPACE BINDING GUARD — refuse a write whose compose-time
+  // workspace no longer matches the active one. Rule 11: fail loudly. This is
+  // a tenant-isolation boundary, so it REFUSES rather than warning, and it
+  // never silently retargets the write.
+  var _nEl=document.getElementById('m-notes');
+  var _bound=_nEl && _nEl.dataset ? _nEl.dataset.wsBind : null;
+  if(_bound && String(_bound)!==String(currentWsId)){
+    var _boundName=((userWorkspaces||[]).find(function(w){return String(w.id)===String(_bound);})||{}).name||_bound;
+    var _nowName=((userWorkspaces||[]).find(function(w){return String(w.id)===String(currentWsId);})||{}).name||currentWsId;
+    var _msg='WORKSPACE CHANGED SINCE THESE NOTES WERE ENTERED — write refused. '+
+      'Composed against "'+_boundName+'", active workspace is now "'+_nowName+'". '+
+      'Nothing was saved. Switch back to "'+_boundName+'" and process again, or clear the form if you meant "'+_nowName+'".';
+    showProcErr(_msg);
+    console.error('[P13.401] workspace-bind mismatch', {composedAgainst:_bound, activeNow:String(currentWsId)});
+    try{ recordPipelineEvent('workspace_bind_refused',{composedAgainst:String(_bound),activeNow:String(currentWsId)}); }
+    catch(_e){ console.warn('[P13.401] health event could not be recorded'); }
+    var _b=document.getElementById('proc-btn'); if(_b){_b.disabled=false;}
+    return;
+  }
+if(!apiKey){var isOwner=currentUserRole==='Owner'||currentUserRole==='Admin';showProcErr(isOwner?'No API key configured. Open the user menu (top right) → Settings → set your Anthropic API key, or set a Workspace API Key so all members share one.':'No API key configured for this workspace. Ask your workspace owner to set a Workspace API Key in Settings.');return;}
   // Auto-fill today's date if not set — prevents empty date strings in stored meetings
   var dateInp=document.getElementById('m-date');
   if(!dateInp.value){dateInp.value=new Date().toISOString().slice(0,10);toast('Date set to today — update if needed');}
