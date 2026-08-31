@@ -4,6 +4,28 @@
 
 ---
 
+## CURRENT STATE (2026-08-31 — HOSTING MOVED; CORSAIR IS BACK UP)
+
+**Corsair is live and signed-in-verified at `https://mpoppa32.github.io/FLi-Network/FLiIntel.html`.** This is the address now. `flisolutions.io/fliintel` is dead and stays dead until Netlify credits reset.
+
+**What happened:** Netlify paused all three projects on a team credit cap. The GitHub Pages fallback was also dead — a repo-root `CNAME` file 301'd it back to the paused domain. Deleting `CNAME` from the remote fixed it at zero cost. Google sign-in confirmed working; `mpoppa32.github.io` was already an authorized domain in Firebase Auth. Full account in LOG 2026-08-31, including four "do not repeat" items.
+
+**Docs updated in lockstep:** `CLAUDE.md` lines 6 and 8, truth doc Live / Hosting / Outage entries, this doc. **Two retractions recorded:** bandwidth was never verified as the cause, and the "account suspended" reading came from signing in with the wrong email.
+
+### BLOCKED / OPEN — in priority order
+
+1. **UNRESOLVED ROOT CAUSE — which resource burned the Netlify credits.** The usage breakdown was never opened. **This is the single next move: Netlify → Billing → Usage.** Until it is read, the same cap recurs on any metered host. Two unexplained projects (`regal-capybara-3a72ec`, `wonderful-frangipane-c26155`, both 08-13, both showing the Corsair marketing thumbnail) are unaccounted for and were deliberately NOT deleted.
+2. **`git pull` owed on the local working copy.** It still holds the deleted `CNAME`; a push without pulling restores it and re-breaks hosting.
+3. **Uncommitted in the working tree:** `CLAUDE.md`, `corsair-ops-truth-v1.md`, `corsair-ops-log-v1.md`, `corsair-ops-context-v1.md` (this change), plus `adversarial-verify.js` sitting in the repo ROOT and still owed a move into `.claude/workflows/`.
+4. **Atlas-lane ingest — 4 meetings.** Was blocked on Corsair being down; **that blocker is now cleared.**
+5. **The 23% transfer cut** (comment/indent strip, ~1.01 MB → ~0.78 MB gzipped) is free, reversible and still untaken. **It is a cost reduction, not a fix** — do not let it stand in for reading the usage breakdown.
+
+### NEXT SINGLE MOVE
+
+**Open Netlify → Billing → Usage and read what consumed the credits.** Everything else about hosting is guesswork until that number is on the page.
+
+---
+
 ## CURRENT STATE (as of 2026-08-05, later session)
 
 **Mission 2 — CI/CD + governance machinery: COMPLETE + VERIFIED (brief: `mission-2-cicd-governance.md`, committed).**

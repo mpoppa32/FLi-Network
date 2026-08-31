@@ -9,6 +9,30 @@
 
 ---
 
+### 2026-08-31 — Netlify credit cap took the site down; the GitHub Pages fallback was ALSO dead, for a different reason   [RESOLVED / LESSON]
+
+**What happened.** Netlify paused every project on a team credit cap, taking the marketing site and Corsair offline together. The obvious escape was the historic GitHub Pages URL — `https://mpoppa32.github.io/FLi-Network/FLiIntel.html`. **It did not work either**, and the reason was not obvious: a repo-root `CNAME` file containing `flisolutions.io` made GitHub Pages 301 *away* to the custom domain, which points at paused Netlify. Both roads led to the same dead end. **A fallback that redirects into the thing it is a fallback for is not a fallback.**
+
+**The fix, in order, and each step mattered:**
+1. Delete the repo-root `CNAME` file. Emptying the *Custom domain* box in Pages settings is **not sufficient on its own** — the file is what the build reads, and a rebuild restores the domain from it.
+2. Wait for the Pages rebuild.
+3. **Test in a private window.** The 301 is cached hard by the browser and will follow you through reloads long after the server stops sending it. This cost real time and looked exactly like the fix having failed.
+4. Confirm Google sign-in at the new origin. It worked — `mpoppa32.github.io` was already an authorized domain in Firebase Auth.
+
+**DO NOT REPEAT — four separate lessons, all paid for this morning:**
+- **DO NOT diagnose a hosting failure from the login error.** The first read was "the account is suspended," from an auth error that turned out to be **the wrong email address at the login screen**. The dashboard said something completely different — a credit cap — and said it in one sentence. **Open the dashboard before theorising about the account.**
+- **DO NOT treat a redirecting URL as a working fallback.** Test the fallback *while the primary is healthy*, or it is decorative. This one had been broken for as long as the CNAME existed and nobody knew.
+- **DO NOT conclude a fix failed without testing in a private window.** A cached 301 is indistinguishable from a broken fix from inside a normal tab.
+- **DO NOT confuse "where the domain points" with "which host serves the app."** These are different questions with different mechanisms (DNS vs. the `CNAME` file). Collapsing them produced the original wrong "GitHub Pages" claim, and collapsing them again nearly produced a pointless DNS change this morning. The truth doc now says this explicitly.
+
+**Still open — the actual root cause.** *Which resource* consumed the Netlify credits is **UNVERIFIED**; the usage breakdown was never opened. Corsair's own transfer is an unlikely sole cause (~1.01 MB gzipped per cold load against a cap that would need ~99,000 loads). Two unexplained projects — `regal-capybara-3a72ec`, `wonderful-frangipane-c26155`, both published 08-13, both showing the Corsair marketing thumbnail — are unaccounted for and were **not** deleted. **Until the breakdown is read, this recurs on any host that meters.**
+
+**Side effect, and it is a good one.** `verify-live` hardcodes the github.io URL (`.github/workflows/firebase-deploy.yml:267,295`) and previously survived only because `curl -fsSL` followed the 3-hop redirect to Netlify. **That chain is gone** — the URL now serves Pages directly, so the byte assertion finally tests the address it names. The latent trip-wire in LOG 2026-08-18 is CLOSED without anyone editing the workflow.
+
+**Local-repo hazard:** the working copy still contains `CNAME` after the remote deletion. `git pull` before the next commit or the push restores the file and re-breaks hosting.
+
+---
+
 ### 2026 (pre-seed) — Browser-side Anthropic API key   [FAILED / SUPERSEDED]
 Each user pasting their Anthropic key into the browser was exfiltratable (finding **P13.124**).
 DO NOT REPEAT: All Claude calls go through the `anthropicProxy` Firebase Function; key in Secret Manager.
