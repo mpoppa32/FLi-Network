@@ -90,6 +90,10 @@ export { draftingFacts } from "./http/draftingFacts";
 // Operator layer: authenticated read-only graph access (commitments / signals /
 // entity dossiers) for the headless Cowork brief + meeting-prep tasks.
 export { operatorData } from "./http/operatorData";
+// Corsair as an MCP server (spec 2026-07-28, stateless). Read-only; no write
+// path exists. Shares OPERATOR_API_TOKEN with operatorData deliberately —
+// one credential to rotate, one place it can leak from.
+export { corsairMcp } from "./http/corsairMcp";
 // Build C — Slack intake: pull Atlas channel messages into a surfaced feed (no-op until SLACK_BOT_TOKEN set).
 export { slackIntakeHourly } from "./jobs/slackIntakeHourly";
 export { triggerSlackIntake } from "./http/triggerSlackIntake";
