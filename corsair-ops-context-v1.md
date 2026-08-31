@@ -14,15 +14,20 @@
 
 ### BLOCKED / OPEN — in priority order
 
-1. **UNRESOLVED ROOT CAUSE — which resource burned the Netlify credits.** The usage breakdown was never opened. **This is the single next move: Netlify → Billing → Usage.** Until it is read, the same cap recurs on any metered host. Two unexplained projects (`regal-capybara-3a72ec`, `wonderful-frangipane-c26155`, both 08-13, both showing the Corsair marketing thumbnail) are unaccounted for and were deliberately NOT deleted.
+1. **ROOT CAUSE FOUND — deploy count, not bandwidth. 1,995 of 2,010 credits (99.2%) on 133 production deploys; bandwidth 13.4 (0.67%).** Plan affords ~66 deploys/month at 15 credits each. **Fixed by unlinking `moonlit-truffle-239790` from the repo**, so pushes stop rebuilding the marketing site. The two orphan projects report **Not linked**, were manual uploads, cost nothing, and were left alone. **Residual: 133 deploys vs 105 commits — the ~28 surplus is unexplained and the Deploys tab would name each trigger.** Low priority; the fix does not depend on it.
 2. **`git pull` owed on the local working copy.** It still holds the deleted `CNAME`; a push without pulling restores it and re-breaks hosting.
 3. **Uncommitted in the working tree:** `CLAUDE.md`, `corsair-ops-truth-v1.md`, `corsair-ops-log-v1.md`, `corsair-ops-context-v1.md` (this change), plus `adversarial-verify.js` sitting in the repo ROOT and still owed a move into `.claude/workflows/`.
 4. **Atlas-lane ingest — 4 meetings.** Was blocked on Corsair being down; **that blocker is now cleared.**
 5. **The 23% transfer cut** (comment/indent strip, ~1.01 MB → ~0.78 MB gzipped) is free, reversible and still untaken. **It is a cost reduction, not a fix** — do not let it stand in for reading the usage breakdown.
 
+### THE OPEN DECISION — worth taking before the next billing cycle
+
+**Drop Netlify entirely and put `flisolutions.io` on GitHub Pages.** The marketing `index.html` already sits in the same repo Pages serves. Netlify now supplies only the domain and the extensionless `/fliintel` rewrite. Pointing the domain at Pages (four A records at the registrar, plus `www`) puts the marketing site and Corsair on one free unmetered host on the real domain, and ends this class of failure permanently — **$9/month and a recurring cap, gone.**
+**Costs:** Corsair's address becomes `flisolutions.io/FLiIntel.html` (Pages cannot do the extensionless rewrite); DNS propagation; and `flisolutions.io` must be re-confirmed in Firebase Auth authorized domains. **Not started — Mike's call.**
+
 ### NEXT SINGLE MOVE
 
-**Open Netlify → Billing → Usage and read what consumed the credits.** Everything else about hosting is guesswork until that number is on the page.
+**Atlas-lane ingest — 4 meetings.** Unblocked now that Corsair loads. Everything hosting-related is either closed or is the decision above.
 
 ---
 

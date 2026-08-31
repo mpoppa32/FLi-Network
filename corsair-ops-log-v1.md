@@ -31,6 +31,18 @@
 
 **Local-repo hazard:** the working copy still contains `CNAME` after the remote deletion. `git pull` before the next commit or the push restores the file and re-breaks hosting.
 
+**CAUSE FOUND LATER THE SAME DAY — and it cost two more wrong theories to get there.** Netlify's usage page: **1,995 of 2,010 credits (99.2%) went to 133 production deploys** at 15 credits each. Bandwidth was **13.4 credits — 0.67%**. The plan is 1,000 credits/month, i.e. **~66 deploys**; 133 ran in 21 days.
+
+**DO NOT REPEAT — two causes asserted, both wrong, both before opening the page that had the answer:**
+- **Bandwidth.** Retracted before it was acted on, but it had already driven a whole line of work — measuring `FLiIntel.html`, costing a 23% comment strip, writing it into two docs as an *availability* fix. At 0.67% of spend that work would have saved ~3 credits of 2,010. **Keep the strip as hygiene; never present it as a fix for an outage again.**
+- **Three projects each rebuilding the repo, tripling every push.** Asserted from the projects list, which shows names and thumbnails and says nothing about linkage. `regal-capybara-3a72ec` reads **Not linked** — the orphans were manual uploads and cost nothing recurring. **A projects list is not a build configuration. Open the project before theorising about it.**
+
+**The pattern across all three errors this morning is one thing:** every answer was one page away in the vendor's own dashboard — the suspension wasn't a suspension, the cap wasn't bandwidth, the duplicates weren't linked — and each time a theory was built from the list view instead of the detail view. **When a vendor meters something, read the vendor's own breakdown FIRST. It is one click and it ends the argument.**
+
+**Left unreconciled, honestly:** 133 deploys against **105 commits** since Aug 9. Deploys should be *fewer* than commits. The ~28 surplus is unexplained. The CI workflow was checked and carries no Netlify hook. The Deploys tab on `moonlit-truffle-239790` names each trigger and would settle it; it was not opened, because the action is the same either way. **Do not let "the action is the same" become a habit of leaving numbers unexplained** — it is defensible once.
+
+**Action taken:** `moonlit-truffle-239790` unlinked from the repo, so routine pushes stop paying for rebuilds of a marketing page that did not change. The site stays live on its last deploy. The orphans were left alone — they cost nothing and are the only record of what was deployed on 08-13.
+
 ---
 
 ### 2026 (pre-seed) — Browser-side Anthropic API key   [FAILED / SUPERSEDED]
