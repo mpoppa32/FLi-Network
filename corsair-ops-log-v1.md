@@ -365,3 +365,23 @@ DO NOT REPEAT: **never verify a mutation by a total count against a live workspa
 
 ---
 *Log doc v1 — updated 2026-08-26.*
+
+### 2026-09-02 — P13.403 dated extraction: the brief said INFERRED, the build says DERIVED   [NARROWED, deliberate]
+
+The change was briefed from open-register E1 as *"extraction prompted to always propose a date or say why it cannot"*, with an `INFERRED` tag for proposed dates. **Built narrower, on purpose, and the difference is worth the entry.**
+
+An `inferred` basis is a licence to invent a date on a system whose first rule is no fudge factors, and this codebase has already paid for exactly that failure once: `Date.parse` on free text produced `"Phase 1"` → **9,352 days overdue**, and those fabrications sorted to the TOP of the overdue list, which is where fabricated dates always land. A model proposing `2026-10-01` for `"Upon contract signing"` reproduces that failure with better manners. So the categories are `stated` / `derived` / `none`, where `derived` is arithmetic against the meeting date already in the prompt ("next Friday"), not judgement.
+
+**Cost of the narrowing, stated honestly:** items whose deadline is a window or a bound (`"Week of 2026-08-03"`, `"Before 2026-09-17"`) stay undated. That is the same **8 records** the 2026-08-12 sweep already refused for the same reason and disclosed rather than guessed at. This change does not recover them; nothing should, without a human reading the prose.
+
+**Also dropped from the brief:** the `NO-DATE: <reason>` string appended to `context`. It would have added a visible line of noise to the majority of items in the operator's own brief, and it duplicates a function that already shipped — `hasUnguessableDeadline` (2026-08-25) already separates *"nothing to guess at"* (`"Ongoing"`, `"TBD"`) from *"a real date is present and its role needs the prose read"*, computed from the verbatim field we are preserving. A second, model-authored version of an existing computed distinction is drift waiting to happen.
+
+DO NOT REPEAT: when a spec asks the model to fill a gap by guessing, check first whether the gap is already disclosed by something computed. Disclosure that is computed from preserved source text cannot drift; disclosure the model writes in prose can.
+
+### 2026-09-02 — the extraction prompt existed in THREE copies, and a comment said otherwise   [FIXED]
+
+`FLiIntel.html` carried the intel JSON schema inline in three places: `callClaudeTranscript`, `_extractChunkWithRetry` and `callClaude`. The comment above `_extractChunkWithRetry` reads *"Reuses the prompts from callClaude / callClaudeTranscript but routed through a single helper so chunked path and single-shot path stay in sync."* **They did not share anything. They were copies**, and the comment described an intention as if it were a mechanism — the same shape as the truth-doc claims Rule 14 exists to catch.
+
+Live paths are **`_extractChunkWithRetry`** (every new meeting, via `_processMeetingAI`) and **`callClaude`** (reprocess, via `reprocessMeeting`). **`callClaudeTranscript` has no callers at all** — dead since the chunked path landed. A prompt change applied by hand to "the extraction prompt" would have hit one path and left the other silently on the old contract, and the symptom would have been new meetings and reprocessed meetings disagreeing about the schema with nothing reporting it.
+
+DO NOT REPEAT: before editing a prompt, `grep` for the literal and count the copies. Three inline copies of a contract do not drift loudly — they drift one field at a time. Consolidating to one constant is not a refactor here, it is the only way to make the change once.

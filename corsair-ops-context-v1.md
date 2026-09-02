@@ -4,6 +4,33 @@
 
 ---
 
+## CURRENT STATE (2026-09-02 — P13.403 DATED EXTRACTION BUILT, UNPUSHED, UNACCEPTED)
+
+**One commit on `main` in the cloud clone, NOT pushed, awaiting Mike's word.** Closes the ingest half of the free-text-deadline finding (LOG 2026-08-11 [QUEUED]): extraction now emits `deadlineIso` / `deadlineBasis` on action items and `dateIso` / `dateBasis` on milestones, **alongside** the verbatim field, which is explicitly never rewritten. Full contract in the truth doc's DATED EXTRACTION section; the narrowing from the brief (`derived`, not `inferred`) and the three-copies finding are in LOG 2026-09-02.
+
+**Verified locally:** three prompt sites consolidated to one `_INTEL_SCHEMA_TAIL` constant; `node --check` clean on the containing script block (and identical failures before/after on one pre-existing artifact elsewhere); `scripts/verify-dated-extraction.mjs` proven non-vacuous on good and bad fixtures.
+**NOT verified — say so plainly:** no API call has been made, so nothing has observed what the model emits under the new prompt. **This is not done.**
+
+### THE ACCEPTANCE TEST — one meeting, and it is reversible
+
+`reprocessMeeting` archives the current intel into `m.intelHistory` (last 5 kept) before overwriting, so a reprocess is recoverable.
+
+1. Pick a meeting with **at least three action items whose `deadline` is free text** (`"Ongoing"`, `"TBD"`, `"Upon contract signing"`) and at least one with a real date. Any of the seven meetings behind the 43-overdue finding qualifies. Note the meeting id and the current `deadline` strings before touching it.
+2. Open it in the app, Reprocess. *(This exercises `callClaude`, the single-shot path. New meetings go through `_extractChunkWithRetry`; both now read the same constant, but only one of them is exercised by this test — the chunked path needs a second run on a long transcript.)*
+3. `firebase database:get "/workspaces/<WS>/meetings/<ID>" --project fli-network | node scripts/verify-dated-extraction.mjs`
+4. **PASS =** exit 0, and every verbatim `deadline` string is character-identical to what it was in step 1. **Datedness on that record moves off ~6%.**
+5. **FAIL =** any violation printed, or any verbatim `deadline` rewritten. A rewritten verbatim field is the worst outcome available here and is the thing to check by eye even when the script says 0.
+
+### NEXT SINGLE MOVE
+
+**Mike's word to push.** Then run the acceptance test above on one meeting. Commit 2 (consumers — brief, HPA ordering and Timeline reading `deadlineIso` for *showing*, and the archive sweep reading it for *archiving* on `stated` ONLY, never `derived`) does not start until the emitted data has been looked at.
+
+### THE ONE RISK
+
+The prompt now instructs the model on a field it also has to keep verbatim. **The failure mode is not a bad date, it is a rewritten `deadline`** — if the model "helpfully" normalises `"Upon contract signing"` to `"2026-10-01"` in the verbatim field, the corpus loses the source text and the loss is invisible to every existing filter, which will simply see more dated items and look healthier. Guardrail: step 4 above compares the verbatim strings by eye, and the acceptance script flags a missing verbatim field but **cannot** detect a rewritten one. That comparison is a human step and stays one.
+
+---
+
 ## CURRENT STATE (2026-08-31 — HOSTING MOVED; CORSAIR IS BACK UP)
 
 **Corsair is live and signed-in-verified at `https://mpoppa32.github.io/FLi-Network/FLiIntel.html`.** This is the address now. `flisolutions.io/fliintel` is dead and stays dead until Netlify credits reset.
