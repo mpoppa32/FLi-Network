@@ -13017,6 +13017,46 @@ function updateApiKeyUI(){
   }
 }
 
+// ── P13.405 — STOP THE DISPLAY NORMALISER WRITING TO THE CORPUS CLOCK ──
+// P13.377 normalises m.meta.date from ts for display and its comment claims
+// "In-memory only — this does NOT write back to RTDB." That was FALSE: it mutates
+// the object held in meetingMap, and saveMeeting() does fbSet(path, m) on the whole
+// object, so every reprocess persisted the overwritten date. Measured 2026-09-03:
+// two reprocessed meetings lost their true dates (2026-07-20 -> 2026-08-06 and
+// 2026-08-03 -> 2026-09-03); 16 of 591 Atlas records are exposed, and that count is
+// a floor because it was measured in UTC while this code uses the LOCAL calendar.
+// meta.date is the corpus clock (heartbeat, HPA ordering, velocity, "days ago") and
+// ts is the LOGGING time, so backfilled meetings were being re-dated to the day they
+// were typed in. Fix: remember what RTDB actually holds, and write THAT.
+var _storedMeetingDate = new Map();      // meeting id -> date as persisted in RTDB
+var _normalizedMeetingDate = new Map();  // meeting id -> display date we last computed
+
+// Records the DB value the first time we see it, and again whenever the incoming
+// value is NOT the one we ourselves last wrote — so a genuine edit made elsewhere is
+// picked up instead of being pinned to a stale reading.
+function _rememberStoredMeetingDate(m){
+  if (!m || !m.id || !m.meta) return;
+  var incoming = m.meta.date;
+  if (typeof incoming !== 'string' || !incoming) return;
+  if (incoming !== _normalizedMeetingDate.get(m.id)) _storedMeetingDate.set(m.id, incoming);
+}
+
+// Swaps the persisted date back in for the duration of a write. Returns the display
+// value so the caller can restore it; returns undefined when there is nothing to swap.
+function _preserveStoredMeetingDate(m){
+  if (!m || !m.id || !m.meta) return undefined;
+  if (!_storedMeetingDate.has(m.id)) return undefined;
+  var display = m.meta.date;
+  m.meta.date = _storedMeetingDate.get(m.id);
+  return display;
+}
+
+function _restoreDisplayMeetingDate(m, display){
+  if (display === undefined) return;
+  if (!m || !m.meta) return;
+  m.meta.date = display;
+}
+
 // ── ARRAY REBUILDERS (keep sorted arrays in sync with Maps) ──
 function rebuildMeetingsArray(){
   meetings=Array.from(meetingMap.values()).sort(function(a,b){return new Date(b.ts)-new Date(a.ts);});if(typeof _updateTicker!=="undefined")setTimeout(_updateTicker,80);
@@ -13033,7 +13073,10 @@ function rebuildMeetingsArray(){
              : (typeof m.ts==='string') ? Date.parse(m.ts) : NaN;
     if(_mts && !isNaN(_mts)){
       var _d=new Date(_mts);
-      m.meta.date = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+      _rememberStoredMeetingDate(m); // P13.405 — capture RTDB's value BEFORE overwriting it
+      var _norm = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+      _normalizedMeetingDate.set(m.id, _norm);
+      m.meta.date = _norm;
     }
   });
   // Mirror to window so cross-module consumers (DiscoveryEngine3D Phase 3+,
@@ -13177,7 +13220,13 @@ function initAttendeeAutocomplete(inputId){
 }
 async function saveMeeting(m){
   if(window._canWrite && !window._canWrite()){ toast('Observers cannot log meetings'); return; }
-  await fbSet(wsPath('meetings/'+m.id), m);
+  // P13.405 — write the date RTDB actually holds, never P13.377's display value.
+  var _p13405disp = _preserveStoredMeetingDate(m);
+  try {
+    await fbSet(wsPath('meetings/'+m.id), m);
+  } finally {
+    _restoreDisplayMeetingDate(m, _p13405disp);
+  }
   // P13.107 (audit Finding 1.1) — re-score the linked opportunity so the
   // operator's tier badge / score chip / confidence label updates the moment
   // a meeting is logged. Without this, P13.102's auto-score froze at the

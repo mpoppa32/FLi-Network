@@ -4,6 +4,28 @@
 
 ---
 
+## CURRENT STATE (2026-09-03 — P13.405 BUILT; TWO MEETINGS STILL HOLD WRONG DATES)
+
+**P13.404 is live** and its rebalance demonstrably worked on the axis it targeted: `derived` fired on every exact reference (`within the hour`, `today`, `tomorrow`, named weekdays), `this week` / `Ongoing` / `TBD` correctly refused, and P13.403's inconsistency — the same `"today"` resolved on three items and refused on eight — is **gone**, all 13 treated identically. **What is NOT proven is the correctness of the resolved values**, because the meeting they were resolved against had a corrupted date.
+
+**P13.405 is built and unpushed** — the `meta.date` preservation fix plus `scripts/p13405-date-preservation.test.mjs`. Contract and non-vacuity proven locally; untested live.
+
+### THE SEQUENCE — do not reorder
+
+1. **Push P13.405.** Nothing else should be reprocessed until it is live; every reprocess of one of the 16 exposed meetings destroys a real date.
+2. **Restore the two damaged dates.** `restore-ycudy.json` (`2026-07-20`) and `restore-66jtc.json` (`2026-08-03`) are in the repo root. Restoring BEFORE the fix is live is a band-aid — an open Corsair tab re-normalises in memory and re-persists on the next save.
+3. **Re-run the P13.404 acceptance** against a meeting whose date is now trustworthy. Bar unchanged: contract clean, `derived` on every exact same-day/next-day reference, identical treatment of the same phrase, datedness ≥ 38.9% — **plus the new one below.**
+
+### OWED — the acceptance script still cannot catch a wrong date
+
+`--baseline` would have PASSED the corrupted run: contract clean, datedness 13/18 = 72%, far above 38.9%. The instrument checks the **shape** of the field and the **volume** of dates; it cannot check that a date is the **right** date. It needs to assert each `derived` value against the record's own `meta.date` — a same-day reference must equal it, next-day must be exactly +1 — and flag any `derived` date outside a sane window around the meeting. **Until that exists, a green run is not evidence the dates are correct.**
+
+### ALSO OWED
+
+- Audit for other render-path mutations that a wholesale save can persist (LOG 2026-09-03, lesson 2).
+- Re-measure the 16-record exposure in the operator's LOCAL timezone; the UTC count is a floor.
+- Untracked junk in the repo root: `all.json`, `P13.403.patch`, `restore-*.json`, and the zero-byte `cd`, `firebase`, `node`.
+
 ## P13.404 BUILT (2026-09-02) — UNPUSHED, AND THE TEST CANNOT RUN UNTIL IT DEPLOYS
 
 Commit 1b is written: `FLiIntel.html` (rebalanced DEADLINE CAPTURE block) + `scripts/verify-dated-extraction.mjs` (`--baseline`). **Neither is pushed and the prompt is untested** — a prompt change can only be exercised by the deployed app, and an attempt to test it in-browser ahead of deploy was correctly refused as network interception.
