@@ -354,7 +354,13 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
       recordTimeMs: rt?.ms ?? null,
       recordTimeBasis: rt?.basis ?? null,
       meta: m.meta ?? null,
-      intel: { ...(m.intel ?? {}), notes: clean(m?.intel?.notes).slice(0, LIMITS.notesChars) },
+      intel: m.intel ?? null,
+      // Top-level field, verified against the live schema 2026-08-31. v1 read
+      // `intel.notes`, which exists on no record, so every get_meeting silently
+      // returned an empty transcript. Present only on hand-logged meetings;
+      // auto-captured calendar stubs never had one.
+      notes: clean(m?.notes).slice(0, LIMITS.notesChars),
+      hasSourceNotes: String(m?.notes ?? "").trim().length > 0,
     };
   }
 

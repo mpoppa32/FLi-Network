@@ -4,6 +4,18 @@
 
 ---
 
+## FOUND IN THE TREE 2026-09-03 — D1 WAS ALREADY BUILT
+
+Clearing untracked files surfaced five files from another session (2026-09-02): the **extraction eval** (D1 in the open register), its 25 tests, its HTTP trigger, an `ALLOWED_MODELS` export, and a real `corsairMcp` bug fix. All assessed read-only first, then committed — the eval **parked unexported and inert**, the MCP fix as its own change. See the truth doc's EXTRACTION EVAL and `corsairMcp` sections and `claude/corsair-extraction-eval-found-uncommitted.md`.
+
+**Why it was committed rather than left:** the work existed in exactly one place — one working tree — where any `git checkout` would have destroyed it.
+
+### NEXT SINGLE MOVE
+
+**Decide whether to activate the eval**, which is one line in `index.ts` plus its documented acceptance. Two things to settle first:
+1. **The reachable eval set is 31 meetings, not 591** — only 31 records carry source notes. Is that enough to measure extraction quality?
+2. **It is the instrument this session ended up owing.** P13.403–406 closed with the acceptance script unable to check whether a resolved date is *correct*, only whether it is well formed. A reference-free grader reading source against extraction is exactly that check, arriving from another direction. Point it at the dated-extraction output first.
+
 ## CURRENT STATE (2026-09-03 — THE ARC IS CLOSED. P13.403–406 ACCEPTED.)
 
 All four are live on `main` (`8a74f13`), deployed, and accepted against live data. Both damaged meetings are fully restored (`meta.date` and `ts`).

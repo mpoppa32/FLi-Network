@@ -290,6 +290,20 @@ The fix for the acceptance failure above. Same three call sites, same one consta
 - **Verified:** all six green against the shipped file; `node --check` clean on the containing module block. **Non-vacuity proven three ways** — with the swap removed the fragment disappears and the test exits **2** (refusing to report a vacuous pass) rather than passing; with the capture line removed it exits **2** naming the missing guard; driven manually against a fix-removed harness it reproduces the exact observed corruption, `2026-07-20 → 2026-08-06`, failing 3 of 6.
 - **NOT verified: live behaviour.** Untested against the real app until it deploys.
 
+## EXTRACTION EVAL — PARKED, NOT WIRED (2026-09-03)
+
+**D1 is built and committed but deliberately NOT exported.** `jobs/extractionEval.ts`, `jobs/extractionEval.test.ts` and `http/triggerExtractionEval.ts` were found uncommitted in the working tree (written 2026-09-02 by another session) and are committed to stop the work living in one unprotected place. **`index.ts` does not reference them, so no function is created and production behaviour is unchanged.**
+
+- **Verified before committing:** 270/270 tests green (245 existing + 25 new); `tsc --noEmit` reports **zero** errors in any of the five files — the only failures are the pre-existing gitignored `atlasMaster` imports that CI restores from `ATLAS_MASTER_BUNDLE`.
+- **`anthropicProxy.ts` exports `ALLOWED_MODELS`.** Required — `triggerExtractionEval` imports it and will not compile otherwise (proven: reverting the export gives `TS2459`). The change is the `export` keyword and nothing else; no behaviour change.
+- **Design:** grades **reference-free** rather than against a hand-labelled golden set — the grader reads the raw source notes and the extraction and hunts unsupported claims and omissions. **Grader is a different model from the extractor** (`claude-opus-4-7` grading `claude-sonnet-4-6`). **Scoring is arithmetic over findings, never asked of the model.** Bearer-token auth via `operatorData.tokenMatches`; **10 meetings per run, hard cap 40**; truncation disclosed to the grader rather than hidden.
+- **⚠ THE REACHABLE EVAL SET IS 31 MEETINGS, NOT 591.** Measured across the Atlas corpus: top-level `notes` is non-empty on **31** records; the other 560 are auto-captured and carry no source to grade an extraction against. Whether 31 is enough to measure extraction quality is unanswered — **do not read a rollup as authoritative until it is.**
+- **To activate:** export from `index.ts`, then run the acceptance documented in the trigger — no token → 401, wrong workspace → 400 naming it, `limit=2` on Atlas → 2 scored records under `extractionScores` plus a rollup.
+
+## `corsairMcp` — get_meeting RETURNED AN EMPTY TRANSCRIPT ON EVERY CALL (fixed 2026-09-03)
+
+`get_meeting` read `intel.notes`. **Measured across all 591 Atlas meetings: the `intel.notes` key is present on ZERO records**, while top-level `notes` is non-empty on 31. So the tool has returned an empty transcript on every call since the MCP server shipped 2026-08-31 — a silent failure, no error, just absent content. Now reads top-level `notes` and adds `hasSourceNotes` so a caller can tell "no notes exist" from "notes were dropped". Fix written by another session; the claim behind it was independently re-verified against the corpus before committing.
+
 ## THE INGEST HEARTBEAT (`jobs/dailyBriefDigest.ts`, 2026-08-25)
 
 **One line, both MIME parts, never omitted: `Newest meeting in Corsair: N days old`.** Built because the 19-day ingest gap found on 2026-08-25 was invisible — a brief assembled from three-week-old data reads exactly as calm as one assembled from this morning's. Same principle as "No signals cleared the bar": **absence must never look like calm.** At 0-1 days it is a heartbeat, and that is the point — a line that appears only when things are bad cannot be told apart from a line that broke.
