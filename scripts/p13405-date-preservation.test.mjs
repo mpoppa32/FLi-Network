@@ -51,17 +51,21 @@ const normMatch = src.match(/if\(_mts && !isNaN\(_mts\)\)\{[\s\S]*?\n    \}/);
 must(normMatch, 'the ts -> meta.date normalisation body');
 must(normMatch[0].includes('_rememberStoredMeetingDate'), 'normalisation body no longer captures the stored date (P13.405 removed?)');
 
-// ── fragment 3: the save-path swap ──
+// ── fragment 3: the ts -> _mts anchor selection, verbatim from the shipped file ──
+// This was HARDCODED here at first, and a P13.406 change to the shipped anchor logic
+// therefore went completely untested while the suite reported red for the wrong
+// reason. A test that copies the code under test is testing the copy. Extract it.
+const mtsMatch = src.match(/var _mts = [\s\S]*?NaN;/);
+must(mtsMatch, 'the _mts anchor-selection expression');
+
+// ── fragment 4: the save-path swap ──
 const saveMatch = src.match(/var _p13405disp = _preserveStoredMeetingDate\(m\);[\s\S]*?_restoreDisplayMeetingDate\(m, _p13405disp\);\n {2}\}/);
 must(saveMatch, 'the saveMeeting date-preservation swap');
 
 const harness = `
 ${helpers}
 function rebuildOne(m){
-  var _mts = (typeof m.meta.ts==='number') ? m.meta.ts
-           : (typeof m.meta.ts==='string') ? Date.parse(m.meta.ts)
-           : (typeof m.ts==='number') ? m.ts
-           : (typeof m.ts==='string') ? Date.parse(m.ts) : NaN;
+  ${mtsMatch[0]}
   ${normMatch[0]}
 }
 let WROTE = null;
@@ -77,7 +81,11 @@ export const getWrote = () => WROTE;
 const mod = await import('data:text/javascript;base64,' + Buffer.from(harness, 'utf8').toString('base64'));
 const { rebuildOne, saveOne, getWrote } = mod;
 
+// A real corpus record: no meta.ts anywhere in the 591, and a top-level ts that is
+// the LOGGING time (2026-08-06) for a meeting that happened on 2026-07-20.
 const mk = () => ({ id: 'm1', ts: '2026-08-06T09:15:13.256Z', meta: { date: '2026-07-20', title: 't' } });
+// The same record as it would look if a capture path ever populated meta.ts.
+const mkWithMetaTs = () => ({ id: 'm3', ts: '2026-08-06T09:15:13.256Z', meta: { ts: '2026-07-20T17:00:00.000Z', date: '2026-07-20', title: 't' } });
 const checks = [];
 const check = (name, got, want) => checks.push([name, String(got), String(want)]);
 
@@ -88,7 +96,9 @@ const display = m.meta.date;
 await saveOne(m);
 check('persisted date is the STORED one', getWrote().meta.date, '2026-07-20');
 check('display value survives the save', m.meta.date, display);
-check('normalisation still happens', display !== '2026-07-20' ? 'yes' : 'no', 'yes');
+// P13.406: with no meta.ts — which is every record in the corpus today — the
+// normaliser must NOT fire, so the display date IS the operator's own entry.
+check('no meta.ts -> display untouched', display, '2026-07-20');
 
 // 2. our own output must never be mistaken for the stored value on later rebuilds
 rebuildOne(m); rebuildOne(m);
@@ -104,6 +114,19 @@ check('external edit respected', getWrote().meta.date, '2026-07-25');
 // 4. a meeting that was never normalised (no ts) must pass through untouched
 await saveOne({ id: 'm2', meta: { date: '2026-01-02' } });
 check('untracked meeting untouched', getWrote().meta.date, '2026-01-02');
+
+// 5. P13.406 — when meta.ts DOES exist, normalisation still works as designed, and
+// the stored date is still what gets persisted.
+const m3 = mkWithMetaTs();
+rebuildOne(m3);
+check('meta.ts present -> display normalised', m3.meta.date, '2026-07-20');
+await saveOne(m3);
+check('meta.ts present -> persists stored date', getWrote().meta.date, '2026-07-20');
+
+// 6. the top-level LOGGING ts must never be the anchor
+const m4 = { id: 'm4', ts: '2026-09-03T08:00:00.000Z', meta: { date: '2026-05-01' } };
+rebuildOne(m4);
+check('logging ts is not an anchor', m4.meta.date, '2026-05-01');
 
 let bad = 0;
 for (const [name, got, want] of checks) {

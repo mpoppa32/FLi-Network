@@ -13067,10 +13067,17 @@ function rebuildMeetingsArray(){
   // In-memory only — this does NOT write back to RTDB.
   meetings.forEach(function(m){
     if(!m||!m.meta)return;
+    // P13.406 — TRUST ONLY meta.ts. P13.377 described meta.ts as "its real start
+    // instant" and fell back to the top-level ts. Measured 2026-09-03 across all 591
+    // Atlas meetings: meta.ts exists on ZERO of them, so the normaliser has ALWAYS
+    // run on the fallback — and the top-level ts is the LOGGING time, not the start
+    // time. For 575 records they land on the same day and it was harmless; for 16 it
+    // silently re-dated the meeting to the day it was typed in. The fallback is
+    // removed, which makes this a no-op corpus-wide today and restores meta.date —
+    // the operator's own entry — as the displayed date. If a capture path ever
+    // populates meta.ts, normalisation resumes exactly as intended.
     var _mts = (typeof m.meta.ts==='number') ? m.meta.ts
-             : (typeof m.meta.ts==='string') ? Date.parse(m.meta.ts)
-             : (typeof m.ts==='number') ? m.ts
-             : (typeof m.ts==='string') ? Date.parse(m.ts) : NaN;
+             : (typeof m.meta.ts==='string') ? Date.parse(m.meta.ts) : NaN;
     if(_mts && !isNaN(_mts)){
       var _d=new Date(_mts);
       _rememberStoredMeetingDate(m); // P13.405 — capture RTDB's value BEFORE overwriting it
@@ -28993,7 +29000,11 @@ async function reprocessMeeting(){
     m.meta.att=document.getElementById('edit-att').value||m.meta.att;
     m.notes=notes;
     m.intel=await callClaude(notes,m.meta);
-    m.ts=new Date().toISOString();
+    // P13.406 — DO NOT touch m.ts here. Reprocessing re-derives intel; it does not
+    // change when the meeting happened. Overwriting ts destroyed the time anchor and,
+    // through P13.377's normaliser, the displayed date — two meetings were re-dated to
+    // the day they were reprocessed. The reprocess time is already recorded, per
+    // version, as intelHistory[].reprocessedAt.
     await saveMeeting(m);
     closeModal('edit-modal');pendingEnts=[];
     var r=await autoSyncEnts(m);var rl=await autoSyncLinks(m);

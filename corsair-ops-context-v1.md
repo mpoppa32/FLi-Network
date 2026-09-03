@@ -4,6 +4,28 @@
 
 ---
 
+## CURRENT STATE (2026-09-03 — P13.406 BUILT; ROOT CAUSE CLOSED, LIVE RE-TEST OWED)
+
+**P13.405 is live** (`93d5c07`) and both damaged `meta.date` values are restored in RTDB (`2026-07-20`, `2026-08-03`).
+
+**P13.406 is built and unpushed** — the root cause under it. `meta.ts` exists on **0 of 591** meetings, so P13.377's normaliser has always run on the top-level `ts`, which is the LOGGING time. The fallback is removed (a no-op corpus-wide today), and `reprocessMeeting` no longer overwrites `m.ts`. 9/9 green, non-vacuity proven.
+
+### STILL WRONG IN THE DATA — two `ts` values I destroyed
+
+The two meetings' `ts` were overwritten with the reprocess time and are still wrong. Until they are restored, the app displays the right date only because P13.406 stops reading `ts` at all — but the records themselves remain inaccurate. `restore-ts-ycudy.json` and `restore-ts-66jtc.json` carry the originals (`2026-08-06T09:15:13.256Z` and `2026-08-06T08:53:33.182Z`). **Note these are at the meeting ROOT, not under `meta`.**
+
+### THE SEQUENCE
+
+1. Push P13.406.
+2. Restore the two `ts` values.
+3. **Then** re-run the P13.404 acceptance on `1786006413182-66jtc` (true date `2026-08-03`, a Monday). Expected `derived` values are now checkable by hand: `today` → `2026-08-03`, `tomorrow` → `2026-08-04`, `Thursday` → `2026-08-06`, `Friday` → `2026-08-07`. Confirm in the same run that `meta.date` is **still** `2026-08-03` afterwards — that is P13.405/406's live acceptance.
+
+### OWED
+
+- **The acceptance script still cannot catch a wrong date.** It must assert each `derived` value against the record's own `meta.date`. Until then a green run is not evidence the dates are correct.
+- Audit for other render-path mutations a wholesale save can persist.
+- Re-measure the 16-record exposure in the operator's LOCAL timezone; the UTC count is a floor.
+
 ## CURRENT STATE (2026-09-03 — P13.405 BUILT; TWO MEETINGS STILL HOLD WRONG DATES)
 
 **P13.404 is live** and its rebalance demonstrably worked on the axis it targeted: `derived` fired on every exact reference (`within the hour`, `today`, `tomorrow`, named weekdays), `this week` / `Ongoing` / `TBD` correctly refused, and P13.403's inconsistency — the same `"today"` resolved on three items and refused on eight — is **gone**, all 13 treated identically. **What is NOT proven is the correctness of the resolved values**, because the meeting they were resolved against had a corrupted date.

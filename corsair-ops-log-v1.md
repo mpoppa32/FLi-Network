@@ -420,3 +420,14 @@ DO NOT REPEAT — three, and the third is the general one:
 1. **A comment asserting a mechanism is not evidence of that mechanism.** *"In-memory only — does NOT write back"* was written by someone reasoning about intent, not about the object graph. Rule 14 applies to comments exactly as it applies to specs: a mechanical claim about the code is unverified until someone reads what actually happens to that object. The object was shared; the write path was two functions away.
 2. **A mutation for display and a whole-object save cannot coexist.** Anywhere a render path mutates a record that a save path later writes wholesale, the render silently becomes a writer. Search for other cases before assuming this was the only one.
 3. **When a downstream result looks impossible, suspect the INPUT before the change under test.** The instinct was to blame the new prompt because it was new. The input had been corrupted by an earlier run of the same experiment. Check what the system was actually handed before concluding what it did with it.
+
+### 2026-09-03 — the normaliser's primary input does not exist, on any record   [FIXED — P13.406]
+
+P13.405 stopped the display normaliser persisting `meta.date`. It did not ask **why the normaliser produced a wrong value in the first place.** Measuring the corpus answered it in one line: **`meta.ts` is present on 0 of 591 meetings.** P13.377 reads `meta.ts` as "the real start instant" and falls back to the top-level `ts` — so it has *always* run on the fallback, and that fallback is the **logging** time. 575 records were logged the same day they happened and nothing showed; 16 were backfilled and got re-dated to the day they were typed in.
+
+Second defect found alongside it: **`reprocessMeeting` overwrote `m.ts` with `new Date()`**, so reprocessing a meeting moved its time anchor to today and, through the normaliser, its displayed date. `intelHistory[].reprocessedAt` already records the reprocess time; `ts` never needed to move.
+
+DO NOT REPEAT:
+1. **Fixing the write is not fixing the cause.** P13.405 was correct and shipped, and the value being written was still wrong. Ask what produced the bad value before being satisfied that it stopped escaping. One `grep` for `meta.ts` across the corpus would have found this before the first fix was written.
+2. **A field named in a comment is not a field that exists.** *"its real start instant (meta.ts, or top-level ts)"* reads as two sources; it was always one, and the wrong one. Count the field in the data before trusting a code path that branches on it.
+3. **A test that hardcodes the code under test is testing the copy.** This test extracted three fragments from the shipped file and hardcoded a fourth — the `_mts` anchor expression. The P13.406 change to that exact expression went completely untested while the suite went red for an unrelated reason. All four fragments are now extracted.

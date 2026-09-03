@@ -242,6 +242,18 @@ The fix for the acceptance failure above. Same three call sites, same one consta
 - **One line hardened in the verbatim rule:** *"never replace it with a date you resolved. The resolved date belongs in the Iso field, never here."* — the exact behaviour the old extraction had, now forbidden explicitly rather than by implication.
 - **Verified:** `node --check` passes on the containing module block; the constant still resolves once and is used three times. **NOT verified: anything the model emits under it.** Untested until it deploys.
 
+## THE DATE ANCHOR — P13.406 (`FLiIntel.html`, 2026-09-03)
+
+**The root cause under P13.405. Smaller and more correct than the preservation fix, and found only by measuring the corpus.**
+
+- **`meta.ts` does not exist on a single one of the 591 Atlas meetings.** P13.377's normaliser describes `meta.ts` as *"its real start instant"* and falls back to the top-level `ts`. Since the primary input is absent corpus-wide, **the normaliser has always run on its fallback** — and the top-level `ts` is the **logging** time, not the start time. For 575 records both land on the same day and it was harmless; for **16** it silently re-dated the meeting to the day it was typed in.
+- **The fallback is removed.** `_mts` now trusts `meta.ts` only. Today that makes the normaliser a **no-op corpus-wide**, restoring `meta.date` — the operator's own entry — as the displayed date everywhere. If a capture path ever populates `meta.ts`, normalisation resumes exactly as designed; that path is covered by test.
+- **`reprocessMeeting` no longer overwrites `m.ts`.** Reprocessing re-derives intel; it does not change when the meeting happened. Overwriting `ts` destroyed the time anchor and, through the normaliser, the displayed date — two meetings were re-dated to the day they were reprocessed. The reprocess time is already recorded per version as `intelHistory[].reprocessedAt`, so nothing is lost.
+- **P13.405 is kept as defence in depth.** With P13.406 the normaliser no longer produces a wrong value to persist, but the preservation swap still guarantees that *any* render-path mutation of `meta.date` cannot reach RTDB through a wholesale save.
+- **Verified: 9/9 green** on `scripts/p13405-date-preservation.test.mjs`, which extracts four real fragments from `FLiIntel.html` at run time — the helpers, the `_mts` anchor selection, the normalisation body and the save-path swap. **Non-vacuity: restoring the logging-`ts` fallback turns 2 assertions red.** `node --check` clean.
+- **A trap worth recording:** the test originally **hardcoded** the `_mts` expression instead of extracting it, so the P13.406 change went entirely untested while the suite reported red for an unrelated reason. Fixed by extracting that fragment too. A test that copies the code under test is testing the copy.
+- **NOT verified: live behaviour.** Untested against the real app until it deploys.
+
 ## META.DATE PRESERVATION — P13.405 (`FLiIntel.html`, 2026-09-03)
 
 **Fixes a pre-existing corpus-integrity bug found while running the P13.404 acceptance. Nothing to do with P13.403/404.**
