@@ -4,6 +4,29 @@
 
 ---
 
+## CURRENT STATE (2026-09-03 — THE ARC IS CLOSED. P13.403–406 ACCEPTED.)
+
+All four are live on `main` (`8a74f13`), deployed, and accepted against live data. Both damaged meetings are fully restored (`meta.date` and `ts`).
+
+**The chain, in the order it was found:**
+- **P13.403** — dated extraction: ISO date + basis alongside a preserved verbatim field, one shared constant across all three prompt sites. Contract passed, outcome regressed (38.9% → 9.7%).
+- **P13.404** — rebalanced the prompt after the prohibition drowned out the permission. Fixed firing and consistency.
+- **P13.405** — stopped P13.377's display normaliser persisting `meta.date` through a wholesale save.
+- **P13.406** — the root cause: `meta.ts` exists on **0 of 591** meetings, so the normaliser always ran on the top-level `ts` (the LOGGING time). Fallback removed; `reprocessMeeting` no longer overwrites `ts`.
+
+**Final acceptance:** 19/19 contract, datedness **47.4%** vs the 38.9% baseline, all four resolved-date forms correct by hand, `meta.date` and `ts` both survived the reprocess.
+
+### NEXT SINGLE MOVE
+
+**Teach the acceptance script to check correctness, not just shape and volume.** It must assert every `derived` value against the record's own `meta.date` — a same-day reference equals it, next-day is exactly +1, a named weekday is the next occurrence on or after — and flag any `derived` date outside a sane window around the meeting. Today that check is done by hand, which means it will stop being done.
+
+### THEN
+
+- Reprocess the remaining **14** of the 16 date-exposed meetings to lift them onto the new schema, now that reprocessing is safe. Two are done.
+- Audit for other render-path mutations a wholesale save can persist (LOG 2026-09-03).
+- Re-measure the 16-record exposure in the operator's LOCAL timezone; the UTC count is a floor.
+- Untracked junk in the repo root: `all.json`, `P13.403.patch`, `restore-*.json`, and the zero-byte `cd`, `firebase`, `node`.
+
 ## CURRENT STATE (2026-09-03 — P13.406 BUILT; ROOT CAUSE CLOSED, LIVE RE-TEST OWED)
 
 **P13.405 is live** (`93d5c07`) and both damaged `meta.date` values are restored in RTDB (`2026-07-20`, `2026-08-03`).

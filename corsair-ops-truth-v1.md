@@ -242,6 +242,28 @@ The fix for the acceptance failure above. Same three call sites, same one consta
 - **One line hardened in the verbatim rule:** *"never replace it with a date you resolved. The resolved date belongs in the Iso field, never here."* — the exact behaviour the old extraction had, now forbidden explicitly rather than by implication.
 - **Verified:** `node --check` passes on the containing module block; the constant still resolves once and is used three times. **NOT verified: anything the model emits under it.** Untested until it deploys.
 
+### ACCEPTANCE RUN 2026-09-03 — **PASS. P13.403–P13.406 ARE ACCEPTED.**
+
+`1786006413182-66jtc` (*Motor Sales Strategy*, true date **2026-08-03, a Monday**) reprocessed against the live app after P13.406 deployed. Workspace confirmed from live `info/name`.
+
+**Contract:** 19/19 fields well formed, zero violations, exit 0.
+**Outcome:** datedness **9/19 = 47.4%**, against the pre-change baseline of **38.9%** — `--baseline 38.9` passes. The regression is reversed and beaten.
+**Data integrity (the P13.405/406 live acceptance):** after the reprocess, `meta.date` is **still `2026-08-03`** and `ts` is **still `2026-08-06T08:53:33.182Z`**. Neither moved. Before P13.405/406 this same operation destroyed both.
+
+**Correctness of the resolved values — checked by hand against the meeting date, because the script still cannot:**
+
+| verbatim | emitted `deadlineIso` | expected | |
+|---|---|---|---|
+| `today` | 2026-08-03 | 2026-08-03 | ✓ |
+| `within the hour` | 2026-08-03 | 2026-08-03 | ✓ |
+| `tomorrow` | 2026-08-04 | 2026-08-04 | ✓ |
+| `next Thursday` | 2026-08-06 | 2026-08-06 (next Thursday on/after a Monday) | ✓ |
+| `this week` · `TBD` | — | refused | ✓ |
+
+**Consistency — the P13.403 defect — is gone.** Nine items carried an exact anchored reference and all nine resolved; every occurrence of the same phrase produced the same date. Ten items carried a window or an unknown and all ten refused. No item was treated two ways.
+
+**STILL OWED, and it is the one thing standing between this and a self-checking pipeline:** the acceptance script validates *shape* and *volume*, not *correctness*. The four rows above were verified by hand. Until the script asserts each `derived` value against the record's own `meta.date`, a green run is evidence the fields are well formed and the count is up — **not** that the dates are right.
+
 ## THE DATE ANCHOR — P13.406 (`FLiIntel.html`, 2026-09-03)
 
 **The root cause under P13.405. Smaller and more correct than the preservation fix, and found only by measuring the corpus.**
