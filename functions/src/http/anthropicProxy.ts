@@ -41,7 +41,10 @@ const ANTHROPIC_KEY = defineSecret("ANTHROPIC_API_KEY");
 // Allow-list of model IDs the proxy will forward. Keeps a hostile caller
 // from billing exotic models or burning quota on unintended targets.
 // Update when new models ship per CLAUDE.md / system context.
-const ALLOWED_MODELS = new Set<string>([
+// EXPORTED so other server-side callers enforce the SAME list rather than
+// keeping a second copy of it. `jobs/extractionEval` grades with a model checked
+// against this set — if the two lists ever diverge, one of them is the bug.
+export const ALLOWED_MODELS = new Set<string>([
   // Claude 4.x family (current)
   "claude-opus-4-7",
   "claude-sonnet-4-6",
