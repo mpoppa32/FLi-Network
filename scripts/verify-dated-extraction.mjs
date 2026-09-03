@@ -17,6 +17,14 @@
  *     | node scripts/verify-dated-extraction.mjs
  *   node scripts/verify-dated-extraction.mjs /tmp/meeting.json
  *
+ *   # --new-only : ignore every record predating P13.403 (no basis field at all), so
+ *   # you can point the whole meetings node at it without knowing which meeting you
+ *   # reprocessed — the reprocessed ones are exactly the ones carrying the new fields.
+ *   # Says so loudly when it finds none, rather than printing a zero-violation pass
+ *   # over an empty set.
+ *   firebase database:get "/workspaces/<WS>/meetings" --project fli-network -o all.json
+ *   node scripts/verify-dated-extraction.mjs all.json --new-only
+ *
  * EXIT CODES
  *   0  every dated field satisfies the contract
  *   1  at least one violation (each is printed with its record path)
@@ -34,6 +42,16 @@
  *     evidence, which is why it is the field that must exist.
  */
 
+const NEW_ONLY = process.argv.includes('--new-only');
+
+// --baseline <pct> : the datedness this change must not fall below.
+// P13.403 taught this the expensive way — the script passed a run in which the number
+// the change existed to move went DOWN (38.9% -> 9.7%), because it only ever checked
+// that the FIELDS were well formed. A contract check is not an outcome check. If a
+// change is justified by a metric, the instrument has to assert the metric.
+const BASE_I = process.argv.indexOf('--baseline');
+const BASELINE = BASE_I > -1 ? parseFloat(process.argv[BASE_I + 1]) : null;
+
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const BASES = new Set(['stated', 'derived', 'none']);
 
@@ -49,6 +67,11 @@ function checkItem(item, path, cfg, out) {
   const verbatim = item[cfg.verbatim];
   const iso = item[cfg.iso];
   const basis = item[cfg.basis];
+
+  // No basis field at all = the record predates P13.403. Under --new-only it is
+  // skipped, not reported: it is out of scope, and drowning one reprocessed meeting
+  // in 591 legacy complaints hides the answer the run exists to give.
+  if (NEW_ONLY && basis === undefined) { out.counts.legacy++; return; }
   const isoEmpty = iso === undefined || iso === null || iso === '';
 
   if (basis === undefined) {
@@ -102,12 +125,30 @@ function collect(root, out) {
   return n;
 }
 
+/**
+ * Decode by BOM, not by assumption. PowerShell's `>` redirect writes UTF-16LE with a
+ * BOM, so `firebase database:get ... > all.json` on Windows produces a file that is
+ * valid JSON and unreadable as UTF-8 — it fails on a mojibake character that looks
+ * like corrupt data rather than an encoding mismatch. Read bytes, check the first
+ * few, decode accordingly. (`-o all.json` on the firebase CLI avoids it entirely.)
+ */
+function decodeByBom(buf) {
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.slice(2).toString('utf16le');
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) return Buffer.from(buf.slice(2)).swap16().toString('utf16le');
+  if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.slice(3).toString('utf8');
+  // No BOM: a UTF-16LE stream of ASCII JSON still has a NUL in byte 1.
+  if (buf.length >= 2 && buf[0] !== 0x00 && buf[1] === 0x00) return buf.toString('utf16le');
+  return buf.toString('utf8');
+}
+
 async function readInput() {
-  const arg = process.argv[2];
-  if (arg) return (await import('node:fs')).readFileSync(arg, 'utf8');
+  const args = process.argv.slice(2);
+  const bi = args.indexOf('--baseline');
+  const arg = args.find((a, i) => !a.startsWith('--') && !(bi > -1 && i === bi + 1));
+  if (arg) return decodeByBom((await import('node:fs')).readFileSync(arg));
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
-  return Buffer.concat(chunks).toString('utf8');
+  return decodeByBom(Buffer.concat(chunks));
 }
 
 const raw = (await readInput()).trim();
@@ -125,7 +166,13 @@ const c = out.counts;
 const dated = c.stated + c.derived;
 const pct = c.total ? ((dated / c.total) * 100).toFixed(1) : '0.0';
 console.log(`meetings read: ${meetings}`);
-console.log(`dated fields:  ${c.total} total — ${c.stated} stated, ${c.derived} derived, ${c.none} none, ${c.legacy} pre-P13.403 (no basis field)`);
+console.log(`dated fields:  ${c.total} total — ${c.stated} stated, ${c.derived} derived, ${c.none} none${NEW_ONLY ? '' : `, ${c.legacy} pre-P13.403 (no basis field)`}`);
+if (NEW_ONLY) console.log(`skipped:       ${c.legacy} pre-P13.403 field(s) with no basis, out of scope`);
+if (NEW_ONLY && c.total === 0) {
+  console.log('\nNOTHING TO CHECK — no record carries the P13.403 fields yet.');
+  console.log('Either no meeting has been reprocessed since the deploy, or the reprocess did not take.');
+  process.exit(1);
+}
 // Datedness is counted from what was EMITTED, not from what is valid, so it is only
 // a real number once the contract holds. Printing it beside violations without saying
 // so is exactly the confident-wrong-figure failure this system keeps paying for.
@@ -139,4 +186,17 @@ if (out.violations.length) {
   out.violations.forEach(v => console.log('  - ' + v));
   process.exit(1);
 }
-console.log('\nOK — every dated field satisfies the contract.');
+console.log('\nCONTRACT OK — every dated field is well formed.');
+
+if (BASELINE !== null && !Number.isNaN(BASELINE)) {
+  const got = parseFloat(pct);
+  if (got + 1e-9 < BASELINE) {
+    console.log(`\nOUTCOME FAIL — datedness ${got}% is BELOW the ${BASELINE}% baseline.`);
+    console.log('The fields are well formed and the number this change exists to move went the wrong way.');
+    console.log('A passing contract is not a working feature.');
+    process.exit(1);
+  }
+  console.log(`OUTCOME OK — datedness ${got}% meets the ${BASELINE}% baseline.`);
+} else {
+  console.log('(no --baseline given: contract checked, OUTCOME NOT CHECKED)');
+}

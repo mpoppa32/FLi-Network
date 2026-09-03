@@ -385,3 +385,27 @@ DO NOT REPEAT: when a spec asks the model to fill a gap by guessing, check first
 Live paths are **`_extractChunkWithRetry`** (every new meeting, via `_processMeetingAI`) and **`callClaude`** (reprocess, via `reprocessMeeting`). **`callClaudeTranscript` has no callers at all** — dead since the chunked path landed. A prompt change applied by hand to "the extraction prompt" would have hit one path and left the other silently on the old contract, and the symptom would have been new meetings and reprocessed meetings disagreeing about the schema with nothing reporting it.
 
 DO NOT REPEAT: before editing a prompt, `grep` for the literal and count the copies. Three inline copies of a contract do not drift loudly — they drift one field at a time. Consolidating to one constant is not a refactor here, it is the only way to make the change once.
+
+### 2026-09-02 — "typeof X" is not a deploy check in this file: six of its script blocks are ES modules   [MY ERROR]
+
+To confirm the P13.403 bytes were live in the browser, the operator was told to run `typeof _INTEL_SCHEMA_TAIL` in the console and expect `"string"`. It returned `undefined`, which was read for a moment as a stale service worker.
+
+**It proves nothing.** `_INTEL_SCHEMA_TAIL` is declared at the top of the `<script type="module">` block that starts at line 18070. A top-level `var` in a module is **module-scoped, not a global** — `typeof` on it returns `undefined` from the console on new bytes and old bytes alike. `FLiIntel.html` has **six `type="module"` blocks** (lines 12200, 18070, 60680, 66286, 74427 plus the importmap at 57) and six classic ones; which kind a given symbol lives in decides whether the console can see it at all. This is the same fact P13.399 was paid for from the other direction — `onNotesInput` was invisible to an inline `oninput` handler until it was explicitly assigned to `window`.
+
+The check that actually works, because it reads the loaded document rather than a scope:
+
+    document.documentElement.outerHTML.includes('P13.403')
+
+DO NOT REPEAT: never prescribe `typeof <symbol>` as a "are the new bytes live" check in `FLiIntel.html`. Grep the loaded document for the `P13.x` marker instead — markers exist for exactly this and are scope-independent. And check the enclosing `<script>` tag's `type` before asserting anything about what the console can reach (Rule 14: the enclosing scope is a mechanical claim about the source).
+
+### 2026-09-02 — P13.403 acceptance: the contract passed and the feature still failed   [OPEN — fix is commit 1b]
+
+Two Atlas meetings reprocessed live. **Structurally perfect: 31/31 fields carried a valid basis, the two-way lock held everywhere, zero contract violations, and `derived` demonstrably fires** (`"today"` → `2026-08-03`, `"tomorrow"` → `2026-08-04`, resolved against the meeting date). By every test that was written, it passed.
+
+**And machine-readable datedness fell from 14/36 (38.9%) to 3/31 (9.7%) on the same records** — the opposite of the change's entire purpose (open register E1).
+
+The cause is a prompt-balance error, not a bug. The old extraction wrote resolved dates *into the verbatim field* (`"2026-08-03"` where the transcript said "today"); those resolutions were correct. P13.403 rightly stops that overwrite, and the resolution was meant to move into `deadlineIso` tagged `derived` — but the `DO NOT GUESS` paragraph is concrete, vivid and long while the `derived` permission is one abstract clause. The model followed the vivid half and emitted `"TBD"` / `none`, dropping the date rather than relocating it. Worse, it did so **inconsistently within a single meeting** — the same `"today"` resolved three times and refused about eight.
+
+**DO NOT REPEAT — two lessons, and the second is the expensive one.**
+1. When a prompt both forbids and permits a behaviour, the vivid side wins. A permission stated abstractly next to a prohibition stated with examples is not a balanced instruction; it is a prohibition. Give the permission the same concreteness — worked examples, anchored — or it will not fire.
+2. **A passing acceptance test is not a working feature.** The script tested the contract (are the fields well-formed?) and the contract was never in doubt. It did not test the OUTCOME (did the number this change exists to move actually move?), so it returned exit 0 on a regression. Any acceptance instrument for a change justified by a metric must assert the metric against a pre-measured baseline, not merely the shape of the output. The baseline existed in the truth doc the whole time and the script did not read it.

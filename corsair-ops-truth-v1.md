@@ -208,6 +208,40 @@ Closes the ingest half of the 2026-08-11 finding (LOG 2026-08-11 [QUEUED]): **79
 - **What is actually verified:** the three sites resolve to one constant (byte-checked, 3 replacements + 1 declaration); `node --check` passes on the containing script block and fails identically before and after on one pre-existing regex artifact in an unrelated block; the acceptance script behaves correctly on both fixtures. **What is NOT verified: anything the model emits.** No API call has been made.
 - **Running the acceptance script over the EXISTING corpus will report a violation per item** — every legacy record lacks a basis field. That is correct and expected; the `pre-P13.403` counter exists to say so. It is an acceptance test for reprocessed meetings, not a corpus audit.
 
+### ACCEPTANCE RUN 2026-09-02 — CONTRACT PASSES, OUTCOME REGRESSES. **NOT ACCEPTED.**
+
+Two Atlas meetings reprocessed under the live P13.403 prompt (workspace confirmed from live `info/name` = "Atlas"; `intelHistory` archived one version each, so both are reversible). Read back from the live DB and checked with `scripts/verify-dated-extraction.mjs`.
+
+**The contract holds — 31/31 dated fields, zero violations, exit 0.** Every action item and every milestone carried a valid `deadlineBasis` / `dateBasis`; the two-way lock (basis `none` ⟺ empty Iso) held on every record; no prose, range or invalid value ever appeared in an Iso field. The mechanism is not stuck: `derived` fired correctly three times, resolving `"today"` → `2026-08-03` and `"tomorrow"` → `2026-08-04` against the meeting date.
+
+**But machine-readable datedness went DOWN, measured on the same records:**
+
+| | before (ISO-prefix on the verbatim field, the rule `parseIsoDate` actually applies) | after (`deadlineIso` / `dateIso` present) |
+|---|---|---|
+| `1786007713256-ycudy` | 3 / 15 | 0 / 12 |
+| `1786006413182-66jtc` | 11 / 21 | 3 / 19 |
+| **total** | **14 / 36 = 38.9%** | **3 / 31 = 9.7%** |
+
+**Why, and it is one cause with two halves.** The old extraction resolved relative references *into the verbatim field* — it wrote `"2026-08-03"` and `"Within 1 hour of meeting (2026-08-03)"` where the transcript said "today" and "within the hour". Those resolutions were **correct** (the meeting was 2026-08-03). P13.403 correctly stops the verbatim field being overwritten — but the resolution was then supposed to land in `deadlineIso` as `derived`, and mostly it did not. The model wrote `"TBD"`, basis `none`, and dropped the date entirely.
+
+**The prompt over-refuses, and worse, it does so INCONSISTENTLY.** Within one meeting, `"today"` was resolved to `2026-08-03` on three items and left as `"TBD"`/`none` on roughly eight others carrying the same underlying reference. Same phrase, same anchor date, different treatment — an inconsistency is worse than either extreme, because neither the strict nor the permissive reading can be relied on downstream.
+
+**Diagnosis: the `DO NOT GUESS` paragraph outweighs the `derived` permission.** The refusal list is concrete and vivid ("Ongoing", "TBD", "Week of the 3rd", "~end of Q3", "an invented date is worse than no date"); the `derived` rule is one abstract clause with two examples. The model follows the vivid instruction. `"this week"` → `none` is correct (a window). `"today"` / `"tomorrow"` / `"within the hour"` → `none` is **wrong** — those are exact and anchored.
+
+**Fix (commit 1b, not yet built):** enumerate the resolvable forms explicitly with worked examples anchored to the meeting date, state that resolving them is arithmetic rather than judgement, and say plainly that a same-day reference **must** resolve. Re-run the same two meetings; the acceptance bar is `derived` ≥ the count of exact same-day/next-day references, and no regression against the 38.9% baseline above.
+
+**Left alone deliberately:** the two reprocessed meetings were NOT rolled back. Their prior intel sits in `intelHistory` (1 version each) and the current data is more honest but less dated; which version is better is Mike's call, not a drive-by write.
+
+### P13.404 — THE REBALANCE (built 2026-09-02, UNPUSHED, UNTESTED)
+
+The fix for the acceptance failure above. Same three call sites, same one constant; only the DEADLINE CAPTURE block changes.
+
+- **The permission is now as concrete as the prohibition.** A named `RESOLVE THESE` list (`today` / `this morning` / `within the hour` / `EOD` → the meeting Date; `tomorrow` → +1; a named weekday → next occurrence on or after; `in N days`; `end of this month`), a **worked example** anchored to 2026-08-03 showing all four resolutions with the verbatim field left untouched, and an explicit consistency requirement: *treating one "today" as a date and another as unknown, in the same meeting, is a defect.*
+- **The refusal list stays, and stays concrete** — `Ongoing` · `TBD` · `ASAP` · `Near-term` · `this week` · `Week of the 3rd` · `October` · `~end of Q3` · `Before 2026-08-20` · `Upon contract signing`. Windows and bounds still refuse; that half was never wrong.
+- **Both errors are now named against each other:** an invented date is worse than no date, AND refusing an exact anchored reference silently deletes a real deadline. P13.403 stated only the first.
+- **One line hardened in the verbatim rule:** *"never replace it with a date you resolved. The resolved date belongs in the Iso field, never here."* — the exact behaviour the old extraction had, now forbidden explicitly rather than by implication.
+- **Verified:** `node --check` passes on the containing module block; the constant still resolves once and is used three times. **NOT verified: anything the model emits under it.** Untested until it deploys.
+
 ## THE INGEST HEARTBEAT (`jobs/dailyBriefDigest.ts`, 2026-08-25)
 
 **One line, both MIME parts, never omitted: `Newest meeting in Corsair: N days old`.** Built because the 19-day ingest gap found on 2026-08-25 was invisible — a brief assembled from three-week-old data reads exactly as calm as one assembled from this morning's. Same principle as "No signals cleared the bar": **absence must never look like calm.** At 0-1 days it is a heartbeat, and that is the point — a line that appears only when things are bad cannot be told apart from a line that broke.

@@ -26114,6 +26114,12 @@ window._readTranscriptFile = _readTranscriptFile;
 
 // ── Transcript-aware Claude call ──────────────────────────────
 // Same JSON schema output. Stronger prompt for verbatim dialogue.
+// ── P13.404 — DATED EXTRACTION, REBALANCED. P13.403 shipped this block with a long,
+// concrete DO-NOT-GUESS prohibition and a one-clause "derived" permission. Measured
+// on two live meetings 2026-09-02: machine-readable datedness FELL 38.9% -> 9.7%,
+// and the same "today" was resolved on three items and refused on ~eight in ONE
+// meeting. The vivid instruction won. Both sides are now equally concrete, with a
+// worked example and an explicit consistency requirement. See LOG 2026-09-02.
 // ── P13.403 — DATED EXTRACTION. One shared schema tail for all three extraction
 // prompts (callClaudeTranscript, _extractChunkWithRetry, callClaude). Until now the
 // schema string was inline in THREE places; the comment above _extractChunkWithRetry
@@ -26130,13 +26136,21 @@ window._readTranscriptFile = _readTranscriptFile;
 // field, not the Iso field, is what proves an item was considered and refused.
 var _INTEL_SCHEMA_TAIL =
    '\n\nDEADLINE CAPTURE — every actionItem and every milestone carries a verbatim field AND a machine field. Both are required on every item; there is no default and no omission.\n'
-  +'- "deadline" (actionItems) / "date" (milestones): VERBATIM what the source said — "Ongoing", "TBD", "before the raise launches", "next Friday", or a date. Never rewrite it, normalise it, or leave it empty when the source said something.\n'
-  +'- "deadlineIso" / "dateIso": a strict YYYY-MM-DD calendar date, or null. Never any other format. Never prose, never a range, never a month or year alone, never a relative phrase.\n'
-  +'- "deadlineBasis" / "dateBasis": "stated" when the source gives an explicit calendar date; "derived" when the source gives a reference that resolves to exactly ONE date when anchored to the meeting Date given in the user message (e.g. "next Friday", "end of this month", "in two weeks"); "none" in every other case.\n'
-  +'DEADLINE RULES:\n'
-  +'- basis "none" and a null Iso field ALWAYS occur together. Never one without the other.\n'
-  +'- DO NOT GUESS. If the source gives a window, a bound, an approximation, a phase or a condition — "Ongoing", "TBD", "Upon contract signing", "Week of the 3rd", "~end of Q3", "before the raise" — the basis is "none" and the verbatim field carries the phrase exactly. An invented date is worse than no date, because a wrong date sorts to the top of an overdue list and is acted on.\n'
-  +'- Never move a date from the verbatim field into Iso unless you can name the words in the source that support it.\n'
+  +'- "deadline" (actionItems) / "date" (milestones): VERBATIM what the source said — "Ongoing", "TBD", "next Friday", "today", or a date. Never rewrite it, normalise it, or replace it with a date you resolved. The resolved date belongs in the Iso field, never here.\n'
+  +'- "deadlineIso" / "dateIso": a strict YYYY-MM-DD calendar date, or null. Never any other format, never prose, never a range.\n'
+  +'- "deadlineBasis" / "dateBasis": "stated" | "derived" | "none".\n'
+  +'\nRESOLVE THESE — they are ARITHMETIC against the meeting Date given in the user message, not guesses. You MUST resolve each one and set basis "derived":\n'
+  +'- "today", "this morning", "this afternoon", "within the hour", "by end of day", "EOD" -> the meeting Date itself\n'
+  +'- "tomorrow", "first thing tomorrow" -> meeting Date + 1 day\n'
+  +'- a named weekday ("by Friday", "on Thursday") -> the next occurrence of that weekday on or after the meeting Date\n'
+  +'- "in N days", "N weeks from now" -> meeting Date + N\n'
+  +'- "end of this month" -> the last day of the meeting Date month\n'
+  +'WORKED EXAMPLE, meeting Date 2026-08-03 (a Monday): "today" -> deadlineIso 2026-08-03, basis "derived". "tomorrow" -> 2026-08-04 derived. "within the hour" -> 2026-08-03 derived. "by Friday" -> 2026-08-07 derived. In every one the verbatim "deadline" field still reads exactly what was said.\n'
+  +'IF THE SAME REFERENCE APPEARS ON SEVERAL ITEMS, RESOLVE IT IDENTICALLY EVERY TIME. Treating one "today" as a date and another "today" as unknown, in the same meeting, is a defect.\n'
+  +'\nSTILL REFUSE — basis "none" and Iso null. These are windows, bounds, approximations or conditions, and no single date is correct:\n'
+  +'"Ongoing" · "TBD" · "ASAP" · "Near-term" · "this week" · "Week of the 3rd" · "October" · "~end of Q3" · "~2026-07-27" · "Before 2026-08-20" · "Upon contract signing" · "in about a month"\n'
+  +'\nBOTH ERRORS COST, so weigh them against each other. An invented date is worse than no date — a wrong date sorts to the top of an overdue list and gets acted on. But refusing an EXACT, ANCHORED reference is also an error: it silently deletes a real deadline that the source actually gave. Resolve what is exact; refuse what is a range.\n'
+  +'- basis "none" and a null Iso field ALWAYS occur together, in both directions.\n'
   +' Schema: {"summary":"","energyRead":"","companyPulse":"Accelerating|Steady|Stalling|Crisis|Pivoting|Building","keyDecisions":[{"decision":"","owner":"","rationale":""}],"actionItems":[{"task":"","owner":"","deadline":"","deadlineIso":null,"deadlineBasis":"stated|derived|none","priority":"high|medium|low","context":""}],"openQuestions":[{"question":"","stakes":"","askedBy":""}],"risks":[{"risk":"","severity":"high|medium|low","mitigation":"","raisedBy":""}],"milestones":[{"milestone":"","date":"","dateIso":null,"dateBasis":"stated|derived|none","status":"upcoming|in-progress|completed|at-risk"}],"keyPeople":[{"name":"","role":"","org":"","stance":"","watchFor":""}],"companies":[{"name":"","role":"","notes":""}],"learningInsights":[""],"redFlags":[""],"followUpTopics":[""]}';
 
 async function callClaudeTranscript(notes,meta){

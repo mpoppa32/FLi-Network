@@ -4,6 +4,44 @@
 
 ---
 
+## P13.404 BUILT (2026-09-02) — UNPUSHED, AND THE TEST CANNOT RUN UNTIL IT DEPLOYS
+
+Commit 1b is written: `FLiIntel.html` (rebalanced DEADLINE CAPTURE block) + `scripts/verify-dated-extraction.mjs` (`--baseline`). **Neither is pushed and the prompt is untested** — a prompt change can only be exercised by the deployed app, and an attempt to test it in-browser ahead of deploy was correctly refused as network interception.
+
+**`--baseline <pct>` now exists and is proven non-vacuous against the real regression:** replaying the P13.403 acceptance data with `--baseline 38.9` exits **1** with `OUTCOME FAIL — datedness 9.7% is BELOW the 38.9% baseline`. That is the same run the old script passed with exit 0. Without a `--baseline` the script now says out loud that the outcome was NOT checked.
+
+### NEXT SINGLE MOVE — one push, then the test re-runs itself
+
+1. Commit and push (files listed below).
+2. Reprocess the SAME two meetings — `1786007713256-ycudy` and `1786006413182-66jtc`.
+3. `node scripts\verify-dated-extraction.mjs all.json --new-only --baseline 38.9`
+
+**Acceptance bar:** contract clean, `derived` fires on every exact same-day / next-day reference, the same phrase treated identically throughout a meeting, and datedness at or above **38.9%**. Anything less is another regression and P13.404 gets reverted rather than defended.
+
+### FILES IN THE WORKING TREE AWAITING ONE COMMIT
+
+`FLiIntel.html` (P13.404) · `scripts/verify-dated-extraction.mjs` (`--new-only`, BOM, `--baseline`) · `CLAUDE.md` (state anchor) · `corsair-ops-truth-v1.md` · `corsair-ops-log-v1.md` · `corsair-ops-context-v1.md`.
+Untracked, do not add: `all.json`, `P13.403.patch`, and the zero-byte `cd`, `firebase`, `node`.
+
+## CURRENT STATE (2026-09-02, later — P13.403 IS LIVE AND NOT ACCEPTED)
+
+**Deployed:** `26f817b` on `main`, serving from GitHub Pages, verified in the browser by three independent markers.
+**Acceptance: RUN, AND IT FAILED ON OUTCOME.** Contract passes (31/31 fields, zero violations, `derived` fires). Machine-readable datedness went **14/36 (38.9%) → 3/31 (9.7%)** on the two meetings reprocessed. Full numbers and diagnosis in the truth doc's ACCEPTANCE RUN section; lessons in LOG 2026-09-02.
+
+**Two Atlas meetings were reprocessed** — `1786007713256-ycudy` and `1786006413182-66jtc`. Both have one archived version in `intelHistory`, so both are reversible. **Not rolled back** — whether the older, more-dated-but-partly-inferred intel is better than the newer, honest-but-undated intel is Mike's call.
+
+### NEXT SINGLE MOVE
+
+**Commit 1b — rebalance the prompt.** The `derived` permission needs the same concreteness the `DO NOT GUESS` prohibition already has: enumerate the resolvable forms (`today`, `tomorrow`, `within the hour`, `by Friday`, `end of this month`) with worked examples anchored to the meeting `Date`, and state that a same-day or next-day reference MUST resolve because that is arithmetic, not judgement. Leave `"this week"`, `"Week of the 3rd"`, `"~end of Q3"` refusing — those are windows and the refusal is correct.
+
+**Then re-run the SAME two meetings** (the before/after numbers above are the baseline) and require: `derived` ≥ the count of exact same-day/next-day references, no regression below 38.9%, and no inconsistent treatment of the same phrase within one meeting.
+
+### ALSO OWED
+
+- **The acceptance script must assert the outcome, not only the contract.** It returned exit 0 on a regression. Give it a `--baseline <pct>` flag that fails when datedness lands below a stated prior measurement.
+- Uncommitted in the working tree: `scripts/verify-dated-extraction.mjs` (`--new-only` + BOM), `CLAUDE.md` (state anchor), and the three ops docs. One commit.
+- Untracked junk in the repo root: `all.json`, `P13.403.patch`, and the zero-byte `cd`, `firebase`, `node`.
+
 ## CURRENT STATE (2026-09-02 — P13.403 DATED EXTRACTION BUILT, UNPUSHED, UNACCEPTED)
 
 **One commit on `main` in the cloud clone, NOT pushed, awaiting Mike's word.** Closes the ingest half of the free-text-deadline finding (LOG 2026-08-11 [QUEUED]): extraction now emits `deadlineIso` / `deadlineBasis` on action items and `dateIso` / `dateBasis` on milestones, **alongside** the verbatim field, which is explicitly never rewritten. Full contract in the truth doc's DATED EXTRACTION section; the narrowing from the brief (`derived`, not `inferred`) and the three-copies finding are in LOG 2026-09-02.
